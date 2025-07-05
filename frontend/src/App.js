@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Chat from './components/Chat';
 import SummaryList from './components/SummaryList';
+import NavBar from './components/NavBar';
 import './App.css';
 
 function App() {
@@ -8,13 +9,7 @@ function App() {
 
   return (
     <div className="App">
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>EM TaskFlow AI</h1>
-        <div>
-          <button onClick={() => setView('chat')} disabled={view === 'chat'}>Chat</button>
-          <button onClick={() => setView('summary')} disabled={view === 'summary'}>Summary</button>
-        </div>
-      </header>
+      <NavBar setView={setView} currentView={view} />
       <main>
         {view === 'chat' ? <Chat /> : <SummaryList />}
       </main>
