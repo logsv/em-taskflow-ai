@@ -1,9 +1,11 @@
 const express = require('express');
-const router = express.Router();
 const taskManager = require('../services/taskManager');
-const summaryFormatter = require('../services/summaryFormatter');
-const notion = require('../integrations/notion');
 const llmService = require('../services/llmService');
+const notion = require('../integrations/notion');
+const router = express.Router();
+const agentService = require('../services/agentService');
+const databaseService = require('../services/databaseService');
+const databaseRouter = require('./database');
 
 // GET /api/summary - Unified status summary
 router.get('/summary', async (req, res) => {
@@ -43,19 +45,42 @@ router.post('/complete', async (req, res) => {
 // GET /api/suggestions - LLM-powered smart suggestions
 router.get('/suggestions', async (req, res) => {
   try {
-    const { jiraTasks, notionPages, calendarEvents, calendarConflicts } = await taskManager.fetchAllStatus();
-    // Build a concise summary for the LLM
-    const jiraSummary = jiraTasks.map(t => `[${t.key}] ${t.summary} (${t.status})`).join('\n');
-    const notionSummary = notionPages.map(p => `${p.title} (Last edited: ${p.last_edited_time})`).join('\n');
-    const calendarSummary = calendarEvents.map(e => `${e.summary} (${e.start} - ${e.end})`).join('\n');
-    const conflictSummary = calendarConflicts.length ? calendarConflicts.map(([a, b]) => `"${a.summary}" overlaps with "${b.summary}"`).join('\n') : 'None';
-
-    const prompt = `You are a productivity assistant.\n\nJira Tasks:\n${jiraSummary}\n\nNotion Projects:\n${notionSummary}\n\nToday's Meetings:\n${calendarSummary}\n\nScheduling Conflicts:\n${conflictSummary}\n\nBased on the above, suggest the top 3 things the user should focus on today, and any urgent follow-ups. Be concise, actionable, and professional. Format as a numbered list.`;
-    const suggestions = await llmService.complete(prompt, { maxTokens: 256 });
+    const suggestions = await agentService.generateSmartSuggestions();
     res.json({ suggestions });
   } catch (err) {
     res.status(500).json({ error: 'Failed to generate suggestions.' });
   }
 });
+
+// POST /api/llm-summary - Process user queries with LangGraph Agent
+router.post('/llm-summary', async (req, res) => {
+  try {
+    const { prompt, sessionId } = req.body;
+    
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+    
+    const response = await agentService.processUserQuery(prompt);
+    
+    // Save chat interaction to database
+    try {
+      await databaseService.saveChatHistory(prompt, response, sessionId, {
+        timestamp: new Date().toISOString(),
+        userAgent: req.headers['user-agent']
+      });
+    } catch (dbError) {
+      console.warn('Failed to save chat history:', dbError);
+    }
+    
+    res.json({ response });
+  } catch (error) {
+    console.error('Error in /llm-summary:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Database routes
+router.use('/database', databaseRouter);
 
 module.exports = router;

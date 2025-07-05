@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
+import './Summary.css';
 
 function SummaryList() {
   const [summary, setSummary] = useState(null);
@@ -57,7 +58,8 @@ function SummaryList() {
           <ol>
             {summary.calendar.map(event => (
               <li key={event.id}>
-                <span>{summary.calendarConflicts.flat().some(e => e.id === event.id) ? '⚠️' : '📅'} </span>
+                <span>{summary.calendarConflicts.some(conflict => 
+                  conflict.events?.some(e => e.id === event.id)) ? '⚠️' : '📅'} </span>
                 {event.summary} ({event.start} - {event.end})
                 {event.hangoutLink && (
                   <div><a href={event.hangoutLink} target="_blank" rel="noopener noreferrer">Meeting Link</a></div>
@@ -67,13 +69,29 @@ function SummaryList() {
           </ol>
 
           {summary.calendarConflicts.length > 0 && (
-            <div style={{ color: 'orange' }}>
-              <h4>Scheduling Conflicts ⚠️</h4>
-              <ul>
-                {summary.calendarConflicts.map(([a, b], i) => (
-                  <li key={i}>"{a.summary}" overlaps with "{b.summary}"</li>
-                ))}
-              </ul>
+            <div className="conflicts-section">
+              <h4>🚨 Scheduling Conflicts Detected</h4>
+              {summary.calendarConflicts.map((conflict, i) => (
+                <div key={i} className={`conflict-card conflict-${conflict.severity}`}>
+                  <div className="conflict-header">
+                    <span className="conflict-type">{conflict.type.replace('_', ' ').toUpperCase()}</span>
+                    <span className="conflict-severity">{conflict.severity.toUpperCase()}</span>
+                  </div>
+                  <div className="conflict-events">
+                    <strong>"{conflict.events[0].summary}"</strong> overlaps with <strong>"{conflict.events[1].summary}"</strong>
+                  </div>
+                  {conflict.suggestions && conflict.suggestions.length > 0 && (
+                    <div className="ai-suggestions">
+                      <div className="suggestions-header">🤖 AI Suggestions:</div>
+                      <ul>
+                        {conflict.suggestions.map((suggestion, j) => (
+                          <li key={j}>{suggestion}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -82,4 +100,4 @@ function SummaryList() {
   );
 }
 
-export default SummaryList; 
+export default SummaryList;

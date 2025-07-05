@@ -4,22 +4,29 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@huggingface/inference": "^4.3.1",
-    "@notionhq/client": "^4.0.0",
-    "axios": "^1.10.0",
-    "chalk": "^5.4.1",
+    "@huggingface/inference": "^2.6.1",
+    "@langchain/community": "^0.3.48",
+    "@langchain/core": "^0.3.62",
+    "@langchain/langgraph": "^0.3.6",
+    "@notionhq/client": "^2.2.13",
+    "axios": "^1.6.0",
+    "chalk": "^4.1.2",
     "cors": "^2.8.5",
-    "date-fns": "^4.1.0",
-    "dotenv": "^17.0.1",
-    "express": "^5.1.0",
-    "googleapis": "^150.0.1",
+    "date-fns": "^2.30.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "googleapis": "^126.0.1",
     "jira-client": "^8.2.2",
-    "openai": "^5.8.2"
+    "langchain": "^0.3.29",
+    "openai": "^4.20.1",
+    "sqlite3": "^5.1.6"
   }
 }

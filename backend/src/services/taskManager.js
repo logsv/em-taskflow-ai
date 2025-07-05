@@ -1,3 +1,4 @@
+require('dotenv').config();
 const jira = require('../integrations/jira');
 const notion = require('../integrations/notion');
 const calendar = require('../integrations/calendar');

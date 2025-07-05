@@ -1,0 +1,162 @@
+.summary-list-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.summary-list-container h2 {
+  color: #1976d2;
+  text-align: center;
+  margin-bottom: 30px;
+  font-size: 1.8rem;
+}
+
+.summary-list-container h3 {
+  color: #424242;
+  margin: 25px 0 15px 0;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e3f2fd;
+  font-size: 1.3rem;
+}
+
+.summary-list-container ol {
+  padding-left: 20px;
+}
+
+.summary-list-container li {
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+
+.summary-list-container a {
+  color: #1565c0;
+  text-decoration: none;
+}
+
+.summary-list-container a:hover {
+  text-decoration: underline;
+}
+
+/* Conflict Detection Styles */
+.conflicts-section {
+  margin-top: 30px;
+  padding: 20px;
+  background: #fff3e0;
+  border-radius: 8px;
+  border: 1px solid #ffb74d;
+}
+
+.conflicts-section h4 {
+  color: #e65100;
+  margin-top: 0;
+  margin-bottom: 20px;
+  font-size: 1.4rem;
+}
+
+.conflict-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  border-left: 4px solid #ff9800;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.conflict-card.conflict-high {
+  border-left-color: #f44336;
+  background: #ffebee;
+}
+
+.conflict-card.conflict-medium {
+  border-left-color: #ff9800;
+  background: #fff8e1;
+}
+
+.conflict-card.conflict-low {
+  border-left-color: #ffc107;
+  background: #fffde7;
+}
+
+.conflict-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.conflict-type {
+  background: #e3f2fd;
+  color: #1565c0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.conflict-severity {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.conflict-card.conflict-high .conflict-severity {
+  background: #ffcdd2;
+  color: #c62828;
+}
+
+.conflict-card.conflict-medium .conflict-severity {
+  background: #ffe0b2;
+  color: #ef6c00;
+}
+
+.conflict-card.conflict-low .conflict-severity {
+  background: #fff9c4;
+  color: #f57f17;
+}
+
+.conflict-events {
+  margin-bottom: 12px;
+  font-size: 0.95rem;
+  color: #424242;
+}
+
+.ai-suggestions {
+  background: #f3e5f5;
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.suggestions-header {
+  font-weight: 600;
+  color: #7b1fa2;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
+.ai-suggestions ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.ai-suggestions li {
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+  color: #4a148c;
+}
+
+/* Loading and error states */
+.summary-list-container p {
+  text-align: center;
+  padding: 20px;
+  font-size: 1.1rem;
+}
+
+.summary-list-container p[style*="color: red"] {
+  background: #ffebee;
+  border: 1px solid #ef5350;
+  border-radius: 6px;
+  color: #c62828 !important;
+}

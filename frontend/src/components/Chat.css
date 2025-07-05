@@ -19,23 +19,82 @@
 }
 
 .chat-msg {
-  padding: 10px 16px;
+  padding: 12px 16px;
   border-radius: 16px;
   max-width: 80%;
   font-size: 1rem;
   line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .chat-msg.user {
   align-self: flex-end;
-  background: #e0f7fa;
-  color: #00796b;
+  background: #e3f2fd;
+  color: #1565c0;
 }
 
 .chat-msg.ai {
   align-self: flex-start;
-  background: #f1f8e9;
-  color: #33691e;
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.msg-content {
+  white-space: pre-line;
+}
+
+.think-content {
+  color: #888;
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.msg-timestamp {
+  font-size: 0.75rem;
+  opacity: 0.6;
+  align-self: flex-end;
+  margin-top: 4px;
+}
+
+/* Suggestion buttons */
+.suggestions {
+  padding: 16px 24px;
+  border-top: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+
+.suggestions-label {
+  font-size: 0.875rem;
+  color: #666;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.suggestion-btn {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  color: #333;
+  cursor: pointer;
+  font-size: 0.875rem;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.suggestion-btn:hover:not(:disabled) {
+  background: #f5f5f5;
+  border-color: #bdbdbd;
+}
+
+.suggestion-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .chat-input {
@@ -68,4 +127,4 @@
 .chat-input button:disabled {
   background: #bdbdbd;
   cursor: not-allowed;
-} 
+}
