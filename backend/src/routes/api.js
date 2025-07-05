@@ -45,7 +45,8 @@ router.post('/complete', async (req, res) => {
 // GET /api/suggestions - LLM-powered smart suggestions
 router.get('/suggestions', async (req, res) => {
   try {
-    const suggestions = await agentService.generateSmartSuggestions();
+    const { sessionId } = req.query;
+    const suggestions = await agentService.generateSmartSuggestions(sessionId);
     res.json({ suggestions });
   } catch (err) {
     res.status(500).json({ error: 'Failed to generate suggestions.' });
@@ -61,7 +62,8 @@ router.post('/llm-summary', async (req, res) => {
       return res.status(400).json({ error: 'Prompt is required' });
     }
     
-    const response = await agentService.processUserQuery(prompt);
+    // Pass sessionId to processUserQuery to retrieve chat history
+    const response = await agentService.processUserQuery(prompt, sessionId);
     
     // Save chat interaction to database
     try {

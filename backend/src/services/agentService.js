@@ -159,9 +159,23 @@ async function formatContext(state) {
 async function generateResponse(state) {
   console.log('🤖 Generating AI response...');
   
+  // Format previous messages for context if available
+  let conversationHistory = '';
+  if (state.messages && state.messages.length > 0) {
+    // Only use the latest 5 messages for context
+    const recentMessages = state.messages.slice(-10); // Get last 10 items (5 exchanges)
+    
+    conversationHistory = '\nPrevious conversation:\n';
+    for (let i = 0; i < recentMessages.length; i++) {
+      const message = recentMessages[i];
+      const role = message._getType() === 'human' ? 'User' : 'Assistant';
+      conversationHistory += `${role}: ${message.content}\n`;
+    }
+  }
+  
   const prompt = `You are an intelligent productivity assistant for EM TaskFlow. You have access to the user's current tasks, projects, and calendar.
 
-${state.context}
+${state.context}${conversationHistory}
 
 User Question: ${state.userQuery}
 
@@ -247,16 +261,35 @@ function createAgentWorkflow() {
 /**
  * Main function to process user queries using the LangGraph agent
  */
-async function processUserQuery(userInput) {
+async function processUserQuery(userInput, sessionId = null) {
   console.log('🚀 Starting LangGraph agent workflow...');
   
   try {
     const agent = createAgentWorkflow();
     
+    // Get the latest 5 messages from chat history if sessionId is provided
+    let previousMessages = [];
+    if (sessionId) {
+      try {
+        const databaseService = require('./databaseService');
+        const chatHistory = await databaseService.getChatHistory(5, sessionId);
+        
+        // Convert to LangChain message format
+        previousMessages = chatHistory.flatMap(entry => [
+          new HumanMessage(entry.user_message),
+          new AIMessage(entry.ai_response)
+        ]);
+        
+        console.log(`📜 Retrieved ${previousMessages.length / 2} previous conversations for context`);
+      } catch (dbError) {
+        console.warn('Failed to retrieve chat history:', dbError);
+      }
+    }
+    
     // Initialize state
     const initialState = {
       userQuery: userInput,
-      messages: [],
+      messages: previousMessages,
       intent: '',
       context: '',
       response: '',
@@ -334,14 +367,15 @@ async function formatDataForLLM(data) {
 /**
  * Generates smart priority suggestions based on current workload
  */
-async function generateSmartSuggestions() {
+async function generateSmartSuggestions(sessionId = null) {
   console.log('💡 Generating smart suggestions with LangGraph...');
   
   try {
     // Use the agent to get suggestions
     const suggestionsQuery = 'What are the top 3 priority items I should focus on today? Please analyze my current workload and provide specific, actionable recommendations.';
     
-    const suggestions = await processUserQuery(suggestionsQuery);
+    // Pass sessionId to use chat history for context
+    const suggestions = await processUserQuery(suggestionsQuery, sessionId);
     return suggestions;
   } catch (error) {
     console.error('Error generating suggestions:', error);
@@ -350,9 +384,27 @@ async function generateSmartSuggestions() {
     const data = await taskManager.fetchAllStatus();
     const contextSummary = await formatDataForLLM(data);
     
+    // Try to get recent chat history for additional context
+    let conversationContext = '';
+    if (sessionId) {
+      try {
+        const databaseService = require('./databaseService');
+        const chatHistory = await databaseService.getChatHistory(5, sessionId);
+        
+        if (chatHistory && chatHistory.length > 0) {
+          conversationContext = '\nRecent conversation history:\n';
+          chatHistory.forEach(entry => {
+            conversationContext += `User: ${entry.user_message}\nAssistant: ${entry.ai_response}\n`;
+          });
+        }
+      } catch (dbError) {
+        console.warn('Failed to retrieve chat history for suggestions:', dbError);
+      }
+    }
+    
     const prompt = `You are a productivity expert analyzing someone's current workload. Based on the following information, provide the top 3 priority items they should focus on today.
 
-${contextSummary}
+${contextSummary}${conversationContext}
 
 Respond with actionable priorities in a numbered list format. Be specific and reference actual tasks/meetings when possible.`;
     

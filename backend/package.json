@@ -27,6 +27,6 @@
     "jira-client": "^8.2.2",
     "langchain": "^0.3.29",
     "openai": "^4.20.1",
-    "sqlite3": "^5.1.6"
+    "sqlite3": "^5.1.7"
   }
 }
