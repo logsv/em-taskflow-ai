@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Chat from './components/Chat';
-import SummaryList from './components/SummaryList';
+import PDFUpload from './components/PDFUpload';
 import NavBar from './components/NavBar';
 import './App.css';
 
@@ -8,11 +8,13 @@ function App() {
   const [view, setView] = useState('chat');
 
   return (
-    <div className="App">
-      <NavBar setView={setView} currentView={view} />
-      <main>
-        {view === 'chat' ? <Chat /> : <SummaryList />}
-      </main>
+    <div>
+      <NavBar setView={setView} view={view} />
+      <div style={{ margin: '20px' }}>
+        <button onClick={() => setView('chat')} disabled={view === 'chat'}>Chat</button>
+        <button onClick={() => setView('pdf')} disabled={view === 'pdf'}>PDF Upload</button>
+      </div>
+      {view === 'chat' ? <Chat /> : <PDFUpload />}
     </div>
   );
 }

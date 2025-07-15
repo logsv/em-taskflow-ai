@@ -3,13 +3,7 @@ import axios from 'axios';
 import './Chat.css';
 
 function Chat() {
-  const [messages, setMessages] = useState([
-    { 
-      sender: 'ai', 
-      text: 'Hi! I am your EM TaskFlow AI assistant. I can help you with:\n\n• Getting priorities: "What should I focus on today?"\n• Task updates: "Mark PROJ-123 as done"\n• Meeting conflicts: "Do I have any scheduling conflicts?"\n• Project summaries: "What\'s the status of my Notion projects?"\n\nWhat would you like to know?',
-      timestamp: new Date().toLocaleTimeString()
-    }
-  ]);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [suggestions] = useState([
@@ -24,35 +18,28 @@ function Chat() {
     return text.replace(/<think>([\s\S]*?)<\/think>/g, '<span class="think-content">$1</span>');
   };
 
-  const sendMessage = async (e, messageText = null) => {
-    e?.preventDefault();
-    const message = messageText || input;
-    if (!message.trim()) return;
-    
-    const userMsg = { 
-      sender: 'user', 
-      text: message, 
-      timestamp: new Date().toLocaleTimeString() 
-    };
-    setMessages(msgs => [...msgs, userMsg]);
+  const sendMessage = async () => {
+    if (!input) return;
+    setMessages([...messages, { sender: 'user', text: input }]);
     setInput('');
     setLoading(true);
-    
+
     try {
-      const res = await axios.post('/api/llm-summary', { prompt: message });
-      setMessages(msgs => [...msgs, { 
-        sender: 'ai', 
-        text: res.data.response,
-        timestamp: new Date().toLocaleTimeString()
-      }]);
-    } catch (error) {
-      console.error('Chat error:', error);
-      const errorMsg = error.response?.data?.error || 'Sorry, I could not process your request. Please try again.';
-      setMessages(msgs => [...msgs, { 
-        sender: 'ai', 
-        text: errorMsg,
-        timestamp: new Date().toLocaleTimeString()
-      }]);
+      const res = await fetch('/api/rag-query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: input }),
+      });
+      const data = await res.json();
+      setMessages((msgs) => [
+        ...msgs,
+        { sender: 'bot', text: data.answer, sources: data.sources }
+      ]);
+    } catch (err) {
+      setMessages((msgs) => [
+        ...msgs,
+        { sender: 'bot', text: 'Error getting answer.' }
+      ]);
     }
     setLoading(false);
   };
@@ -63,48 +50,36 @@ function Chat() {
 
   return (
     <div className="chat-container">
-      <div className="chat-history">
-        {messages.map((msg, i) => (
-          <div key={i} className={`chat-msg ${msg.sender}`}>
-            <div 
-              className="msg-content" 
-              dangerouslySetInnerHTML={{ __html: formatMessage(msg.text) }}
-            ></div>
-            {msg.timestamp && <div className="msg-timestamp">{msg.timestamp}</div>}
+      <div className="chat-messages">
+        {messages.map((msg, idx) => (
+          <div key={idx} className={`chat-message ${msg.sender}`}>
+            <div>{msg.text}</div>
+            {msg.sender === 'bot' && msg.sources && msg.sources.length > 0 && (
+              <div className="chat-sources">
+                <strong>Sources:</strong>
+                <ul>
+                  {msg.sources.map((src, i) => (
+                    <li key={i}>{src.filename} (chunk {src.chunk_index + 1})</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         ))}
-        {loading && <div className="chat-msg ai">Thinking...</div>}
+        {loading && <div className="chat-message bot">Loading...</div>}
       </div>
-      
-      {/* Quick suggestion buttons */}
-      {messages.length === 1 && (
-        <div className="suggestions">
-          <div className="suggestions-label">Try these:</div>
-          {suggestions.map((suggestion, i) => (
-            <button 
-              key={i} 
-              className="suggestion-btn" 
-              onClick={() => handleSuggestionClick(suggestion)}
-              disabled={loading}
-            >
-              {suggestion}
-            </button>
-          ))}
-        </div>
-      )}
-      
-      <form className="chat-input" onSubmit={sendMessage}>
+      <div className="chat-input">
         <input
           type="text"
           value={input}
           onChange={e => setInput(e.target.value)}
-          placeholder="Ask me about your tasks, projects, or meetings..."
-          disabled={loading}
+          onKeyDown={e => e.key === 'Enter' ? sendMessage() : null}
+          placeholder="Type your question..."
         />
-        <button type="submit" disabled={loading || !input.trim()}>Send</button>
-      </form>
+        <button onClick={sendMessage} disabled={loading || !input}>Send</button>
+      </div>
     </div>
   );
-}
+};
 
 export default Chat;
