@@ -1,6 +1,5 @@
 const llmService = require('./llmService');
 const taskManager = require('./taskManager');
-const notion = require('../integrations/notion');
 
 /**
  * Formats data from all integrations into a readable summary for LLM processing

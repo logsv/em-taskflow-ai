@@ -2,9 +2,6 @@ const { StateGraph, END, START } = require('@langchain/langgraph');
 const { BaseMessage, HumanMessage, AIMessage } = require('@langchain/core/messages');
 const llmService = require('./llmService');
 const taskManager = require('./taskManager');
-const jira = require('../integrations/jira');
-const notion = require('../integrations/notion');
-const calendar = require('../integrations/calendar');
 
 /**
  * Represents the agent's working state
@@ -69,17 +66,17 @@ async function fetchRelevantData(state) {
   
   // Only fetch data that's actually needed
   if (state.dataNeeded.includes('jira')) {
-    fetchPromises.push(jira.fetchAssignedTasks());
+    fetchPromises.push(taskManager.fetchAssignedTasks());
     dataKeys.push('jiraTasks');
   }
   
   if (state.dataNeeded.includes('notion')) {
-    fetchPromises.push(notion.fetchProjectPages());
+    fetchPromises.push(taskManager.fetchProjectPages());
     dataKeys.push('notionPages');
   }
   
   if (state.dataNeeded.includes('calendar')) {
-    fetchPromises.push(calendar.fetchTodaysEvents());
+    fetchPromises.push(taskManager.fetchTodaysEvents());
     dataKeys.push('calendarEvents');
   }
   
@@ -93,7 +90,7 @@ async function fetchRelevantData(state) {
     
     // Detect calendar conflicts if calendar data was fetched
     if (state.fetchedData.calendarEvents) {
-      state.fetchedData.calendarConflicts = calendar.detectConflicts(state.fetchedData.calendarEvents);
+      state.fetchedData.calendarConflicts = taskManager.detectConflicts(state.fetchedData.calendarEvents);
     }
     
     console.log(`✅ Fetched data for: ${dataKeys.join(', ')}`);

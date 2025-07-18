@@ -1,7 +1,5 @@
 require('dotenv').config();
-const jira = require('../integrations/jira');
-const notion = require('../integrations/notion');
-const calendar = require('../integrations/calendar');
+const axios = require('axios');
 
 /**
  * Fetches all relevant data from Jira, Notion, and Calendar.
@@ -33,4 +31,54 @@ async function markTaskComplete(taskType, taskId, note) {
   return false;
 }
 
-module.exports = { fetchAllStatus, markTaskComplete };
+const mcpServers = {
+  Notion: {
+    url: 'https://mcp.notion.com/mcp',
+  },
+};
+
+const fetchProjectPages = async () => {
+  try {
+    const response = await axios.post(mcpServers.Notion.url, {
+      tool: 'fetchProjectPages',
+      args: {},
+    });
+    return response.data.result || [];
+  } catch (error) {
+    console.error('MCP Notion fetchProjectPages error:', error.message);
+    return [];
+  }
+};
+
+const updatePageStatus = async (pageId, note) => {
+  try {
+    const response = await axios.post(mcpServers.Notion.url, {
+      tool: 'updatePageStatus',
+      args: { pageId, note },
+    });
+    return response.data.result === true;
+  } catch (error) {
+    console.error('MCP Notion updatePageStatus error:', error.message);
+    return false;
+  }
+};
+
+const summarizePageUpdates = async (pageId) => {
+  try {
+    const response = await axios.post(mcpServers.Notion.url, {
+      tool: 'summarizePageUpdates',
+      args: { pageId },
+    });
+    return response.data.result || [];
+  } catch (error) {
+    console.error('MCP Notion summarizePageUpdates error:', error.message);
+    return ['Unable to fetch comments.'];
+  }
+};
+
+module.exports = {
+  fetchProjectPages,
+  updatePageStatus,
+  summarizePageUpdates,
+  // ...other taskManager exports as needed
+};

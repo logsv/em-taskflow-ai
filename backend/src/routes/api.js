@@ -6,7 +6,6 @@ const pdfParse = require('pdf-parse');
 const axios = require('axios');
 const taskManager = require('../services/taskManager');
 const llmService = require('../services/llmService');
-const notion = require('../integrations/notion');
 const router = express.Router();
 const agentService = require('../services/agentService');
 const databaseService = require('../services/databaseService');
@@ -78,7 +77,7 @@ router.get('/summary', async (req, res) => {
     // Fetch Notion page updates for each page
     const pageUpdates = {};
     for (const page of notionPages) {
-      pageUpdates[page.id] = await notion.summarizePageUpdates(page.id);
+      pageUpdates[page.id] = await taskManager.summarizePageUpdates(page.id);
     }
     res.json({
       jira: jiraTasks,
