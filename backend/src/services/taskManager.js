@@ -1,38 +1,25 @@
 require('dotenv').config();
 const axios = require('axios');
+const { MultiServerMCPClient } = require('@langchain/mcp-adapters');
+
+// Initialize the MCP client for Notion
+let notionMcpClient = null;
+let notionTools = null;
 
 /**
- * Fetches all relevant data from Jira, Notion, and Calendar.
+ * Initialize the MCP client for Notion
  */
-async function fetchAllStatus() {
-  const [jiraTasks, notionPages, calendarEvents] = await Promise.all([
-    jira.fetchAssignedTasks(),
-    notion.fetchProjectPages(),
-    calendar.fetchTodaysEvents()
-  ]);
-  const calendarConflicts = calendar.detectConflicts(calendarEvents);
-  return { jiraTasks, notionPages, calendarEvents, calendarConflicts };
-}
-
-/**
- * Mark a task as complete and update all systems with a status note/tag.
- * taskType: 'jira' | 'notion' | 'calendar'
- * taskId: issueId, pageId, or eventId
- * note: status note to add
- */
-async function markTaskComplete(taskType, taskId, note) {
-  if (taskType === 'jira') {
-    return await jira.updateTaskStatus(taskId, note);
-  } else if (taskType === 'notion') {
-    return await notion.updatePageStatus(taskId, note);
-  } else if (taskType === 'calendar') {
-    return await calendar.updateEventStatus(taskId, note);
-  }
-  return false;
-}
-
-const mcpServers = {
-  Notion: {
+async function initializeNotionMcpClient() {
+  if (!notionMcpClient) {
+    notionMcpClient = new MultiServerMCPClient({
+      // Global tool configuration options
+      throwOnLoadError: true,
+      useStandardContentBlocks: true,
+      
+      // Server configuration
+      mcpServers: {
+        Notion: {
+          transport: 
     url: 'https://mcp.notion.com/mcp',
   },
 };
