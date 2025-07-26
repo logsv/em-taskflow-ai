@@ -1,7 +1,9 @@
-const { StateGraph, END, START } = require('@langchain/langgraph');
-const { BaseMessage, HumanMessage, AIMessage } = require('@langchain/core/messages');
-const llmService = require('./llmService');
-const taskManager = require('./taskManager');
+import { StateGraph, END, START } from '@langchain/langgraph';
+import { BaseMessage, HumanMessage, AIMessage } from '@langchain/core/messages';
+import llmService from './llmService.js';
+import taskManager from './taskManager.js';
+import axios from 'axios';
+import databaseService from './databaseService.js';
 
 /**
  * Represents the agent's working state
@@ -26,7 +28,7 @@ async function analyzeIntent(state) {
   
   const intentPrompt = `Analyze this user query and determine:
 1. Intent category: 'status_check', 'task_management', 'calendar_query', 'project_overview', 'general'
-2. Data sources needed: 'jira', 'notion', 'calendar', or combinations
+2. Data sources needed: 'jira', 'notion', 'calendar', 'google', 'atlassian', or combinations
 
 User Query: "${state.userQuery}"
 
@@ -50,7 +52,7 @@ Respond in JSON format:
     console.error('Error analyzing intent:', error);
     // Fallback: fetch all data
     state.intent = 'general';
-    state.dataNeeded = ['jira', 'notion', 'calendar'];
+    state.dataNeeded = ['jira', 'notion', 'calendar', 'google', 'atlassian'];
     return state;
   }
 }
@@ -79,13 +81,37 @@ async function fetchRelevantData(state) {
     fetchPromises.push(taskManager.fetchTodaysEvents());
     dataKeys.push('calendarEvents');
   }
+
+  if (state.dataNeeded.includes('google')) {
+    fetchPromises.push(axios.post('http://localhost:3001/proxy', {
+      toolId: 'google-calendar',
+      inputs: {
+        toolName: 'get-upcoming-events',
+        parameters: {
+          days: 7
+        }
+      }
+    }));
+    dataKeys.push('google');
+  }
+
+  if (state.dataNeeded.includes('atlassian')) {
+    fetchPromises.push(axios.post('http://localhost:3002/proxy', {
+      toolId: 'jira',
+      inputs: {
+        toolName: 'get-assigned-issues',
+        parameters: {}
+      }
+    }));
+    dataKeys.push('atlassian');
+  }
   
   try {
     const results = await Promise.all(fetchPromises);
     
     // Map results to data keys
     results.forEach((result, index) => {
-      state.fetchedData[dataKeys[index]] = result;
+      state.fetchedData[dataKeys[index]] = result.data ? result.data.output : result;
     });
     
     // Detect calendar conflicts if calendar data was fetched
@@ -143,6 +169,20 @@ async function formatContext(state) {
     state.fetchedData.calendarConflicts.forEach(([a, b]) => {
       context += `• "${a.summary}" conflicts with "${b.summary}"\n`;
     });
+    context += '\n';
+  }
+
+  // Format Google data if available
+  if (state.fetchedData.google) {
+    context += 'GOOGLE CALENDAR (next 7 days):\n';
+    context += JSON.stringify(state.fetchedData.google, null, 2);
+    context += '\n';
+  }
+
+  // Format Atlassian data if available
+  if (state.fetchedData.atlassian) {
+    context += 'ATLASSIAN (Jira):\n';
+    context += JSON.stringify(state.fetchedData.atlassian, null, 2);
     context += '\n';
   }
   
@@ -409,8 +449,4 @@ Respond with actionable priorities in a numbered list format. Be specific and re
   }
 }
 
-module.exports = {
-  processUserQuery,
-  formatDataForLLM,
-  generateSmartSuggestions
-};
+export { processUserQuery, formatDataForLLM, generateSmartSuggestions };

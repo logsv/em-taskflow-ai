@@ -1,5 +1,11 @@
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+import sqlite3 from 'sqlite3';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
+
+// Get __dirname equivalent in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 class DatabaseService {
   constructor() {
@@ -11,13 +17,12 @@ class DatabaseService {
   async initialize() {
     return new Promise((resolve, reject) => {
       // Create data directory if it doesn't exist
-      const fs = require('fs');
       const dataDir = path.dirname(this.dbPath);
       if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
       }
 
-      this.db = new sqlite3.Database(this.dbPath, (err) => {
+      this.db = new sqlite3.verbose().Database(this.dbPath, (err) => {
         if (err) {
           console.error('Error opening database:', err);
           reject(err);
@@ -246,4 +251,6 @@ class DatabaseService {
   }
 }
 
-module.exports = new DatabaseService();
+// Create and export a singleton instance
+const databaseService = new DatabaseService();
+export default databaseService;

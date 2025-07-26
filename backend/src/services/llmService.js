@@ -1,7 +1,9 @@
-require('dotenv').config();
-const OpenAI = require('openai');
-const { HfInference } = require('@huggingface/inference');
-const axios = require('axios');
+import dotenv from 'dotenv';
+import { OpenAI } from 'openai';
+import { HfInference } from '@huggingface/inference';
+import axios from 'axios';
+
+dotenv.config();
 
 // Determine provider based on available configuration
 let PROVIDER = process.env.LLM_PROVIDER;
@@ -112,7 +114,4 @@ async function getAvailableModels() {
   }
 }
 
-module.exports = {
-  complete,
-  getAvailableModels
-};
+export { complete, getAvailableModels };

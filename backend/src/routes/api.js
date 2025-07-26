@@ -1,15 +1,21 @@
-const express = require('express');
-const multer = require('multer');
-const fs = require('fs');
-const path = require('path');
-const pdfParse = require('pdf-parse');
-const axios = require('axios');
-const taskManager = require('../services/taskManager');
-const llmService = require('../services/llmService');
+import express from 'express';
+import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
+import pdfParse from 'pdf-parse';
+import axios from 'axios';
+import { fileURLToPath } from 'url';
+import taskManager from '../services/taskManager.js';
+import llmService from '../services/llmService.js';
+import agentService from '../services/agentService.js';
+import databaseService from '../services/databaseService.js';
+import databaseRouter from './database.js';
+
+// Get __dirname equivalent in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const router = express.Router();
-const agentService = require('../services/agentService');
-const databaseService = require('../services/databaseService');
-const databaseRouter = require('./database');
 
 // Ensure PDF storage directory exists
 const pdfDir = path.join(__dirname, '../../data/pdfs/');
@@ -197,4 +203,4 @@ router.post('/rag-query', async (req, res) => {
 // Database routes
 router.use('/database', databaseRouter);
 
-module.exports = router;
+export default router;

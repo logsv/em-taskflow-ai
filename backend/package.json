@@ -1,12 +1,16 @@
 {
   "name": "em-taskflow",
   "version": "1.0.0",
+  "type": "module",
   "description": "",
   "main": "index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start:google": "pnpm -C ../mcp-servers/google-workspace start",
+    "start:atlassian": "pnpm -C ../mcp-servers/atlassian-suite start",
+    "start:mcp": "pnpm start:google & pnpm start:atlassian"
   },
   "keywords": [],
   "author": "",

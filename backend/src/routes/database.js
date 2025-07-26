@@ -1,6 +1,7 @@
-const express = require('express');
+import express from 'express';
+import databaseService from '../services/databaseService.js';
+
 const router = express.Router();
-const databaseService = require('../services/databaseService');
 
 // GET /api/database/chat-history - Get chat history
 router.get('/chat-history', async (req, res) => {
@@ -73,4 +74,4 @@ router.get('/cache/:source', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

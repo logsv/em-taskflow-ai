@@ -1,8 +1,10 @@
-const express = require('express');
-const cors = require('cors');
-const apiRouter = require('./routes/api');
-const databaseService = require('./services/databaseService');
-require('dotenv').config();
+import express from 'express';
+import cors from 'cors';
+import apiRouter from './routes/api.js';
+import databaseService from './services/databaseService.js';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 4000;

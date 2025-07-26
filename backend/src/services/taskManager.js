@@ -1,6 +1,8 @@
-require('dotenv').config();
-const axios = require('axios');
-const { MultiServerMCPClient } = require('@langchain/mcp-adapters');
+import dotenv from 'dotenv';
+import axios from 'axios';
+import { MultiServerMCPClient } from '@langchain/mcp-adapters';
+
+dotenv.config();
 
 // Initialize the MCP client for Notion
 let notionMcpClient = null;
@@ -63,9 +65,14 @@ const summarizePageUpdates = async (pageId) => {
   }
 };
 
-module.exports = {
-  fetchProjectPages,
-  updatePageStatus,
-  summarizePageUpdates,
-  // ...other taskManager exports as needed
+export { 
+  fetchAllStatus, 
+  fetchAssignedTasks, 
+  fetchProjectPages, 
+  fetchTodaysEvents, 
+  updateTaskStatus, 
+  updatePageStatus, 
+  markTaskComplete, 
+  detectConflicts, 
+  summarizePageUpdates 
 };

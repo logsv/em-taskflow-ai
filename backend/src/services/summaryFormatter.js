@@ -1,5 +1,5 @@
-const llmService = require('./llmService');
-const taskManager = require('./taskManager');
+import llmService from './llmService.js';
+import taskManager from './taskManager.js';
 
 /**
  * Formats data from all integrations into a readable summary for LLM processing
@@ -100,8 +100,4 @@ Respond with actionable priorities in a numbered list format. Be specific and re
   }
 }
 
-module.exports = {
-  formatDataForLLM,
-  processUserQuery,
-  generateSmartSuggestions
-};
+export { formatDataForLLM };
