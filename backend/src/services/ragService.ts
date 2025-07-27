@@ -3,6 +3,10 @@ import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 // Dynamic pdf-parse import with error handling
 let pdfParse: any = null;
@@ -42,11 +46,11 @@ interface RAGSearchResult {
 }
 
 class RAGService {
-  private chromaBaseUrl = 'http://localhost:8000/api/v1';
   private ollamaBaseUrl = 'http://localhost:11434/api';
   private embeddingModel = 'nomic-embed-text';
   private defaultCollection = 'pdf_chunks';
   private pdfDir: string;
+  private chromaScriptPath: string;
 
   constructor() {
     // Ensure PDF storage directory exists
@@ -54,6 +58,9 @@ class RAGService {
     if (!fs.existsSync(this.pdfDir)) {
       fs.mkdirSync(this.pdfDir, { recursive: true });
     }
+    
+    // Set path to Chroma Python script
+    this.chromaScriptPath = path.join(__dirname, '../scripts/chroma_client.py');
   }
 
   /**
@@ -128,10 +135,39 @@ class RAGService {
   }
 
   /**
+   * Ensure collection exists using Python Chroma client
+   */
+  private async ensureCollection(): Promise<void> {
+    try {
+      const metadata = JSON.stringify({
+        description: 'PDF document chunks for RAG search'
+      });
+      
+      const { stdout } = await execAsync(
+        `source ../chroma-env/bin/activate && python3 "${this.chromaScriptPath}" create_collection "${this.defaultCollection}" '${metadata}'`,
+        { cwd: path.dirname(this.chromaScriptPath) }
+      );
+      
+      const result = JSON.parse(stdout.trim());
+      if (result.success) {
+        console.log(`✅ ${result.message}`);
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error('❌ Error ensuring collection:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Store text chunks in vector database with embeddings
    */
   private async storeChunks(chunks: string[], filename: string, originalName: string): Promise<void> {
     console.log(`💾 Storing ${chunks.length} chunks in vector database`);
+
+    // Ensure collection exists
+    await this.ensureCollection();
 
     for (let i = 0; i < chunks.length; i++) {
       const text = chunks[i];
@@ -146,17 +182,27 @@ class RAGService {
         // Generate embedding
         const embedding = await this.generateEmbedding(text);
         
-        // Store in Chroma
-        await axios.post(`${this.chromaBaseUrl}/collections/${this.defaultCollection}/add`, {
-          ids: [chunkId],
-          embeddings: [embedding],
+        // Store in Chroma using Python script
+        const data = JSON.stringify({
+          documents: [text],
           metadatas: [{
             filename: originalName,
             chunk_index: i,
             text: text && text.length > 200 ? text.substring(0, 200) + '...' : text || '' // Store preview in metadata
           }],
-          documents: [text]
+          ids: [chunkId],
+          embeddings: [embedding]
         });
+        
+        const { stdout } = await execAsync(
+          `source ../chroma-env/bin/activate && python3 "${this.chromaScriptPath}" add_documents "${this.defaultCollection}" '${data}'`,
+          { cwd: path.dirname(this.chromaScriptPath) }
+        );
+        
+        const result = JSON.parse(stdout.trim());
+        if (!result.success) {
+          throw new Error(result.error);
+        }
 
         console.log(`✅ Stored chunk ${i + 1}/${chunks.length}`);
       } catch (error) {
@@ -192,13 +238,23 @@ class RAGService {
       // Generate query embedding
       const queryEmbedding = await this.generateEmbedding(query);
 
-      // Search in Chroma
-      const searchResponse = await axios.post(`${this.chromaBaseUrl}/collections/${this.defaultCollection}/query`, {
+      // Search in Chroma using Python script
+      const queryData = JSON.stringify({
         query_embeddings: [queryEmbedding],
         n_results: topK
       });
-
-      const results = searchResponse.data;
+      
+      const { stdout } = await execAsync(
+        `source ../chroma-env/bin/activate && python3 "${this.chromaScriptPath}" query "${this.defaultCollection}" '${queryData}'`,
+        { cwd: path.dirname(this.chromaScriptPath) }
+      );
+      
+      const response = JSON.parse(stdout.trim());
+      if (!response.success) {
+        throw new Error(response.error);
+      }
+      
+      const results = response.results;
       const documents = results.documents?.[0] || [];
       const metadatas = results.metadatas?.[0] || [];
       const distances = results.distances?.[0] || [];
@@ -237,8 +293,13 @@ class RAGService {
    */
   async isVectorDBAvailable(): Promise<boolean> {
     try {
-      await axios.get(`${this.chromaBaseUrl}/collections`);
-      return true;
+      const { stdout } = await execAsync(
+        `source ../chroma-env/bin/activate && python3 "${this.chromaScriptPath}" list_collections`,
+        { cwd: path.dirname(this.chromaScriptPath) }
+      );
+      
+      const result = JSON.parse(stdout.trim());
+      return result.success;
     } catch (error) {
       console.warn('⚠️ Vector database not available:', error);
       return false;
