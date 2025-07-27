@@ -7,14 +7,57 @@ import fs from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Type definitions
+interface ChatHistoryRecord {
+  id: number;
+  user_message: string;
+  ai_response: string;
+  timestamp: string;
+  session_id: string | null;
+  metadata: string | null;
+}
+
+interface TaskCacheRecord {
+  id: number;
+  source: string;
+  task_id: string;
+  data: any;
+  last_updated: string;
+}
+
+interface UserPreferenceRecord {
+  id: number;
+  key: string;
+  value: any;
+  updated_at: string;
+}
+
+interface DatabaseStats {
+  chatHistory: number;
+  cachedTasks: number;
+  userPreferences: number;
+}
+
+interface SaveResult {
+  id: number;
+}
+
+interface PreferenceResult {
+  key: string;
+  value: any;
+}
+
 class DatabaseService {
+  private db: sqlite3.Database | null;
+  private dbPath: string;
+
   constructor() {
     this.db = null;
     this.dbPath = path.join(__dirname, '../../data/taskflow.db');
   }
 
   // Initialize database connection and create tables
-  async initialize() {
+  async initialize(): Promise<void> {
     return new Promise((resolve, reject) => {
       // Create data directory if it doesn't exist
       const dataDir = path.dirname(this.dbPath);
@@ -22,7 +65,7 @@ class DatabaseService {
         fs.mkdirSync(dataDir, { recursive: true });
       }
 
-      this.db = new sqlite3.verbose().Database(this.dbPath, (err) => {
+      this.db = new (sqlite3.verbose().Database)(this.dbPath, (err: any) => {
         if (err) {
           console.error('Error opening database:', err);
           reject(err);
@@ -35,7 +78,7 @@ class DatabaseService {
   }
 
   // Create necessary tables
-  async createTables() {
+  private async createTables(): Promise<void> {
     return new Promise((resolve, reject) => {
       const chatHistoryTable = `
         CREATE TABLE IF NOT EXISTS chat_history (
@@ -68,10 +111,15 @@ class DatabaseService {
         )
       `;
 
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
       this.db.serialize(() => {
-        this.db.run(chatHistoryTable);
-        this.db.run(userPreferencesTable);
-        this.db.run(taskCacheTable, (err) => {
+        this.db!.run(chatHistoryTable);
+        this.db!.run(userPreferencesTable);
+        this.db!.run(taskCacheTable, (err) => {
           if (err) {
             reject(err);
           } else {
@@ -84,8 +132,18 @@ class DatabaseService {
   }
 
   // Save chat interaction
-  async saveChatHistory(userMessage, aiResponse, sessionId = null, metadata = null) {
+  async saveChatHistory(
+    userMessage: string, 
+    aiResponse: string, 
+    sessionId: string | null = null, 
+    metadata: any = null
+  ): Promise<SaveResult> {
     return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
       const stmt = this.db.prepare(`
         INSERT INTO chat_history (user_message, ai_response, session_id, metadata)
         VALUES (?, ?, ?, ?)
@@ -109,8 +167,13 @@ class DatabaseService {
   }
 
   // Get chat history
-  async getChatHistory(limit = 50, sessionId = null) {
+  async getChatHistory(limit: number = 50, sessionId: string | null = null): Promise<ChatHistoryRecord[]> {
     return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
       let query = `
         SELECT * FROM chat_history
         ${sessionId ? 'WHERE session_id = ?' : ''}
@@ -120,7 +183,7 @@ class DatabaseService {
       
       const params = sessionId ? [sessionId, limit] : [limit];
       
-      this.db.all(query, params, (err, rows) => {
+      this.db.all(query, params, (err, rows: ChatHistoryRecord[]) => {
         if (err) {
           reject(err);
         } else {
@@ -131,8 +194,13 @@ class DatabaseService {
   }
 
   // Cache task data
-  async cacheTaskData(source, taskId, data) {
+  async cacheTaskData(source: string, taskId: string, data: any): Promise<SaveResult> {
     return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
       const stmt = this.db.prepare(`
         INSERT OR REPLACE INTO task_cache (source, task_id, data, last_updated)
         VALUES (?, ?, ?, CURRENT_TIMESTAMP)
@@ -151,8 +219,13 @@ class DatabaseService {
   }
 
   // Get cached task data
-  async getCachedTaskData(source, maxAge = 3600) { // maxAge in seconds, default 1 hour
+  async getCachedTaskData(source: string, maxAge: number = 3600): Promise<TaskCacheRecord[]> {
     return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
       const query = `
         SELECT * FROM task_cache
         WHERE source = ?
@@ -160,7 +233,7 @@ class DatabaseService {
         ORDER BY last_updated DESC
       `;
       
-      this.db.all(query, [source], (err, rows) => {
+      this.db.all(query, [source], (err, rows: any[]) => {
         if (err) {
           reject(err);
         } else {
@@ -175,8 +248,13 @@ class DatabaseService {
   }
 
   // Save or update user preference
-  async setUserPreference(key, value) {
+  async setUserPreference(key: string, value: any): Promise<PreferenceResult> {
     return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
       const stmt = this.db.prepare(`
         INSERT OR REPLACE INTO user_preferences (key, value, updated_at)
         VALUES (?, ?, CURRENT_TIMESTAMP)
@@ -195,12 +273,17 @@ class DatabaseService {
   }
 
   // Get user preference
-  async getUserPreference(key) {
+  async getUserPreference(key: string): Promise<any> {
     return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
       this.db.get(
         'SELECT value FROM user_preferences WHERE key = ?',
         [key],
-        (err, row) => {
+        (err, row: any) => {
           if (err) {
             reject(err);
           } else {
@@ -212,8 +295,13 @@ class DatabaseService {
   }
 
   // Get database statistics
-  async getStats() {
+  async getStats(): Promise<DatabaseStats> {
     return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+
       const queries = [
         'SELECT COUNT(*) as chat_count FROM chat_history',
         'SELECT COUNT(*) as cache_count FROM task_cache',
@@ -221,8 +309,8 @@ class DatabaseService {
       ];
 
       Promise.all(queries.map(query => 
-        new Promise((res, rej) => {
-          this.db.get(query, (err, row) => {
+        new Promise<any>((res, rej) => {
+          this.db!.get(query, (err, row) => {
             if (err) rej(err);
             else res(row);
           });
@@ -238,7 +326,7 @@ class DatabaseService {
   }
 
   // Close database connection
-  close() {
+  close(): void {
     if (this.db) {
       this.db.close((err) => {
         if (err) {

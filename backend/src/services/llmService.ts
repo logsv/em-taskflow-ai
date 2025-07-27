@@ -5,8 +5,17 @@ import axios from 'axios';
 
 dotenv.config();
 
+// Type definitions
+interface LLMOptions {
+  model?: string;
+  max_tokens?: number;
+  temperature?: number;
+}
+
+type LLMProvider = 'openai' | 'huggingface' | 'ollama';
+
 // Determine provider based on available configuration
-let PROVIDER = process.env.LLM_PROVIDER;
+let PROVIDER: LLMProvider = process.env.LLM_PROVIDER as LLMProvider;
 if (!PROVIDER) {
   if (process.env.OPENAI_API_KEY) {
     PROVIDER = 'openai';
@@ -18,26 +27,26 @@ if (!PROVIDER) {
 }
 
 // OpenAI setup (only if API key is available)
-let openai = null;
+let openai: OpenAI | null = null;
 if (process.env.OPENAI_API_KEY) {
   openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
 // HuggingFace setup (only if API key is available)
-let hf = null;
+let hf: HfInference | null = null;
 if (process.env.HF_API_KEY) {
   hf = new HfInference(process.env.HF_API_KEY);
 }
 
 // Ollama setup
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+const OLLAMA_BASE_URL: string = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 
 /**
  * Unified LLM completion interface
- * @param {string} prompt - The prompt to send to the LLM
- * @param {object} [options] - Optional: model, maxTokens, etc.
+ * @param prompt - The prompt to send to the LLM
+ * @param options - Optional: model, maxTokens, etc.
  */
-async function complete(prompt, options = {}) {
+async function complete(prompt: string, options: LLMOptions = {}): Promise<string> {
   try {
     switch (PROVIDER) {
       case 'openai':
@@ -51,7 +60,7 @@ async function complete(prompt, options = {}) {
           max_tokens: options.max_tokens || 150,
           temperature: options.temperature || 0.7,
         });
-        return res.choices[0].message.content.trim();
+        return res.choices[0]?.message?.content?.trim() || '';
       
       case 'huggingface':
         if (!hf) {
@@ -67,7 +76,7 @@ async function complete(prompt, options = {}) {
             return_full_text: false,
           },
         });
-        return result.generated_text || result.content || '';
+        return (result as any).generated_text || (result as any).content || '';
       
       case 'ollama':
       default:
@@ -84,7 +93,7 @@ async function complete(prompt, options = {}) {
   }
 }
 
-async function completeWithOllama(prompt, options = {}) {
+async function completeWithOllama(prompt: string, options: LLMOptions = {}): Promise<string> {
   try {
     const response = await axios.post(`${OLLAMA_BASE_URL}/api/generate`, {
       model: options.model || 'deepseek-r1:latest',
@@ -101,17 +110,23 @@ async function completeWithOllama(prompt, options = {}) {
 /**
  * Get available models for the current provider
  */
-async function getAvailableModels() {
+async function getAvailableModels(): Promise<string[]> {
   try {
     if (PROVIDER === 'ollama') {
       const res = await axios.get(`${OLLAMA_BASE_URL}/api/tags`);
-      return res.data.models.map(model => model.name);
+      return res.data.models.map((model: any) => model.name);
     }
     return [`Default model for ${PROVIDER}`];
   } catch (error) {
-    console.error('Error fetching available models:', error.message);
+    console.error('Error fetching available models:', (error as Error).message);
     return [];
   }
 }
 
+const llmService = {
+  complete,
+  getAvailableModels
+};
+
+export default llmService;
 export { complete, getAvailableModels };

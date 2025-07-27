@@ -1,10 +1,36 @@
 import llmService from './llmService.js';
 import taskManager from './taskManager.js';
 
+// Type definitions
+interface JiraTask {
+  key?: string;
+  id?: string;
+  summary: string;
+  status: string;
+}
+
+interface NotionPage {
+  title: string;
+  last_edited_time: string;
+}
+
+interface CalendarEvent {
+  summary: string;
+  start: string;
+  end: string;
+}
+
+interface IntegrationData {
+  jiraTasks?: JiraTask[];
+  notionPages?: NotionPage[];
+  calendarEvents?: CalendarEvent[];
+  calendarConflicts?: [CalendarEvent, CalendarEvent][];
+}
+
 /**
  * Formats data from all integrations into a readable summary for LLM processing
  */
-async function formatDataForLLM(data) {
+async function formatDataForLLM(data: IntegrationData): Promise<string> {
   const { jiraTasks, notionPages, calendarEvents, calendarConflicts } = data;
   
   let summary = 'Current Status Overview:\n\n';
@@ -51,7 +77,7 @@ async function formatDataForLLM(data) {
 /**
  * Processes user input and generates AI-powered responses
  */
-async function processUserQuery(userInput) {
+async function processUserQuery(userInput: string): Promise<string> {
   try {
     // Fetch current data
     const data = await taskManager.fetchAllStatus();
@@ -69,7 +95,7 @@ User Question: ${userInput}
 Provide a helpful, concise response based on the user's current workload. Focus on actionable insights and priorities. If the user asks about specific tasks or wants suggestions, reference the actual data above.`;
     
     // Get AI response
-    const aiResponse = await llmService.complete(prompt, { maxTokens: 512 });
+    const aiResponse = await llmService.complete(prompt, { max_tokens: 512 });
     
     return aiResponse;
   } catch (error) {
@@ -81,7 +107,7 @@ Provide a helpful, concise response based on the user's current workload. Focus 
 /**
  * Generates smart priority suggestions based on current workload
  */
-async function generateSmartSuggestions() {
+async function generateSmartSuggestions(): Promise<string> {
   try {
     const data = await taskManager.fetchAllStatus();
     const contextSummary = await formatDataForLLM(data);
@@ -92,7 +118,7 @@ ${contextSummary}
 
 Respond with actionable priorities in a numbered list format. Be specific and reference actual tasks/meetings when possible.`;
     
-    const suggestions = await llmService.complete(prompt, { maxTokens: 256 });
+    const suggestions = await llmService.complete(prompt, { max_tokens: 256 });
     return suggestions;
   } catch (error) {
     console.error('Error generating suggestions:', error);
@@ -100,4 +126,4 @@ Respond with actionable priorities in a numbered list format. Be specific and re
   }
 }
 
-export { formatDataForLLM };
+export { formatDataForLLM, processUserQuery, generateSmartSuggestions };

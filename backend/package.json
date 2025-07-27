@@ -5,8 +5,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "npm run build && nodemon dist/index.js",
+    "dev:js": "nodemon src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "start:google": "pnpm -C ../mcp-servers/google-workspace start",
     "start:atlassian": "pnpm -C ../mcp-servers/atlassian-suite start",
@@ -30,7 +32,20 @@
     "googleapis": "^126.0.1",
     "jira-client": "^8.2.2",
     "langchain": "^0.3.29",
+    "multer": "^2.0.2",
     "openai": "^4.20.1",
+    "pdf-parse": "^1.1.1",
     "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^24.1.0",
+    "@types/pdf-parse": "^1.1.5",
+    "@types/sqlite3": "^3.1.11",
+    "nodemon": "^3.1.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
   }
 }

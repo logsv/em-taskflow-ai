@@ -19,7 +19,7 @@ app.get('/', (req, res) => {
 });
 
 // Initialize database and start server
-async function startServer() {
+async function startServer(): Promise<void> {
   try {
     await databaseService.initialize();
     console.log('Database initialized successfully');
