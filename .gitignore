@@ -1,12 +1,264 @@
-# Node modules
+# EM-Taskflow .gitignore
+# Comprehensive exclusions for RAG+MCP+Agent integration project
+
+# ===========================
+# NODE.JS & NPM
+# ===========================
 node_modules/
 backend/node_modules/
 frontend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.npm
+.yarn-integrity
+.pnp
+.pnp.js
 
-# Build output
+# ===========================
+# BUILD OUTPUT
+# ===========================
 frontend/build/
 backend/build/
+backend/dist/
+build/
+dist/
+out/
+*.tsbuildinfo
 
-# Environment files
+# ===========================
+# ENVIRONMENT & CONFIG
+# ===========================
 .env
-backend/.env 
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+backend/.env
+frontend/.env
+.env.*
+
+# ===========================
+# TYPESCRIPT
+# ===========================
+*.tsbuildinfo
+.tscache/
+
+# ===========================
+# LOGS & RUNTIME
+# ===========================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pids
+.pid
+.seed
+.pid.lock
+
+# Project-specific log files
+backend.log
+frontend.log
+ollama.log
+chroma.log
+
+# ===========================
+# PYTHON & VIRTUAL ENVIRONMENTS
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+PYTHONPATH
+
+# Virtual environments
+chroma-env/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+.conda/
+
+# ===========================
+# DATABASES & DATA
+# ===========================
+*.db
+*.sqlite
+*.sqlite3
+database.db
+taskflow.db
+
+# Vector database data
+chroma_data/
+vector_db/
+embeddings/
+
+# ===========================
+# UPLOADS & TEMP FILES
+# ===========================
+uploads/
+temp/
+tmp/
+*.tmp
+*.temp
+
+# PDF uploads
+*.pdf
+backend/uploads/
+frontend/public/uploads/
+
+# ===========================
+# PROCESS & SERVICE FILES
+# ===========================
+.backend.pid
+.frontend.pid
+.ollama.pid
+.chroma.pid
+*.pid
+
+# ===========================
+# EDITOR & IDE
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ===========================
+# TESTING
+# ===========================
+coverage/
+.nyc_output
+.coverage
+.pytest_cache/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# ===========================
+# DOCKER & CONTAINERS
+# ===========================
+Dockerfile.local
+docker-compose.override.yml
+.dockerignore
+
+# ===========================
+# MCP SERVERS & EXTERNAL SERVICES
+# ===========================
+mcp-servers/
+.mcp/
+
+# API keys and tokens (additional safety)
+*api-key*
+*token*
+*secret*
+*credential*
+
+# ===========================
+# OLLAMA & AI MODELS
+# ===========================
+models/
+*.gguf
+*.bin
+*.safetensors
+
+# ===========================
+# MISC
+# ===========================
+.cache/
+.temp/
+.tmp/
+*.lock
+*.bak
+*.backup
+*.old
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache (https://parceljs.org/)
+.parcel-cache
+
+# Next.js build output
+.next
+
+# Nuxt.js build / generate output
+.nuxt
+
+# Gatsby files
+.cache/
+public
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# Temporary folders
+tmp/
+temp/ 

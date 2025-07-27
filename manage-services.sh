@@ -18,14 +18,17 @@ NC='\033[0m' # No Color
 BACKEND_PORT=4000
 FRONTEND_PORT=3000
 OLLAMA_PORT=11434
+CHROMA_PORT=8000
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$PROJECT_DIR/backend"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
+CHROMA_ENV="$PROJECT_DIR/chroma-env"
 
 # PID files
 BACKEND_PID_FILE="$PROJECT_DIR/.backend.pid"
 FRONTEND_PID_FILE="$PROJECT_DIR/.frontend.pid"
 OLLAMA_PID_FILE="$PROJECT_DIR/.ollama.pid"
+CHROMA_PID_FILE="$PROJECT_DIR/.chroma.pid"
 
 # Function to display banner
 show_banner() {
@@ -129,6 +132,45 @@ start_ollama() {
     fi
     
     echo -e "${GREEN}🎉 Ollama ready with both LLM and embedding models!${NC}"
+}
+
+# Function to start Chroma vector database
+start_chroma() {
+    echo -e "${BLUE}🚀 Starting Chroma Vector Database...${NC}"
+    
+    if check_port $CHROMA_PORT; then
+        local existing_pid=$(get_pid_from_port $CHROMA_PORT)
+        echo -e "${YELLOW}⚠️  Chroma is already running on port $CHROMA_PORT (PID: $existing_pid)${NC}"
+        save_pid "$existing_pid" "$CHROMA_PID_FILE"
+        return 0
+    fi
+    
+    # Check if Chroma virtual environment exists
+    if [ ! -d "$CHROMA_ENV" ]; then
+        echo -e "${YELLOW}📦 Creating Chroma virtual environment...${NC}"
+        python3 -m venv "$CHROMA_ENV"
+        source "$CHROMA_ENV/bin/activate"
+        pip install chromadb
+    fi
+    
+    # Start Chroma server
+    source "$CHROMA_ENV/bin/activate" && nohup chroma run --host 127.0.0.1 --port $CHROMA_PORT > "$PROJECT_DIR/chroma.log" 2>&1 &
+    local chroma_pid=$!
+    save_pid "$chroma_pid" "$CHROMA_PID_FILE"
+    
+    # Wait for Chroma to start
+    echo -e "${YELLOW}⏳ Waiting for Chroma to start...${NC}"
+    for i in {1..20}; do
+        if check_port $CHROMA_PORT; then
+            echo -e "${GREEN}✅ Chroma started successfully (PID: $chroma_pid)${NC}"
+            return 0
+        fi
+        sleep 1
+        if [ $i -eq 20 ]; then
+            echo -e "${RED}❌ Failed to start Chroma${NC}"
+            return 1
+        fi
+    done
 }
 
 # Function to start backend
@@ -249,6 +291,14 @@ show_status() {
     echo -e "${BLUE}📊 Service Status:${NC}"
     echo -e "${BLUE}==================${NC}"
     
+    # Chroma status
+    if check_port $CHROMA_PORT; then
+        local chroma_pid=$(get_pid_from_port $CHROMA_PORT)
+        echo -e "${GREEN}🔍 Chroma: Running (PID: $chroma_pid, Port: $CHROMA_PORT)${NC}"
+    else
+        echo -e "${RED}🔍 Chroma: Stopped${NC}"
+    fi
+    
     # Ollama status
     if check_port $OLLAMA_PORT; then
         local ollama_pid=$(get_pid_from_port $OLLAMA_PORT)
@@ -278,6 +328,7 @@ show_status() {
     echo -e "   • Frontend: http://localhost:$FRONTEND_PORT"
     echo -e "   • Backend API: http://localhost:$BACKEND_PORT/api"
     echo -e "   • Ollama API: http://localhost:$OLLAMA_PORT/api"
+    echo -e "   • Chroma API: http://localhost:$CHROMA_PORT/api"
 }
 
 # Function to start all services
@@ -285,6 +336,8 @@ start_all() {
     echo -e "${PURPLE}🚀 Starting all services for RAG+MCP+Agent integration...${NC}"
     echo ""
     
+    start_chroma
+    echo ""
     start_ollama
     echo ""
     start_backend
@@ -305,6 +358,7 @@ stop_all() {
     stop_service "Frontend" "$FRONTEND_PID_FILE" "$FRONTEND_PORT"
     stop_service "Backend" "$BACKEND_PID_FILE" "$BACKEND_PORT"
     stop_service "Ollama" "$OLLAMA_PID_FILE" "$OLLAMA_PORT"
+    stop_service "Chroma" "$CHROMA_PID_FILE" "$CHROMA_PORT"
     
     echo ""
     echo -e "${GREEN}✅ All services stopped${NC}"
@@ -326,10 +380,11 @@ show_help() {
     echo -e "${BLUE}Usage: $0 [COMMAND]${NC}"
     echo ""
     echo -e "${YELLOW}Commands:${NC}"
-    echo -e "  start         Start all services (Ollama, Backend, Frontend)"
+    echo -e "  start         Start all services (Chroma, Ollama, Backend, Frontend)"
     echo -e "  stop          Stop all services"
     echo -e "  restart       Restart all services"
     echo -e "  status        Show service status"
+    echo -e "  chroma        Start only Chroma vector database"
     echo -e "  ollama        Start only Ollama with models"
     echo -e "  backend       Start only Backend"
     echo -e "  frontend      Start only Frontend"
@@ -339,6 +394,7 @@ show_help() {
     echo -e "  $0 start      # Start all services"
     echo -e "  $0 restart    # Restart all services"
     echo -e "  $0 status     # Check service status"
+    echo -e "  $0 chroma     # Start only Chroma vector database"
 }
 
 # Main script logic
@@ -358,6 +414,10 @@ case "${1:-help}" in
     status)
         show_banner
         show_status
+        ;;
+    chroma)
+        show_banner
+        start_chroma
         ;;
     ollama)
         show_banner
