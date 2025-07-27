@@ -170,6 +170,7 @@ coverage.xml
 
 # Test data
 test/data/
+backend/data/
 
 # ===========================
 # DOCKER & CONTAINERS
