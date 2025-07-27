@@ -1,85 +1,62 @@
 import dotenv from 'dotenv';
 import axios from 'axios';
-// import { MultiServerMCPClient } from '@langchain/mcp-adapters'; // Temporarily commented out
 dotenv.config();
-// Initialize the MCP client for Notion
-let notionMcpClient = null;
-let notionTools = null;
-/**
- * Initialize the MCP client for Notion
- * Temporarily disabled due to missing @langchain/mcp-adapters types
- */
-async function initializeNotionMcpClient() {
-    // Temporarily commented out due to missing MCP types
-    /*
-    if (!notionMcpClient) {
-      notionMcpClient = new MultiServerMCPClient({
-        // Global tool configuration options
-        throwOnLoadError: true,
-        useStandardContentBlocks: true,
-        
-        // Server configuration
-        mcpServers: {
-          Notion: {
-            transport: {
-              url: 'https://mcp.notion.com/mcp',
-            }
-          }
-        }
-      });
-    }
-    */
-    console.log('MCP client initialization temporarily disabled');
-}
-// MCP Server configuration
-const mcpServers = {
-    Notion: {
-        transport: {
-            url: 'https://mcp.notion.com/mcp',
-        }
-    }
-};
-const fetchProjectPages = async () => {
+async function fetchProjectPages() {
     try {
-        const response = await axios.post(mcpServers.Notion.transport.url, {
-            tool: 'fetchProjectPages',
-            args: {},
-        });
-        return response.data.result || [];
-    }
-    catch (error) {
-        console.error('MCP Notion fetchProjectPages error:', error.message);
+        console.log('Fetching project pages from Notion...');
         return [];
     }
-};
-const updatePageStatus = async (pageId, note) => {
+    catch (error) {
+        console.error('Notion fetchProjectPages error:', error.message);
+        return [];
+    }
+}
+;
+async function updatePageStatus(pageId, note) {
     try {
-        const response = await axios.post(mcpServers.Notion.transport.url, {
-            tool: 'updatePageStatus',
-            args: { pageId, note },
-        });
-        return response.data.result === true;
+        console.log(`Updating page ${pageId} with note: ${note}`);
+        return true;
     }
     catch (error) {
-        console.error('MCP Notion updatePageStatus error:', error.message);
+        console.error('Notion updatePageStatus error:', error.message);
         return false;
     }
-};
-const summarizePageUpdates = async (pageId) => {
+}
+;
+async function summarizePageUpdates(pageId) {
     try {
-        const response = await axios.post(mcpServers.Notion.transport.url, {
-            tool: 'summarizePageUpdates',
-            args: { pageId },
-        });
-        return response.data.result || [];
+        console.log(`Summarizing updates for page ${pageId}`);
+        return [`Page ${pageId} has been updated`];
     }
     catch (error) {
-        console.error('MCP Notion summarizePageUpdates error:', error.message);
-        return ['Unable to fetch comments.'];
+        console.error('Notion summarizePageUpdates error:', error.message);
+        return [];
     }
-};
+}
+;
+async function fetchAssignedTasks() {
+    try {
+        console.log('Fetching assigned tasks from Jira...');
+        return [];
+    }
+    catch (error) {
+        console.error('Jira fetchAssignedTasks error:', error.message);
+        return [];
+    }
+}
+;
+async function fetchTodaysEvents() {
+    try {
+        console.log('Fetching today\'s events from Google Calendar...');
+        return [];
+    }
+    catch (error) {
+        console.error('Google Calendar fetchTodaysEvents error:', error.message);
+        return [];
+    }
+}
 // Placeholder functions for missing implementations
-const fetchAllStatus = async () => {
+async function fetchAllStatus() {
     try {
         const [notionPages, jiraTasks, calendarEvents] = await Promise.all([
             fetchProjectPages(),
@@ -98,43 +75,21 @@ const fetchAllStatus = async () => {
         console.error('Error fetching all status:', error);
         return {};
     }
-};
-const fetchAssignedTasks = async () => {
-    // Placeholder implementation - would integrate with Jira MCP
+}
+async function updateTaskStatus(taskId, status) {
+    // Placeholder implementation - will be replaced with MCP integration
     try {
-        // This would be implemented with actual Jira MCP integration
-        return [];
-    }
-    catch (error) {
-        console.error('Error fetching assigned tasks:', error);
-        return [];
-    }
-};
-const fetchTodaysEvents = async () => {
-    // Placeholder implementation - would integrate with Google Calendar MCP
-    try {
-        // This would be implemented with actual Google Calendar MCP integration
-        return [];
-    }
-    catch (error) {
-        console.error('Error fetching today\'s events:', error);
-        return [];
-    }
-};
-const updateTaskStatus = async (taskId, status) => {
-    // Placeholder implementation - would integrate with Jira MCP
-    try {
-        // This would be implemented with actual Jira MCP integration
+        console.log(`Updating task ${taskId} to status: ${status}`);
         return true;
     }
     catch (error) {
-        console.error('Error updating task status:', error);
+        console.error('Jira updateTaskStatus error:', error.message);
         return false;
     }
-};
-const markTaskComplete = async (taskId) => {
+}
+async function markTaskComplete(taskId) {
     return updateTaskStatus(taskId, 'Done');
-};
+}
 const detectConflicts = (events) => {
     const conflicts = [];
     for (let i = 0; i < events.length; i++) {

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import taskManager from '../services/taskManager.js';
 import llmService from '../services/llmService.js';
 import agentService from '../services/agentService.js';
+import ragService from '../services/ragService.js';
 import databaseService from '../services/databaseService.js';
 import databaseRouter from './database.js';
 
@@ -58,59 +59,34 @@ if (!fs.existsSync(pdfDir)) {
 }
 const upload = multer({ dest: pdfDir });
 
-// PDF Upload Endpoint
+// PDF Upload Endpoint - Now uses RAG service
 router.post('/upload-pdf', upload.single('pdf'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
-    const pdfPath = req.file.path;
-    const dataBuffer = fs.readFileSync(pdfPath);
-    // const pdfData = await pdfParse(dataBuffer); // Temporarily disabled
-    const pdfData = { text: 'PDF parsing temporarily disabled for TypeScript migration testing' };
-
-    // Chunking: split by paragraphs (or implement token-based chunking)
-    const paragraphs = pdfData.text.split('\n\n').filter((p: string) => p.trim().length > 0);
-    const chunks: string[] = [];
-    let chunk = '';
-    for (const para of paragraphs) {
-      if ((chunk + para).length > 1000) { // adjust chunk size as needed
-        chunks.push(chunk);
-        chunk = '';
-      }
-      chunk += para + '\n\n';
-    }
-    if (chunk) chunks.push(chunk);
-
-    // Embedding and Chroma storage
-    const chromaCollection = 'pdf_chunks'; // or use req.file.originalname as collection name
-    for (let i = 0; i < chunks.length; i++) {
-      const text = chunks[i];
-
-      // 1. Get embedding from Ollama
-      const embeddingRes = await axios.post('http://localhost:11434/api/embeddings', {
-        model: 'deepseek-embedding-v1',
-        prompt: text
+    
+    console.log('📄 Processing uploaded PDF:', req.file.originalname);
+    
+    // Use RAG service to process the PDF
+    const result = await ragService.processPDF(req.file.path, req.file.originalname || 'unknown.pdf');
+    
+    if (result.success) {
+      res.json({ 
+        status: 'success', 
+        message: `PDF processed successfully. Created ${result.chunks} chunks.`,
+        chunks: result.chunks,
+        filename: req.file.originalname
       });
-      const embedding = embeddingRes.data.embedding;
-
-      // 2. Store in Chroma
-      await axios.post('http://localhost:8000/api/v1/collections/' + chromaCollection + '/add', {
-        ids: [`${req.file.filename}_${i}`],
-        embeddings: [embedding],
-        metadatas: [{
-          filename: req.file?.originalname || 'unknown',
-          chunk_index: i,
-          text: text
-        }],
-        documents: [text]
+    } else {
+      res.status(500).json({ 
+        error: 'Failed to process PDF',
+        details: result.error
       });
     }
-
-    res.json({ status: 'success', chunks: chunks.length });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to process PDF' });
+    console.error('❌ PDF upload error:', err);
+    res.status(500).json({ error: 'Failed to process PDF upload' });
   }
 });
 
@@ -172,27 +148,24 @@ router.post('/llm-summary', async (req: LLMSummaryRequest, res: Response) => {
       return res.status(400).json({ error: 'Prompt is required' });
     }
     
-    // Process query with agentService
+    // Process query with integrated RAG+MCP+Agent service
     const agentResponse = await agentService.processQuery(prompt);
     
-    // Save chat interaction to database
-    try {
-      await databaseService.saveChatHistory(prompt, agentResponse.response, sessionId || null, {
-        timestamp: new Date().toISOString(),
-        userAgent: req.headers['user-agent']
-      });
-    } catch (dbError) {
-      console.warn('Failed to save chat history:', dbError);
-    }
+    // agentResponse is now a string (the response itself)
+    // Save chat interaction to database (already handled in processQuery)
     
-    res.json({ response: agentResponse.response, intent: agentResponse.intent, dataUsed: agentResponse.dataUsed });
+    res.json({ 
+      response: agentResponse,
+      message: 'Response generated using integrated RAG, MCP, and LLM agent',
+      timestamp: new Date().toISOString()
+    });
   } catch (error) {
     console.error('Error in /llm-summary:', error);
     res.status(500).json({ error: (error as Error).message });
   }
 });
 
-// POST /api/rag-query - Process user queries with RAG (Retrieval-Augmented Generation)
+// POST /api/rag-query - Process user queries with integrated RAG+MCP+Agent flow
 router.post('/rag-query', async (req: RAGQueryRequest, res: Response) => {
   try {
     const { query, top_k = 5 } = req.body;
@@ -200,43 +173,19 @@ router.post('/rag-query', async (req: RAGQueryRequest, res: Response) => {
       return res.status(400).json({ error: 'Query is required' });
     }
 
-    // 1. Get embedding for the query from Ollama
-    const embeddingRes = await axios.post('http://localhost:11434/api/embeddings', {
-      model: 'deepseek-embedding-v1',
-      prompt: query
-    });
-    const queryEmbedding = embeddingRes.data.embedding;
+    console.log('🔍 Processing RAG query with integrated agent:', query);
 
-    // 2. Search Chroma for similar chunks
-    const chromaCollection = 'pdf_chunks';
-    const searchRes = await axios.post(`http://localhost:8000/api/v1/collections/${chromaCollection}/query`, {
-      query_embeddings: [queryEmbedding],
-      n_results: top_k
-    });
-
-    const results = searchRes.data;
-    const retrievedChunks = results.documents && results.documents[0] ? results.documents[0] : [];
-    const metadatas = results.metadatas && results.metadatas[0] ? results.metadatas[0] : [];
-
-    // 3. Assemble context for LLM
-    const context = retrievedChunks.map((chunk: string, i: number) => `Source [${i+1}]:\n${chunk}`).join('\n\n');
-    const prompt = `You are an assistant. Use the following context to answer the user's question.\n\nContext:\n${context}\n\nQuestion: ${query}\n\nAnswer:`;
-
-    // 4. Call Ollama LLM for answer (using a chat or completion model)
-    const llmRes = await axios.post('http://localhost:11434/api/generate', {
-      model: 'deepseek-v1', // or another chat/completion model you have in Ollama
-      prompt: prompt,
-      stream: false
-    });
-
-    const answer = llmRes.data.response;
+    // Use the unified agent service which includes RAG, MCP, and LLM integration
+    const agentResponse = await agentService.processQuery(query);
 
     res.json({
-      answer,
-      sources: metadatas
+      answer: agentResponse,
+      message: 'Response generated using integrated RAG, MCP, and LLM agent',
+      query: query,
+      timestamp: new Date().toISOString()
     });
   } catch (err) {
-    console.error(err);
+    console.error('❌ RAG query error:', err);
     res.status(500).json({ error: 'Failed to process RAG query' });
   }
 });

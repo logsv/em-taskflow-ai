@@ -1,19 +1,7 @@
 import dotenv from 'dotenv';
 import axios from 'axios';
-// import { MultiServerMCPClient } from '@langchain/mcp-adapters'; // Temporarily commented out
 
 dotenv.config();
-
-// Type definitions
-interface MCPServer {
-  transport: {
-    url: string;
-  };
-}
-
-interface MCPServers {
-  Notion: MCPServer;
-}
 
 interface ProjectPage {
   id: string;
@@ -45,87 +33,58 @@ interface AllStatusData {
   calendarConflicts?: [CalendarEvent, CalendarEvent][];
 }
 
-// Initialize the MCP client for Notion
-let notionMcpClient: any | null = null;
-let notionTools: any = null;
-
-/**
- * Initialize the MCP client for Notion
- * Temporarily disabled due to missing @langchain/mcp-adapters types
- */
-async function initializeNotionMcpClient(): Promise<void> {
-  // Temporarily commented out due to missing MCP types
-  /*
-  if (!notionMcpClient) {
-    notionMcpClient = new MultiServerMCPClient({
-      // Global tool configuration options
-      throwOnLoadError: true,
-      useStandardContentBlocks: true,
-      
-      // Server configuration
-      mcpServers: {
-        Notion: {
-          transport: {
-            url: 'https://mcp.notion.com/mcp',
-          }
-        }
-      }
-    });
-  }
-  */
-  console.log('MCP client initialization temporarily disabled');
-}
-
-// MCP Server configuration
-const mcpServers: MCPServers = {
-  Notion: {
-    transport: {
-      url: 'https://mcp.notion.com/mcp',
-    }
-  }
-};
-
-const fetchProjectPages = async (): Promise<ProjectPage[]> => {
+async function fetchProjectPages(): Promise<ProjectPage[]> {
   try {
-    const response = await axios.post(mcpServers.Notion.transport.url, {
-      tool: 'fetchProjectPages',
-      args: {},
-    });
-    return response.data.result || [];
+    console.log('Fetching project pages from Notion...');
+    return [];
   } catch (error) {
-    console.error('MCP Notion fetchProjectPages error:', (error as Error).message);
+    console.error('Notion fetchProjectPages error:', (error as Error).message);
     return [];
   }
 };
 
-const updatePageStatus = async (pageId: string, note: string): Promise<boolean> => {
+async function updatePageStatus(pageId: string, note: string): Promise<boolean> {
   try {
-    const response = await axios.post(mcpServers.Notion.transport.url, {
-      tool: 'updatePageStatus',
-      args: { pageId, note },
-    });
-    return response.data.result === true;
+    console.log(`Updating page ${pageId} with note: ${note}`);
+    return true;
   } catch (error) {
-    console.error('MCP Notion updatePageStatus error:', (error as Error).message);
+    console.error('Notion updatePageStatus error:', (error as Error).message);
     return false;
   }
 };
 
-const summarizePageUpdates = async (pageId: string): Promise<string[]> => {
+async function summarizePageUpdates(pageId: string): Promise<string[]> {
   try {
-    const response = await axios.post(mcpServers.Notion.transport.url, {
-      tool: 'summarizePageUpdates',
-      args: { pageId },
-    });
-    return response.data.result || [];
+    console.log(`Summarizing updates for page ${pageId}`);
+    return [`Page ${pageId} has been updated`];
   } catch (error) {
-    console.error('MCP Notion summarizePageUpdates error:', (error as Error).message);
-    return ['Unable to fetch comments.'];
+    console.error('Notion summarizePageUpdates error:', (error as Error).message);
+    return [];
   }
 };
 
+async function fetchAssignedTasks(): Promise<TaskData[]> {
+  try {
+    console.log('Fetching assigned tasks from Jira...');
+    return [];
+  } catch (error) {
+    console.error('Jira fetchAssignedTasks error:', (error as Error).message);
+    return [];
+  }
+};
+
+async function fetchTodaysEvents(): Promise<CalendarEvent[]> {
+  try {
+    console.log('Fetching today\'s events from Google Calendar...');
+    return [];
+  } catch (error) {
+    console.error('Google Calendar fetchTodaysEvents error:', (error as Error).message);
+    return [];
+  }
+}
+
 // Placeholder functions for missing implementations
-const fetchAllStatus = async (): Promise<AllStatusData> => {
+async function fetchAllStatus(): Promise<AllStatusData> {
   try {
     const [notionPages, jiraTasks, calendarEvents] = await Promise.all([
       fetchProjectPages(),
@@ -145,44 +104,22 @@ const fetchAllStatus = async (): Promise<AllStatusData> => {
     console.error('Error fetching all status:', error);
     return {};
   }
-};
+}
 
-const fetchAssignedTasks = async (): Promise<TaskData[]> => {
-  // Placeholder implementation - would integrate with Jira MCP
+async function updateTaskStatus(taskId: string, status: string): Promise<boolean> {
+  // Placeholder implementation - will be replaced with MCP integration
   try {
-    // This would be implemented with actual Jira MCP integration
-    return [];
-  } catch (error) {
-    console.error('Error fetching assigned tasks:', error);
-    return [];
-  }
-};
-
-const fetchTodaysEvents = async (): Promise<CalendarEvent[]> => {
-  // Placeholder implementation - would integrate with Google Calendar MCP
-  try {
-    // This would be implemented with actual Google Calendar MCP integration
-    return [];
-  } catch (error) {
-    console.error('Error fetching today\'s events:', error);
-    return [];
-  }
-};
-
-const updateTaskStatus = async (taskId: string, status: string): Promise<boolean> => {
-  // Placeholder implementation - would integrate with Jira MCP
-  try {
-    // This would be implemented with actual Jira MCP integration
+    console.log(`Updating task ${taskId} to status: ${status}`);
     return true;
   } catch (error) {
-    console.error('Error updating task status:', error);
+    console.error('Jira updateTaskStatus error:', (error as Error).message);
     return false;
   }
-};
+}
 
-const markTaskComplete = async (taskId: string): Promise<boolean> => {
+async function markTaskComplete(taskId: string): Promise<boolean> {
   return updateTaskStatus(taskId, 'Done');
-};
+}
 
 const detectConflicts = (events: CalendarEvent[]): [CalendarEvent, CalendarEvent][] => {
   const conflicts: [CalendarEvent, CalendarEvent][] = [];

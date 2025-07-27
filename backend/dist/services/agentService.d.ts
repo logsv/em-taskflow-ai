@@ -1,12 +1,7 @@
-interface AgentResponse {
-    response: string;
-    intent: string;
-    dataUsed: string[];
-}
 /**
- * Main agent processing function
+ * Main function to process user queries with integrated RAG, MCP, and agent capabilities
  */
-declare function processQuery(userQuery: string): Promise<AgentResponse>;
+declare function processQuery(userQuery: string): Promise<string>;
 declare const agentService: {
     processQuery: typeof processQuery;
 };
