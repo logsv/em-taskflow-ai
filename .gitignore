@@ -168,6 +168,9 @@ coverage.xml
 *.py,cover
 .hypothesis/
 
+# Test data
+test/data/
+
 # ===========================
 # DOCKER & CONTAINERS
 # ===========================
