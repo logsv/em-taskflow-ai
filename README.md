@@ -1,7 +1,7 @@
 # EM TaskFlow
 
 ## Overview
-EM TaskFlow is an AI-powered productivity tool that now supports Retrieval-Augmented Generation (RAG) using your own PDF documents. You can upload PDFs, and then ask questions in chat—answers are generated using both your documents and a local LLM (Ollama).
+EM TaskFlow is an AI-powered productivity tool that supports Retrieval-Augmented Generation (RAG) using your own PDF documents and integrates with various services like Jira, Google Calendar, and Notion via Multi-Cloud Platform (MCP) tools. You can upload PDFs and ask questions in chat—answers are generated using both your documents and a local LLM (Ollama). The MCP integration allows for seamless task management and data synchronization across your connected platforms.
 
 ---
 
