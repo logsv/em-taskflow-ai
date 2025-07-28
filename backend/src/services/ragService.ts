@@ -144,7 +144,7 @@ class RAGService {
       });
       
       const { stdout } = await execAsync(
-        `source ../chroma-env/bin/activate && python3 "${this.chromaScriptPath}" create_collection "${this.defaultCollection}" '${metadata}'`,
+        `/bin/bash -c "source ${path.join(__dirname, '../../../chroma-env/bin/activate')} && python3 '${this.chromaScriptPath}' create_collection '${this.defaultCollection}' '${metadata}'"`,
         { cwd: path.dirname(this.chromaScriptPath) }
       );
       
@@ -195,8 +195,7 @@ class RAGService {
         });
         
         const { stdout } = await execAsync(
-          `source ../chroma-env/bin/activate && python3 "${this.chromaScriptPath}" add_documents "${this.defaultCollection}" '${data}'`,
-          { cwd: path.dirname(this.chromaScriptPath) }
+          `/bin/bash -c "source ${path.join(__dirname, '../../../chroma-env/bin/activate')} && python3 '${this.chromaScriptPath}' add_documents '${this.defaultCollection}' '${data.replace(/'/g, "'\"'\"'")}'"`
         );
         
         const result = JSON.parse(stdout.trim());
@@ -245,8 +244,7 @@ class RAGService {
       });
       
       const { stdout } = await execAsync(
-        `source ../chroma-env/bin/activate && python3 "${this.chromaScriptPath}" query "${this.defaultCollection}" '${queryData}'`,
-        { cwd: path.dirname(this.chromaScriptPath) }
+        `/bin/bash -c "source ${path.join(__dirname, '../../../chroma-env/bin/activate')} && python3 '${this.chromaScriptPath}' query '${this.defaultCollection}' '${queryData.replace(/'/g, "'\"'\"'")}'"`
       );
       
       const response = JSON.parse(stdout.trim());
@@ -294,8 +292,7 @@ class RAGService {
   async isVectorDBAvailable(): Promise<boolean> {
     try {
       const { stdout } = await execAsync(
-        `source ../chroma-env/bin/activate && python3 "${this.chromaScriptPath}" list_collections`,
-        { cwd: path.dirname(this.chromaScriptPath) }
+        `/bin/bash -c "source ${path.join(__dirname, '../../../chroma-env/bin/activate')} && python3 '${this.chromaScriptPath}' list_collections"`
       );
       
       const result = JSON.parse(stdout.trim());
