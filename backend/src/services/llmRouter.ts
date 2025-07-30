@@ -111,21 +111,6 @@ export class LLMRouter {
         }
       );
 
-      // Create retry policy with defaults
-      const retryConfig: Required<RetryConfig> = {
-        ...DEFAULT_RETRY,
-        ...(providerConfig.retry || {}),
-      };
-
-      // Create a backoff function for the retry policy
-      const backoff = (attempt: number) => {
-        const delay = Math.min(
-          retryConfig.initialDelay * Math.pow(retryConfig.factor, attempt - 1),
-          retryConfig.maxDelay
-        );
-        return delay;
-      };
-
       const retryPolicy = this.createRetryPolicy(retryConfig);
 
       try {
@@ -146,8 +131,8 @@ export class LLMRouter {
           type: providerConfig.type!,
           enabled: providerConfig.enabled ?? true,
           priority: providerConfig.priority ?? 1,
-          apiKey: providerConfig.apiKey,
-          baseUrl: providerConfig.baseUrl,
+          apiKey: providerConfig.apiKey || '',
+          baseUrl: providerConfig.baseUrl || '',
           models: providerConfig.models ?? [],
           circuitBreaker: circuitBreakerConfig,
           retry: retryConfig,
@@ -181,21 +166,14 @@ export class LLMRouter {
     }
   }
 
-  private createRetryPolicy(config: { maxAttempts: number; initialDelay: number; maxDelay: number; factor: number }) {
-    // Create a custom backoff policy
-    const backoff = {
-      next: (context: { attempt: number }) => {
-        const delay = Math.min(
-          config.initialDelay * Math.pow(config.factor, context.attempt - 1),
-          config.maxDelay
-        );
-        return delay;
-      }
-    };
-    
+  private createRetryPolicy(config: Required<RetryConfig>): IPolicy {
     return retry(handleAll, {
       maxAttempts: config.maxAttempts,
-      backoff: backoff as any, // Type assertion needed due to Cockatiel's type definitions
+      backoff: new ExponentialBackoff({
+        initialDelay: config.initialDelay,
+        maxDelay: config.maxDelay,
+        exponent: config.factor,
+      }),
     });
   }
 
