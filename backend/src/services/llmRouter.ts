@@ -1,9 +1,9 @@
 import type { LLMProvider } from './llmProviders.js';
 import { createProvider } from './llmProviders.js';
 import Bottleneck from 'bottleneck';
-import { type IPolicy, retry, handleAll, circuitBreaker, ConsecutiveBreaker } from 'cockatiel';
+import { type IPolicy, retry, handleAll, circuitBreaker, ConsecutiveBreaker, type IRetryBackoffContext, ExponentialBackoff } from 'cockatiel';
 import { loadConfig } from '../config/loadConfig.js';
-import type { RouterConfig, LoadedProviderConfig, LLMProviderConfig } from '../types/config.js';
+import { DEFAULT_CIRCUIT_BREAKER, DEFAULT_RETRY, type RouterConfig, type LoadedProviderConfig, type LLMProviderConfig, type CircuitBreakerConfig, type RetryConfig } from '../types/config.js';
 
 // Define LLM request and response interfaces
 export interface LLMRequest {
@@ -41,18 +41,6 @@ interface ProviderWrapper {
   successCount: number;
 }
 
-// Define LLMRequest and LLMResponse interfaces
-export interface LLMRequest {
-  prompt: string;
-  model?: string;
-  temperature?: number;
-  maxTokens?: number;
-  topP?: number;
-  frequencyPenalty?: number;
-  presencePenalty?: number;
-  stopSequences?: string[];
-}
-
 export class LLMRouter {
   private providers: Map<string, ProviderWrapper>;
   private circuitBreakers: Map<string, IPolicy>;
@@ -66,7 +54,9 @@ export class LLMRouter {
    */
   static async create(configPath?: string): Promise<LLMRouter> {
     const config = await loadConfig(configPath);
-    return new LLMRouter(config);
+    const router = new LLMRouter(config);
+    await router.initializeProviders(config);
+    return router;
   }
 
   private constructor(config: RouterConfig) {
@@ -75,7 +65,6 @@ export class LLMRouter {
     this.strategy = config.loadBalancingStrategy || 'round_robin';
     this.defaultModel = config.defaultModel || '';
     this.config = config;
-    await this.initializeProviders(config);
   }
 
   private async initializeProviders(config: RouterConfig) {
@@ -101,11 +90,18 @@ export class LLMRouter {
       });
 
       // Create circuit breaker with defaults
-      const circuitBreakerConfig = {
-        failureThreshold: providerConfig.circuitBreaker?.failureThreshold ?? 5,
-        successThreshold: providerConfig.circuitBreaker?.successThreshold ?? 3,
-        timeout: (providerConfig.circuitBreaker?.timeout ?? 30) * 1000,
-      };
+      const circuitBreakerConfig: Required<CircuitBreakerConfig> = {
+          failureThreshold: providerConfig.circuitBreaker?.failureThreshold ?? DEFAULT_CIRCUIT_BREAKER.failureThreshold,
+          successThreshold: providerConfig.circuitBreaker?.successThreshold ?? DEFAULT_CIRCUIT_BREAKER.successThreshold,
+          timeout: (providerConfig.circuitBreaker?.timeout ?? DEFAULT_CIRCUIT_BREAKER.timeout) * 1000,
+        };
+
+        const retryConfig: Required<RetryConfig> = {
+          maxAttempts: providerConfig.retry?.maxAttempts ?? DEFAULT_RETRY.maxAttempts,
+          initialDelay: providerConfig.retry?.initialDelay ?? DEFAULT_RETRY.initialDelay,
+          maxDelay: providerConfig.retry?.maxDelay ?? DEFAULT_RETRY.maxDelay,
+          factor: providerConfig.retry?.factor ?? DEFAULT_RETRY.factor,
+        };
 
       const breaker = circuitBreaker(
         handleAll,
@@ -116,11 +112,9 @@ export class LLMRouter {
       );
 
       // Create retry policy with defaults
-      const retryConfig = {
-        maxAttempts: providerConfig.retry?.maxAttempts ?? 3,
-        initialDelay: providerConfig.retry?.initialDelay ?? 1000,
-        maxDelay: providerConfig.retry?.maxDelay ?? 10000,
-        factor: providerConfig.retry?.factor ?? 2,
+      const retryConfig: Required<RetryConfig> = {
+        ...DEFAULT_RETRY,
+        ...(providerConfig.retry || {}),
       };
 
       // Create a backoff function for the retry policy
@@ -132,39 +126,42 @@ export class LLMRouter {
         return delay;
       };
 
-      // Create retry policy with the backoff function
-      const retryPolicy = retry(
-        handleAll,
-        {
-          maxAttempts: retryConfig.maxAttempts,
-          backoff: {
-            type: 'exponential',
-            initialDelay: retryConfig.initialDelay,
-            maxDelay: retryConfig.maxDelay,
-          },
-        }
-      );
+      const retryPolicy = this.createRetryPolicy(retryConfig);
 
       try {
         // Create provider instance with required fields
         const provider = createProvider({
           name: providerConfig.name,
           type: providerConfig.type,
-          apiKey: providerConfig.apiKey,
-          baseUrl: providerConfig.baseUrl,
+          apiKey: providerConfig.apiKey || '',
+          baseUrl: providerConfig.baseUrl || '',
         });
 
         // Store provider with its configuration
+
+
+        // Store provider with its configuration
+        const loadedProviderConfig: LoadedProviderConfig = {
+          name: providerConfig.name!,
+          type: providerConfig.type!,
+          enabled: providerConfig.enabled ?? true,
+          priority: providerConfig.priority ?? 1,
+          apiKey: providerConfig.apiKey,
+          baseUrl: providerConfig.baseUrl,
+          models: providerConfig.models ?? [],
+          circuitBreaker: circuitBreakerConfig,
+          retry: retryConfig,
+        };
+        // Copy any other properties from providerConfig that are not explicitly handled
+        Object.keys(providerConfig).forEach(key => {
+            if (!(key in loadedProviderConfig)) {
+                (loadedProviderConfig as any)[key] = (providerConfig as any)[key];
+            }
+        });
+
         this.providers.set(providerConfig.name, {
           provider,
-          config: {
-            ...providerConfig,
-            enabled: true, // Ensure enabled is set
-            priority: providerConfig.priority ?? 1,
-            models: providerConfig.models ?? [],
-            circuitBreaker: circuitBreakerConfig,
-            retry: retryConfig,
-          },
+          config: loadedProviderConfig,
           limiter,
           circuitBreaker: breaker,
           retryPolicy,
@@ -224,16 +221,7 @@ export class LLMRouter {
     return weights;
   }
 
-  private getProvider(name: string): {
-    config: LLMProviderConfig;
-    provider: any;
-    limiter: Bottleneck;
-    circuitBreaker: IPolicy;
-    retryPolicy: IPolicy;
-    lastUsed: number;
-    failureCount: number;
-    successCount: number;
-  } | null {
+  private getProvider(name: string): ProviderWrapper | null {
     const provider = this.providers.get(name);
     if (!provider || !provider.config.enabled) return null;
     return provider;
@@ -361,7 +349,6 @@ export class LLMRouter {
       a.lastUsed < b.lastUsed ? a : b
     ).name;
   }
-  }
 
   public async execute(request: LLMRequest, preferredProviders: string[] = []): Promise<LLMResponse> {
     // Ensure we have a model specified
@@ -429,8 +416,33 @@ export class LLMRouter {
   public updateProviderConfig(providerName: string, updates: Partial<LLMProviderConfig>) {
     const provider = this.providers.get(providerName);
     if (!provider) throw new Error(`Provider ${providerName} not found`);
-    
-    provider.config = { ...provider.config, ...updates };
+
+    const newConfig: LoadedProviderConfig = { ...provider.config };
+
+    // Handle circuitBreaker updates
+    if (updates.circuitBreaker !== undefined) {
+      newConfig.circuitBreaker = {
+        ...provider.config.circuitBreaker,
+        ...updates.circuitBreaker,
+      };
+    }
+
+    // Handle retry updates
+    if (updates.retry !== undefined) {
+      newConfig.retry = {
+        ...provider.config.retry,
+        ...updates.retry,
+      };
+    }
+
+    // Copy other properties, excluding circuitBreaker and retry which are handled above
+    for (const key in updates) {
+      if (key !== 'circuitBreaker' && key !== 'retry') {
+        (newConfig as any)[key] = (updates as any)[key];
+      }
+    }
+
+    provider.config = newConfig;
     
     // Reinitialize rate limiter if rate limits changed
     if (updates.models?.[0]?.rateLimit) {

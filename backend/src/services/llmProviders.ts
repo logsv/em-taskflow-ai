@@ -70,11 +70,9 @@ export class OpenAIPovider extends BaseProvider {
 
     const data = response.data;
     const result: LLMResponse = {
-      id: data.id || `gen_${Date.now()}`,
       model: data.model || 'unknown',
       text: data.choices?.[0]?.message?.content || '',
       provider: 'openai',
-      finishReason: data.choices?.[0]?.finish_reason || 'stop',
     };
 
     if (data.usage) {
@@ -109,11 +107,9 @@ export class AnthropicProvider extends BaseProvider {
 
     const data = response.data;
     const result: LLMResponse = {
-      id: data.id || `gen_${Date.now()}`,
       model: data.model || 'unknown',
       text: data.content?.[0]?.text || '',
       provider: 'anthropic',
-      finishReason: data.stop_reason || 'stop',
     };
 
     if (data.usage) {
@@ -162,11 +158,9 @@ export class GoogleProvider extends BaseProvider {
 
     const data = response.data;
     const result: LLMResponse = {
-      id: data.candidates?.[0]?.content?.name || `gen_${Date.now()}`,
       model: request.model || 'gemini-pro',
       text: data.candidates?.[0]?.content?.parts?.[0]?.text || '',
       provider: 'google',
-      finishReason: data.candidates?.[0]?.finishReason || 'STOP',
     };
 
     if (data.usageMetadata) {
@@ -212,11 +206,9 @@ export class OllamaProvider extends BaseProvider {
 
     const data = response.data;
     const result: LLMResponse = {
-      id: `ollama_${Date.now()}`,
       model: data.model || request.model || 'llama2',
       text: data.response || '',
       provider: 'ollama',
-      finishReason: 'stop',
     };
 
     // Estimate token usage

@@ -62,12 +62,17 @@ export interface RouterConfig {
 /**
  * Loaded provider configuration with runtime values
  */
-export interface LoadedProviderConfig extends LLMProviderConfig {
+export interface LoadedProviderConfig {
+  name: string;
+  type: LLMProviderType;
   enabled: boolean;
   priority: number;
+  apiKey?: string;
+  baseUrl?: string;
   models: ModelConfig[];
   circuitBreaker: Required<CircuitBreakerConfig>;
   retry: Required<RetryConfig>;
+  [key: string]: any; // Allow additional provider-specific properties
 }
 
 /**

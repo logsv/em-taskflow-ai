@@ -29,6 +29,7 @@
     "axios": "^1.6.0",
     "bottleneck": "^2.19.5",
     "chalk": "^4.1.2",
+    "chromadb": "^3.0.10",
     "cockatiel": "^3.2.1",
     "cors": "^2.8.5",
     "date-fns": "^2.30.0",
@@ -45,6 +46,7 @@
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
+    "@types/js-yaml": "^4.0.9",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.1.0",
     "@types/pdf-parse": "^1.1.5",

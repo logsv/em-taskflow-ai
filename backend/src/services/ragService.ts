@@ -3,10 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
+import * as chromaService from './chromaService.js';
 
 // Dynamic pdf-parse import with error handling
 let pdfParse: any = null;
@@ -50,7 +47,6 @@ class RAGService {
   private embeddingModel = 'nomic-embed-text';
   private defaultCollection = 'pdf_chunks';
   private pdfDir: string;
-  private chromaScriptPath: string;
 
   constructor() {
     // Ensure PDF storage directory exists
@@ -58,9 +54,6 @@ class RAGService {
     if (!fs.existsSync(this.pdfDir)) {
       fs.mkdirSync(this.pdfDir, { recursive: true });
     }
-    
-    // Set path to Chroma Python script
-    this.chromaScriptPath = path.join(__dirname, '../scripts/chroma_client.py');
   }
 
   /**
@@ -139,16 +132,12 @@ class RAGService {
    */
   private async ensureCollection(): Promise<void> {
     try {
-      const metadata = JSON.stringify({
+      const metadata = {
         description: 'PDF document chunks for RAG search'
-      });
+      };
       
-      const { stdout } = await execAsync(
-        `/bin/bash -c "source ${path.join(__dirname, '../../../chroma-env/bin/activate')} && python3 '${this.chromaScriptPath}' create_collection '${this.defaultCollection}' '${metadata}'"`,
-        { cwd: path.dirname(this.chromaScriptPath) }
-      );
+      const result = await chromaService.createCollection(this.defaultCollection, metadata);
       
-      const result = JSON.parse(stdout.trim());
       if (result.success) {
         console.log(`✅ ${result.message}`);
       } else {
@@ -183,22 +172,18 @@ class RAGService {
         const embedding = await this.generateEmbedding(text);
         
         // Store in Chroma using Python script
-        const data = JSON.stringify({
-          documents: [text],
-          metadatas: [{
+        const result = await chromaService.addDocuments(
+          this.defaultCollection,
+          [text],
+          [{
             filename: originalName,
             chunk_index: i,
             text: text && text.length > 200 ? text.substring(0, 200) + '...' : text || '' // Store preview in metadata
           }],
-          ids: [chunkId],
-          embeddings: [embedding]
-        });
-        
-        const { stdout } = await execAsync(
-          `/bin/bash -c "source ${path.join(__dirname, '../../../chroma-env/bin/activate')} && python3 '${this.chromaScriptPath}' add_documents '${this.defaultCollection}' '${data.replace(/'/g, "'\"'\"'")}'"`
+          [chunkId],
+          [embedding]
         );
         
-        const result = JSON.parse(stdout.trim());
         if (!result.success) {
           throw new Error(result.error);
         }
@@ -238,16 +223,12 @@ class RAGService {
       const queryEmbedding = await this.generateEmbedding(query);
 
       // Search in Chroma using Python script
-      const queryData = JSON.stringify({
-        query_embeddings: [queryEmbedding],
-        n_results: topK
-      });
-      
-      const { stdout } = await execAsync(
-        `/bin/bash -c "source ${path.join(__dirname, '../../../chroma-env/bin/activate')} && python3 '${this.chromaScriptPath}' query '${this.defaultCollection}' '${queryData.replace(/'/g, "'\"'\"'")}'"`
+      const response = await chromaService.queryCollection(
+        this.defaultCollection,
+        [queryEmbedding],
+        topK
       );
       
-      const response = JSON.parse(stdout.trim());
       if (!response.success) {
         throw new Error(response.error);
       }
@@ -291,11 +272,7 @@ class RAGService {
    */
   async isVectorDBAvailable(): Promise<boolean> {
     try {
-      const { stdout } = await execAsync(
-        `/bin/bash -c "source ${path.join(__dirname, '../../../chroma-env/bin/activate')} && python3 '${this.chromaScriptPath}' list_collections"`
-      );
-      
-      const result = JSON.parse(stdout.trim());
+      const result = await chromaService.listCollections();
       return result.success;
     } catch (error) {
       console.warn('⚠️ Vector database not available:', error);
