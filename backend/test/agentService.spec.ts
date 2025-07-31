@@ -49,4 +49,54 @@ describe('Agent Service', () => {
     expect(ragStub.calledOnce).toBe(true);
     expect(dbStub.calledOnceWith(userQuery, generatedResponse)).toBe(true);
   });
+
+  it('should include RAG results in the prompt to the LLM', async () => {
+    const userQuery = 'What is the status of my tasks?';
+    const intentAnalysis = {
+      intent: 'status_check',
+      dataNeeded: ['jira'],
+      reasoning: 'The user is asking for task status.',
+    };
+    const ragResult = {
+      chunks: [{ id: '1', text: 'chunk1', metadata: {} }],
+      context: 'rag context',
+      sources: [],
+      found: 1,
+    };
+    const generatedResponse = 'Your tasks are all on track.';
+
+    llmStub.onFirstCall().resolves(JSON.stringify(intentAnalysis));
+    llmStub.onSecondCall().resolves(generatedResponse);
+    ragStub.resolves(ragResult);
+    mcpStub.resolves([]);
+
+    await agentService.processQuery(userQuery);
+
+    const finalPrompt = llmStub.secondCall.args[0];
+    expect(finalPrompt).toContain('rag context');
+  });
+
+  it('should include MCP tools in the prompt to the LLM', async () => {
+    const userQuery = 'What is the status of my tasks?';
+    const intentAnalysis = {
+      intent: 'status_check',
+      dataNeeded: ['jira'],
+      reasoning: 'The user is asking for task status.',
+    };
+    const ragResult = { chunks: [], context: '', sources: [], found: 0 };
+    const generatedResponse = 'Your tasks are all on track.';
+    const mcpTools = ['jira-tool-1', 'jira-tool-2'];
+
+    llmStub.onFirstCall().resolves(JSON.stringify(intentAnalysis));
+    llmStub.onSecondCall().resolves(generatedResponse);
+    ragStub.resolves(ragResult);
+    mcpStub.resolves(mcpTools);
+
+    await agentService.processQuery(userQuery);
+
+    const finalPrompt = llmStub.secondCall.args[0];
+    expect(finalPrompt).toContain('Jira Tools Available:');
+    expect(finalPrompt).toContain('jira-tool-1');
+    expect(finalPrompt).toContain('jira-tool-2');
+  });
 });
