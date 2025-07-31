@@ -9,7 +9,7 @@
     "start": "node dist/index.js",
     "dev": "npm run build && nodemon dist/index.js",
     "dev:js": "nodemon src/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "npm run build && nyc jasmine dist/test/agentService.spec.js",
     "start:google": "pnpm -C ../mcp-servers/google-workspace start",
     "start:atlassian": "pnpm -C ../mcp-servers/atlassian-suite start",
     "start:mcp": "pnpm start:google & pnpm start:atlassian"
@@ -17,6 +17,21 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "nyc": {
+    "extends": "@istanbuljs/nyc-config-typescript",
+    "all": true,
+    "include": [
+      "src/**/*.ts"
+    ],
+    "exclude": [
+      "src/test"
+    ],
+    "reporter": [
+      "html",
+      "text",
+      "lcov"
+    ]
+  },
   "dependencies": {
     "@cocal/google-calendar-mcp": "^1.4.8",
     "@huggingface/inference": "^2.6.1",
@@ -44,14 +59,21 @@
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {
+    "@istanbuljs/nyc-config-typescript": "^1.0.2",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
+    "@types/jasmine": "^5.1.8",
     "@types/js-yaml": "^4.0.9",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.1.0",
     "@types/pdf-parse": "^1.1.5",
+    "@types/sinon": "^17.0.4",
     "@types/sqlite3": "^3.1.11",
+    "jasmine": "^5.9.0",
+    "jasmine-ts-console-reporter": "^3.1.1",
     "nodemon": "^3.1.10",
+    "nyc": "^17.1.0",
+    "sinon": "^21.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }
