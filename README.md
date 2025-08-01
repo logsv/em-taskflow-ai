@@ -61,7 +61,7 @@ npm run build
   ```
 - Pull required models:
   ```sh
-  ollama pull deepseek-r1:latest
+  ollama pull mistral:latest
   ollama pull nomic-embed-text
   ```
 

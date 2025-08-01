@@ -117,8 +117,9 @@ function validateConfig(config: RouterConfig): RouterConfig {
     }
     
     if (provider.type === 'openai' || provider.type === 'anthropic' || provider.type === 'google') {
-      if (!provider.apiKey && !process.env[`LLM_${provider.name.toUpperCase()}_API_KEY`]) {
-        throw new Error(`API key is required for provider ${provider.name}`);
+      if (provider.enabled && !provider.apiKey && !process.env[`LLM_${provider.name.toUpperCase()}_API_KEY`]) {
+        console.warn(`API key not found for enabled provider ${provider.name}, disabling it`);
+        provider.enabled = false;
       }
     }
     

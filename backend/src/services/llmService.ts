@@ -93,7 +93,7 @@ async function complete(prompt: string, options: LLMOptions = {}): Promise<strin
 async function completeWithOllama(prompt: string, options: LLMOptions = {}): Promise<string> {
   try {
     const response = await axios.post(`${OLLAMA_BASE_URL}/api/generate`, {
-      model: options.model || 'deepseek-r1:latest',
+      model: options.model || 'mistral:latest',
       prompt: prompt,
       stream: false,
     });
