@@ -134,5 +134,6 @@ export const __test__ = {
   hf: hf,
   setProvider: (p: LLMProvider) => { PROVIDER = p; },
   setOllamaBaseUrl: (url: string) => { OLLAMA_BASE_URL = url; },
-  setHf: (instance: HfInference) => { hf = instance; }
+  setHf: (instance: HfInference) => { hf = instance; },
+  completeWithOllama: completeWithOllama
 };

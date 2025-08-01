@@ -9,7 +9,7 @@
     "start": "node dist/index.js",
     "dev": "npm run build && nodemon dist/index.js",
     "dev:js": "nodemon src/index.js",
-    "test": "npm run build && tsc -p tsconfig.test.json && nyc jasmine dist/test/**/*.js",
+    "test": "npm run build && tsc -p tsconfig.test.json && NODE_OPTIONS='--loader @istanbuljs/esm-loader-hook' nyc jasmine dist/test/**/*.js",
     "start:google": "pnpm -C ../mcp-servers/google-workspace start",
     "start:atlassian": "pnpm -C ../mcp-servers/atlassian-suite start",
     "start:mcp": "pnpm start:google & pnpm start:atlassian"
@@ -18,18 +18,32 @@
   "author": "",
   "license": "ISC",
   "nyc": {
-    "extends": "@istanbuljs/nyc-config-typescript",
     "all": true,
     "include": [
-      "src/**/*.ts"
+      "dist/src/**/*.js"
     ],
     "exclude": [
-      "src/test"
+      "dist/test/**/*.js",
+      "dist/src/test/**/*.js",
+      "dist/src/scripts/**/*.js",
+      "node_modules/**"
     ],
     "reporter": [
       "html",
       "text",
-      "lcov"
+      "lcov",
+      "json-summary"
+    ],
+    "source-map": false,
+    "instrument": true,
+    "cache": false,
+    "check-coverage": true,
+    "branches": 29,
+    "lines": 42,
+    "functions": 36,
+    "statements": 42,
+    "extension": [
+      ".js"
     ]
   },
   "dependencies": {
@@ -59,21 +73,26 @@
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {
+    "@istanbuljs/esm-loader-hook": "^0.3.0",
     "@istanbuljs/nyc-config-typescript": "^1.0.2",
+    "@types/chai": "^5.2.2",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/jasmine": "^5.1.8",
     "@types/js-yaml": "^4.0.9",
+    "@types/mocha": "^10.0.10",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.1.0",
     "@types/pdf-parse": "^1.1.5",
     "@types/sinon": "^17.0.4",
     "@types/sqlite3": "^3.1.11",
+    "@types/supertest": "^6.0.3",
     "jasmine": "^5.9.0",
     "jasmine-ts-console-reporter": "^3.1.1",
     "nodemon": "^3.1.10",
     "nyc": "^17.1.0",
     "sinon": "^21.0.0",
+    "supertest": "^7.1.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }

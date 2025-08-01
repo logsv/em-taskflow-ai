@@ -5,6 +5,8 @@ import databaseService from '../src/services/databaseService.js';
 import mcpService from '../src/services/mcpService.js';
 import ragService from '../src/services/ragService.js';
 
+const mcpTools = ['jira-tool-1', 'jira-tool-2'];
+
 describe('Agent Service', () => {
   let llmStub: sinon.SinonStub;
   let dbStub: sinon.SinonStub;
@@ -18,7 +20,7 @@ describe('Agent Service', () => {
     sinon.stub(mcpService, 'initialize').resolves();
     sinon.stub(mcpService, 'isReady').returns(true);
     sinon.stub(mcpService, 'getServerStatus').resolves({ notion: true, jira: true, calendar: true });
-    sinon.stub(mcpService, 'getToolsByServer').resolves([]);
+    sinon.stub(mcpService, 'getToolsByServer').resolves(mcpTools.map(name => ({ name })));
     ragStub = sinon.stub(ragService, 'searchRelevantChunks');
     sinon.stub(ragService, 'getStatus').resolves({ ready: true, vectorDB: true, embeddingService: true });
   });
@@ -95,7 +97,7 @@ describe('Agent Service', () => {
     await agentService.processQuery(userQuery);
 
     const finalPrompt = llmStub.secondCall.args[0];
-    expect(finalPrompt).toContain('Jira Tools Available:');
+    expect(finalPrompt).toContain('Available Jira MCP Tools:');
     expect(finalPrompt).toContain('jira-tool-1');
     expect(finalPrompt).toContain('jira-tool-2');
   });
