@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 # Configuration
 HOST="127.0.0.1"
 PORT="11434"
-LLM_MODEL="deepseek-r1:latest"
+LLM_MODEL="mistral:latest"
 EMBEDDING_MODEL="nomic-embed-text"
 
 echo -e "${BLUE}🚀 Starting Ollama Server with Embedding Support${NC}"

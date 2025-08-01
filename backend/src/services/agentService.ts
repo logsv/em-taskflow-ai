@@ -1,5 +1,5 @@
 // Agent service with integrated RAG, LLM, and MCP tools for complete agentic flow
-import llmService from './llmService.js';
+import enhancedLlmService from './enhancedLlmService.js';
 import databaseService from './databaseService.js';
 import mcpService from './mcpService.js';
 import ragService from './ragService.js';
@@ -37,7 +37,12 @@ Respond in JSON format:
 }`;
 
   try {
-    const response = await llmService.complete(intentPrompt, { temperature: 0.3 });
+    // Initialize enhanced LLM service if not already initialized
+    if (!enhancedLlmService.isInitialized()) {
+      await enhancedLlmService.initialize();
+    }
+    
+    const response = await enhancedLlmService.complete(intentPrompt, { temperature: 0.3 });
     const analysis = JSON.parse(response) as IntentAnalysis;
     console.log('Intent analysis:', analysis);
     return analysis;
@@ -302,9 +307,14 @@ Be thorough and provide maximum value by combining all available information sou
   }
   
   try {
-    const response = await llmService.complete(responsePrompt, { 
+    // Initialize enhanced LLM service if not already initialized
+    if (!enhancedLlmService.isInitialized()) {
+      await enhancedLlmService.initialize();
+    }
+    
+    const response = await enhancedLlmService.complete(responsePrompt, {
       temperature: 0.7,
-      max_tokens: 600 
+      maxTokens: 600
     });
     return response;
   } catch (error) {

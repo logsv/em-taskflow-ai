@@ -27,19 +27,11 @@ if (!PROVIDER) {
 }
 
 // OpenAI setup (only if API key is available)
-let openai: OpenAI | null = null;
-if (process.env.OPENAI_API_KEY) {
-  openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-}
-
-// HuggingFace setup (only if API key is available)
-let hf: HfInference | null = null;
-if (process.env.HF_API_KEY) {
-  hf = new HfInference(process.env.HF_API_KEY);
-}
+let openai: OpenAI = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : new OpenAI({ apiKey: 'dummy-key' });
+let hf: HfInference = process.env.HF_API_KEY ? new HfInference(process.env.HF_API_KEY) : new HfInference('dummy-key');
 
 // Ollama setup
-const OLLAMA_BASE_URL: string = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+let OLLAMA_BASE_URL: string = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 
 /**
  * Unified LLM completion interface
@@ -87,23 +79,28 @@ async function complete(prompt: string, options: LLMOptions = {}): Promise<strin
     // Fallback to Ollama if other providers fail
     if (PROVIDER !== 'ollama') {
       console.warn('Falling back to Ollama due to error');
-      return await completeWithOllama(prompt, options);
+      try {
+        return await completeWithOllama(prompt, options);
+      } catch (ollamaError) {
+        console.error('Ollama fallback failed:', ollamaError);
+        throw new Error('All LLM providers failed');
+      }
     }
-    return 'Error generating response';
+    throw new Error('LLM provider failed');
   }
 }
 
 async function completeWithOllama(prompt: string, options: LLMOptions = {}): Promise<string> {
   try {
     const response = await axios.post(`${OLLAMA_BASE_URL}/api/generate`, {
-      model: options.model || 'deepseek-r1:latest',
+      model: options.model || 'mistral:latest',
       prompt: prompt,
       stream: false,
     });
     return response.data.response || '';
   } catch (error) {
     console.error('Ollama Error:', error);
-    return 'Error: Ollama service unavailable';
+    throw new Error('Ollama service unavailable');
   }
 }
 
@@ -130,3 +127,13 @@ const llmService = {
 
 export default llmService;
 export { complete, getAvailableModels };
+
+// Export for testing purposes
+export const __test__ = {
+  openai: openai,
+  hf: hf,
+  setProvider: (p: LLMProvider) => { PROVIDER = p; },
+  setOllamaBaseUrl: (url: string) => { OLLAMA_BASE_URL = url; },
+  setHf: (instance: HfInference) => { hf = instance; },
+  completeWithOllama: completeWithOllama
+};

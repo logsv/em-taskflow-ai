@@ -2,8 +2,9 @@
   "compilerOptions": {
     "target": "ESNext",
     "module": "nodenext",
+    "moduleResolution": "nodenext",
     "outDir": "./dist",
-    "rootDir": ".",
+    "rootDir": "./src",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
@@ -11,6 +12,6 @@
     "resolveJsonModule": true,
     "lib": ["ESNext", "DOM"]
   },
-  "include": ["src/**/*", "test/**/*"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

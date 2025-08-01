@@ -116,11 +116,11 @@ start_ollama() {
     echo -e "${BLUE}📚 Ensuring required models are available...${NC}"
     
     # Check and pull LLM model
-    if ! curl -s "http://127.0.0.1:$OLLAMA_PORT/api/tags" | grep -q "deepseek-r1:latest"; then
-        echo -e "${YELLOW}⬇️  Pulling LLM model: deepseek-r1:latest${NC}"
-        ollama pull deepseek-r1:latest
+    if ! curl -s "http://127.0.0.1:$OLLAMA_PORT/api/tags" | grep -q "mistral:latest"; then
+        echo -e "${YELLOW}⬇️  Pulling LLM model: mistral:latest${NC}"
+        ollama pull mistral:latest
     else
-        echo -e "${GREEN}✅ LLM model 'deepseek-r1:latest' is available${NC}"
+        echo -e "${GREEN}✅ LLM model 'mistral:latest' is available${NC}"
     fi
     
     # Check and pull embedding model

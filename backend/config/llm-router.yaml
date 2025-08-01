@@ -3,15 +3,15 @@
 # Format: LLM_<PROVIDER_NAME>_<SETTING>
 
 # Global settings
-loadBalancingStrategy: cost_priority_round_robin  # round_robin | cost_priority_round_robin
-defaultModel: gpt-3.5-turbo
+loadBalancingStrategy: round_robin  # Use round_robin since we only have one provider
+defaultModel: mistral:latest  # Use mistral:latest as default since it's available in Ollama
 
 # Provider configurations
 providers:
-  # OpenAI Provider
+  # OpenAI Provider - DISABLED (no API key)
   - name: openai-prod
     type: openai
-    enabled: true
+    enabled: false  # Disabled because no API key is configured
     priority: 1  # Higher number = higher priority
     apiKey: ${OPENAI_API_KEY}  # Can be overridden by LLM_OPENAI_PROD_API_KEY
     baseUrl: https://api.openai.com/v1
@@ -38,10 +38,10 @@ providers:
       maxDelay: 30000        # Maximum delay in ms
       factor: 2              # Exponential backoff factor
 
-  # Anthropic Provider
+  # Anthropic Provider - DISABLED (no API key)
   - name: anthropic-prod
     type: anthropic
-    enabled: true
+    enabled: false  # Disabled because no API key is configured
     priority: 2
     apiKey: ${ANTHROPIC_API_KEY}
     baseUrl: https://api.anthropic.com/v1
@@ -60,10 +60,10 @@ providers:
       maxDelay: 30000
       factor: 2
 
-  # Google Gemini Provider
+  # Google Gemini Provider - DISABLED (no API key)
   - name: google-prod
     type: google
-    enabled: true
+    enabled: false  # Disabled because no API key is configured
     priority: 2
     apiKey: ${GOOGLE_API_KEY}
     baseUrl: https://generativelanguage.googleapis.com/v1beta
@@ -82,14 +82,18 @@ providers:
       maxDelay: 30000
       factor: 2
 
-  # Ollama Provider (local)
+  # Ollama Provider (local) - ENABLED as fallback
   - name: ollama-local
     type: ollama
     enabled: true
-    priority: 3
+    priority: 1  # Highest priority since it's the only available provider
     baseUrl: http://localhost:11434
     models:
-      - name: llama2
+      - name: mistral:latest  # Use mistral:latest as primary model
+        costPer1kInputTokens: 0
+        costPer1kOutputTokens: 0
+        maxTokens: 4096
+      - name: llama2  # Keep llama2 as fallback
         costPer1kInputTokens: 0
         costPer1kOutputTokens: 0
         maxTokens: 4096

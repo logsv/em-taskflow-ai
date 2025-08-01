@@ -8,7 +8,7 @@ import * as chromaService from './chromaService.js';
 // Dynamic pdf-parse import with error handling
 let pdfParse: any = null;
 
-async function loadPdfParse() {
+let loadPdfParse: any = async () => {
   if (pdfParse === null) {
     try {
       const pdfParseModule = await import('pdf-parse');
@@ -47,13 +47,31 @@ class RAGService {
   private embeddingModel = 'nomic-embed-text';
   private defaultCollection = 'pdf_chunks';
   private pdfDir: string;
+  private fs: any;
+  private chromaService: any;
+  private axios: any;
 
-  constructor() {
+  constructor(fsModule: any, chromaServiceModule: any, axiosModule: any) {
+    this.fs = fsModule;
+    this.chromaService = chromaServiceModule;
+    this.axios = axiosModule;
     // Ensure PDF storage directory exists
     this.pdfDir = path.join(__dirname, '../../data/pdfs/');
-    if (!fs.existsSync(this.pdfDir)) {
-      fs.mkdirSync(this.pdfDir, { recursive: true });
+    if (!this.fs.existsSync(this.pdfDir)) {
+      this.fs.mkdirSync(this.pdfDir, { recursive: true });
     }
+  }
+
+  public setChromaService(service: any) {
+    this.chromaService = service;
+  }
+
+  public setFs(fsModule: any) {
+    this.fs = fsModule;
+  }
+
+  public setAxios(axiosInstance: any) {
+    this.axios = axiosInstance;
   }
 
   /**
@@ -70,7 +88,7 @@ class RAGService {
       }
       
       // Read and parse PDF
-      const dataBuffer = fs.readFileSync(filePath);
+      const dataBuffer = this.fs.readFileSync(filePath);
       const pdfData = await pdfParseFunction(dataBuffer);
       
       if (!pdfData.text || pdfData.text.trim().length === 0) {
@@ -81,6 +99,7 @@ class RAGService {
 
       // Create chunks from PDF text
       const chunks = this.createChunks(pdfData.text);
+
       console.log(`🔪 Created ${chunks.length} chunks`);
 
       // Store chunks in vector database
@@ -136,7 +155,7 @@ class RAGService {
         description: 'PDF document chunks for RAG search'
       };
       
-      const result = await chromaService.createCollection(this.defaultCollection, metadata);
+      const result = await this.chromaService.createCollection(this.defaultCollection, metadata);
       
       if (result.success) {
         console.log(`✅ ${result.message}`);
@@ -172,7 +191,7 @@ class RAGService {
         const embedding = await this.generateEmbedding(text);
         
         // Store in Chroma using Python script
-        const result = await chromaService.addDocuments(
+        const result = await this.chromaService.addDocuments(
           this.defaultCollection,
           [text],
           [{
@@ -201,7 +220,7 @@ class RAGService {
    */
   private async generateEmbedding(text: string): Promise<number[]> {
     try {
-      const response = await axios.post(`${this.ollamaBaseUrl}/embeddings`, {
+      const response = await this.axios.post(`${this.ollamaBaseUrl}/embeddings`, {
         model: this.embeddingModel,
         prompt: text
       });
@@ -223,7 +242,7 @@ class RAGService {
       const queryEmbedding = await this.generateEmbedding(query);
 
       // Search in Chroma using Python script
-      const response = await chromaService.queryCollection(
+      const response = await this.chromaService.queryCollection(
         this.defaultCollection,
         [queryEmbedding],
         topK
@@ -272,7 +291,7 @@ class RAGService {
    */
   async isVectorDBAvailable(): Promise<boolean> {
     try {
-      const result = await chromaService.listCollections();
+      const result = await this.chromaService.listCollections();
       return result.success;
     } catch (error) {
       console.warn('⚠️ Vector database not available:', error);
@@ -285,7 +304,7 @@ class RAGService {
    */
   async isEmbeddingServiceAvailable(): Promise<boolean> {
     try {
-      await axios.post(`${this.ollamaBaseUrl}/embeddings`, {
+      await this.axios.post(`${this.ollamaBaseUrl}/embeddings`, {
         model: this.embeddingModel,
         prompt: 'test'
       });
@@ -316,5 +335,13 @@ class RAGService {
 }
 
 // Export singleton instance
-const ragService = new RAGService();
+const ragService = new RAGService(fs, chromaService, axios);
 export default ragService;
+
+export const __test__ = {
+  setPdfParse: (fn: any) => { pdfParse = fn; },
+  setLoadPdfParse: (fn: any) => { loadPdfParse = fn; }, // Add this line
+  setChromaService: (service: any) => { ragService.setChromaService(service); },
+  setFs: (fsModule: any) => { ragService.setFs(fsModule); },
+  setAxios: (axiosInstance: any) => { ragService.setAxios(axiosInstance); }
+};
