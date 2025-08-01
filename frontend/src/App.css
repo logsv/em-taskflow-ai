@@ -1,19 +1,97 @@
-.App {
-  text-align: center;
+.app {
+  display: flex;
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  background: #ffffff;
+  color: #343541;
 }
 
-.App {
+.main-content {
+  flex: 1;
   display: flex;
   flex-direction: column;
+  transition: margin-left 0.3s ease;
   min-height: 100vh;
-  font-family: 'Arial', sans-serif;
-  background-color: #f4f4f4;
 }
 
-main {
-  flex-grow: 1;
-  padding: 20px;
+.main-content.sidebar-open {
+  margin-left: 260px;
+}
+
+.main-content.sidebar-closed {
+  margin-left: 0;
+}
+
+.content-wrapper {
+  flex: 1;
   display: flex;
-  justify-content: center;
-  align-items: flex-start;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button {
+  font-family: inherit;
+}
+
+input, textarea {
+  font-family: inherit;
+}
+
+/* Global scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Focus styles */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #10a37f;
+  outline-offset: 2px;
+}
+
+/* Selection styles */
+::selection {
+  background: rgba(16, 163, 127, 0.2);
+  color: #343541;
+}
+
+/* Smooth transitions */
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .main-content.sidebar-open,
+  .main-content.sidebar-closed {
+    margin-left: 0;
+  }
+}
+
+/* Desktop sidebar behavior */
+@media (min-width: 769px) {
+  .main-content.sidebar-closed {
+    margin-left: 60px;
+  }
 }
