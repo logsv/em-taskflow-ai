@@ -1,5 +1,9 @@
 # EM TaskFlow
 
+[![Backend CI](https://github.com/logsv/em-taskflow/workflows/Backend%20CI/badge.svg)](https://github.com/logsv/em-taskflow/actions/workflows/backend-ci.yml)
+[![Tests](https://github.com/logsv/em-taskflow/workflows/Tests/badge.svg)](https://github.com/logsv/em-taskflow/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/logsv/em-taskflow/branch/main/graph/badge.svg)](https://codecov.io/gh/logsv/em-taskflow)
+
 ## Overview
 EM TaskFlow is an AI-powered productivity tool that supports Retrieval-Augmented Generation (RAG) using your own PDF documents and integrates with various services like Jira, Google Calendar, and Notion. You can upload PDFs and ask questions in chat—answers are generated using both your documents and a local LLM (Ollama). This integration allows for seamless task management and data synchronization across your connected platforms.
 
@@ -61,7 +65,7 @@ npm run build
   ```
 - Pull required models:
   ```sh
-  ollama pull deepseek-r1:latest
+  ollama pull mistral:latest
   ollama pull nomic-embed-text
   ```
 
@@ -115,6 +119,35 @@ npm start
 - You can extend this setup to use OpenAI or cloud vector DBs in the future.
 - The backend is now written in TypeScript, which provides better type safety and code maintainability.
 - For task management features, ensure MCP servers are properly configured and running.
+
+## CI/CD Pipeline
+
+This project includes a comprehensive CI/CD pipeline using GitHub Actions:
+
+### 🚀 Automated Testing
+- **Continuous Integration**: Automatically runs tests on every push and pull request
+- **TypeScript Compilation**: Validates TypeScript code compilation
+- **Code Coverage**: Generates and reports test coverage metrics
+- **Multi-environment Support**: Handles external service dependencies gracefully
+
+### 📊 Coverage Reporting
+- Minimum coverage thresholds: 42% statements, 29% branches, 36% functions, 42% lines
+- Coverage reports uploaded to Codecov (optional)
+- PR comments with coverage summaries
+
+### 🔧 Local CI Validation
+Test the CI setup locally:
+```bash
+cd backend
+./scripts/validate-ci.sh
+```
+
+### 📋 Workflow Files
+- `.github/workflows/backend-ci.yml` - Comprehensive backend testing with coverage
+- `.github/workflows/test.yml` - Simplified test execution
+- `.github/workflows/ci.yml` - Main CI workflow with path-based triggers
+
+For detailed CI/CD documentation, see [`.github/CICD.md`](.github/CICD.md).
 
 ---
 

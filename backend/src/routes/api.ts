@@ -8,6 +8,7 @@ import axios from 'axios';
 import { fileURLToPath } from 'url';
 import taskManager from '../services/taskManager.js';
 import llmService from '../services/llmService.js';
+import enhancedLlmService from '../services/enhancedLlmService.js';
 import agentService from '../services/agentService.js';
 import ragService from '../services/ragService.js';
 import databaseService from '../services/databaseService.js';
@@ -187,6 +188,107 @@ router.post('/rag-query', async (req: RAGQueryRequest, res: Response) => {
   } catch (err) {
     console.error('❌ RAG query error:', err);
     res.status(500).json({ error: 'Failed to process RAG query' });
+  }
+});
+
+// GET /api/health - Enhanced LLM service health check
+router.get('/health', async (req: Request, res: Response) => {
+  try {
+    // Initialize enhanced LLM service if not already initialized
+    if (!enhancedLlmService.isInitialized()) {
+      await enhancedLlmService.initialize();
+    }
+
+    const healthStatus = await enhancedLlmService.healthCheck();
+    
+    res.status(healthStatus.status === 'healthy' ? 200 : 503).json({
+      status: healthStatus.status,
+      message: healthStatus.message,
+      providers: healthStatus.providers,
+      timestamp: new Date().toISOString(),
+      service: 'Enhanced LLM Service with Router'
+    });
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(503).json({
+      status: 'unhealthy',
+      message: `Health check failed: ${(error as Error).message}`,
+      providers: {},
+      timestamp: new Date().toISOString(),
+      service: 'Enhanced LLM Service with Router'
+    });
+  }
+});
+
+// GET /api/llm-status - Get detailed LLM provider status
+router.get('/llm-status', async (req: Request, res: Response) => {
+  try {
+    // Initialize enhanced LLM service if not already initialized
+    if (!enhancedLlmService.isInitialized()) {
+      await enhancedLlmService.initialize();
+    }
+
+    const providerStatus = enhancedLlmService.getProviderStatus();
+    const availableModels = enhancedLlmService.getAvailableModels();
+    const availableProviders = enhancedLlmService.getAvailableProviders();
+
+    res.json({
+      status: 'success',
+      data: {
+        providers: providerStatus,
+        availableModels,
+        availableProviders,
+        initialized: enhancedLlmService.isInitialized()
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('LLM status error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: `Failed to get LLM status: ${(error as Error).message}`,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// POST /api/llm-test - Test LLM functionality with different providers
+router.post('/llm-test', async (req: Request, res: Response) => {
+  try {
+    const { prompt = 'Hello, world!', model, preferredProviders, ...options } = req.body;
+
+    // Initialize enhanced LLM service if not already initialized
+    if (!enhancedLlmService.isInitialized()) {
+      await enhancedLlmService.initialize();
+    }
+
+    const startTime = Date.now();
+    const response = await enhancedLlmService.completeWithMetadata(prompt, {
+      model,
+      preferredProviders,
+      ...options
+    });
+    const endTime = Date.now();
+
+    res.json({
+      status: 'success',
+      data: {
+        response: response.text,
+        provider: response.provider,
+        model: response.model,
+        usage: response.usage,
+        metadata: response.metadata,
+        responseTime: endTime - startTime
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('LLM test error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: `LLM test failed: ${(error as Error).message}`,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 
