@@ -1,20 +1,26 @@
 import React, { useState } from 'react';
 import Chat from './components/Chat';
 import PDFUpload from './components/PDFUpload';
-import NavBar from './components/NavBar';
+import Sidebar from './components/Sidebar';
 import './App.css';
 
 function App() {
   const [view, setView] = useState('chat');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   return (
-    <div>
-      <NavBar setView={setView} view={view} />
-      <div style={{ margin: '20px' }}>
-        <button onClick={() => setView('chat')} disabled={view === 'chat'}>Chat</button>
-        <button onClick={() => setView('pdf')} disabled={view === 'pdf'}>PDF Upload</button>
-      </div>
-      {view === 'chat' ? <Chat /> : <PDFUpload />}
+    <div className="app">
+      <Sidebar 
+        view={view} 
+        setView={setView} 
+        isOpen={sidebarOpen} 
+        setIsOpen={setSidebarOpen} 
+      />
+      <main className={`main-content ${sidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
+        <div className="content-wrapper">
+          {view === 'chat' ? <Chat /> : <PDFUpload />}
+        </div>
+      </main>
     </div>
   );
 }
