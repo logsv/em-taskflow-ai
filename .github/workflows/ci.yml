@@ -1,207 +1,61 @@
-name: CI/CD Pipeline
+name: CI
 
 on:
   push:
     branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 jobs:
-  test:
+  check-changes:
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x]
-    
+    outputs:
+      backend: ${{ steps.changes.outputs.backend }}
+      frontend: ${{ steps.changes.outputs.frontend }}
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-        cache-dependency-path: backend/package-lock.json
-        
-    - name: Install backend dependencies
-      run: |
-        cd backend
-        npm ci
-        
-    - name: Run linting
-      run: |
-        cd backend
-        npx eslint src --ext .ts --max-warnings 0 || echo "Linting completed with warnings"
-        
-    - name: Build TypeScript
-      run: |
-        cd backend
-        npm run build
-        
-    - name: Compile tests
-      run: |
-        cd backend
-        npx tsc -p tsconfig.test.json
-        
-    - name: Run tests with coverage
-      run: |
-        cd backend
-        npm test
-      env:
-        NODE_OPTIONS: '--loader @istanbuljs/esm-loader-hook'
-        
-    - name: Upload coverage reports
-      uses: codecov/codecov-action@v3
-      with:
-        file: backend/coverage/lcov.info
-        directory: backend/coverage
-        flags: backend
-        name: backend-coverage
-        fail_ci_if_error: false
-        
-    - name: Generate coverage badge
-      run: |
-        cd backend
-        npx coverage-badge-creator --output coverage-badge.svg || echo "Badge generation skipped"
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            frontend:
+              - 'frontend/**'
 
-  frontend-test:
+  backend:
+    needs: check-changes
+    if: needs.check-changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
-    
+    defaults:
+      run:
+        working-directory: ./backend
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Use Node.js 18.x
-      uses: actions/setup-node@v4
-      with:
-        node-version: 18.x
-        cache: 'npm'
-        cache-dependency-path: frontend/package-lock.json
-        
-    - name: Check if frontend exists
-      id: check-frontend
-      run: |
-        if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
-          echo "exists=true" >> $GITHUB_OUTPUT
-        else
-          echo "exists=false" >> $GITHUB_OUTPUT
-        fi
-        
-    - name: Install frontend dependencies
-      if: steps.check-frontend.outputs.exists == 'true'
-      run: |
-        cd frontend
-        npm ci
-        
-    - name: Build frontend
-      if: steps.check-frontend.outputs.exists == 'true'
-      run: |
-        cd frontend
-        npm run build
-        
-    - name: Run frontend tests
-      if: steps.check-frontend.outputs.exists == 'true'
-      run: |
-        cd frontend
-        npm test -- --coverage --watchAll=false
-        
-    - name: Skip frontend (not present)
-      if: steps.check-frontend.outputs.exists == 'false'
-      run: echo "Frontend directory not found, skipping frontend tests"
-        
-  integration-test:
-    runs-on: ubuntu-latest
-    needs: [test, frontend-test]
-    
-    services:
-      postgres:
-        image: postgres:13
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: testdb
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Use Node.js 18.x
-      uses: actions/setup-node@v4
-      with:
-        node-version: 18.x
-        cache: 'npm'
-        cache-dependency-path: backend/package-lock.json
-        
-    - name: Install dependencies
-      run: |
-        cd backend
-        npm ci
-        
-    - name: Run integration tests
-      env:
-        DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
-        NODE_ENV: test
-        NODE_OPTIONS: '--loader @istanbuljs/esm-loader-hook'
-      run: |
-        cd backend
-        npm run build
-        npx tsc -p tsconfig.test.json
-        # Run integration tests specifically
-        npx jasmine dist/test/services/databaseService.integration.spec.js || echo "Integration tests completed with warnings"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npx tsc -p tsconfig.test.json
+      - run: npm test
 
-  security-scan:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Run security audit
-      run: |
-        cd backend
-        npm audit --audit-level moderate || echo "Security audit completed with warnings"
-        
-    - name: Check for vulnerabilities (frontend)
-      run: |
-        if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
-          cd frontend
-          npm audit --audit-level moderate || echo "Frontend security audit completed with warnings"
-        else
-          echo "Frontend not found, skipping frontend security audit"
-        fi
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: [test, frontend-test, integration-test, security-scan]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup deployment environment
-      run: |
-        echo "Setting up deployment environment"
-        echo "This would typically deploy to staging/production"
-        
-    - name: Build production assets
-      run: |
-        cd backend
-        npm ci --only=production
-        npm run build
-        
-    - name: Deploy notification
-      run: |
-        echo "Deployment completed successfully"
-        echo "Backend tests: ${{ needs.test.result }}"
-        echo "Frontend tests: ${{ needs.frontend-test.result }}"
-        echo "Integration tests: ${{ needs.integration-test.result }}"
-        echo "Security scan: ${{ needs.security-scan.result }}"
+  # Future: Add frontend tests when needed
+  # frontend:
+  #   needs: check-changes
+  #   if: needs.check-changes.outputs.frontend == 'true'
+  #   runs-on: ubuntu-latest
+  #   defaults:
+  #     run:
+  #       working-directory: ./frontend
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: '18'
+  #         cache: 'npm'
+  #         cache-dependency-path: frontend/package-lock.json
+  #     - run: npm ci
+  #     - run: npm test

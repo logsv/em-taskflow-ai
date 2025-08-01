@@ -38,7 +38,7 @@ describe('LLM Service Unit Tests', () => {
       const callArgs = axiosPostStub.getCall(0).args;
       expect(callArgs[0]).toBe('http://localhost:11434/api/generate');
       expect(callArgs[1].prompt).toBe('Test prompt');
-      expect(callArgs[1].model).toBe('deepseek-r1:latest');
+      expect(callArgs[1].model).toBe('mistral:latest');
       expect(callArgs[1].stream).toBe(false);
     });
 
@@ -139,7 +139,7 @@ describe('LLM Service Unit Tests', () => {
       const mockResponse = {
         data: {
           models: [
-            { name: 'deepseek-r1:latest' },
+            { name: 'mistral:latest' },
             { name: 'llama2:7b' },
             { name: 'codellama:13b' }
           ]
@@ -149,7 +149,7 @@ describe('LLM Service Unit Tests', () => {
 
       const models = await llmService.getAvailableModels();
 
-      expect(models).toEqual(['deepseek-r1:latest', 'llama2:7b', 'codellama:13b']);
+      expect(models).toEqual(['mistral:latest', 'llama2:7b', 'codellama:13b']);
       expect(axiosGetStub.calledOnce).toBe(true);
       expect(axiosGetStub.calledWith('http://localhost:11434/api/tags')).toBe(true);
     });
