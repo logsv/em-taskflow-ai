@@ -1,9 +1,9 @@
-import { LLMRouter, type LLMRequest, type LLMResponse } from './llmRouter.js';
-import type { RouterConfig } from '../types/config.js';
+import { EnhancedLLMRouter } from './newLlmRouter.js';
+import type { LLMRequest, LLMResponse, RouterConfig } from 'llm-router';
 
 // Enhanced LLM service that uses the sophisticated LLM router
 class EnhancedLLMService {
-  private router: LLMRouter | null = null;
+  private router: EnhancedLLMRouter | null = null;
   private initialized = false;
 
   /**
@@ -12,7 +12,7 @@ class EnhancedLLMService {
   async initialize(configPath?: string): Promise<void> {
     try {
       console.log('🚀 Initializing Enhanced LLM Service with router...');
-      this.router = await LLMRouter.create(configPath);
+      this.router = await EnhancedLLMRouter.create(configPath);
       this.initialized = true;
       console.log('✅ Enhanced LLM Service initialized successfully');
     } catch (error) {
@@ -160,9 +160,8 @@ class EnhancedLLMService {
       return [];
     }
 
-    // This would need to be implemented in the router
-    // For now, return empty array
-    return [];
+    const status = this.router!.getAllProvidersStatus();
+    return status.map(p => p.name);
   }
 
   /**

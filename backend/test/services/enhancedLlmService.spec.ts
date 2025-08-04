@@ -2,7 +2,7 @@
 
 import sinon from 'sinon';
 import { EnhancedLLMService, __test__ } from '../../src/services/enhancedLlmService.js';
-import { LLMRouter } from '../../src/services/llmRouter.js';
+import { EnhancedLLMRouter } from '../../src/services/newLlmRouter.js';
 
 describe('EnhancedLLMService', () => {
   let sandbox: sinon.SinonSandbox;
@@ -17,11 +17,13 @@ describe('EnhancedLLMService', () => {
     consoleLogStub = sandbox.stub(console, 'log');
     consoleErrorStub = sandbox.stub(console, 'error');
 
-    // Mock LLMRouter
+    // Mock EnhancedLLMRouter
     mockRouter = {
       execute: sinon.stub(),
       getProviderStatus: sinon.stub(),
-      updateProviderConfig: sinon.stub()
+      getAllProvidersStatus: sinon.stub(),
+      updateProviderConfig: sinon.stub(),
+      getConfig: sinon.stub()
     };
   });
 
@@ -31,7 +33,7 @@ describe('EnhancedLLMService', () => {
 
   describe('initialization', () => {
     it('should initialize successfully', async () => {
-      const createStub = sandbox.stub(LLMRouter, 'create').resolves(mockRouter);
+      const createStub = sandbox.stub(EnhancedLLMRouter, 'create').resolves(mockRouter);
 
       await service.initialize();
 
@@ -42,7 +44,7 @@ describe('EnhancedLLMService', () => {
     });
 
     it('should initialize with custom config path', async () => {
-      const createStub = sandbox.stub(LLMRouter, 'create').resolves(mockRouter);
+      const createStub = sandbox.stub(EnhancedLLMRouter, 'create').resolves(mockRouter);
 
       await service.initialize('custom-config.yaml');
 
@@ -52,7 +54,7 @@ describe('EnhancedLLMService', () => {
 
     it('should handle initialization errors', async () => {
       const error = new Error('Router initialization failed');
-      sandbox.stub(LLMRouter, 'create').rejects(error);
+      sandbox.stub(EnhancedLLMRouter, 'create').rejects(error);
 
       try {
         await service.initialize();
@@ -71,7 +73,7 @@ describe('EnhancedLLMService', () => {
 
   describe('complete', () => {
     beforeEach(async () => {
-      sandbox.stub(LLMRouter, 'create').resolves(mockRouter);
+      sandbox.stub(EnhancedLLMRouter, 'create').resolves(mockRouter);
       await service.initialize();
     });
 
@@ -161,7 +163,7 @@ describe('EnhancedLLMService', () => {
 
   describe('completeWithMetadata', () => {
     beforeEach(async () => {
-      sandbox.stub(LLMRouter, 'create').resolves(mockRouter);
+      sandbox.stub(EnhancedLLMRouter, 'create').resolves(mockRouter);
       await service.initialize();
     });
 
@@ -205,7 +207,7 @@ describe('EnhancedLLMService', () => {
     });
 
     it('should return available models when initialized', async () => {
-      sandbox.stub(LLMRouter, 'create').resolves(mockRouter);
+      sandbox.stub(EnhancedLLMRouter, 'create').resolves(mockRouter);
       await service.initialize();
 
       const models = service.getAvailableModels();
@@ -219,7 +221,7 @@ describe('EnhancedLLMService', () => {
 
   describe('getProviderStatus', () => {
     beforeEach(async () => {
-      sandbox.stub(LLMRouter, 'create').resolves(mockRouter);
+      sandbox.stub(EnhancedLLMRouter, 'create').resolves(mockRouter);
       await service.initialize();
     });
 
@@ -255,7 +257,7 @@ describe('EnhancedLLMService', () => {
 
   describe('updateProviderConfig', () => {
     beforeEach(async () => {
-      sandbox.stub(LLMRouter, 'create').resolves(mockRouter);
+      sandbox.stub(EnhancedLLMRouter, 'create').resolves(mockRouter);
       await service.initialize();
     });
 
@@ -286,7 +288,7 @@ describe('EnhancedLLMService', () => {
     });
 
     it('should return healthy when service is working', async () => {
-      sandbox.stub(LLMRouter, 'create').resolves(mockRouter);
+      sandbox.stub(EnhancedLLMRouter, 'create').resolves(mockRouter);
       await service.initialize();
 
       mockRouter.execute.resolves({
@@ -313,7 +315,7 @@ describe('EnhancedLLMService', () => {
     });
 
     it('should return unhealthy when completion fails', async () => {
-      sandbox.stub(LLMRouter, 'create').resolves(mockRouter);
+      sandbox.stub(EnhancedLLMRouter, 'create').resolves(mockRouter);
       await service.initialize();
 
       const error = new Error('Completion failed');

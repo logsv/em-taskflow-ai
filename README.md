@@ -31,10 +31,12 @@ EM TaskFlow employs a multi-layered architecture:
 
 ### 🧠 Intelligent LLM Router
 - **Multi-Provider Support**: OpenAI, Anthropic, Google Gemini, and local Ollama
+- **Production-Ready**: Built on the [llm-router](https://www.npmjs.com/package/llm-router) npm package
 - **Load Balancing**: Round-robin and cost-priority routing strategies
 - **Circuit Breakers**: Automatic failover when providers are unavailable
 - **Rate Limiting**: Configurable request throttling and concurrency control
 - **Retry Logic**: Exponential backoff with configurable retry policies
+- **Metrics Tracking**: Comprehensive request/response metrics and performance monitoring
 
 ### 🤖 AI Agent System
 - **Intent Analysis**: Automatically determines user intent and required data sources
@@ -136,7 +138,7 @@ npm start
 
 ### 🧠 LLM Router System
 
-The LLM Router provides intelligent routing across multiple LLM providers with enterprise-grade reliability features:
+The LLM Router provides intelligent routing across multiple LLM providers with enterprise-grade reliability features. Built on the production-ready [llm-router](https://www.npmjs.com/package/llm-router) npm package:
 
 #### **Multi-Provider Support**
 - **OpenAI**: GPT-3.5, GPT-4, GPT-4 Turbo
