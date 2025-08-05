@@ -47,6 +47,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Add /usr/local/bin to PATH to find ollama
+export PATH=$PATH:/usr/local/bin
+
 # Check if Ollama is installed
 if ! command -v ollama &> /dev/null; then
     echo "❌ Ollama is not installed. Please install it first:"

@@ -160,8 +160,7 @@ class EnhancedLLMService {
       return [];
     }
 
-    const status = this.router!.getAllProvidersStatus();
-    return status.map(p => p.name);
+    return this.router!.getAvailableProviders();
   }
 
   /**
@@ -192,25 +191,16 @@ class EnhancedLLMService {
     }
 
     try {
-      // Test with a simple prompt
-      const testPrompt = 'Hello';
-      const response = await this.complete(testPrompt, { 
-        maxTokens: 10,
-        temperature: 0.1 
-      });
-
-      const providers = this.getProviderStatus();
-      const healthyProviders = Object.values(providers).filter((p: any) => p && p.enabled);
-
+      const result = await this.router!.healthCheck();
       return {
-        status: healthyProviders.length > 0 ? 'healthy' : 'degraded',
-        providers,
-        message: `Service operational with ${healthyProviders.length} healthy providers`
+        status: result.status as 'healthy' | 'unhealthy',
+        providers: result.providers,
+        message: result.message
       };
     } catch (error) {
       return {
         status: 'unhealthy',
-        providers: this.getProviderStatus(),
+        providers: this.router!.getAllProvidersStatus(),
         message: `Health check failed: ${(error as Error).message}`
       };
     }

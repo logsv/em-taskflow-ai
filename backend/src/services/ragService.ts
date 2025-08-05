@@ -4,6 +4,7 @@ import path from 'path';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
 import * as chromaService from './chromaService.js';
+import config from '../config/config.js';
 
 // Dynamic pdf-parse import with error handling
 let pdfParse: any = null;
@@ -43,9 +44,10 @@ interface RAGSearchResult {
 }
 
 class RAGService {
-  private ollamaBaseUrl = 'http://localhost:11434/api';
-  private embeddingModel = 'nomic-embed-text';
-  private defaultCollection = 'pdf_chunks';
+  private ollamaBaseUrl = config.get('llm.ollama.baseUrl') + '/api';
+  private embeddingModel = config.get('rag.embeddingModel');
+  private defaultCollection = config.get('rag.defaultCollection');
+  private maxChunkSize = config.get('rag.maxChunkSize');
   private pdfDir: string;
   private fs: any;
   private chromaService: any;
@@ -120,7 +122,7 @@ class RAGService {
   /**
    * Create text chunks from PDF content
    */
-  private createChunks(text: string, maxChunkSize: number = 1000): string[] {
+  private createChunks(text: string, maxChunkSize: number = this.maxChunkSize): string[] {
     // Split by paragraphs first
     const paragraphs = text.split('\n\n').filter(p => p.trim().length > 0);
     const chunks: string[] = [];
@@ -223,11 +225,18 @@ class RAGService {
       const response = await this.axios.post(`${this.ollamaBaseUrl}/embeddings`, {
         model: this.embeddingModel,
         prompt: text
+      }, {
+        timeout: 30000 // 30 second timeout for embeddings
       });
+      
+      if (!response.data.embedding || !Array.isArray(response.data.embedding)) {
+        throw new Error('Invalid embedding response from Ollama');
+      }
+      
       return response.data.embedding;
-    } catch (error) {
-      console.error('❌ Embedding generation failed:', error);
-      throw new Error('Failed to generate embedding');
+    } catch (error: any) {
+      console.error('❌ Embedding generation failed:', error.message);
+      throw new Error(`Failed to generate embedding: ${error.message}`);
     }
   }
 
@@ -291,10 +300,16 @@ class RAGService {
    */
   async isVectorDBAvailable(): Promise<boolean> {
     try {
-      const result = await this.chromaService.listCollections();
-      return result.success;
-    } catch (error) {
-      console.warn('⚠️ Vector database not available:', error);
+      // Use v2 API heartbeat endpoint with configured host and port
+      const chromaUrl = `http://${config.get('vectorDb.chroma.host')}:${config.get('vectorDb.chroma.port')}/api/v2/heartbeat`;
+      const response = await this.axios.get(chromaUrl, {
+        timeout: 2000
+      });
+      
+      // ChromaDB is running if heartbeat returns 200 with nanosecond timestamp
+      return response.status === 200 && response.data && response.data['nanosecond heartbeat'];
+    } catch (error: any) {
+      console.warn('⚠️ Vector database not available:', error.message);
       return false;
     }
   }
@@ -304,11 +319,12 @@ class RAGService {
    */
   async isEmbeddingServiceAvailable(): Promise<boolean> {
     try {
-      await this.axios.post(`${this.ollamaBaseUrl}/embeddings`, {
-        model: this.embeddingModel,
-        prompt: 'test'
+      // Simple HTTP check to Ollama without calling embeddings API
+      const ollamaVersionUrl = `${config.get('llm.ollama.baseUrl')}/api/version`;
+      const response = await this.axios.get(ollamaVersionUrl, {
+        timeout: 2000
       });
-      return true;
+      return response.status === 200;
     } catch (error) {
       console.warn('⚠️ Embedding service not available:', error);
       return false;

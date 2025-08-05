@@ -1,115 +1,235 @@
-import { MultiServerMCPClient } from '@langchain/mcp-adapters';
+import { MCPClient, MCPAgent } from 'mcp-use';
+import config from '../config/config.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
 /**
- * MCP Service using LangChain MCP Adapters
+ * MCP Service using mcp-use
  * Manages connections to multiple MCP servers (Notion, Jira/Atlassian, Google Calendar)
  */
 class MCPService {
-  private client: MultiServerMCPClient | null = null;
+  private client: MCPClient | null = null;
+  private agent: MCPAgent | null = null;
   private tools: any[] = [];
   private isInitialized = false;
+  private serverConfig: any = {};
 
   /**
    * Initialize the MCP client with all server configurations
    */
   async initialize(): Promise<void> {
     try {
-      console.log('Initializing MCP Service with LangChain adapters...');
+      console.log('Initializing MCP Service with mcp-use...');
 
-      this.client = new MultiServerMCPClient({
-        // Global tool configuration options
-        throwOnLoadError: false, // Don't throw if a server fails to load
-        prefixToolNameWithServerName: true, // Prefix tools with server name for clarity
-        useStandardContentBlocks: true, // Use standardized content format
-        
-        // MCP Server configurations
-        mcpServers: {
-          // Official Notion MCP Server
-          notion: {
-            transport: 'stdio',
-            command: 'npx',
-            args: ['-y', '@notionhq/notion-mcp-server'],
-            env: {
-              NOTION_API_KEY: process.env.NOTION_API_KEY || '',
-              NOTION_VERSION: '2022-06-28'
-            },
-            restart: {
-              enabled: true,
-              maxAttempts: 3,
-              delayMs: 1000,
-            }
-          },
+      // Build MCP server configurations based on enabled flags
+      const mcpServers: any = {};
 
-          // Google Calendar MCP Server
-          calendar: {
-            transport: 'stdio',
-            command: 'npx',
-            args: ['-y', '@cocal/google-calendar-mcp'],
-            env: {
-              GOOGLE_OAUTH_CREDENTIALS: process.env.GOOGLE_OAUTH_CREDENTIALS || '',
-              GOOGLE_CALENDAR_ID: process.env.GOOGLE_CALENDAR_ID || 'primary'
-            },
-            restart: {
-              enabled: true,
-              maxAttempts: 3,
-              delayMs: 1000,
-            }
-          },
-
-          // Jira Context MCP Server (locally built)
-          // Using the cloned and built repository from rahulthedevil/Jira-Context-MCP
-          jira: {
-            transport: 'stdio',
-            command: 'node',
-            args: ['./mcp-servers/jira-context-mcp/dist/index.js'],
-            env: {
-              JIRA_URL: process.env.JIRA_URL || '',
-              JIRA_USERNAME: process.env.JIRA_USERNAME || '',
-              JIRA_API_TOKEN: process.env.JIRA_API_TOKEN || '',
-              JIRA_PROJECT_KEY: process.env.JIRA_PROJECT_KEY || ''
-            },
-            restart: {
-              enabled: true,
-              maxAttempts: 3,
-              delayMs: 1000,
-            }
+      // Add Notion server if enabled
+      if (config.get('mcp.notion.enabled') && config.get('mcp.notion.apiKey')) {
+        mcpServers.notion = {
+          command: 'npx',
+          args: ['-y', '@notionhq/notion-mcp-server'],
+          env: {
+            NOTION_API_KEY: config.get('mcp.notion.apiKey'),
+            NOTION_VERSION: '2022-06-28'
           }
-        }
-      });
+        };
+      }
 
-      // Load all available tools from MCP servers
-      this.tools = await this.client.getTools();
+      // Add Google Calendar server if enabled
+      if (config.get('mcp.google.enabled') && config.get('mcp.google.oauthCredentials')) {
+        mcpServers.calendar = {
+          command: 'npx',
+          args: ['-y', '@cocal/google-calendar-mcp'],
+          env: {
+            GOOGLE_OAUTH_CREDENTIALS: config.get('mcp.google.oauthCredentials'),
+            GOOGLE_CALENDAR_ID: config.get('mcp.google.calendarId')
+          }
+        };
+      }
+
+      // Add Jira server if enabled
+      if (config.get('mcp.jira.enabled') && config.get('mcp.jira.url') && config.get('mcp.jira.apiToken')) {
+        mcpServers.jira = {
+          command: 'node',
+          args: ['./mcp-servers/jira-context-mcp/dist/index.js'],
+          env: {
+            JIRA_URL: config.get('mcp.jira.url'),
+            JIRA_USERNAME: config.get('mcp.jira.username'),
+            JIRA_API_TOKEN: config.get('mcp.jira.apiToken'),
+            JIRA_PROJECT_KEY: config.get('mcp.jira.projectKey')
+          }
+        };
+      }
+
+      console.log('🔧 Enabled MCP servers:', Object.keys(mcpServers));
+
+      // Store server config and create client
+      this.serverConfig = { mcpServers };
+      this.client = MCPClient.fromDict(this.serverConfig);
+
+      // Initialize LLM for the agent (only if OpenAI key is available)
+      const openaiKey = config.get('llm.openai.apiKey') || process.env.OPENAI_API_KEY;
+      
+      if (openaiKey && openaiKey.trim() !== '') {
+        try {
+          // Use dynamic import to get ChatOpenAI from mcp-use's bundled LangChain
+          const { ChatOpenAI } = await import('@langchain/openai');
+          
+          const llm = new ChatOpenAI({
+            modelName: 'gpt-4o',
+            apiKey: openaiKey,
+            temperature: 0.7
+          } as any); // Use 'as any' to bypass type checking issues
+
+          // Create MCP agent
+          this.agent = new MCPAgent({
+            llm: llm as any,
+            client: this.client,
+            maxSteps: 20
+          });
+          console.log('✅ MCP Agent initialized with OpenAI');
+        } catch (llmError) {
+          console.warn('⚠️ Could not initialize OpenAI LLM:', llmError);
+          this.agent = null;
+        }
+      } else {
+        console.log('⚠️ MCP Agent not initialized - OpenAI API key not provided');
+        console.log('   Direct tool execution will still work, but agent queries will require OpenAI');
+        this.agent = null;
+      }
+
+      // Get available tools info through agent query
+      try {
+        if (this.agent) {
+          const toolsInfo = await this.agent.run('What tools are available? List all available tools and their descriptions.');
+          console.log(`✅ MCP Service initialized successfully`);
+          console.log('Available tools info:', toolsInfo);
+          // Store tools as empty array since we'll query dynamically
+          this.tools = [];
+        } else {
+          console.log('✅ MCP Service initialized (client only - no agent)');
+          this.tools = [];
+        }
+      } catch (toolError) {
+        console.warn('⚠️ Could not get tools info initially:', toolError);
+        this.tools = [];
+      }
+
       this.isInitialized = true;
 
-      console.log(`MCP Service initialized successfully with ${this.tools.length} tools`);
-      console.log('Available tools:', this.tools.map(tool => tool.name));
-
     } catch (error) {
-      console.error('Failed to initialize MCP Service:', error);
+      console.error('❌ Failed to initialize MCP Service:', error);
       // Don't throw - allow the service to continue with limited functionality
       this.isInitialized = false;
     }
   }
 
   /**
-   * Get all available MCP tools
+   * Get all available MCP tools (returns info about tools via agent query)
    */
   async getTools(): Promise<any[]> {
     if (!this.isInitialized) {
       await this.initialize();
     }
-    return this.tools;
+    
+    if (!this.agent) {
+      console.warn('⚠️ No agent available - cannot list tools');
+      return [];
+    }
+
+    try {
+      // Query for available tools through the agent
+      const toolsInfo = await this.agent.run('List all available tools with their names and descriptions in JSON format.');
+      
+      // Try to parse JSON response or return text info
+      try {
+        const parsedTools = JSON.parse(toolsInfo);
+        return Array.isArray(parsedTools) ? parsedTools : [{ info: toolsInfo }];
+      } catch {
+        // If not JSON, return as text info
+        return [{ info: toolsInfo }];
+      }
+    } catch (error) {
+      console.warn('⚠️ Could not get tools:', error);
+      return []; // Return empty array
+    }
   }
 
   /**
    * Get tools from a specific MCP server
    */
   async getToolsByServer(serverName: string): Promise<any[]> {
-    const allTools = await this.getTools();
-    return allTools.filter(tool => tool.name.startsWith(`${serverName}_`));
+    if (!this.agent) {
+      return [];
+    }
+
+    try {
+      const toolsInfo = await this.agent.run(`List all available tools from the ${serverName} server with their names and descriptions.`);
+      return [{ server: serverName, info: toolsInfo }];
+    } catch (error) {
+      console.warn(`⚠️ Could not get tools for server ${serverName}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Execute an MCP tool with parameters (via agent query)
+   */
+  async executeTool(toolName: string, parameters: any = {}): Promise<any> {
+    if (!this.agent) {
+      throw new Error('MCP Agent not initialized');
+    }
+
+    try {
+      // Construct a query to execute the specific tool
+      const paramString = Object.keys(parameters).length > 0 
+        ? ` with parameters: ${JSON.stringify(parameters)}`
+        : '';
+      
+      const query = `Execute the ${toolName} tool${paramString}`;
+      const result = await this.agent.run(query);
+      return { tool: toolName, parameters, result };
+    } catch (error) {
+      console.error(`Error executing tool ${toolName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Run an agent query across MCP servers
+   */
+  async runQuery(query: string, maxSteps: number = 20): Promise<string> {
+    if (!this.agent) {
+      throw new Error('MCP Agent not initialized');
+    }
+
+    try {
+      const result = await this.agent.run(query, maxSteps);
+      return result;
+    } catch (error) {
+      console.error('Error running MCP agent query:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stream an agent query for real-time responses
+   */
+  async *streamQuery(query: string, maxSteps: number = 20): AsyncGenerator<any, void, unknown> {
+    if (!this.agent) {
+      throw new Error('MCP Agent not initialized');
+    }
+
+    try {
+      for await (const step of this.agent.stream(query, maxSteps)) {
+        yield step;
+      }
+    } catch (error) {
+      console.error('Error streaming MCP agent query:', error);
+      throw error;
+    }
   }
 
   /**
@@ -132,9 +252,10 @@ class MCPService {
 
     for (const serverName of serverNames) {
       try {
-        // Try to get tools from each server to check connectivity
+        // Check if the server is configured and has tools available
+        const isConfigured = this.serverConfig.mcpServers && this.serverConfig.mcpServers[serverName];
         const serverTools = await this.getToolsByServer(serverName);
-        status[serverName] = serverTools.length > 0;
+        status[serverName] = isConfigured && serverTools.length > 0;
       } catch (error) {
         console.warn(`Server ${serverName} is not available:`, error);
         status[serverName] = false;
@@ -150,23 +271,45 @@ class MCPService {
   async close(): Promise<void> {
     if (this.client) {
       try {
-        await this.client.close();
-        console.log('MCP Service connections closed');
+        // mcp-use uses closeAllSessions method
+        if (typeof (this.client as any).closeAllSessions === 'function') {
+          await (this.client as any).closeAllSessions();
+        }
+        console.log('✅ MCP Service connections closed');
       } catch (error) {
-        console.error('Error closing MCP Service:', error);
+        console.error('❌ Error closing MCP Service:', error);
       }
     }
     this.isInitialized = false;
     this.client = null;
+    this.agent = null;
     this.tools = [];
+    this.serverConfig = {};
   }
 
   /**
    * Restart the MCP service (useful for reconnecting)
    */
   async restart(): Promise<void> {
+    console.log('🔄 Restarting MCP Service...');
     await this.close();
     await this.initialize();
+  }
+
+  /**
+   * Get the MCP client for use by agent service
+   * This allows the agent to access MCP tools directly
+   */
+  getClient(): any {
+    return this.client;
+  }
+
+  /**
+   * Get the MCP agent for use by agent service
+   * This allows integration with the RAG query pipeline
+   */
+  getAgent(): any {
+    return this.agent;
   }
 }
 

@@ -1,25 +1,26 @@
 import { ResilientRouter, type LLMRequest, type LLMResponse, type RouterConfig, type LLMProviderConfig } from 'llm-router';
 import { OpenAIPovider, AnthropicProvider, GoogleProvider, OllamaProvider } from './llmProviders.js';
 import { loadConfig } from '../config/loadConfig.js';
+import config from '../config/config.js';
 import type { RouterConfig as OldRouterConfig } from '../types/config.js';
 
 // Provider handlers for different LLM providers
 const createProviderHandlers = () => {
   return {
     'openai-prod-provider': async (req: LLMRequest): Promise<LLMResponse> => {
-      const provider = new OpenAIPovider(process.env.OPENAI_API_KEY || '');
+      const provider = new OpenAIPovider(config.get('llm.openai.apiKey'));
       return await provider.createCompletion(req);
     },
     'anthropic-prod-provider': async (req: LLMRequest): Promise<LLMResponse> => {
-      const provider = new AnthropicProvider(process.env.ANTHROPIC_API_KEY || '');
+      const provider = new AnthropicProvider(config.get('llm.anthropic.apiKey'));
       return await provider.createCompletion(req);
     },
     'google-prod-provider': async (req: LLMRequest): Promise<LLMResponse> => {
-      const provider = new GoogleProvider(process.env.GOOGLE_API_KEY || '');
+      const provider = new GoogleProvider(config.get('llm.google.apiKey'));
       return await provider.createCompletion(req);
     },
     'ollama-local-provider': async (req: LLMRequest): Promise<LLMResponse> => {
-      const provider = new OllamaProvider(process.env.OLLAMA_BASE_URL || 'http://localhost:11434');
+      const provider = new OllamaProvider(config.get('llm.ollama.baseUrl'));
       return await provider.createCompletion(req);
     }
   };
@@ -40,8 +41,8 @@ const convertConfig = (oldConfig: OldRouterConfig): RouterConfig => {
       maxTokens: 4096
     }],
     rateLimit: {
-      maxConcurrent: provider.rateLimit?.maxConcurrent || 10,
-      tokensPerSecond: provider.rateLimit?.tokensPerSecond || 10
+      maxConcurrent: provider.rateLimit?.maxConcurrent || 5,
+      tokensPerSecond: provider.rateLimit?.tokensPerSecond || 1000 // Much higher for local LLMs
     },
     handler: handlers[`${provider.name}-provider` as keyof typeof handlers]
   }));
@@ -53,16 +54,16 @@ const convertConfig = (oldConfig: OldRouterConfig): RouterConfig => {
     resilience: {
       retry: {
         enabled: true,
-        attempts: 3,
-        initialBackoffMs: 100,
-        maxBackoffMs: 1000,
-        multiplier: 2
+        attempts: 2, // Reduce retry attempts for faster failure
+        initialBackoffMs: 500,
+        maxBackoffMs: 5000,
+        multiplier: 1.5
       },
       circuitBreaker: {
         enabled: true,
-        threshold: 5,
-        samplingDurationMs: 60000,
-        resetTimeoutMs: 30000
+        threshold: 3, // Lower threshold for faster circuit breaking
+        samplingDurationMs: 30000, // Shorter sampling window
+        resetTimeoutMs: 15000 // Shorter reset timeout
       }
     }
   };
@@ -101,46 +102,35 @@ export class EnhancedLLMRouter {
    * Get provider status and metrics
    */
   getProviderStatus(providerName: string) {
-    // Since providers property is protected, we'll need to implement this differently
-    // For now, return basic status
-    return {
-      name: providerName,
-      enabled: true,
-      circuitBreakerState: 'closed',
-      metrics: {
-        totalRequests: 0,
-        successfulRequests: 0,
-        failedRequests: 0,
-        rateLimitedRequests: 0,
-        circuitBreakerTrips: 0,
-        lastRequestTime: 0,
-        averageResponseTime: 0
-      },
-      lastUsed: 0
-    };
+    return this.router.getProviderStatus(providerName);
   }
 
   /**
    * Get all providers status
-   */
+   */  
   getAllProvidersStatus() {
-    // Since providers property is protected, return configured providers
-    const configuredProviders = this.config.providers.map(p => ({
-      name: p.name.replace('-provider', ''),
-      enabled: p.enabled ?? true,
-      circuitBreakerState: 'closed',
-      metrics: {
-        totalRequests: 0,
-        successfulRequests: 0,
-        failedRequests: 0,
-        rateLimitedRequests: 0,
-        circuitBreakerTrips: 0,
-        lastRequestTime: 0,
-        averageResponseTime: 0
-      },
-      lastUsed: 0
-    }));
-    return configuredProviders;
+    return this.router.getProviderStatuses();
+  }
+
+  /**
+   * Get available models
+   */
+  getAvailableModels(): string[] {
+    return this.router.getAvailableModels();
+  }
+
+  /**
+   * Get available providers
+   */
+  getAvailableProviders(): string[] {
+    return this.router.getAvailableProviders();
+  }
+
+  /**
+   * Health check
+   */
+  async healthCheck() {
+    return await this.router.healthCheck();
   }
 
   /**
