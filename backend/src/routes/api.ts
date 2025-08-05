@@ -12,6 +12,7 @@ import enhancedLlmService from '../services/enhancedLlmService.js';
 import agentService from '../services/agentService.js';
 import ragService from '../services/ragService.js';
 import databaseService from '../services/databaseService.js';
+import mcpService from '../services/mcpService.js';
 import databaseRouter from './database.js';
 
 // Get __dirname equivalent in ESM
@@ -187,6 +188,8 @@ router.post('/rag-query', async (req: RAGQueryRequest, res: Response) => {
     });
   } catch (err) {
     console.error('❌ RAG query error:', err);
+    console.error('❌ RAG Error details:', err instanceof Error ? err.message : 'Unknown error');
+    console.error('❌ RAG Error stack:', err instanceof Error ? err.stack : 'No stack trace');
     res.status(500).json({ error: 'Failed to process RAG query' });
   }
 });
@@ -291,6 +294,40 @@ router.post('/llm-test', async (req: Request, res: Response) => {
     });
   }
 });
+
+// GET /api/mcp-status - MCP service status check
+router.get('/mcp-status', async (req: Request, res: Response) => {
+  try {
+    console.log('🔍 Checking MCP service status...');
+    
+    // Get MCP server status
+    const serverStatus = await mcpService.getServerStatus();
+    const tools = await mcpService.getTools();
+    
+    res.json({
+      status: 'success',
+      message: 'MCP status retrieved successfully',
+      servers: serverStatus,
+      toolsCount: tools.length,
+      availableTools: tools.map(tool => ({ 
+        name: tool.name || tool.function?.name, 
+        description: tool.description || tool.function?.description 
+      })),
+      initialized: mcpService.isReady(),
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('MCP status error:', error);
+    res.status(500).json({
+      status: 'error', 
+      message: `Failed to get MCP status: ${(error as Error).message}`,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Note: MCP tools are integrated into the agent service and used automatically
+// in RAG queries (/api/rag-query and /api/llm-summary). No separate CRUD endpoints needed.
 
 // Database routes
 router.use('/database', databaseRouter);

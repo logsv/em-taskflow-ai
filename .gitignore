@@ -39,6 +39,11 @@ backend/.env
 frontend/.env
 .env.*
 
+# Convict configuration files
+backend/src/config/local.yml
+backend/src/config/secrets.yml
+backend/src/config/*.local.yml
+
 # ===========================
 # TYPESCRIPT
 # ===========================

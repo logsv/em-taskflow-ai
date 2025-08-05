@@ -111,6 +111,11 @@ export class LLMRouter {
         }
       );
 
+      // Add logging for circuit breaker state changes
+      breaker.onHalfOpen(() => console.log(`Circuit breaker for ${providerConfig.name} is now half-open.`));
+      breaker.onReset(() => console.log(`Circuit breaker for ${providerConfig.name} is now closed.`));
+      breaker.onBreak(() => console.log(`Circuit breaker for ${providerConfig.name} is now open.`));
+
       const retryPolicy = this.createRetryPolicy(retryConfig);
 
       try {
@@ -423,11 +428,10 @@ export class LLMRouter {
     provider.config = newConfig;
     
     // Reinitialize rate limiter if rate limits changed
-    if (updates.models?.[0]?.rateLimit) {
+    if (updates.rateLimit) {
       provider.limiter.updateSettings({
-        minTime: 1000 / (updates.models[0].rateLimit.requestsPerMinute / 60),
-        reservoir: updates.models[0].rateLimit.tokensPerMinute,
-        reservoirRefreshAmount: updates.models[0].rateLimit.tokensPerMinute,
+        maxConcurrent: updates.rateLimit.maxConcurrent,
+        minTime: updates.rateLimit.minTimeMs,
       });
     }
   }
@@ -437,13 +441,9 @@ export class LLMRouter {
     if (!provider) return null;
     
     // Get circuit breaker state safely
-    const circuitBreakerState = this.circuitBreakers.get(providerName);
-    const isOpen = circuitBreakerState ? 
-      (circuitBreakerState as any).state === 'OPEN' : 
-      false;
-    const state = circuitBreakerState ? 
-      (circuitBreakerState as any).state : 
-      'UNKNOWN';
+    const circuitBreakerState = provider.circuitBreaker;
+    const isOpen = (circuitBreakerState as any).state === 'OPEN';
+    const state = (circuitBreakerState as any).state;
 
     return {
       name: provider.config.name,

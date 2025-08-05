@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type { AxiosInstance, AxiosRequestHeaders } from 'axios';
-import type { LLMRequest, LLMResponse } from './llmRouter.js';
+import type { LLMRequest, LLMResponse } from 'llm-router';
 
 // Base interface for LLM providers
 export interface LLMProvider {
@@ -193,7 +193,7 @@ export class OllamaProvider extends BaseProvider {
 
   async createCompletion(request: LLMRequest): Promise<LLMResponse> {
     const response = await this.client.post('/api/generate', {
-      model: request.model || 'llama2',
+      model: request.model || 'mistral:latest',
       prompt: request.prompt,
       stream: false,
       options: {
@@ -206,7 +206,7 @@ export class OllamaProvider extends BaseProvider {
 
     const data = response.data;
     const result: LLMResponse = {
-      model: data.model || request.model || 'llama2',
+      model: data.model || request.model || 'mistral:latest',
       text: data.response || '',
       provider: 'ollama',
     };
