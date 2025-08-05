@@ -48,7 +48,7 @@ class MCPService {
       // Add Google Calendar server if enabled - using standard MCP studio server path
       if (config.get('mcp.google.enabled') && config.get('mcp.google.oauthCredentials')) {
         mcpServers.calendar = {
-          command: 'npx', 
+          command: 'npx',
           args: ['-y', '@cocal/google-calendar-mcp'],
           env: {
             GOOGLE_OAUTH_CREDENTIALS: config.get('mcp.google.oauthCredentials'),
