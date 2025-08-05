@@ -75,7 +75,9 @@ describe('MCP Service', () => {
       mockClient.listTools.resolves(mockTools);
 
       const originalClient = (mcpService as any).client;
+      const originalAgent = (mcpService as any).agent;
       (mcpService as any).client = mockClient;
+      (mcpService as any).agent = mockAgent;
       (mcpService as any).isInitialized = true;
 
       const tools = await mcpService.getTools();
@@ -101,6 +103,7 @@ describe('MCP Service', () => {
       
       // Restore
       (mcpService as any).client = originalClient;
+      (mcpService as any).agent = originalAgent;
     });
 
     it('should fallback to cached tools on error', async () => {
@@ -134,7 +137,9 @@ describe('MCP Service', () => {
       mockClient.listTools.resolves(mockTools);
 
       const originalClient = (mcpService as any).client;
+      const originalAgent = (mcpService as any).agent;
       (mcpService as any).client = mockClient;
+      (mcpService as any).agent = mockAgent;
       (mcpService as any).isInitialized = true;
 
       const notionTools = await mcpService.getToolsByServer('notion');
@@ -146,6 +151,7 @@ describe('MCP Service', () => {
       
       // Restore
       (mcpService as any).client = originalClient;
+      (mcpService as any).agent = originalAgent;
     });
 
     it('should return all tools when no server-specific tools found', async () => {
@@ -156,7 +162,9 @@ describe('MCP Service', () => {
       mockClient.listTools.resolves(mockTools);
 
       const originalClient = (mcpService as any).client;
+      const originalAgent = (mcpService as any).agent;
       (mcpService as any).client = mockClient;
+      (mcpService as any).agent = null;
       (mcpService as any).isInitialized = true;
 
       const unknownTools = await mcpService.getToolsByServer('unknown');
@@ -182,6 +190,7 @@ describe('MCP Service', () => {
       
       // Restore
       (mcpService as any).client = originalClient;
+      (mcpService as any).agent = originalAgent;
     });
   });
 
@@ -283,7 +292,7 @@ describe('MCP Service', () => {
 
       await mcpService.close();
 
-      expect(mockClient.close.calledOnce).toBe(true);
+      expect(mockCloseAllSessions.calledOnce).toBe(true);
       expect(mcpService.isReady()).toBe(false);
 
       // Restore
@@ -291,14 +300,15 @@ describe('MCP Service', () => {
     });
 
     it('should handle close errors gracefully', async () => {
-      mockClient.close.rejects(new Error('Close failed'));
+      const mockCloseAllSessions = sinon.stub().rejects(new Error('Close failed'));
+      mockClient.closeAllSessions = mockCloseAllSessions;
 
       const originalClient = (mcpService as any).client;
       (mcpService as any).client = mockClient;
 
       await mcpService.close();
 
-      expect(mockClient.close.calledOnce).toBe(true);
+      expect(mockCloseAllSessions.calledOnce).toBe(true);
       expect(mcpService.isReady()).toBe(false);
 
       // Restore
@@ -325,7 +335,7 @@ describe('MCP Service', () => {
 
       await mcpService.restart();
 
-      expect(mockClient.close.calledOnce).toBe(true);
+      expect(mockCloseAllSessions.calledOnce).toBe(true);
 
       // Restore
       (mcpService as any).client = originalClient;
