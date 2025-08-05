@@ -94,7 +94,7 @@ start_ollama() {
     fi
     
     # Start Ollama server
-    OLLAMA_HOST="127.0.0.1:$OLLAMA_PORT" nohup ollama serve > "$PROJECT_DIR/ollama.log" 2>&1 &
+    nohup "$PROJECT_DIR/start-ollama.sh" --host 127.0.0.1 --port $OLLAMA_PORT --daemon --pid-file "$OLLAMA_PID_FILE" > "$PROJECT_DIR/ollama.log" 2>&1 &
     local ollama_pid=$!
     save_pid "$ollama_pid" "$OLLAMA_PID_FILE"
     
@@ -175,6 +175,11 @@ start_chroma() {
 
 # Function to start backend
 start_backend() {
+    # Source NVM to ensure npm is available
+    if [ -s "$HOME/.nvm/nvm.sh" ]; then
+        source "$HOME/.nvm/nvm.sh"
+    fi
+
     echo -e "${BLUE}🚀 Starting Backend (TypeScript)...${NC}"
     
     if check_port $BACKEND_PORT; then

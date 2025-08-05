@@ -1,0 +1,57 @@
+# EM TaskFlow Default Configuration
+# This file contains default configuration values for all environments
+
+# Server Configuration
+server:
+  port: 4000
+  host: "127.0.0.1"
+
+# Database Configuration
+database:
+  path: "./data/taskflow.db"
+
+# LLM Provider Configuration
+llm:
+  provider: "ollama"  # Default to local Ollama
+  openai:
+    apiKey: ""  # Set via environment variable or override file
+  anthropic:
+    apiKey: ""  # Set via environment variable or override file
+  google:
+    apiKey: ""  # Set via environment variable or override file
+  huggingface:
+    apiKey: ""  # Set via environment variable or override file
+  ollama:
+    baseUrl: "http://localhost:11434"
+
+# Vector Database Configuration
+vectorDb:
+  chroma:
+    host: "localhost"
+    port: 8000
+
+# MCP Integration Configuration
+mcp:
+  notion:
+    apiKey: ""  # Set via environment variable or override file
+    enabled: false  # Enable when API key is provided
+  jira:
+    url: ""  # Set via environment variable or override file
+    username: ""  # Set via environment variable or override file
+    apiToken: ""  # Set via environment variable or override file
+    projectKey: ""  # Set via environment variable or override file
+    enabled: false  # Enable when credentials are provided
+  google:
+    oauthCredentials: ""  # Set via environment variable or override file
+    calendarId: "primary"
+    enabled: false  # Enable when credentials are provided
+
+# RAG Configuration
+rag:
+  enabled: true
+  embeddingModel: "nomic-embed-text"
+  defaultCollection: "pdf_chunks"
+  maxChunkSize: 1000
+
+# Environment
+env: "development"

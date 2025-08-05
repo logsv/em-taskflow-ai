@@ -43,9 +43,27 @@ Respond in JSON format:
     }
     
     const response = await enhancedLlmService.complete(intentPrompt, { temperature: 0.3 });
-    const analysis = JSON.parse(response) as IntentAnalysis;
-    console.log('Intent analysis:', analysis);
-    return analysis;
+    console.log('Raw intent analysis response:', response);
+    
+    try {
+      const analysis = JSON.parse(response) as IntentAnalysis;
+      console.log('Parsed intent analysis:', analysis);
+      return analysis;
+    } catch (parseError) {
+      console.error('Failed to parse intent analysis JSON:', parseError);
+      console.error('Raw response was:', response);
+      
+      // Try to extract basic intent from the response text
+      const fallbackIntent = response.toLowerCase().includes('status') ? 'status_check' :
+                           response.toLowerCase().includes('task') ? 'task_management' :
+                           response.toLowerCase().includes('calendar') ? 'calendar_query' : 'general';
+      
+      return {
+        intent: fallbackIntent,
+        dataNeeded: [],
+        reasoning: 'Failed to parse JSON response, extracted basic intent from text'
+      };
+    }
   } catch (error) {
     console.error('Error analyzing intent:', error);
     return {
@@ -69,21 +87,27 @@ async function fetchData(dataNeeded: string[], userQuery?: string): Promise<Reco
   const ragStatus = await ragService.getStatus();
   fetchedData.ragServiceStatus = ragStatus;
   
-  // Perform RAG search if query provided and RAG is available
+  // Perform RAG search if service is ready
   if (userQuery && ragStatus.ready) {
-    console.log('🔍 Performing RAG search for relevant documents');
-    const ragResults = await ragService.searchRelevantChunks(userQuery, 5);
-    if (ragResults.chunks.length > 0) {
+    console.log('🔍 RAG service is available, performing document search');
+    try {
+      const ragResults = await ragService.searchRelevantChunks(userQuery, 5);
       fetchedData.ragResults = {
         chunks: ragResults.chunks,
-        context: ragResults.context,
+        context: ragResults.context, 
         sources: ragResults.sources,
         found: ragResults.chunks.length
       };
-      console.log(`✅ Found ${ragResults.chunks.length} relevant document chunks`);
-    } else {
-      fetchedData.ragResults = { chunks: [], context: '', sources: [], found: 0 };
-      console.log('ℹ️ No relevant document chunks found');
+      console.log(`✅ RAG search completed, found ${ragResults.chunks.length} relevant chunks`);
+    } catch (ragError) {
+      console.error('❌ RAG search failed:', ragError);
+      fetchedData.ragResults = { 
+        chunks: [], 
+        context: '', 
+        sources: [], 
+        found: 0,
+        error: 'Document search failed'
+      };
     }
   } else if (userQuery && !ragStatus.ready) {
     console.log('⚠️ RAG service not available, skipping document search');
@@ -117,40 +141,51 @@ async function fetchData(dataNeeded: string[], userQuery?: string): Promise<Reco
       const mcpTools = await mcpService.getTools();
       console.log('🛠️ Available MCP tools:', mcpTools.map(tool => tool.name));
       
-      for (const source of dataNeeded) {
-        switch (source.toLowerCase()) {
-          case 'jira':
-            const jiraTools = await mcpService.getToolsByServer('jira');
-            if (jiraTools.length > 0 && mcpStatus.jira) {
-              console.log('🎫 Using Jira MCP tools:', jiraTools.map(t => t.name));
-              fetchedData.mcpJiraToolsAvailable = jiraTools.map(t => t.name);
-              // TODO: Implement actual MCP tool execution
-              fetchedData.jiraTasks = [];
-              fetchedData.jiraStatus = 'MCP tools available but execution not yet implemented';
-            }
-            break;
-            
-          case 'notion':
-            const notionTools = await mcpService.getToolsByServer('notion');
-            if (notionTools.length > 0 && mcpStatus.notion) {
-              console.log('📝 Using Notion MCP tools:', notionTools.map(t => t.name));
-              fetchedData.mcpNotionToolsAvailable = notionTools.map(t => t.name);
-              // TODO: Implement actual MCP tool execution
-              fetchedData.notionPages = [];
-              fetchedData.notionStatus = 'MCP tools available but execution not yet implemented';
-            }
-            break;
-            
-          case 'calendar':
-            const calendarTools = await mcpService.getToolsByServer('calendar');
-            if (calendarTools.length > 0 && mcpStatus.calendar) {
-              console.log('📅 Using Calendar MCP tools:', calendarTools.map(t => t.name));
-              fetchedData.mcpCalendarToolsAvailable = calendarTools.map(t => t.name);
-              // TODO: Implement actual MCP tool execution
-              fetchedData.calendarEvents = [];
-              fetchedData.calendarStatus = 'MCP tools available but execution not yet implemented';
-            }
-            break;
+      // Use MCP agent to execute tools when available
+      const mcpAgent = mcpService.getAgent();
+      
+      if (mcpAgent && userQuery) {
+        console.log('🤖 Using MCP agent to execute tools based on user query');
+        try {
+          const mcpResponse = await mcpService.runQuery(
+            `Based on this user query: "${userQuery}", use available MCP tools to gather relevant information from ${dataNeeded.join(', ')} sources.`
+          );
+          
+          fetchedData.mcpResponse = mcpResponse;
+          fetchedData.mcpToolsUsed = true;
+          console.log('✅ MCP agent executed successfully');
+        } catch (mcpError) {
+          console.error('❌ MCP agent execution failed:', mcpError);
+          fetchedData.mcpResponse = 'MCP agent execution failed';
+          fetchedData.mcpToolsUsed = false;
+          fetchedData.mcpError = (mcpError as Error).message;
+        }
+      } else {
+        console.log('⚠️ MCP agent not available, logging available tools only');
+        
+        for (const source of dataNeeded) {
+          switch (source.toLowerCase()) {
+            case 'jira':
+              if (mcpStatus.jira) {
+                const jiraTools = await mcpService.getToolsByServer('jira');
+                fetchedData.mcpJiraToolsAvailable = jiraTools.map(t => t.server || 'jira');
+              }
+              break;
+              
+            case 'notion':
+              if (mcpStatus.notion) {
+                const notionTools = await mcpService.getToolsByServer('notion');
+                fetchedData.mcpNotionToolsAvailable = notionTools.map(t => t.server || 'notion');
+              }
+              break;
+              
+            case 'calendar':
+              if (mcpStatus.calendar) {
+                const calendarTools = await mcpService.getToolsByServer('calendar');
+                fetchedData.mcpCalendarToolsAvailable = calendarTools.map(t => t.server || 'calendar');
+              }
+              break;
+          }
         }
       }
     }
@@ -319,6 +354,8 @@ Be thorough and provide maximum value by combining all available information sou
     return response;
   } catch (error) {
     console.error('Error generating response:', error);
+    console.error('Error details:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     return 'I apologize, but I encountered an error while generating a response. Please try again.';
   }
 }
@@ -346,6 +383,8 @@ async function processQuery(userQuery: string): Promise<string> {
     return response;
   } catch (error) {
     console.error('❌ Error processing query:', error);
+    console.error('❌ Error details:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     const errorResponse = 'I apologize, but I encountered an error while processing your request. Please try again.';
     
     // Still try to save the error case

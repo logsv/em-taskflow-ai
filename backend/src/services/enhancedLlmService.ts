@@ -1,9 +1,9 @@
-import { LLMRouter, type LLMRequest, type LLMResponse } from './llmRouter.js';
-import type { RouterConfig } from '../types/config.js';
+import { EnhancedLLMRouter } from './newLlmRouter.js';
+import type { LLMRequest, LLMResponse, RouterConfig } from 'llm-router';
 
 // Enhanced LLM service that uses the sophisticated LLM router
 class EnhancedLLMService {
-  private router: LLMRouter | null = null;
+  private router: EnhancedLLMRouter | null = null;
   private initialized = false;
 
   /**
@@ -12,7 +12,7 @@ class EnhancedLLMService {
   async initialize(configPath?: string): Promise<void> {
     try {
       console.log('🚀 Initializing Enhanced LLM Service with router...');
-      this.router = await LLMRouter.create(configPath);
+      this.router = await EnhancedLLMRouter.create(configPath);
       this.initialized = true;
       console.log('✅ Enhanced LLM Service initialized successfully');
     } catch (error) {
@@ -160,9 +160,7 @@ class EnhancedLLMService {
       return [];
     }
 
-    // This would need to be implemented in the router
-    // For now, return empty array
-    return [];
+    return this.router!.getAvailableProviders();
   }
 
   /**
@@ -193,25 +191,16 @@ class EnhancedLLMService {
     }
 
     try {
-      // Test with a simple prompt
-      const testPrompt = 'Hello';
-      const response = await this.complete(testPrompt, { 
-        maxTokens: 10,
-        temperature: 0.1 
-      });
-
-      const providers = this.getProviderStatus();
-      const healthyProviders = Object.values(providers).filter((p: any) => p && p.enabled);
-
+      const result = await this.router!.healthCheck();
       return {
-        status: healthyProviders.length > 0 ? 'healthy' : 'degraded',
-        providers,
-        message: `Service operational with ${healthyProviders.length} healthy providers`
+        status: result.status as 'healthy' | 'unhealthy',
+        providers: result.providers,
+        message: result.message
       };
     } catch (error) {
       return {
         status: 'unhealthy',
-        providers: this.getProviderStatus(),
+        providers: this.router!.getAllProvidersStatus(),
         message: `Health check failed: ${(error as Error).message}`
       };
     }

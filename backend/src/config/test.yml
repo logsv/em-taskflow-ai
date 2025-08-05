@@ -1,0 +1,24 @@
+# EM TaskFlow Test Configuration
+# This file contains test-specific overrides
+
+env: "test"
+
+server:
+  port: 4001  # Use different port for tests
+
+database:
+  path: ":memory:"  # Use in-memory database for tests
+
+# Disable external integrations in tests
+mcp:
+  notion:
+    enabled: false
+  jira:
+    enabled: false
+  google:
+    enabled: false
+
+# Test optimizations
+rag:
+  enabled: false  # Disable RAG in tests unless specifically testing it
+  maxChunkSize: 500  # Small chunks for fast tests

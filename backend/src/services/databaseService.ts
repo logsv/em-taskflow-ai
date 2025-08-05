@@ -2,6 +2,7 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import config from '../config/config.js';
 
 // Get __dirname equivalent in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -53,7 +54,11 @@ class DatabaseService {
 
   constructor() {
     this.db = null;
-    this.dbPath = path.join(__dirname, '../../data/taskflow.db');
+    // Use configured database path, resolve relative paths from project root
+    const configPath = config.get('database.path');
+    this.dbPath = path.isAbsolute(configPath) 
+      ? configPath 
+      : path.join(__dirname, '../../', configPath);
   }
 
   // Initialize database connection and create tables

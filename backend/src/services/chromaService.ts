@@ -1,26 +1,39 @@
 
 import { ChromaClient } from 'chromadb';
-import type { Collection, CollectionMetadata, Metadata, ChromaClientArgs } from 'chromadb';
+import type { Collection, CollectionMetadata, Metadata } from 'chromadb';
+import config from '../config/config.js';
 
-const getClient = (params?: ChromaClientArgs): ChromaClient => {
-  // The default host is 'localhost' and port is 8000, which matches the python script.
-  return new ChromaClient(params);
+// Modern ChromaDB client configuration
+const getClient = (): ChromaClient => {
+  return new ChromaClient({
+    host: config.get('vectorDb.chroma.host'),
+    port: config.get('vectorDb.chroma.port')
+  });
 };
 
 export const createCollection = async (collectionName: string, metadata?: CollectionMetadata): Promise<{ success: boolean; message?: string; error?: string }> => {
   try {
     const client = getClient();
-    const existingCollections = await client.listCollections();
-    if (existingCollections.map((c: Collection) => c.name).includes(collectionName)) {
+    
+    // Try to get the collection first to check if it exists
+    try {
+      await client.getCollection({ name: collectionName });
       return { success: true, message: `Collection '${collectionName}' already exists` };
+    } catch (error) {
+      // Collection doesn't exist, create it
     }
 
+    // Create new collection with no embedding function (we'll provide embeddings directly)  
+    // According to ChromaDB docs, we can provide embeddings directly without an embedding function
     await client.createCollection({
       name: collectionName,
-      metadata: metadata || { description: "PDF document chunks for RAG search" },
+      metadata: metadata || { description: "PDF document chunks for RAG search" }
+      // No embeddingFunction specified - we'll provide embeddings directly to add() and query()
     });
+    
     return { success: true, message: `Collection '${collectionName}' created successfully` };
   } catch (e: any) {
+    console.warn('⚠️ ChromaDB createCollection failed:', e.message);
     return { success: false, error: e.message };
   }
 };
@@ -58,9 +71,13 @@ export const queryCollection = async (collectionName: string, queryEmbeddings: n
 export const listCollections = async (): Promise<{ success: boolean; collections?: Collection[]; error?: string }> => {
   try {
     const client = getClient();
+    
+    // Use modern API - listCollections returns Collection objects directly
     const collections = await client.listCollections();
+    
     return { success: true, collections };
   } catch (e: any) {
+    console.warn('⚠️ ChromaDB listCollections failed:', e.message);
     return { success: false, error: e.message };
   }
 };

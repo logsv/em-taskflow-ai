@@ -1,0 +1,20 @@
+# EM TaskFlow Production Configuration
+# This file contains production-specific overrides
+
+env: "production"
+
+server:
+  host: "0.0.0.0"  # Bind to all interfaces in production
+
+# Production typically has external services enabled
+mcp:
+  notion:
+    enabled: true  # Enable if API key is provided
+  jira:
+    enabled: true  # Enable if credentials are provided
+  google:
+    enabled: true  # Enable if credentials are provided
+
+# Production optimizations
+rag:
+  maxChunkSize: 1500  # Larger chunks for better context in production

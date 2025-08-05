@@ -3,12 +3,14 @@ import cors from 'cors';
 import apiRouter from './routes/api.js';
 import databaseService from './services/databaseService.js';
 import enhancedLlmService from './services/enhancedLlmService.js';
+import config from './config/config.js';
 import dotenv from 'dotenv';
 
+// Load environment variables first, then override with convict config
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = config.get('server.port');
 
 app.use(cors());
 app.use(express.json());
@@ -35,12 +37,14 @@ async function startServer(): Promise<void> {
       // Don't fail startup if LLM service fails to initialize
     }
     
-    app.listen(PORT, () => {
-      console.log(`🚀 EM TaskFlow AI server listening on port ${PORT}`);
-      console.log('📊 SQLite database ready for operations');
-      console.log('🤖 Enhanced LLM Service with router available');
-      console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
-      console.log(`📈 LLM status: http://localhost:${PORT}/api/llm-status`);
+    app.listen(PORT, config.get('server.host'), () => {
+      console.log(`🚀 EM TaskFlow AI server listening on ${config.get('server.host')}:${PORT}`);
+      console.log(`📊 Environment: ${config.get('env')}`);
+      console.log(`💾 Database: ${config.get('database.path')}`);
+      console.log(`🤖 LLM Provider: ${config.get('llm.provider')}`);
+      console.log(`🔍 RAG Enabled: ${config.get('rag.enabled')}`);
+      console.log(`🔗 Health check: http://${config.get('server.host')}:${PORT}/api/health`);
+      console.log(`📈 LLM status: http://${config.get('server.host')}:${PORT}/api/llm-status`);
     });
   } catch (error) {
     console.error('Failed to initialize services:', error);
