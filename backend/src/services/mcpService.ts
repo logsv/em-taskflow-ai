@@ -77,32 +77,62 @@ class MCPService {
       this.client = MCPClient.fromDict(this.serverConfig);
 
       // Initialize LLM for the agent using standard mcp-use approach
+      const llmProvider = config.get('llm.provider');
       const openaiKey = config.get('llm.openai.apiKey') || process.env.OPENAI_API_KEY;
+      const ollamaBaseUrl = config.get('llm.ollama.baseUrl');
       
+      let llm: any = null;
+      
+      // Try OpenAI first if API key is available
       if (openaiKey && openaiKey.trim() !== '') {
         try {
           // Use standard ChatOpenAI import for mcp-use compatibility
           const { ChatOpenAI } = await import('@langchain/openai');
           
-          const llm = new ChatOpenAI({
+          llm = new ChatOpenAI({
             modelName: 'gpt-4o-mini',
             apiKey: openaiKey,
             temperature: 0.7
           });
-
-          // Create MCP agent using standard mcp-use constructor
+          console.log('✅ Using OpenAI LLM for MCP Agent');
+        } catch (llmError) {
+          console.warn('⚠️ Could not initialize OpenAI LLM:', llmError);
+        }
+      }
+      
+      // Fall back to Ollama if OpenAI not available and provider is ollama
+      if (!llm && llmProvider === 'ollama' && ollamaBaseUrl) {
+        try {
+          // Use proper ChatOllama from @langchain/ollama package
+          const { ChatOllama } = await import('@langchain/ollama');
+          
+          llm = new ChatOllama({
+            baseUrl: ollamaBaseUrl,
+            model: 'mistral:latest', // Using the model from CLAUDE.md
+            temperature: 0.7
+          });
+          console.log('✅ Using ChatOllama for MCP Agent');
+        } catch (ollamaError) {
+          console.warn('⚠️ Could not initialize ChatOllama:', ollamaError);
+        }
+      }
+      
+      // Create MCP agent if we have an LLM
+      if (llm) {
+        try {
           this.agent = new MCPAgent({
             llm: llm as any, // Type workaround for compatibility
             client: this.client,
             maxSteps: 20
           });
-          console.log('✅ MCP Agent initialized with OpenAI using standard mcp-use patterns');
-        } catch (llmError) {
-          console.warn('⚠️ Could not initialize OpenAI LLM:', llmError);
+          console.log('✅ MCP Agent initialized successfully using standard mcp-use patterns');
+        } catch (agentError) {
+          console.warn('⚠️ Could not create MCP Agent:', agentError);
           this.agent = null;
         }
       } else {
-        console.log('⚠️ MCP Agent not initialized - OpenAI API key not provided');
+        console.log('⚠️ MCP Agent not initialized - No compatible LLM provider available');
+        console.log('   Available providers: OpenAI (requires API key), Ollama (requires running service)');
         console.log('   Standard tool access will still work through client methods');
         this.agent = null;
       }
