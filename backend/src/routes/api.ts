@@ -326,6 +326,38 @@ router.get('/mcp-status', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/mcp-restart - Force restart MCP service (DEBUG endpoint)
+router.post('/mcp-restart', async (req: Request, res: Response) => {
+  try {
+    console.log('🔧 DEBUG - Force restarting MCP service...');
+    await (mcpService as any).forceRestart();
+    
+    // Get updated status
+    const serverStatus = await mcpService.getServerStatus();
+    const tools = await mcpService.getTools();
+    
+    res.json({
+      status: 'success',
+      message: 'MCP service force restarted successfully',
+      servers: serverStatus,
+      toolsCount: tools.length,
+      availableTools: tools.map(tool => ({ 
+        name: tool.name || tool.function?.name, 
+        description: tool.description || tool.function?.description 
+      })),
+      initialized: mcpService.isReady(),
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('MCP restart error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: `Failed to restart MCP service: ${(error as Error).message}`,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Note: MCP tools are integrated into the agent service and used automatically
 // in RAG queries (/api/rag-query and /api/llm-summary). No separate CRUD endpoints needed.
 

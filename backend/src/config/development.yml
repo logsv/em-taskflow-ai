@@ -11,9 +11,9 @@ server:
 mcp:
   # In development, integrations are optional and based on env vars
   notion:
-    enabled: false  # Set to true in local override if you have credentials
+    enabled: true   # Enable Notion for testing with provided credentials
   jira:
-    enabled: false  # Set to true in local override if you have credentials  
+    enabled: true   # Enable Jira with provided credentials
   google:
     enabled: false  # Set to true in local override if you have credentials
 
