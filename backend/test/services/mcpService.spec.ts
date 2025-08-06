@@ -6,14 +6,15 @@ describe('MCP Service', () => {
   let mockAgent: any;
 
   beforeEach(() => {
-    // Create a mock MCP client for mcp-use
+    // Create a mock MCP client for standard mcp-use methods
     mockClient = {
       listTools: sinon.stub(),
       callTool: sinon.stub(),
-      close: sinon.stub()
+      close: sinon.stub(),
+      closeAllSessions: sinon.stub()
     };
 
-    // Create a mock MCP agent
+    // Create a mock MCP agent for standard mcp-use patterns
     mockAgent = {
       run: sinon.stub(),
       stream: sinon.stub()
@@ -65,32 +66,32 @@ describe('MCP Service', () => {
   });
 
   describe('getTools', () => {
-    it('should return available tools via agent query', async () => {
-      const mockResponse = 'Available tools: notion_search, jira_list_issues, calendar_list_events';
-      mockAgent.run.resolves(mockResponse);
+    it('should return available tools via standard client method', async () => {
+      const mockTools = [
+        { name: 'notion_search', description: 'Search Notion pages' },
+        { name: 'jira_list_issues', description: 'List Jira issues' },
+        { name: 'calendar_list_events', description: 'List calendar events' }
+      ];
+      mockClient.listTools.resolves(mockTools);
 
       const originalClient = (mcpService as any).client;
-      const originalAgent = (mcpService as any).agent;
       (mcpService as any).client = mockClient;
-      (mcpService as any).agent = mockAgent;
       (mcpService as any).isInitialized = true;
 
       const tools = await mcpService.getTools();
 
-      expect(mockAgent.run.calledOnce).toBe(true);
+      expect(mockClient.listTools.calledOnce).toBe(true);
       expect(Array.isArray(tools)).toBe(true);
-      expect(tools.length).toBeGreaterThan(0);
+      expect(tools.length).toBe(3);
+      expect(tools[0].name).toBe('notion_search');
       
       // Restore
       (mcpService as any).client = originalClient;
-      (mcpService as any).agent = originalAgent;
     });
 
-    it('should return empty array when no agent available', async () => {
+    it('should return empty array when no client available', async () => {
       const originalClient = (mcpService as any).client;
-      const originalAgent = (mcpService as any).agent;
-      (mcpService as any).client = mockClient;
-      (mcpService as any).agent = null;
+      (mcpService as any).client = null;
       (mcpService as any).isInitialized = true;
 
       const tools = await mcpService.getTools();
@@ -100,47 +101,87 @@ describe('MCP Service', () => {
       
       // Restore
       (mcpService as any).client = originalClient;
-      (mcpService as any).agent = originalAgent;
+    });
+
+    it('should fallback to cached tools on error', async () => {
+      mockClient.listTools.rejects(new Error('Connection failed'));
+      const cachedTools = [{ name: 'cached_tool', description: 'Cached tool' }];
+
+      const originalClient = (mcpService as any).client;
+      const originalTools = (mcpService as any).tools;
+      (mcpService as any).client = mockClient;
+      (mcpService as any).tools = cachedTools;
+      (mcpService as any).isInitialized = true;
+
+      const tools = await mcpService.getTools();
+
+      expect(Array.isArray(tools)).toBe(true);
+      expect(tools).toBe(cachedTools);
+      
+      // Restore
+      (mcpService as any).client = originalClient;
+      (mcpService as any).tools = originalTools;
     });
   });
 
   describe('getToolsByServer', () => {
-    it('should get tools by server name via agent query', async () => {
-      const mockResponse = 'Notion tools: notion_search, notion_create_page';
-      mockAgent.run.resolves(mockResponse);
+    it('should get tools by server name with filtered results', async () => {
+      const mockTools = [
+        { name: 'notion_search', description: 'Search Notion pages', server: 'notion' },
+        { name: 'jira_list_issues', description: 'List Jira issues', server: 'jira' },
+        { name: 'calendar_list_events', description: 'List calendar events', server: 'calendar' }
+      ];
+      mockClient.listTools.resolves(mockTools);
 
       const originalClient = (mcpService as any).client;
-      const originalAgent = (mcpService as any).agent;
       (mcpService as any).client = mockClient;
-      (mcpService as any).agent = mockAgent;
       (mcpService as any).isInitialized = true;
 
       const notionTools = await mcpService.getToolsByServer('notion');
 
-      expect(mockAgent.run.calledOnce).toBe(true);
+      expect(mockClient.listTools.calledOnce).toBe(true);
       expect(Array.isArray(notionTools)).toBe(true);
       expect(notionTools.length).toBe(1);
       expect(notionTools[0].server).toBe('notion');
       
       // Restore
       (mcpService as any).client = originalClient;
-      (mcpService as any).agent = originalAgent;
     });
 
-    it('should return empty array when no agent available', async () => {
+    it('should return all tools when no server-specific tools found', async () => {
+      const mockTools = [
+        { name: 'notion_search', description: 'Search Notion pages' },
+        { name: 'jira_list_issues', description: 'List Jira issues' }
+      ];
+      mockClient.listTools.resolves(mockTools);
+
       const originalClient = (mcpService as any).client;
-      const originalAgent = (mcpService as any).agent;
       (mcpService as any).client = mockClient;
-      (mcpService as any).agent = null;
       (mcpService as any).isInitialized = true;
 
       const unknownTools = await mcpService.getToolsByServer('unknown');
 
-      expect(unknownTools.length).toBe(0);
+      expect(Array.isArray(unknownTools)).toBe(true);
+      expect(unknownTools.length).toBe(2);
       
       // Restore
       (mcpService as any).client = originalClient;
-      (mcpService as any).agent = originalAgent;
+    });
+
+    it('should handle errors gracefully', async () => {
+      mockClient.listTools.rejects(new Error('Connection failed'));
+
+      const originalClient = (mcpService as any).client;
+      (mcpService as any).client = mockClient;
+      (mcpService as any).isInitialized = true;
+
+      const tools = await mcpService.getToolsByServer('notion');
+
+      expect(Array.isArray(tools)).toBe(true);
+      expect(tools.length).toBe(0);
+      
+      // Restore
+      (mcpService as any).client = originalClient;
     });
   });
 
@@ -236,16 +277,13 @@ describe('MCP Service', () => {
   });
 
   describe('close', () => {
-    it('should close client connection', async () => {
-      const mockCloseAllSessions = sinon.stub().resolves();
-      mockClient.closeAllSessions = mockCloseAllSessions;
-
+    it('should close client connection using standard method', async () => {
       const originalClient = (mcpService as any).client;
       (mcpService as any).client = mockClient;
 
       await mcpService.close();
 
-      expect(mockCloseAllSessions.calledOnce).toBe(true);
+      expect(mockClient.close.calledOnce).toBe(true);
       expect(mcpService.isReady()).toBe(false);
 
       // Restore
@@ -253,15 +291,14 @@ describe('MCP Service', () => {
     });
 
     it('should handle close errors gracefully', async () => {
-      const mockCloseAllSessions = sinon.stub().rejects(new Error('Close failed'));
-      mockClient.closeAllSessions = mockCloseAllSessions;
+      mockClient.close.rejects(new Error('Close failed'));
 
       const originalClient = (mcpService as any).client;
       (mcpService as any).client = mockClient;
 
       await mcpService.close();
 
-      expect(mockCloseAllSessions.calledOnce).toBe(true);
+      expect(mockClient.close.calledOnce).toBe(true);
       expect(mcpService.isReady()).toBe(false);
 
       // Restore
@@ -283,18 +320,90 @@ describe('MCP Service', () => {
 
   describe('restart', () => {
     it('should close and reinitialize', async () => {
-      const mockCloseAllSessions = sinon.stub().resolves();
-      mockClient.closeAllSessions = mockCloseAllSessions;
-
       const originalClient = (mcpService as any).client;
       (mcpService as any).client = mockClient;
 
       await mcpService.restart();
 
-      expect(mockCloseAllSessions.calledOnce).toBe(true);
+      expect(mockClient.close.calledOnce).toBe(true);
 
       // Restore
       (mcpService as any).client = originalClient;
+    });
+  });
+
+  describe('executeTool', () => {
+    it('should execute tool using standard client method', async () => {
+      const mockResult = { content: 'Tool executed successfully' };
+      mockClient.callTool.resolves(mockResult);
+
+      const originalClient = (mcpService as any).client;
+      (mcpService as any).client = mockClient;
+
+      const result = await mcpService.executeTool('notion_search', { query: 'test' });
+
+      expect(mockClient.callTool.calledOnce).toBe(true);
+      expect(mockClient.callTool.calledWith('notion_search', { query: 'test' })).toBe(true);
+      expect(result.tool).toBe('notion_search');
+      expect(result.result).toBe('Tool executed successfully');
+
+      // Restore
+      (mcpService as any).client = originalClient;
+    });
+
+    it('should throw error when client not available', async () => {
+      const originalClient = (mcpService as any).client;
+      (mcpService as any).client = null;
+
+      try {
+        await mcpService.executeTool('notion_search', { query: 'test' });
+        expect(true).toBe(false); // Should not reach here
+      } catch (error) {
+        expect((error as Error).message).toBe('MCP Client not initialized');
+      }
+
+      // Restore
+      (mcpService as any).client = originalClient;
+    });
+  });
+
+  describe('runQuery', () => {
+    it('should run query using standard agent method', async () => {
+      const mockResponse = 'Query executed successfully';
+      mockAgent.run.resolves(mockResponse);
+
+      const originalAgent = (mcpService as any).agent;
+      (mcpService as any).agent = mockAgent;
+
+      const result = await mcpService.runQuery('Find all notion pages');
+
+      expect(mockAgent.run.calledOnce).toBe(true);
+      expect(mockAgent.run.calledWith('Find all notion pages', 20)).toBe(true);
+      expect(result).toBe(mockResponse);
+
+      // Restore
+      (mcpService as any).agent = originalAgent;
+    });
+
+    it('should return fallback message when agent not available', async () => {
+      mockClient.listTools.resolves([
+        { name: 'notion_search', description: 'Search Notion pages' }
+      ]);
+
+      const originalClient = (mcpService as any).client;
+      const originalAgent = (mcpService as any).agent;
+      (mcpService as any).client = mockClient;
+      (mcpService as any).agent = null;
+      (mcpService as any).isInitialized = true;
+
+      const result = await mcpService.runQuery('Find all notion pages');
+
+      expect(result).toContain('MCP Agent not initialized');
+      expect(result).toContain('notion_search');
+
+      // Restore
+      (mcpService as any).client = originalClient;
+      (mcpService as any).agent = originalAgent;
     });
   });
 
