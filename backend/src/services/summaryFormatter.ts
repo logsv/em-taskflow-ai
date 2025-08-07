@@ -1,4 +1,5 @@
-import llmService from './llmService.js';
+import getMCPRouter from './newLlmRouter.js';
+import mcpLlmService from './mcpLlmService.js';
 import taskManager from './taskManager.js';
 
 // Type definitions
@@ -95,7 +96,7 @@ User Question: ${userInput}
 Provide a helpful, concise response based on the user's current workload. Focus on actionable insights and priorities. If the user asks about specific tasks or wants suggestions, reference the actual data above.`;
     
     // Get AI response
-    const aiResponse = await llmService.complete(prompt, { max_tokens: 512 });
+    const aiResponse = await mcpLlmService.complete(prompt, { max_tokens: 512 });
     
     return aiResponse;
   } catch (error) {
@@ -118,7 +119,7 @@ ${contextSummary}
 
 Respond with actionable priorities in a numbered list format. Be specific and reference actual tasks/meetings when possible.`;
     
-    const suggestions = await llmService.complete(prompt, { max_tokens: 256 });
+    const suggestions = await mcpLlmService.complete(prompt, { max_tokens: 256 });
     return suggestions;
   } catch (error) {
     console.error('Error generating suggestions:', error);

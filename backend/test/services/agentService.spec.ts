@@ -1,6 +1,6 @@
 import sinon from 'sinon';
 import agentService from '../../src/services/agentService.js';
-import llmService from '../../src/services/llmService.js';
+import mcpLlmService from '../../src/services/mcpLlmService.js';
 import databaseService from '../../src/services/databaseService.js';
 import mcpService from '../../src/services/mcpService.js';
 import ragService from '../../src/services/ragService.js';
@@ -20,7 +20,7 @@ describe('Agent Service', () => {
     sandbox = sinon.createSandbox();
     
     // Mock LLM service - this is an external dependency
-    llmStub = sandbox.stub(llmService, 'complete');
+    llmStub = sandbox.stub(mcpLlmService, 'complete');
     
     // Mock database service - this is an external dependency
     databaseStub = sandbox.stub(databaseService, 'saveChatHistory').resolves({ id: 1 });
@@ -52,7 +52,7 @@ describe('Agent Service', () => {
       jira: false,
       calendar: false
     });
-    mcpGetToolsStub = sandbox.stub(mcpService, 'getTools').resolves([]);
+    // MCP service now uses agent-only approach
   });
 
   afterEach(() => {

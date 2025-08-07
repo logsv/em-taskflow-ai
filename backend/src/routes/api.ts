@@ -7,8 +7,8 @@ import path from 'path';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
 import taskManager from '../services/taskManager.js';
-import llmService from '../services/llmService.js';
-import enhancedLlmService from '../services/enhancedLlmService.js';
+import getMCPRouter from '../services/newLlmRouter.js';
+import mcpLlmService from '../services/mcpLlmService.js';
 import agentService from '../services/agentService.js';
 import ragService from '../services/ragService.js';
 import databaseService from '../services/databaseService.js';
@@ -198,11 +198,11 @@ router.post('/rag-query', async (req: RAGQueryRequest, res: Response) => {
 router.get('/health', async (req: Request, res: Response) => {
   try {
     // Initialize enhanced LLM service if not already initialized
-    if (!enhancedLlmService.isInitialized()) {
-      await enhancedLlmService.initialize();
+    if (!mcpLlmService.isInitialized()) {
+      await mcpLlmService.initialize();
     }
 
-    const healthStatus = await enhancedLlmService.healthCheck();
+    const healthStatus = await mcpLlmService.healthCheck();
     
     res.status(healthStatus.status === 'healthy' ? 200 : 503).json({
       status: healthStatus.status,
@@ -227,13 +227,13 @@ router.get('/health', async (req: Request, res: Response) => {
 router.get('/llm-status', async (req: Request, res: Response) => {
   try {
     // Initialize enhanced LLM service if not already initialized
-    if (!enhancedLlmService.isInitialized()) {
-      await enhancedLlmService.initialize();
+    if (!mcpLlmService.isInitialized()) {
+      await mcpLlmService.initialize();
     }
 
-    const providerStatus = enhancedLlmService.getProviderStatus();
-    const availableModels = enhancedLlmService.getAvailableModels();
-    const availableProviders = enhancedLlmService.getAvailableProviders();
+    const providerStatus = mcpLlmService.getProviderStatus();
+    const availableModels = mcpLlmService.getAvailableModels();
+    const availableProviders = mcpLlmService.getAvailableProviders();
 
     res.json({
       status: 'success',
@@ -241,7 +241,7 @@ router.get('/llm-status', async (req: Request, res: Response) => {
         providers: providerStatus,
         availableModels,
         availableProviders,
-        initialized: enhancedLlmService.isInitialized()
+        initialized: mcpLlmService.isInitialized()
       },
       timestamp: new Date().toISOString()
     });
@@ -261,12 +261,12 @@ router.post('/llm-test', async (req: Request, res: Response) => {
     const { prompt = 'Hello, world!', model, preferredProviders, ...options } = req.body;
 
     // Initialize enhanced LLM service if not already initialized
-    if (!enhancedLlmService.isInitialized()) {
-      await enhancedLlmService.initialize();
+    if (!mcpLlmService.isInitialized()) {
+      await mcpLlmService.initialize();
     }
 
     const startTime = Date.now();
-    const response = await enhancedLlmService.completeWithMetadata(prompt, {
+    const response = await mcpLlmService.completeWithMetadata(prompt, {
       model,
       preferredProviders,
       ...options
@@ -300,20 +300,15 @@ router.get('/mcp-status', async (req: Request, res: Response) => {
   try {
     console.log('🔍 Checking MCP service status...');
     
-    // Get MCP server status
+    // Get MCP server status (tools are discovered automatically by the agent)
     const serverStatus = await mcpService.getServerStatus();
-    const tools = await mcpService.getTools();
     
     res.json({
       status: 'success',
-      message: 'MCP status retrieved successfully',
+      message: 'MCP status retrieved successfully - tools discovered automatically by agent',
       servers: serverStatus,
-      toolsCount: tools.length,
-      availableTools: tools.map(tool => ({ 
-        name: tool.name || tool.function?.name, 
-        description: tool.description || tool.function?.description 
-      })),
       initialized: mcpService.isReady(),
+      agentReady: mcpService.getAgent() !== null,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -326,6 +321,32 @@ router.get('/mcp-status', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/mcp-restart - Force restart MCP service (DEBUG endpoint)
+router.post('/mcp-restart', async (req: Request, res: Response) => {
+  try {
+    console.log('🔧 DEBUG - Force restarting MCP service...');
+    await (mcpService as any).forceRestart();
+    
+    // Get updated status
+    const serverStatus = await mcpService.getServerStatus();
+    
+    res.json({
+      status: 'success',
+      message: 'MCP service force restarted successfully - tools will be discovered by agent',
+      servers: serverStatus,
+      initialized: mcpService.isReady(),
+      agentReady: mcpService.getAgent() !== null,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('MCP restart error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: `Failed to restart MCP service: ${(error as Error).message}`,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 // Note: MCP tools are integrated into the agent service and used automatically
 // in RAG queries (/api/rag-query and /api/llm-summary). No separate CRUD endpoints needed.
 

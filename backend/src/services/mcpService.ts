@@ -11,7 +11,6 @@ dotenv.config();
 class MCPService {
   private client: MCPClient | null = null;
   private agent: MCPAgent | null = null;
-  private tools: any[] = [];
   private isInitialized = false;
   private serverConfig: any = {};
 
@@ -108,7 +107,7 @@ class MCPService {
           
           llm = new ChatOllama({
             baseUrl: ollamaBaseUrl,
-            model: 'mistral:latest', // Using the model from CLAUDE.md
+            model: 'llama3.1:latest', // Llama 3.1 has proper tool calling support
             temperature: 0.7
           });
           console.log('✅ Using ChatOllama for MCP Agent');
@@ -137,26 +136,8 @@ class MCPService {
         this.agent = null;
       }
 
-      // Get available tools using standard mcp-use client methods
-      try {
-        if (this.client) {
-          // Use standard listTools method from mcp-use (compatible with the library API)
-          const availableTools = await (this.client as any).listTools?.() || [];
-          this.tools = availableTools || [];
-          console.log(`✅ MCP Service initialized successfully with ${this.tools.length} tools`);
-          if (this.tools.length > 0) {
-            console.log('Available tools:', this.tools.map(tool => tool.name || 'unnamed'));
-          }
-        } else {
-          console.log('⚠️ MCP Client not available, no tools loaded');
-          this.tools = [];
-        }
-      } catch (toolError) {
-        console.warn('⚠️ Could not list tools using standard method:', toolError);
-        this.tools = [];
-      }
-
       this.isInitialized = true;
+      console.log(`✅ MCP Service initialized successfully - ready for agent-based tool calling`);
 
     } catch (error) {
       console.error('❌ Failed to initialize MCP Service:', error);
@@ -165,84 +146,18 @@ class MCPService {
     }
   }
 
-  /**
-   * Get all available MCP tools using standard mcp-use client methods
-   */
-  async getTools(): Promise<any[]> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-    
-    if (!this.client) {
-      console.warn('⚠️ No MCP client available - cannot list tools');
-      return [];
-    }
-
-    try {
-      // Use standard mcp-use client method to list tools (with type workaround)
-      const availableTools = await (this.client as any).listTools?.() || [];
-      return availableTools || [];
-    } catch (error) {
-      console.warn('⚠️ Could not get tools using standard method:', error);
-      return this.tools || []; // Return cached tools as fallback
-    }
-  }
-
-  /**
-   * Get tools from a specific MCP server using standard patterns
-   */
-  async getToolsByServer(serverName: string): Promise<any[]> {
-    try {
-      // Get all tools and filter by server name if available in tool metadata
-      const allTools = await this.getTools();
-      const serverTools = allTools.filter(tool => 
-        tool.server === serverName || 
-        (tool.name && tool.name.toLowerCase().includes(serverName.toLowerCase()))
-      );
-      
-      return serverTools.length > 0 ? serverTools : allTools;
-    } catch (error) {
-      console.warn(`⚠️ Could not get tools for server ${serverName}:`, error);
-      return [];
-    }
-  }
-
-  /**
-   * Execute an MCP tool with parameters using standard mcp-use client methods
-   */
-  async executeTool(toolName: string, parameters: any = {}): Promise<any> {
-    if (!this.client) {
-      throw new Error('MCP Client not initialized');
-    }
-
-    try {
-      // Use standard mcp-use client method to call tools (with type workaround)
-      const result = await (this.client as any).callTool?.(toolName, parameters) || { content: 'Tool execution failed' };
-      return { 
-        tool: toolName, 
-        parameters, 
-        result: result.content || result 
-      };
-    } catch (error) {
-      console.error(`Error executing tool ${toolName}:`, error);
-      throw error;
-    }
-  }
 
   /**
    * Run an agent query across MCP servers using standard mcp-use agent
+   * This is the primary method for all MCP interactions - let the LLM handle tool calling
    */
   async runQuery(query: string, maxSteps: number = 20): Promise<string> {
     if (!this.agent) {
-      // Fallback to direct tool execution suggestions if agent not available
-      console.warn('⚠️ MCP Agent not available, attempting direct tool usage suggestion');
-      const tools = await this.getTools();
-      const toolNames = tools.map(tool => tool.name).join(', ');
-      return `MCP Agent not initialized. Available tools for direct execution: ${toolNames}. Please ensure OpenAI API key is configured for agent functionality.`;
+      throw new Error('MCP Agent not initialized. Please ensure a compatible LLM (OpenAI or Ollama with tool calling support) is configured.');
     }
 
     try {
-      // Use standard mcp-use agent run method (corrected parameters)
+      // Use standard mcp-use agent run method - LLM handles all tool discovery and calling
       const result = await this.agent.run(query, maxSteps);
       return result;
     } catch (error) {
@@ -278,7 +193,7 @@ class MCPService {
   }
 
   /**
-   * Get connection status for all servers
+   * Get connection status for all servers based on configuration
    */
   async getServerStatus(): Promise<Record<string, boolean>> {
     if (!this.client) {
@@ -289,15 +204,9 @@ class MCPService {
     const serverNames = ['notion', 'calendar', 'jira'];
 
     for (const serverName of serverNames) {
-      try {
-        // Check if the server is configured and has tools available
-        const isConfigured = this.serverConfig.mcpServers && this.serverConfig.mcpServers[serverName];
-        const serverTools = await this.getToolsByServer(serverName);
-        status[serverName] = isConfigured && serverTools.length > 0;
-      } catch (error) {
-        console.warn(`Server ${serverName} is not available:`, error);
-        status[serverName] = false;
-      }
+      // Check if the server is configured (agent will discover tools automatically)
+      const isConfigured = this.serverConfig.mcpServers && this.serverConfig.mcpServers[serverName];
+      status[serverName] = !!isConfigured;
     }
 
     return status;
@@ -323,7 +232,6 @@ class MCPService {
     this.isInitialized = false;
     this.client = null;
     this.agent = null;
-    this.tools = [];
     this.serverConfig = {};
   }
 
