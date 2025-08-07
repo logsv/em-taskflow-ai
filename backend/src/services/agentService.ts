@@ -1,5 +1,6 @@
 // Agent service with integrated RAG, LLM, and MCP tools for complete agentic flow
-import enhancedLlmService from './enhancedLlmService.js';
+import getMCPRouter from './newLlmRouter.js';
+import mcpLlmService from './mcpLlmService.js';
 import databaseService from './databaseService.js';
 import mcpService from './mcpService.js';
 import ragService from './ragService.js';
@@ -37,12 +38,9 @@ Respond in JSON format:
 }`;
 
   try {
-    // Initialize enhanced LLM service if not already initialized
-    if (!enhancedLlmService.isInitialized()) {
-      await enhancedLlmService.initialize();
-    }
-    
-    const response = await enhancedLlmService.complete(intentPrompt, { temperature: 0.3 });
+    // Use MCP router for intent analysis
+    const mcpRouter = await getMCPRouter();
+    const response = await mcpRouter.executeMCPQuery(intentPrompt, 10);
     console.log('Raw intent analysis response:', response);
     
     try {
@@ -137,18 +135,18 @@ async function fetchData(dataNeeded: string[], userQuery?: string): Promise<Reco
     if (mcpAvailable) {
       console.log('✅ MCP servers available, using MCP tools');
       
-      // Get all available MCP tools
-      const mcpTools = await mcpService.getTools();
-      console.log('🛠️ Available MCP tools:', mcpTools.map(tool => tool.name));
-      
       // Use MCP agent to execute tools when available
       const mcpAgent = mcpService.getAgent();
       
       if (mcpAgent && userQuery) {
         console.log('🤖 Using MCP agent to execute tools based on user query');
         try {
+          const availableSources = Object.entries(mcpStatus)
+            .filter(([_, status]) => status)
+            .map(([source, _]) => source);
+            
           const mcpResponse = await mcpService.runQuery(
-            `Based on this user query: "${userQuery}", use available MCP tools to gather relevant information from ${dataNeeded.join(', ')} sources.`
+            `Based on this user query: "${userQuery}", use available MCP tools to gather relevant information from ${dataNeeded.join(', ')} sources. Available configured sources: ${availableSources.join(', ')}`
           );
           
           fetchedData.mcpResponse = mcpResponse;
@@ -161,32 +159,9 @@ async function fetchData(dataNeeded: string[], userQuery?: string): Promise<Reco
           fetchedData.mcpError = (mcpError as Error).message;
         }
       } else {
-        console.log('⚠️ MCP agent not available, logging available tools only');
-        
-        for (const source of dataNeeded) {
-          switch (source.toLowerCase()) {
-            case 'jira':
-              if (mcpStatus.jira) {
-                const jiraTools = await mcpService.getToolsByServer('jira');
-                fetchedData.mcpJiraToolsAvailable = jiraTools.map(t => t.server || 'jira');
-              }
-              break;
-              
-            case 'notion':
-              if (mcpStatus.notion) {
-                const notionTools = await mcpService.getToolsByServer('notion');
-                fetchedData.mcpNotionToolsAvailable = notionTools.map(t => t.server || 'notion');
-              }
-              break;
-              
-            case 'calendar':
-              if (mcpStatus.calendar) {
-                const calendarTools = await mcpService.getToolsByServer('calendar');
-                fetchedData.mcpCalendarToolsAvailable = calendarTools.map(t => t.server || 'calendar');
-              }
-              break;
-          }
-        }
+        console.log('⚠️ MCP agent not available - tools cannot be executed');
+        fetchedData.mcpResponse = 'MCP agent not initialized. Tools available but cannot be executed without agent.';
+        fetchedData.mcpToolsUsed = false;
       }
     }
   } catch (error) {
@@ -343,11 +318,11 @@ Be thorough and provide maximum value by combining all available information sou
   
   try {
     // Initialize enhanced LLM service if not already initialized
-    if (!enhancedLlmService.isInitialized()) {
-      await enhancedLlmService.initialize();
+    if (!mcpLlmService.isInitialized()) {
+      await mcpLlmService.initialize();
     }
     
-    const response = await enhancedLlmService.complete(responsePrompt, {
+    const response = await mcpLlmService.complete(responsePrompt, {
       temperature: 0.7,
       maxTokens: 600
     });

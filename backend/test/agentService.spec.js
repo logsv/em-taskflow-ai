@@ -1,6 +1,6 @@
 import sinon from 'sinon';
 import agentService from '../src/services/agentService.js';
-import llmService from '../src/services/llmService.js';
+import mcpLlmService from '../src/services/mcpLlmService.js';
 import databaseService from '../src/services/databaseService.js';
 import mcpService from '../src/services/mcpService.js';
 import ragService from '../src/services/ragService.js';
@@ -11,7 +11,7 @@ describe('Agent Service', () => {
     let mcpStub;
     let ragStub;
     beforeEach(() => {
-        llmStub = sinon.stub(llmService, 'complete');
+        llmStub = sinon.stub(mcpLlmService, 'complete');
         dbStub = sinon.stub(databaseService, 'saveChatHistory');
         mcpStub = sinon.stub(mcpService, 'getTools');
         sinon.stub(mcpService, 'initialize').resolves();
