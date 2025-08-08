@@ -1,8 +1,11 @@
 // Agent service with integrated RAG, LLM, and MCP tools for complete agentic flow
-import enhancedLlmService from './enhancedLlmService.js';
+import getMCPRouter from './newLlmRouter.js';
+import mcpLlmService from './mcpLlmService.js';
 import databaseService from './databaseService.js';
 import mcpService from './mcpService.js';
 import ragService from './ragService.js';
+import axios from 'axios';
+import config from '../config/config.js';
 
 // Type definitions
 interface IntentAnalysis {
@@ -22,56 +25,29 @@ interface AgentResponse {
  */
 async function analyzeIntent(userQuery: string): Promise<IntentAnalysis> {
   console.log('🔍 Analyzing user intent...');
-  
-  const intentPrompt = `Analyze this user query and determine:
-1. Intent category: 'status_check', 'task_management', 'calendar_query', 'project_overview', 'general'
-2. Data sources needed: 'jira', 'notion', 'calendar', 'google', 'atlassian', or combinations
+  const text = userQuery.toLowerCase();
 
-User Query: "${userQuery}"
+  const containsAny = (parts: string[]) => parts.some((p) => text.includes(p));
 
-Respond in JSON format:
-{
-  "intent": "category",
-  "dataNeeded": ["source1", "source2"],
-  "reasoning": "brief explanation"
-}`;
+  let intent: IntentAnalysis['intent'] = 'general';
+  const dataNeeded: string[] = [];
+  let reasoning = 'Heuristic classification based on keywords';
 
-  try {
-    // Initialize enhanced LLM service if not already initialized
-    if (!enhancedLlmService.isInitialized()) {
-      await enhancedLlmService.initialize();
-    }
-    
-    const response = await enhancedLlmService.complete(intentPrompt, { temperature: 0.3 });
-    console.log('Raw intent analysis response:', response);
-    
-    try {
-      const analysis = JSON.parse(response) as IntentAnalysis;
-      console.log('Parsed intent analysis:', analysis);
-      return analysis;
-    } catch (parseError) {
-      console.error('Failed to parse intent analysis JSON:', parseError);
-      console.error('Raw response was:', response);
-      
-      // Try to extract basic intent from the response text
-      const fallbackIntent = response.toLowerCase().includes('status') ? 'status_check' :
-                           response.toLowerCase().includes('task') ? 'task_management' :
-                           response.toLowerCase().includes('calendar') ? 'calendar_query' : 'general';
-      
-      return {
-        intent: fallbackIntent,
-        dataNeeded: [],
-        reasoning: 'Failed to parse JSON response, extracted basic intent from text'
-      };
-    }
-  } catch (error) {
-    console.error('Error analyzing intent:', error);
-    return {
-      intent: 'general',
-      dataNeeded: [],
-      reasoning: 'Failed to analyze intent, defaulting to general'
-    };
+  if (containsAny(['status', 'progress', 'update'])) {
+    intent = 'status_check';
+    dataNeeded.push('jira', 'notion', 'calendar');
+  } else if (containsAny(['task', 'todo', 'assign', 'complete', 'bug'])) {
+    intent = 'task_management';
+    dataNeeded.push('jira', 'notion');
+  } else if (containsAny(['calendar', 'meeting', 'schedule', 'event'])) {
+    intent = 'calendar_query';
+    dataNeeded.push('calendar');
+  } else if (containsAny(['project', 'milestone', 'roadmap'])) {
+    intent = 'project_overview';
+    dataNeeded.push('notion', 'jira');
   }
+
+  return { intent, dataNeeded, reasoning };
 }
 
 /**
@@ -137,18 +113,18 @@ async function fetchData(dataNeeded: string[], userQuery?: string): Promise<Reco
     if (mcpAvailable) {
       console.log('✅ MCP servers available, using MCP tools');
       
-      // Get all available MCP tools
-      const mcpTools = await mcpService.getTools();
-      console.log('🛠️ Available MCP tools:', mcpTools.map(tool => tool.name));
-      
       // Use MCP agent to execute tools when available
       const mcpAgent = mcpService.getAgent();
       
       if (mcpAgent && userQuery) {
         console.log('🤖 Using MCP agent to execute tools based on user query');
         try {
+          const availableSources = Object.entries(mcpStatus)
+            .filter(([_, status]) => status)
+            .map(([source, _]) => source);
+            
           const mcpResponse = await mcpService.runQuery(
-            `Based on this user query: "${userQuery}", use available MCP tools to gather relevant information from ${dataNeeded.join(', ')} sources.`
+            `Based on this user query: "${userQuery}", use available MCP tools to gather relevant information from ${dataNeeded.join(', ')} sources. Available configured sources: ${availableSources.join(', ')}`
           );
           
           fetchedData.mcpResponse = mcpResponse;
@@ -161,32 +137,9 @@ async function fetchData(dataNeeded: string[], userQuery?: string): Promise<Reco
           fetchedData.mcpError = (mcpError as Error).message;
         }
       } else {
-        console.log('⚠️ MCP agent not available, logging available tools only');
-        
-        for (const source of dataNeeded) {
-          switch (source.toLowerCase()) {
-            case 'jira':
-              if (mcpStatus.jira) {
-                const jiraTools = await mcpService.getToolsByServer('jira');
-                fetchedData.mcpJiraToolsAvailable = jiraTools.map(t => t.server || 'jira');
-              }
-              break;
-              
-            case 'notion':
-              if (mcpStatus.notion) {
-                const notionTools = await mcpService.getToolsByServer('notion');
-                fetchedData.mcpNotionToolsAvailable = notionTools.map(t => t.server || 'notion');
-              }
-              break;
-              
-            case 'calendar':
-              if (mcpStatus.calendar) {
-                const calendarTools = await mcpService.getToolsByServer('calendar');
-                fetchedData.mcpCalendarToolsAvailable = calendarTools.map(t => t.server || 'calendar');
-              }
-              break;
-          }
-        }
+        console.log('⚠️ MCP agent not available - tools cannot be executed');
+        fetchedData.mcpResponse = 'MCP agent not initialized. Tools available but cannot be executed without agent.';
+        fetchedData.mcpToolsUsed = false;
       }
     }
   } catch (error) {
@@ -342,16 +295,32 @@ Be thorough and provide maximum value by combining all available information sou
   }
   
   try {
-    // Initialize enhanced LLM service if not already initialized
-    if (!enhancedLlmService.isInitialized()) {
-      await enhancedLlmService.initialize();
+    // If MCP tools are unavailable, use a direct local LLM fallback for speed
+    if (fetchedData.mcpFallback) {
+      const baseUrl = config.get('llm.ollama.baseUrl');
+      const model = 'mistral:latest';
+      const resp = await axios.post(`${baseUrl}/api/generate`, {
+        model,
+        prompt: responsePrompt,
+        stream: false
+      }, { timeout: 30_000 });
+      const text: string = resp.data?.response || '';
+      return text || 'No response generated.';
     }
-    
-    const response = await enhancedLlmService.complete(responsePrompt, {
-      temperature: 0.7,
-      maxTokens: 600
-    });
-    return response;
+
+    // Otherwise, use the MCP-aware LLM service with timeout
+    if (!mcpLlmService.isInitialized()) {
+      await mcpLlmService.initialize();
+    }
+
+    const response = await Promise.race([
+      mcpLlmService.complete(responsePrompt, {
+        temperature: 0.7,
+        maxTokens: 600
+      }),
+      new Promise<string>((_, reject) => setTimeout(() => reject(new Error('LLM completion timed out after 40 seconds')), 40_000))
+    ]);
+    return response as string;
   } catch (error) {
     console.error('Error generating response:', error);
     console.error('Error details:', error instanceof Error ? error.message : 'Unknown error');

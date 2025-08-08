@@ -9,7 +9,7 @@
     "start": "node dist/index.js",
     "dev": "npm run build && nodemon dist/index.js",
     "dev:js": "nodemon src/index.js",
-    "test": "pnpm run build && tsc -p tsconfig.test.json && pnpm -r dotenv/config --loader @istanbuljs/esm-loader-hook ./node_modules/nyc/bin/nyc.js jasmine dist/test/**/*.js",
+    "test": "npm run build && npx tsc -p tsconfig.test.json && NODE_OPTIONS='--loader @istanbuljs/esm-loader-hook' npx nyc jasmine dist/test/**/*.js",
     "start:google": "pnpm -C ../mcp-servers/google-workspace start",
     "start:atlassian": "pnpm -C ../mcp-servers/atlassian-suite start",
     "start:mcp": "pnpm start:google & pnpm start:atlassian"
@@ -52,6 +52,7 @@
     "@langchain/community": "^0.3.48",
     "@langchain/core": "^0.3.62",
     "@langchain/langgraph": "^0.3.6",
+    "@langchain/ollama": "^0.2.3",
     "@notionhq/client": "^2.2.13",
     "@notionhq/notion-mcp-server": "^1.8.1",
     "axios": "^1.6.0",

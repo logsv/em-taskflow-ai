@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 
 // Test sequential LLM calls like the agent service does
-import enhancedLlmService from './dist/services/enhancedLlmService.js';
+import mcpLlmService from './dist/services/mcpLlmService.js';
 
 async function testSequentialCalls() {
   try {
     console.log('🧪 Testing sequential LLM calls...');
 
     // Initialize the service (like agent service does)
-    if (!enhancedLlmService.isInitialized()) {
+    if (!mcpLlmService.isInitialized()) {
       console.log('🔄 Initializing enhanced LLM service...');
-      await enhancedLlmService.initialize();
+      await mcpLlmService.initialize();
     }
 
     console.log('✅ Service initialized');
@@ -31,7 +31,7 @@ Respond in JSON format:
 }`;
 
     const start1 = Date.now();
-    const response1 = await enhancedLlmService.complete(intentPrompt, { temperature: 0.3, maxTokens: 100 });
+    const response1 = await mcpLlmService.complete(intentPrompt, { temperature: 0.3, maxTokens: 100 });
     const end1 = Date.now();
     
     console.log(`✅ Call 1 completed in ${end1 - start1}ms`);
@@ -47,7 +47,7 @@ Intent: general
 Provide a helpful, comprehensive response about machine learning.`;
 
     const start2 = Date.now();
-    const response2 = await enhancedLlmService.complete(responsePrompt, { temperature: 0.7, maxTokens: 200 });
+    const response2 = await mcpLlmService.complete(responsePrompt, { temperature: 0.7, maxTokens: 200 });
     const end2 = Date.now();
     
     console.log(`✅ Call 2 completed in ${end2 - start2}ms`);

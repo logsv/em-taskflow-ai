@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import apiRouter from './routes/api.js';
 import databaseService from './services/databaseService.js';
-import enhancedLlmService from './services/enhancedLlmService.js';
+import { initializeMCPRouter } from './services/newLlmRouter.js';
 import config from './config/config.js';
 import dotenv from 'dotenv';
 
@@ -28,13 +28,13 @@ async function startServer(): Promise<void> {
     await databaseService.initialize();
     console.log('✅ Database initialized successfully');
     
-    // Initialize enhanced LLM service
+    // Initialize MCP Router with load balancing
     try {
-      await enhancedLlmService.initialize();
-      console.log('✅ Enhanced LLM Service initialized successfully');
-    } catch (llmError) {
-      console.warn('⚠️ Enhanced LLM Service initialization failed, will retry on first use:', llmError);
-      // Don't fail startup if LLM service fails to initialize
+      await initializeMCPRouter();
+      console.log('✅ MCP Router with load balancing initialized successfully');
+    } catch (mcpError) {
+      console.warn('⚠️ MCP Router initialization failed, will retry on first use:', mcpError);
+      // Don't fail startup if MCP router fails to initialize
     }
     
     app.listen(PORT, config.get('server.host'), () => {
