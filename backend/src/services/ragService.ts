@@ -4,7 +4,7 @@ import path from 'path';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
 import * as chromaService from './chromaService.js';
-import config from '../config/config.js';
+import { config, getRagConfig, getLlmConfig, getVectorDbConfig } from '../config/index.js';
 
 // Dynamic pdf-parse import with error handling
 let pdfParse: any = null;
@@ -45,9 +45,10 @@ interface RAGSearchResult {
 
 class RAGService {
   private ollamaBaseUrl: string;
-  private embeddingModel = config.get('rag.embeddingModel');
-  private defaultCollection = config.get('rag.defaultCollection');
-  private maxChunkSize = config.get('rag.maxChunkSize');
+  private ragConfig = getRagConfig();
+  private embeddingModel = this.ragConfig.embeddingModel;
+  private defaultCollection = this.ragConfig.defaultCollection;
+  private maxChunkSize = this.ragConfig.maxChunkSize;
   private pdfDir: string;
   private fs: any;
   private chromaService: any;
@@ -57,7 +58,7 @@ class RAGService {
     this.fs = fsModule;
     this.chromaService = chromaServiceModule;
     this.axios = axiosModule;
-    const rawBase = config.get('llm.ollama.baseUrl') as string;
+    const rawBase = getLlmConfig().providers.ollama.baseUrl;
     const normalizedBase = rawBase.includes('localhost') ? rawBase.replace('localhost', '127.0.0.1') : rawBase;
     this.ollamaBaseUrl = normalizedBase + '/api';
     // Ensure PDF storage directory exists
@@ -309,7 +310,8 @@ class RAGService {
   async isVectorDBAvailable(): Promise<boolean> {
     try {
       // Use v2 API heartbeat endpoint with configured host and port
-      const chromaUrl = `http://${config.get('vectorDb.chroma.host')}:${config.get('vectorDb.chroma.port')}/api/v2/heartbeat`;
+      const vectorDbConfig = getVectorDbConfig();
+      const chromaUrl = `http://${vectorDbConfig.chroma.host}:${vectorDbConfig.chroma.port}/api/v2/heartbeat`;
       const response = await this.axios.get(chromaUrl, {
         timeout: 2000
       });
@@ -328,7 +330,7 @@ class RAGService {
   async isEmbeddingServiceAvailable(): Promise<boolean> {
     try {
       // Simple HTTP check to Ollama without calling embeddings API
-      const ollamaVersionUrl = `${config.get('llm.ollama.baseUrl')}/api/version`;
+      const ollamaVersionUrl = `${getLlmConfig().providers.ollama.baseUrl}/api/version`;
       const response = await this.axios.get(ollamaVersionUrl, {
         timeout: 2000
       });

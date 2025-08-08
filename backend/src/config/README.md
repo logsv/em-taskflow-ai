@@ -6,110 +6,148 @@ This directory contains the Convict-based configuration management system for EM
 
 The configuration system uses [Convict](https://www.npmjs.com/package/convict) to provide:
 - **Type-safe configuration** with validation
-- **Environment-specific overrides** (development, production, test)
-- **Local developer customization** via local.yml
-- **Environment variable integration** with fallback to YAML files
+- **Environment variable integration** with fallback values
+- **Local developer customization** via local.json
 - **Centralized configuration schema** for all services
+- **Single configuration file** for local development
 
 ## Configuration Files
 
 ### Core Files
-- `config.ts` - Main configuration schema and loader
-- `default.yml` - Default configuration values for all environments
-- `development.yml` - Development-specific overrides
-- `production.yml` - Production-specific overrides  
-- `test.yml` - Test-specific overrides
+- `index.ts` - Main configuration loader and helper functions
+- `schema.ts` - Complete configuration schema with validation
+- `local.json` - Single local configuration file (NOT committed to git)
 
 ### Optional Files
-- `local.yml` - Local developer overrides (NOT committed to git)
-- `local.example.yml` - Example local configuration file
+- `local.example.json` - Example local configuration file
 
-## Configuration Loading Priority
+## Configuration Loading
 
-Configurations are loaded in this order (later files override earlier ones):
+Configuration loads in this order (later sources override earlier ones):
 
-1. **Default configuration** (`default.yml`)
-2. **Environment-specific** (`development.yml`, `production.yml`, or `test.yml`)
-3. **Local overrides** (`local.yml`) - highest priority
-4. **Environment variables** - highest priority
+1. **Default values** from schema
+2. **Local configuration** (`local.json`)
+3. **Environment variables** - highest priority
 
 ## Configuration Schema
 
 ### Server Configuration
-```yaml
-server:
-  port: 4000          # Server port (PORT env var)
-  host: "127.0.0.1"   # Bind address (HOST env var)
+```json
+{
+  "server": {
+    "port": 4000,
+    "host": "127.0.0.1"
+  }
+}
 ```
 
 ### Database Configuration
-```yaml
-database:
-  path: "./data/taskflow.db"  # SQLite database path (DATABASE_PATH env var)
+```json
+{
+  "database": {
+    "path": "./data/taskflow.db"
+  }
+}
 ```
 
 ### LLM Provider Configuration
-```yaml
-llm:
-  provider: "ollama"  # Primary provider: openai|anthropic|google|huggingface|ollama
-  openai:
-    apiKey: ""        # OpenAI API key (OPENAI_API_KEY env var)
-  anthropic:
-    apiKey: ""        # Anthropic API key (ANTHROPIC_API_KEY env var)
-  google:
-    apiKey: ""        # Google AI API key (GOOGLE_API_KEY env var)
-  huggingface:
-    apiKey: ""        # Hugging Face API key (HF_API_KEY env var)
-  ollama:
-    baseUrl: "http://localhost:11434"  # Ollama URL (OLLAMA_BASE_URL env var)
+```json
+{
+  "llm": {
+    "defaultProvider": "ollama",
+    "defaultModel": "mistral:latest",
+    "loadBalancingStrategy": "round_robin",
+    "providers": {
+      "openai": {
+        "enabled": false,
+        "apiKey": "YOUR_OPENAI_API_KEY",
+        "priority": 1
+      },
+      "anthropic": {
+        "enabled": false,
+        "apiKey": "YOUR_ANTHROPIC_API_KEY",
+        "priority": 2
+      },
+      "google": {
+        "enabled": false,
+        "apiKey": "YOUR_GOOGLE_API_KEY",
+        "priority": 3
+      },
+      "ollama": {
+        "enabled": true,
+        "baseUrl": "http://localhost:11434",
+        "priority": 4
+      }
+    }
+  }
+}
 ```
 
 ### Vector Database Configuration
-```yaml
-vectorDb:
-  chroma:
-    host: "localhost"  # ChromaDB host (CHROMA_HOST env var)
-    port: 8000         # ChromaDB port (CHROMA_PORT env var)
+```json
+{
+  "vectorDb": {
+    "chroma": {
+      "host": "localhost",
+      "port": 8000
+    }
+  }
+}
 ```
 
 ### MCP Integration Configuration
-```yaml
-mcp:
-  notion:
-    apiKey: ""      # Notion API key (NOTION_API_KEY env var)
-    enabled: false  # Enable Notion integration (NOTION_ENABLED env var)
-  jira:
-    url: ""         # Jira URL (JIRA_URL env var)
-    username: ""    # Jira username (JIRA_USERNAME env var)
-    apiToken: ""    # Jira API token (JIRA_API_TOKEN env var)
-    projectKey: ""  # Jira project key (JIRA_PROJECT_KEY env var)
-    enabled: false  # Enable Jira integration (JIRA_ENABLED env var)
-  google:
-    oauthCredentials: ""  # Google OAuth JSON (GOOGLE_OAUTH_CREDENTIALS env var)
-    calendarId: "primary" # Calendar ID (GOOGLE_CALENDAR_ID env var)
-    enabled: false        # Enable Google integration (GOOGLE_ENABLED env var)
+```json
+{
+  "mcp": {
+    "notion": {
+      "enabled": false,
+      "apiKey": "YOUR_NOTION_API_KEY"
+    },
+    "jira": {
+      "enabled": false,
+      "url": "https://your-domain.atlassian.net",
+      "username": "your-email@domain.com",
+      "apiToken": "YOUR_JIRA_API_TOKEN",
+      "projectKey": "YOUR_PROJECT_KEY"
+    },
+    "google": {
+      "enabled": false,
+      "oauthCredentials": "YOUR_GOOGLE_OAUTH_CREDENTIALS_JSON",
+      "calendarId": "primary"
+    }
+  }
+}
 ```
 
 ### RAG Configuration
-```yaml
-rag:
-  enabled: true                    # Enable RAG functionality (RAG_ENABLED env var)
-  embeddingModel: "nomic-embed-text"  # Embedding model (RAG_EMBEDDING_MODEL env var)
-  defaultCollection: "pdf_chunks"     # ChromaDB collection (RAG_DEFAULT_COLLECTION env var)
-  maxChunkSize: 1000                  # Max chunk size (RAG_MAX_CHUNK_SIZE env var)
+```json
+{
+  "rag": {
+    "enabled": true,
+    "embeddingModel": "nomic-embed-text",
+    "defaultCollection": "pdf_chunks",
+    "maxChunkSize": 800
+  }
+}
 ```
 
 ## Usage
 
 ### In TypeScript/JavaScript
 ```typescript
-import config from './config/config.js';
+import { config, getServerConfig, getLlmConfig, getMcpConfig } from './config/index.js';
 
-// Get configuration values
-const port = config.get('server.port');
-const dbPath = config.get('database.path');
-const llmProvider = config.get('llm.provider');
-const ragEnabled = config.get('rag.enabled');
+// Get complete configuration
+const allConfig = config;
+
+// Get specific sections
+const serverConfig = getServerConfig();
+const llmConfig = getLlmConfig();
+const mcpConfig = getMcpConfig();
+
+// Access specific values
+const port = serverConfig.port;
+const providers = getLlmProviders(); // Returns providers in priority order
 ```
 
 ### Environment Variables
@@ -120,36 +158,48 @@ All configuration values can be overridden with environment variables:
 export PORT=3000
 export HOST="0.0.0.0"
 
-# LLM provider
-export LLM_PROVIDER="openai"
+# LLM providers
+export LLM_OPENAI_ENABLED=true
 export OPENAI_API_KEY="your-api-key"
+export LLM_OLLAMA_BASE_URL="http://ollama:11434"
 
 # MCP integrations
 export NOTION_API_KEY="your-notion-key"
-export NOTION_ENABLED=true
+export MCP_NOTION_ENABLED=true
+
+# RAG settings
+export RAG_MAX_CHUNK_SIZE=1200
 ```
 
 ### Local Development Setup
 
 1. Copy the example local configuration:
    ```bash
-   cp src/config/local.example.yml src/config/local.yml
+   cp src/config/local.example.json src/config/local.json
    ```
 
-2. Edit `local.yml` with your API keys and preferences:
-   ```yaml
-   llm:
-     provider: "openai"
-     openai:
-       apiKey: "your-openai-api-key"
-   
-   mcp:
-     notion:
-       apiKey: "your-notion-api-key"
-       enabled: true
+2. Edit `local.json` with your API keys and preferences:
+   ```json
+   {
+     "llm": {
+       "defaultProvider": "openai",
+       "providers": {
+         "openai": {
+           "enabled": true,
+           "apiKey": "your-openai-api-key"
+         }
+       }
+     },
+     "mcp": {
+       "notion": {
+         "enabled": true,
+         "apiKey": "your-notion-api-key"
+       }
+     }
+   }
    ```
 
-3. The `local.yml` file is ignored by git and won't be committed.
+3. The `local.json` file is ignored by git and won't be committed.
 
 ## Validation
 
@@ -157,7 +207,7 @@ The configuration system validates all values on startup:
 - **Type checking** - ensures correct data types
 - **Format validation** - validates ports, URLs, etc.
 - **Required field checking** - ensures critical values are present
-- **Environment-specific rules** - different validation per environment
+- **Circuit breaker and retry validation** - ensures valid network resilience settings
 
 ## Security
 
@@ -166,21 +216,36 @@ The configuration system validates all values on startup:
 - **Environment variables** take precedence for sensitive data
 - **API keys and tokens** should never be committed to the repository
 
-## Migration from process.env
+## Helper Functions
 
-This system replaces direct `process.env` usage throughout the codebase:
+The configuration system provides several helper functions:
 
-**Before:**
 ```typescript
-const port = process.env.PORT || 4000;
-const apiKey = process.env.OPENAI_API_KEY || '';
+import { 
+  config,
+  getServerConfig,
+  getDatabaseConfig,
+  getVectorDbConfig,
+  getRagConfig,
+  getLlmConfig,
+  getMcpConfig,
+  getLlmProviders,
+  toLlmRouterConfig
+} from './config/index.js';
+
+// Get providers sorted by priority
+const providers = getLlmProviders();
+
+// Convert to LLM Router compatible format
+const routerConfig = toLlmRouterConfig();
 ```
 
-**After:**
-```typescript
-import config from './config/config.js';
-const port = config.get('server.port');
-const apiKey = config.get('llm.openai.apiKey');
-```
+## Migration Benefits
 
-This provides better type safety, validation, and centralized configuration management.
+This unified system provides:
+
+1. **Single source of truth** - one local.json file instead of multiple YAML files
+2. **Better type safety** - compile-time validation of configuration access
+3. **Simplified development** - easier to manage API keys and settings
+4. **Environment flexibility** - easy override with environment variables
+5. **Production ready** - robust validation and error handling

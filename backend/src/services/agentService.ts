@@ -5,7 +5,7 @@ import databaseService from './databaseService.js';
 import mcpService from './mcpService.js';
 import ragService from './ragService.js';
 import axios from 'axios';
-import config from '../config/config.js';
+import { config, getLlmConfig } from '../config/index.js';
 
 // Type definitions
 interface IntentAnalysis {
@@ -304,7 +304,8 @@ Be thorough and provide maximum value by combining all available information sou
     // If MCP tools are unavailable, use a direct local LLM fallback for speed
     if (fetchedData.mcpFallback) {
       // Normalize base URL to avoid IPv6/localhost resolution issues
-      const rawBase = config.get('llm.ollama.baseUrl') as string;
+      const llmConfig = getLlmConfig();
+      const rawBase = llmConfig.providers.ollama.baseUrl;
       const baseUrl = rawBase.includes('localhost') ? rawBase.replace('localhost', '127.0.0.1') : rawBase;
       const model = 'mistral:latest';
       // Build trimmed prompt to avoid excessively large payloads

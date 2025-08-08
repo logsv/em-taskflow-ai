@@ -1,8 +1,6 @@
 import { ResilientRouter, type LLMRequest, type LLMResponse, type RouterConfig, type LLMProviderConfig } from 'llm-router';
 import { MCPClient, MCPAgent } from 'mcp-use';
-import { loadConfig } from '../config/loadConfig.js';
-import config from '../config/config.js';
-import type { RouterConfig as OldRouterConfig } from '../types/config.js';
+import { config, toLlmRouterConfig, getLlmConfig } from '../config/index.js';
 
 // MCP Agent cache for reusing agents across requests
 const mcpAgentCache = new Map<string, MCPAgent>();
@@ -12,8 +10,9 @@ const createMCPAgents = async () => {
   const agents: Record<string, MCPAgent> = {};
   
   // Create OpenAI MCP Agent if API key is available
-  const openaiKey = config.get('llm.openai.apiKey');
-  if (openaiKey && openaiKey.trim() !== '') {
+  const llmConfig = getLlmConfig();
+  const openaiKey = llmConfig.providers.openai.apiKey;
+  if (openaiKey && openaiKey.trim() !== '' && llmConfig.providers.openai.enabled) {
     try {
       const { ChatOpenAI } = await import('@langchain/openai');
       const openaiLLM = new ChatOpenAI({
@@ -37,8 +36,8 @@ const createMCPAgents = async () => {
   }
   
   // Create Ollama MCP Agent
-  const ollamaBaseUrl = config.get('llm.ollama.baseUrl');
-  if (ollamaBaseUrl) {
+  const ollamaBaseUrl = llmConfig.providers.ollama.baseUrl;
+  if (ollamaBaseUrl && llmConfig.providers.ollama.enabled) {
     try {
       const { ChatOllama } = await import('@langchain/ollama');
       const ollamaLLM = new ChatOllama({
@@ -118,8 +117,9 @@ const createRouterConfig = (): RouterConfig => {
   const providers: LLMProviderConfig[] = [];
   
   // Add OpenAI provider if available
-  const openaiKey = config.get('llm.openai.apiKey');
-  if (openaiKey && openaiKey.trim() !== '') {
+  const llmConfig = getLlmConfig();
+  const openaiKey = llmConfig.providers.openai.apiKey;
+  if (openaiKey && openaiKey.trim() !== '' && llmConfig.providers.openai.enabled) {
     providers.push({
       name: 'openai-prod-provider',
       type: 'custom' as const,
@@ -140,8 +140,8 @@ const createRouterConfig = (): RouterConfig => {
   }
   
   // Add Ollama provider
-  const ollamaBaseUrl = config.get('llm.ollama.baseUrl');
-  if (ollamaBaseUrl) {
+  const ollamaBaseUrl = llmConfig.providers.ollama.baseUrl;
+  if (ollamaBaseUrl && llmConfig.providers.ollama.enabled) {
     providers.push({
       name: 'ollama-local-provider',
       type: 'custom' as const,

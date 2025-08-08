@@ -1,0 +1,134 @@
+{
+  "env": "development",
+  
+  "server": {
+    "port": 4000,
+    "host": "127.0.0.1"
+  },
+  
+  "database": {
+    "path": "./data/taskflow.db"
+  },
+  
+  "vectorDb": {
+    "chroma": {
+      "host": "localhost",
+      "port": 8000
+    }
+  },
+  
+  "rag": {
+    "enabled": true,
+    "embeddingModel": "nomic-embed-text",
+    "defaultCollection": "pdf_chunks",
+    "maxChunkSize": 800
+  },
+  
+  "llm": {
+    "defaultProvider": "ollama",
+    "defaultModel": "mistral:latest",
+    "loadBalancingStrategy": "round_robin",
+    
+    "providers": {
+      "openai": {
+        "name": "openai",
+        "type": "openai",
+        "enabled": false,
+        "apiKey": "YOUR_OPENAI_API_KEY",
+        "baseUrl": "https://api.openai.com/v1",
+        "priority": 1,
+        "circuitBreaker": {
+          "failureThreshold": 5,
+          "successThreshold": 3,
+          "timeout": 60000
+        },
+        "retry": {
+          "maxAttempts": 3,
+          "initialDelay": 1000,
+          "maxDelay": 30000,
+          "factor": 2
+        }
+      },
+      
+      "anthropic": {
+        "name": "anthropic",
+        "type": "anthropic",
+        "enabled": false,
+        "apiKey": "YOUR_ANTHROPIC_API_KEY",
+        "baseUrl": "https://api.anthropic.com/v1",
+        "priority": 2,
+        "circuitBreaker": {
+          "failureThreshold": 5,
+          "successThreshold": 3,
+          "timeout": 60000
+        },
+        "retry": {
+          "maxAttempts": 3,
+          "initialDelay": 1000,
+          "maxDelay": 30000,
+          "factor": 2
+        }
+      },
+      
+      "google": {
+        "name": "google",
+        "type": "google",
+        "enabled": false,
+        "apiKey": "YOUR_GOOGLE_API_KEY",
+        "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+        "priority": 3,
+        "circuitBreaker": {
+          "failureThreshold": 5,
+          "successThreshold": 3,
+          "timeout": 60000
+        },
+        "retry": {
+          "maxAttempts": 3,
+          "initialDelay": 1000,
+          "maxDelay": 30000,
+          "factor": 2
+        }
+      },
+      
+      "ollama": {
+        "name": "ollama",
+        "type": "ollama",
+        "enabled": true,
+        "baseUrl": "http://localhost:11434",
+        "priority": 4,
+        "circuitBreaker": {
+          "failureThreshold": 3,
+          "successThreshold": 1,
+          "timeout": 10000
+        },
+        "retry": {
+          "maxAttempts": 2,
+          "initialDelay": 500,
+          "maxDelay": 10000,
+          "factor": 1.5
+        }
+      }
+    }
+  },
+  
+  "mcp": {
+    "notion": {
+      "enabled": false,
+      "apiKey": "YOUR_NOTION_API_KEY"
+    },
+    
+    "jira": {
+      "enabled": false,
+      "url": "https://your-domain.atlassian.net",
+      "username": "your-email@domain.com",
+      "apiToken": "YOUR_JIRA_API_TOKEN",
+      "projectKey": "YOUR_PROJECT_KEY"
+    },
+    
+    "google": {
+      "enabled": false,
+      "oauthCredentials": "YOUR_GOOGLE_OAUTH_CREDENTIALS_JSON",
+      "calendarId": "primary"
+    }
+  }
+}

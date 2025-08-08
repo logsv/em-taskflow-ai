@@ -1,13 +1,14 @@
 
 import { ChromaClient } from 'chromadb';
 import type { Collection, CollectionMetadata, Metadata } from 'chromadb';
-import config from '../config/config.js';
+import { config, getVectorDbConfig } from '../config/index.js';
 
 // Modern ChromaDB client configuration
 const getClient = (): ChromaClient => {
+  const vectorDbConfig = getVectorDbConfig();
   return new ChromaClient({
-    host: config.get('vectorDb.chroma.host'),
-    port: config.get('vectorDb.chroma.port')
+    host: vectorDbConfig.chroma.host,
+    port: vectorDbConfig.chroma.port
   });
 };
 
