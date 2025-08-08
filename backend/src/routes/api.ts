@@ -208,6 +208,13 @@ router.post('/rag-query', async (req: RAGQueryRequest, res: Response) => {
         'Request timed out after 45 seconds'
       );
 
+      // If the agent responded with a generic error/apology, fall back to direct RAG + local LLM
+      const apology = 'I apologize, but I encountered an error while generating a response.';
+      if (typeof agentResponse === 'string' && agentResponse.startsWith(apology)) {
+        console.warn('Primary agent returned apology text, switching to RAG+LLM fallback');
+        throw new Error('primary-returned-apology');
+      }
+
       return res.json({
         answer: agentResponse,
         message: 'Response generated using integrated RAG, MCP, and LLM agent',

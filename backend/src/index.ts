@@ -5,6 +5,7 @@ import databaseService from './services/databaseService.js';
 import { initializeMCPRouter } from './services/newLlmRouter.js';
 import config from './config/config.js';
 import dotenv from 'dotenv';
+import mcpService from './services/mcpService.js';
 
 // Load environment variables first, then override with convict config
 dotenv.config();
@@ -27,6 +28,23 @@ async function startServer(): Promise<void> {
     // Initialize database
     await databaseService.initialize();
     console.log('✅ Database initialized successfully');
+    
+    // Log Notion config resolution for debugging
+    try {
+      const notionEnabled = config.get('mcp.notion.enabled');
+      const notionKeyLen = (config.get('mcp.notion.apiKey') as string)?.length || 0;
+      console.log('🔧 Notion config at startup - enabled:', notionEnabled, 'key length:', notionKeyLen);
+    } catch (e) {
+      console.warn('⚠️ Could not read Notion config:', e);
+    }
+
+    // Initialize MCP Service (agent + servers) proactively
+    try {
+      await mcpService.initialize();
+      console.log('✅ MCP Service initialized at startup');
+    } catch (e) {
+      console.warn('⚠️ MCP Service init at startup failed:', e);
+    }
     
     // Initialize MCP Router with load balancing
     try {

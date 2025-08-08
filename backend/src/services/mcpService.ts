@@ -30,18 +30,26 @@ class MCPService {
       console.log('  Jira API token length:', config.get('mcp.jira.apiToken')?.length || 0);
 
       // Build MCP server configurations using standard mcp-use format
-      const mcpServers: any = {};
+      const mcpServers: Record<string, any> = {};
 
-      // Add Notion server if enabled - using standard MCP studio server path
-      if (config.get('mcp.notion.enabled') && config.get('mcp.notion.apiKey')) {
+      // Resolve Notion credentials (support env fallbacks)
+      const notionEnabled: boolean = Boolean(config.get('mcp.notion.enabled')) || String(process.env.NOTION_ENABLED).toLowerCase() === 'true';
+      const notionApiKey: string = (config.get('mcp.notion.apiKey') as string) || process.env.NOTION_API_KEY || '';
+      console.log('🔧 Notion resolved - enabled:', notionEnabled, 'key length:', notionApiKey.length);
+
+      // Add Notion server if enabled
+      if (notionEnabled && notionApiKey) {
         mcpServers.notion = {
           command: 'npx',
           args: ['-y', '@notionhq/notion-mcp-server'],
           env: {
-            NOTION_API_KEY: config.get('mcp.notion.apiKey'),
+            NOTION_API_KEY: notionApiKey,
             NOTION_VERSION: '2022-06-28'
           }
         };
+      } else {
+        if (!notionEnabled) console.log('ℹ️ Notion MCP disabled by config');
+        if (!notionApiKey) console.log('ℹ️ Notion MCP missing API key');
       }
 
       // Add Google Calendar server if enabled - using standard MCP studio server path
@@ -70,6 +78,9 @@ class MCPService {
       }
 
       console.log('🔧 Enabled MCP servers:', Object.keys(mcpServers));
+      if (!Object.keys(mcpServers).length) {
+        console.warn('⚠️ No MCP servers configured. Check local.yml or environment variables.');
+      }
 
       // Store server config and create client using standard fromDict method
       this.serverConfig = { mcpServers };
@@ -78,7 +89,10 @@ class MCPService {
       // Initialize LLM for the agent using standard mcp-use approach
       const llmProvider = config.get('llm.provider');
       const openaiKey = config.get('llm.openai.apiKey') || process.env.OPENAI_API_KEY;
-      const ollamaBaseUrl = config.get('llm.ollama.baseUrl');
+      const rawOllamaBaseUrl = config.get('llm.ollama.baseUrl') as string;
+      const ollamaBaseUrl = rawOllamaBaseUrl && rawOllamaBaseUrl.includes('localhost')
+        ? rawOllamaBaseUrl.replace('localhost', '127.0.0.1')
+        : rawOllamaBaseUrl;
       
       let llm: any = null;
       
@@ -157,14 +171,16 @@ class MCPService {
     }
 
     try {
+      console.log('🧪 MCP Agent runQuery start. maxSteps=', maxSteps, 'query snippet=', query.slice(0, 80));
       // Use standard mcp-use agent run method with timeout guard
       const result = await Promise.race([
         this.agent.run(query, maxSteps),
         new Promise<string>((_, reject) => setTimeout(() => reject(new Error('MCP agent timed out after 40 seconds')), 40_000))
       ]);
+      console.log('🧪 MCP Agent runQuery done. result snippet=', String(result).slice(0, 120));
       return result as string;
     } catch (error) {
-      console.error('Error running MCP agent query:', error);
+      console.error('❌ MCP Agent runQuery error:', error);
       throw error;
     }
   }
