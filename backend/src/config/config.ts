@@ -231,28 +231,44 @@ const config = convict({
   }
 });
 
-// Load configuration files
+// Load configuration files with fallbacks when running from dist/
 const configDir = __dirname;
-const defaultConfigFile = path.join(configDir, 'default.yml');
-const envConfigFile = path.join(configDir, `${config.get('env')}.yml`);
-const localConfigFile = path.join(configDir, 'local.yml');
+const fallbackDir = path.resolve(__dirname, '../../../src/config');
+const pickExisting = (...candidates: string[]): string | null => {
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+};
+const defaultConfigFile = pickExisting(
+  path.join(configDir, 'default.yml'),
+  path.join(fallbackDir, 'default.yml')
+);
+const envConfigFile = pickExisting(
+  path.join(configDir, `${config.get('env')}.yml`),
+  path.join(fallbackDir, `${config.get('env')}.yml`)
+);
+const localConfigFile = pickExisting(
+  path.join(configDir, 'local.yml'),
+  path.join(fallbackDir, 'local.yml')
+);
 
 // Load default configuration
-if (fs.existsSync(defaultConfigFile)) {
+if (defaultConfigFile && fs.existsSync(defaultConfigFile)) {
   const defaultConfig = yaml.load(fs.readFileSync(defaultConfigFile, 'utf8'));
   config.load(defaultConfig as any);
   console.log('✅ Loaded default configuration from default.yml');
 }
 
 // Load environment-specific configuration if it exists
-if (fs.existsSync(envConfigFile)) {
+if (envConfigFile && fs.existsSync(envConfigFile)) {
   const envConfig = yaml.load(fs.readFileSync(envConfigFile, 'utf8'));
   config.load(envConfig as any);
   console.log(`✅ Loaded ${config.get('env')} configuration from ${config.get('env')}.yml`);
 }
 
 // Load local configuration (highest priority, for developer-specific settings)
-if (fs.existsSync(localConfigFile)) {
+if (localConfigFile && fs.existsSync(localConfigFile)) {
   const localConfig = yaml.load(fs.readFileSync(localConfigFile, 'utf8'));
   config.load(localConfig as any);
   console.log('✅ Loaded local configuration from local.yml');
