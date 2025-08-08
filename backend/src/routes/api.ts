@@ -14,12 +14,29 @@ import ragService from '../services/ragService.js';
 import databaseService from '../services/databaseService.js';
 import mcpService from '../services/mcpService.js';
 import databaseRouter from './database.js';
+import config from '../config/config.js';
 
 // Get __dirname equivalent in ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = express.Router();
+
+// Simple timeout helper for endpoint operations
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
 
 // Type definitions
 interface MulterRequest extends Request {
@@ -150,8 +167,12 @@ router.post('/llm-summary', async (req: LLMSummaryRequest, res: Response) => {
       return res.status(400).json({ error: 'Prompt is required' });
     }
     
-    // Process query with integrated RAG+MCP+Agent service
-    const agentResponse = await agentService.processQuery(prompt);
+    // Process query with integrated RAG+MCP+Agent service with 45s timeout
+    const agentResponse = await withTimeout(
+      agentService.processQuery(prompt),
+      45_000,
+      'Request timed out after 45 seconds'
+    );
     
     // agentResponse is now a string (the response itself)
     // Save chat interaction to database (already handled in processQuery)
@@ -163,7 +184,9 @@ router.post('/llm-summary', async (req: LLMSummaryRequest, res: Response) => {
     });
   } catch (error) {
     console.error('Error in /llm-summary:', error);
-    res.status(500).json({ error: (error as Error).message });
+    const message = (error as Error).message || 'Unknown error';
+    const status = message.includes('timed out') ? 504 : 500;
+    res.status(status).json({ error: message });
   }
 });
 
@@ -177,20 +200,58 @@ router.post('/rag-query', async (req: RAGQueryRequest, res: Response) => {
 
     console.log('🔍 Processing RAG query with integrated agent:', query);
 
-    // Use the unified agent service which includes RAG, MCP, and LLM integration
-    const agentResponse = await agentService.processQuery(query);
+    try {
+      // Primary: unified agent service (RAG + MCP + LLM) with 45s timeout
+      const agentResponse = await withTimeout(
+        agentService.processQuery(query),
+        45_000,
+        'Request timed out after 45 seconds'
+      );
 
-    res.json({
-      answer: agentResponse,
-      message: 'Response generated using integrated RAG, MCP, and LLM agent',
-      query: query,
-      timestamp: new Date().toISOString()
-    });
+      return res.json({
+        answer: agentResponse,
+        message: 'Response generated using integrated RAG, MCP, and LLM agent',
+        query: query,
+        timestamp: new Date().toISOString()
+      });
+    } catch (primaryError) {
+      console.warn('Primary agent flow failed, attempting direct RAG fallback:', (primaryError as Error).message);
+
+      // Fallback: direct RAG search + local LLM (Ollama) without MCP
+      const topK = typeof req.body?.top_k === 'number' ? req.body.top_k : 5;
+      const ragResults = await ragService.searchRelevantChunks(query, topK);
+      const context = ragResults.context || 'No relevant context found.';
+
+      const prompt = `Use the following document context to answer the question. If context is empty, answer from general knowledge but state that no matching document context was found.\n\nContext:\n${context}\n\nQuestion: ${query}\n\nAnswer:`;
+
+      try {
+        const baseUrl = config.get('llm.ollama.baseUrl');
+        const genResp = await axios.post(`${baseUrl}/api/generate`, {
+          model: 'mistral:latest',
+          prompt,
+          stream: false
+        }, { timeout: 30_000 });
+        const text: string = genResp.data?.response || '';
+        return res.json({
+          answer: text || 'No response generated.',
+          message: 'Response generated via direct RAG + local LLM fallback',
+          query: query,
+          timestamp: new Date().toISOString()
+        });
+      } catch (fallbackError) {
+        console.error('Direct RAG fallback failed:', fallbackError);
+        const msg = fallbackError instanceof Error ? fallbackError.message : 'Unknown error';
+        const status = msg.includes('timed out') ? 504 : 500;
+        return res.status(status).json({ error: msg.includes('timed out') ? 'Request timed out after 45 seconds' : 'Failed to process RAG query' });
+      }
+    }
   } catch (err) {
     console.error('❌ RAG query error:', err);
-    console.error('❌ RAG Error details:', err instanceof Error ? err.message : 'Unknown error');
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    const status = msg.includes('timed out') ? 504 : 500;
+    console.error('❌ RAG Error details:', msg);
     console.error('❌ RAG Error stack:', err instanceof Error ? err.stack : 'No stack trace');
-    res.status(500).json({ error: 'Failed to process RAG query' });
+    res.status(status).json({ error: msg.includes('timed out') ? 'Request timed out after 45 seconds' : 'Failed to process RAG query' });
   }
 });
 
