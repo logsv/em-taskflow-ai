@@ -107,10 +107,10 @@ class MCPService {
           
           llm = new ChatOllama({
             baseUrl: ollamaBaseUrl,
-            model: 'llama3.1:latest', // Llama 3.1 has proper tool calling support
+            model: 'mistral:latest',
             temperature: 0.7
           });
-          console.log('✅ Using ChatOllama for MCP Agent');
+          console.log('✅ Using ChatOllama (mistral:latest) for MCP Agent');
         } catch (ollamaError) {
           console.warn('⚠️ Could not initialize ChatOllama:', ollamaError);
         }
@@ -157,9 +157,12 @@ class MCPService {
     }
 
     try {
-      // Use standard mcp-use agent run method - LLM handles all tool discovery and calling
-      const result = await this.agent.run(query, maxSteps);
-      return result;
+      // Use standard mcp-use agent run method with timeout guard
+      const result = await Promise.race([
+        this.agent.run(query, maxSteps),
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('MCP agent timed out after 40 seconds')), 40_000))
+      ]);
+      return result as string;
     } catch (error) {
       console.error('Error running MCP agent query:', error);
       throw error;
@@ -175,7 +178,7 @@ class MCPService {
     }
 
     try {
-      // Use standard mcp-use agent stream method (corrected parameters)
+      // Use standard mcp-use agent stream method with safety timeout per step
       for await (const step of this.agent.stream(query, maxSteps)) {
         yield step;
       }

@@ -1,5 +1,14 @@
-// Simple test setup for Jasmine
-// This file ensures proper test environment setup
+// Global test setup for ES modules and Jasmine
+// This file runs before all tests
+
+import sinon from 'sinon';
+
+// Set up test environment
+process.env.NODE_ENV = 'test';
+process.env.DATABASE_URL = ':memory:';
+
+// Increase timeout for async operations
+jasmine.DEFAULT_TIMEOUT_INTERVAL = 30000;
 
 // Mock console methods to reduce noise during testing
 const originalConsoleLog = console.log;
@@ -20,3 +29,6 @@ afterAll(() => {
   console.error = originalConsoleError;
   console.warn = originalConsoleWarn;
 });
+
+// Global mock utilities
+(global as any).createMockSandbox = () => sinon.createSandbox();

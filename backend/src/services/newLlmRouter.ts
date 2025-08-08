@@ -43,7 +43,7 @@ const createMCPAgents = async () => {
       const { ChatOllama } = await import('@langchain/ollama');
       const ollamaLLM = new ChatOllama({
         baseUrl: ollamaBaseUrl,
-        model: 'llama3.1:latest', // Tool calling support
+        model: 'mistral:latest',
         temperature: 0.7
       });
       
@@ -73,7 +73,10 @@ const createProviderHandlers = () => {
         throw new Error('OpenAI MCP Agent not available');
       }
       
-      const result = await agent.run(req.messages[0]?.content || 'Complete this request', 20);
+      const result = await Promise.race([
+        agent.run(req.messages[0]?.content || 'Complete this request', 20),
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('MCP agent timed out after 40 seconds')), 40_000))
+      ]);
       return {
         text: result,
         model: 'gpt-4o-mini-mcp',
@@ -91,7 +94,10 @@ const createProviderHandlers = () => {
         throw new Error('Ollama MCP Agent not available');
       }
       
-      const result = await agent.run(req.messages[0]?.content || 'Complete this request', 20);
+      const result = await Promise.race([
+        agent.run(req.messages[0]?.content || 'Complete this request', 20),
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('MCP agent timed out after 40 seconds')), 40_000))
+      ]);
       return {
         text: result,
         model: 'llama3.1-latest-mcp',
@@ -142,7 +148,7 @@ const createRouterConfig = (): RouterConfig => {
       enabled: true,
       priority: 2, // Lower priority than OpenAI
       models: [{
-        name: 'llama3.1-latest-mcp',
+         name: 'mistral-latest-mcp',
         costPer1kInputTokens: 0, // Local model - no cost
         costPer1kOutputTokens: 0,
         maxTokens: 128000
@@ -157,7 +163,7 @@ const createRouterConfig = (): RouterConfig => {
 
   return {
     loadBalancingStrategy: 'round_robin',
-    defaultModel: 'llama3.1-latest-mcp',
+    defaultModel: 'mistral-latest-mcp',
     providers,
     resilience: {
       retry: {
@@ -269,7 +275,10 @@ export class EnhancedLLMRouter {
       throw new Error('No MCP agents available');
     }
     
-    return await agent.run(query, maxSteps);
+    return await Promise.race([
+      agent.run(query, maxSteps),
+      new Promise<string>((_, reject) => setTimeout(() => reject(new Error('MCP agent timed out after 40 seconds')), 40_000))
+    ]);
   }
 
   /**
