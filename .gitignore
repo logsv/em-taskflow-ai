@@ -39,10 +39,11 @@ backend/.env
 frontend/.env
 .env.*
 
-# Convict configuration files
-backend/src/config/local.yml
-backend/src/config/secrets.yml
-backend/src/config/*.local.yml
+# Convict configuration files (old YAML system - removed)
+# New JSON-based configuration
+backend/src/config/local.json
+backend/src/config/secrets.json
+backend/src/config/*.local.json
 
 # ===========================
 # TYPESCRIPT
@@ -277,3 +278,4 @@ public
 # Temporary folders
 tmp/
 temp/ 
+.vercel

@@ -14,7 +14,7 @@ import ragService from '../services/ragService.js';
 import databaseService from '../services/databaseService.js';
 import mcpService from '../services/mcpService.js';
 import databaseRouter from './database.js';
-import config from '../config/config.js';
+import { config } from '../config/index.js';
 
 // Get __dirname equivalent in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -232,7 +232,7 @@ router.post('/rag-query', async (req: RAGQueryRequest, res: Response) => {
       const prompt = `Use the following document context to answer the question. If context is empty, answer from general knowledge but state that no matching document context was found.\n\nContext:\n${context}\n\nQuestion: ${query}\n\nAnswer:`;
 
       try {
-        const baseUrl = config.get('llm.ollama.baseUrl');
+        const baseUrl = config.llm.providers.ollama.baseUrl;
         const genResp = await axios.post(`${baseUrl}/api/generate`, {
           model: 'mistral:latest',
           prompt,
