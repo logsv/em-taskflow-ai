@@ -196,6 +196,12 @@ mcp-servers/
 *secret*
 *credential*
 
+# Google Cloud Service Account credentials
+backend/gcp-oauth.keys.json
+gcp-oauth.keys.json
+*oauth*.json
+*service-account*.json
+
 # ===========================
 # OLLAMA & AI MODELS
 # ===========================
