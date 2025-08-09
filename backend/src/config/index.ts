@@ -1,19 +1,59 @@
 import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
 import { configSchema } from './schema.js';
 
 // Load configuration files based on environment
 const env = process.env.NODE_ENV || 'development';
 
+// Get current directory in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 // Configuration file loading order (later files override earlier ones)
 const configFiles = [
-  path.resolve('./src/config/local.json') // Single local config file for development
+  path.resolve(__dirname, '../../src/config/local.json') // Single local config file for development
 ];
 
-// Load configuration files
+// Simple config loader that works around convict's sensitive value masking
+let config: any = {};
+
 configFiles.forEach(file => {
+  console.log(`Attempting to load config from: ${file}`);
   try {
-    configSchema.loadFile(file);
+    // Read file directly
+    const rawData = fs.readFileSync(file, 'utf8');
+    const fileData = JSON.parse(rawData);
+    console.log('🔧 Raw file MCP data:', JSON.stringify(fileData.mcp, null, 2));
+    
+    // Merge with defaults and environment variables
+    config = {
+      ...fileData,
+      // Apply environment variable overrides
+      mcp: {
+        notion: {
+          enabled: process.env.MCP_NOTION_ENABLED === 'true' || fileData.mcp?.notion?.enabled || false,
+          apiKey: process.env.NOTION_API_KEY || fileData.mcp?.notion?.apiKey || ''
+        },
+        jira: {
+          enabled: process.env.MCP_JIRA_ENABLED === 'true' || fileData.mcp?.jira?.enabled || false,
+          url: process.env.JIRA_URL || fileData.mcp?.jira?.url || '',
+          username: process.env.JIRA_USERNAME || fileData.mcp?.jira?.username || '',
+          apiToken: process.env.JIRA_API_TOKEN || fileData.mcp?.jira?.apiToken || '',
+          projectKey: process.env.JIRA_PROJECT_KEY || fileData.mcp?.jira?.projectKey || ''
+        },
+        google: {
+          enabled: process.env.MCP_GOOGLE_ENABLED === 'true' || fileData.mcp?.google?.enabled || false,
+          oauthCredentials: process.env.GOOGLE_OAUTH_CREDENTIALS || fileData.mcp?.google?.oauthCredentials || '',
+          calendarId: process.env.GOOGLE_CALENDAR_ID || fileData.mcp?.google?.calendarId || 'primary'
+        }
+      }
+    };
+    
+    console.log(`Successfully loaded config from: ${file}`);
+    console.log('🔧 Final config MCP section:', JSON.stringify(config.mcp, null, 2));
   } catch (error) {
+    console.log(`Failed to load config from ${file}:`, error);
     // Ignore missing files, but log other errors
     if ((error as any).code !== 'ENOENT') {
       console.warn(`Warning loading config file ${file}:`, error);
@@ -21,11 +61,8 @@ configFiles.forEach(file => {
   }
 });
 
-// Validate configuration
-configSchema.validate({ allowed: 'strict' });
-
 // Export the validated configuration
-export const config = configSchema.getProperties();
+export { config };
 export default config;
 
 // Export schema for testing

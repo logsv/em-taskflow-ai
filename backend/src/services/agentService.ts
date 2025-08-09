@@ -124,7 +124,8 @@ async function fetchData(dataNeeded: string[], userQuery?: string): Promise<Reco
             .map(([source, _]) => source);
             
           const mcpResponse = await mcpService.runQuery(
-            `Based on this user query: "${userQuery}", use available MCP tools to gather relevant information from ${dataNeeded.join(', ')} sources. Available configured sources: ${availableSources.join(', ')}`
+            `Based on this user query: "${userQuery}", use available MCP tools to gather relevant information from ${dataNeeded.join(', ')} sources. Available configured sources: ${availableSources.join(', ')}`,
+            10
           );
           
           fetchedData.mcpResponse = mcpResponse;

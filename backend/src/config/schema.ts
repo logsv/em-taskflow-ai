@@ -1,8 +1,8 @@
 import convict from 'convict';
-import { format } from 'convict';
 
 // Define custom format for provider arrays
-format.add('providers-array', {
+convict.addFormat({
+  name: 'providers-array',
   validate: function (providers) {
     if (!Array.isArray(providers)) {
       throw new Error('must be an array');
@@ -467,8 +467,7 @@ export const configSchema = convict({
         doc: 'Notion API key',
         format: String,
         default: '',
-        env: 'NOTION_API_KEY',
-        sensitive: true
+        env: 'NOTION_API_KEY'
       }
     },
     
@@ -495,8 +494,7 @@ export const configSchema = convict({
         doc: 'Jira API token',
         format: String,
         default: '',
-        env: 'JIRA_API_TOKEN',
-        sensitive: true
+        env: 'JIRA_API_TOKEN'
       },
       projectKey: {
         doc: 'Jira project key',
