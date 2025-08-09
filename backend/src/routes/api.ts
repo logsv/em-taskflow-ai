@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 import taskManager from '../services/taskManager.js';
 import getMCPRouter from '../services/newLlmRouter.js';
 import mcpLlmService from '../services/mcpLlmService.js';
-import agentService from '../services/agentService.js';
+import langGraphAgentService from '../services/langGraphAgentService.js';
 import ragService from '../services/ragService.js';
 import databaseService from '../services/databaseService.js';
 import mcpService from '../services/mcpService.js';
@@ -169,7 +169,7 @@ router.post('/llm-summary', async (req: LLMSummaryRequest, res: Response) => {
     
     // Process query with integrated RAG+MCP+Agent service with 45s timeout
     const agentResponse = await withTimeout(
-      agentService.processQuery(prompt),
+      langGraphAgentService.processQuery(prompt),
       45_000,
       'Request timed out after 45 seconds'
     );
@@ -201,11 +201,11 @@ router.post('/rag-query', async (req: RAGQueryRequest, res: Response) => {
     console.log('🔍 Processing RAG query with integrated agent:', query);
 
     try {
-      // Primary: unified agent service (RAG + MCP + LLM) with 45s timeout
+      // Primary: unified agent service (RAG + MCP + LLM) with 120s timeout
       const agentResponse = await withTimeout(
-        agentService.processQuery(query),
-        45_000,
-        'Request timed out after 45 seconds'
+        langGraphAgentService.processQuery(query),
+        120_000,
+        'Request timed out after 120 seconds'
       );
 
       // If the agent responded with a generic error/apology, fall back to direct RAG + local LLM
@@ -415,6 +415,68 @@ router.post('/mcp-restart', async (req: Request, res: Response) => {
     });
   }
 });
+
+// DEBUG: Simple MCP test endpoint
+router.get('/mcp-debug', async (req: Request, res: Response) => {
+  try {
+    console.log('🔍 MCP Debug endpoint called');
+    const isReady = mcpService.isReady();
+    const agent = mcpService.getAgent();
+    const status = await mcpService.getServerStatus();
+    
+    res.json({
+      ready: isReady,
+      agentAvailable: !!agent,
+      serverStatus: status,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('MCP Debug error:', error);
+    res.status(500).json({ error: 'MCP Debug failed', message: (error as Error).message });
+  }
+});
+
+// DEBUG: Simple RAG test endpoint
+router.get('/rag-debug', async (req: Request, res: Response) => {
+  try {
+    console.log('🔍 RAG Debug endpoint called');
+    const ragStatus = await ragService.getStatus();
+    
+    res.json({
+      ragStatus,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('RAG Debug error:', error);
+    res.status(500).json({ error: 'RAG Debug failed', message: (error as Error).message });
+  }
+});
+
+// DEBUG: Test MCP runQuery directly
+router.post('/mcp-test', async (req: Request, res: Response) => {
+  try {
+    console.log('🔍 MCP Test endpoint called');
+    const query = req.body.query || "list my notion pages";
+    
+    if (!mcpService.isReady()) {
+      await mcpService.initialize();
+    }
+    
+    console.log('🧪 Testing MCP runQuery with:', query);
+    const result = await mcpService.runQuery(query, 10);
+    console.log('✅ MCP runQuery completed');
+    
+    res.json({
+      query,
+      result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('MCP Test error:', error);
+    res.status(500).json({ error: 'MCP Test failed', message: (error as Error).message });
+  }
+});
+
 // Note: MCP tools are integrated into the agent service and used automatically
 // in RAG queries (/api/rag-query and /api/llm-summary). No separate CRUD endpoints needed.
 

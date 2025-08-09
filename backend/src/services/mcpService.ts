@@ -44,7 +44,7 @@ class MCPService {
           command: 'npx',
           args: ['-y', '@notionhq/notion-mcp-server'],
           env: {
-            NOTION_API_KEY: notionApiKey,
+            NOTION_TOKEN: notionApiKey,
             NOTION_VERSION: '2022-06-28'
           }
         };
@@ -88,7 +88,7 @@ class MCPService {
       this.client = MCPClient.fromDict(this.serverConfig);
 
       // Initialize LLM for the agent using standard mcp-use approach
-      const llmConfig = getLlmConfig();
+      const llmConfig = config.llm;
       const llmProvider = llmConfig.defaultProvider;
       const openaiKey = llmConfig.providers.openai.apiKey || process.env.OPENAI_API_KEY;
       const rawOllamaBaseUrl = llmConfig.providers.ollama.baseUrl;
@@ -177,7 +177,7 @@ class MCPService {
       // Use standard mcp-use agent run method with timeout guard
       const result = await Promise.race([
         this.agent.run(query, maxSteps),
-        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('MCP agent timed out after 40 seconds')), 40_000))
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('MCP agent timed out after 90 seconds')), 90_000))
       ]);
       console.log('🧪 MCP Agent runQuery done. result snippet=', String(result).slice(0, 120));
       return result as string;
@@ -264,7 +264,7 @@ class MCPService {
     await this.close();
     
     // Force reload configuration by re-importing
-    const configModule = await import('../config/config.js');
+    const configModule = await import('../config/index.js');
     const freshConfig = configModule.default;
     
     // Re-initialize with fresh config
