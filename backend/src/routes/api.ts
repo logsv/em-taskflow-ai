@@ -3,14 +3,16 @@ import type { Request, Response } from 'express';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
-// import pdfParse from 'pdf-parse'; // Temporarily disabled due to module issues
+
 import axios from 'axios';
 import { fileURLToPath } from 'url';
 import taskManager from '../services/taskManager.js';
 import getMCPRouter from '../services/newLlmRouter.js';
 import mcpLlmService from '../services/mcpLlmService.js';
 import langGraphAgentService from '../services/langGraphAgentService.js';
+import enhancedLangGraphAgentService from '../services/enhancedLangGraphAgentService.js';
 import ragService from '../services/ragService.js';
+import enhancedRagService from '../services/enhancedRagService.js';
 import databaseService from '../services/databaseService.js';
 import mcpService from '../services/mcpService.js';
 import databaseRouter from './database.js';
@@ -109,6 +111,43 @@ router.post('/upload-pdf', upload.single('pdf'), async (req: Request, res: Respo
   }
 });
 
+// Enhanced RAG PDF upload endpoint with LangGraph best practices
+router.post('/upload-pdf-enhanced', upload.single('pdf'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    
+    console.log('📄 Processing uploaded PDF with enhanced RAG:', req.file.originalname);
+    
+    // Use enhanced RAG service to process the PDF
+    const result = await enhancedRagService.processPDF(req.file.path, req.file.originalname || 'unknown.pdf');
+    
+    if (result.success) {
+      res.json({ 
+        status: 'success', 
+        message: `PDF processed successfully with enhanced features. Created ${result.chunks} chunks.`,
+        chunks: result.chunks,
+        filename: req.file.originalname,
+        features: [
+          'Semantic chunking with sentence boundaries',
+          'Chunk overlap for better context preservation',
+          'Enhanced metadata preservation',
+          'Optimized ChromaDB storage'
+        ]
+      });
+    } else {
+      res.status(500).json({ 
+        error: 'Failed to process PDF with enhanced RAG',
+        details: result.error
+      });
+    }
+  } catch (err) {
+    console.error('❌ Enhanced PDF upload error:', err);
+    res.status(500).json({ error: 'Failed to process enhanced PDF upload' });
+  }
+});
+
 // GET /api/summary - Unified status summary
 router.get('/summary', async (req: Request, res: Response) => {
   try {
@@ -150,7 +189,7 @@ router.post('/complete', async (req: CompleteTaskRequest, res: Response) => {
 router.get('/suggestions', async (req: SuggestionsRequest, res: Response) => {
   try {
     const { sessionId } = req.query;
-    // Smart suggestions temporarily disabled - using placeholder
+
     const suggestions = ['Review pending tasks', 'Check calendar conflicts', 'Update project status'];
     res.json({ suggestions });
   } catch (err) {
@@ -259,6 +298,160 @@ router.post('/rag-query', async (req: RAGQueryRequest, res: Response) => {
     console.error('❌ RAG Error details:', msg);
     console.error('❌ RAG Error stack:', err instanceof Error ? err.stack : 'No stack trace');
     res.status(status).json({ error: msg.includes('timed out') ? 'Request timed out after 45 seconds' : 'Failed to process RAG query' });
+  }
+});
+
+// POST /api/enhanced-chat - Enhanced LangGraph agent with all best practices
+router.post('/enhanced-chat', async (req: Request, res: Response) => {
+  try {
+    const { query, sessionId } = req.body;
+    
+    if (!query) {
+      return res.status(400).json({ error: 'Query is required' });
+    }
+    
+    console.log('🚀 Processing query with enhanced LangGraph agent:', query);
+    
+    // Process query with enhanced agent service with extended timeout
+    const agentResponse = await withTimeout(
+      enhancedLangGraphAgentService.processQuery(query),
+      90_000, // 90 second timeout for enhanced processing
+      'Enhanced request timed out after 90 seconds'
+    );
+    
+    res.json({ 
+      response: agentResponse,
+      message: 'Response generated using enhanced RAG with query transformation, relevance grading, and hallucination detection',
+      timestamp: new Date().toISOString(),
+      features: [
+        'Query transformation for better retrieval',
+        'LLM-based relevance grading',
+        'Hallucination detection and mitigation',
+        'Enhanced semantic chunking',
+        'Full LangGraph StateGraph workflow'
+      ]
+    });
+  } catch (error) {
+    console.error('Error in /enhanced-chat:', error);
+    const message = (error as Error).message || 'Unknown error';
+    const status = message.includes('timed out') ? 504 : 500;
+    res.status(status).json({ error: message });
+  }
+});
+
+// POST /api/enhanced-rag-query - Enhanced RAG search with all best practices
+router.post('/enhanced-rag-query', async (req: Request, res: Response) => {
+  try {
+    const { query, top_k = 5 } = req.body;
+    if (!query) {
+      return res.status(400).json({ error: 'Query is required' });
+    }
+
+    console.log('🔍 Processing enhanced RAG search:', query);
+
+    // Check service status first
+    const ragStatus = await enhancedRagService.getStatus();
+    if (!ragStatus.ready) {
+      return res.status(503).json({
+        error: 'Enhanced RAG service not ready',
+        status: ragStatus,
+        message: 'Please ensure ChromaDB and Ollama services are running'
+      });
+    }
+
+    // Perform enhanced RAG search
+    const searchResults = await withTimeout(
+      enhancedRagService.searchRelevantChunks(query, top_k),
+      30_000,
+      'Enhanced RAG search timed out after 30 seconds'
+    );
+
+    res.json({
+      results: searchResults,
+      message: 'Enhanced RAG search completed successfully',
+      query: query,
+      features_used: [
+        'Query transformation',
+        'Relevance grading',
+        'Semantic chunking',
+        'ChromaDB vector search'
+      ],
+      metadata: {
+        chunks_found: searchResults.chunks.length,
+        original_query: searchResults.original_query,
+        transformed_query: searchResults.transformed_query,
+        query_was_transformed: searchResults.original_query !== searchResults.transformed_query
+      }
+    });
+  } catch (error) {
+    console.error('❌ Enhanced RAG query error:', error);
+    const message = (error as Error).message || 'Unknown error';
+    const status = message.includes('timed out') ? 504 : 500;
+    res.status(status).json({ error: message });
+  }
+});
+
+// POST /api/test-hallucination - Test hallucination detection
+router.post('/test-hallucination', async (req: Request, res: Response) => {
+  try {
+    const { response_text, context } = req.body;
+    
+    if (!response_text || !context) {
+      return res.status(400).json({ 
+        error: 'Both response_text and context are required' 
+      });
+    }
+
+    console.log('🔍 Testing hallucination detection');
+
+    const hallucinationCheck = await withTimeout(
+      enhancedRagService.checkHallucination(response_text, context),
+      15_000,
+      'Hallucination check timed out after 15 seconds'
+    );
+
+    res.json({
+      hallucination_check: hallucinationCheck,
+      message: 'Hallucination detection completed',
+      recommendation: hallucinationCheck.is_grounded 
+        ? 'Response appears to be well-grounded in the provided context'
+        : 'Response may contain hallucinations and should be regenerated'
+    });
+  } catch (error) {
+    console.error('❌ Hallucination detection error:', error);
+    const message = (error as Error).message || 'Unknown error';
+    const status = message.includes('timed out') ? 504 : 500;
+    res.status(status).json({ error: message });
+  }
+});
+
+// GET /api/enhanced-rag-status - Get enhanced RAG service status
+router.get('/enhanced-rag-status', async (req: Request, res: Response) => {
+  try {
+    const status = await enhancedRagService.getStatus();
+    
+    res.json({
+      status,
+      message: 'Enhanced RAG service status check completed',
+      recommendations: !status.ready ? [
+        !status.vectorDB ? 'Start ChromaDB server' : null,
+        !status.embeddingService ? 'Start Ollama server with embedding model' : null
+      ].filter(Boolean) : ['Service is ready for enhanced RAG operations'],
+      capabilities: [
+        'Query transformation and rewriting',
+        'Retrieval relevance grading with LLM',
+        'Hallucination detection and mitigation',
+        'Enhanced semantic chunking with overlap',
+        'ChromaDB vector database integration',
+        'Full LangGraph StateGraph workflow'
+      ]
+    });
+  } catch (error) {
+    console.error('❌ Enhanced RAG status error:', error);
+    res.status(500).json({ 
+      error: (error as Error).message || 'Unknown error',
+      status: { vectorDB: false, embeddingService: false, ready: false }
+    });
   }
 });
 
