@@ -1,5 +1,5 @@
 import { MCPClient, MCPAgent } from 'mcp-use';
-import config from '../config/config.js';
+import { config, getMcpConfig } from '../config/index.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -22,63 +22,79 @@ class MCPService {
       console.log('Initializing MCP Service with mcp-use standard patterns...');
 
       // Debug configuration values
+      const mcpConfig = getMcpConfig();
       console.log('🔧 DEBUG - Configuration values:');
-      console.log('  Notion enabled:', config.get('mcp.notion.enabled'));
-      console.log('  Notion API key length:', config.get('mcp.notion.apiKey')?.length || 0);
-      console.log('  Jira enabled:', config.get('mcp.jira.enabled'));
-      console.log('  Jira URL:', config.get('mcp.jira.url'));
-      console.log('  Jira API token length:', config.get('mcp.jira.apiToken')?.length || 0);
+      console.log('  Notion enabled:', mcpConfig.notion.enabled);
+      console.log('  Notion API key length:', mcpConfig.notion.apiKey?.length || 0);
+      console.log('  Jira enabled:', mcpConfig.jira.enabled);
+      console.log('  Jira URL:', mcpConfig.jira.url);
+      console.log('  Jira API token length:', mcpConfig.jira.apiToken?.length || 0);
 
       // Build MCP server configurations using standard mcp-use format
-      const mcpServers: any = {};
+      const mcpServers: Record<string, any> = {};
 
-      // Add Notion server if enabled - using standard MCP studio server path
-      if (config.get('mcp.notion.enabled') && config.get('mcp.notion.apiKey')) {
+      // Resolve Notion credentials (support env fallbacks)
+      const notionEnabled: boolean = Boolean(mcpConfig.notion.enabled) || String(process.env.NOTION_ENABLED).toLowerCase() === 'true';
+      const notionApiKey: string = mcpConfig.notion.apiKey || process.env.NOTION_API_KEY || '';
+      console.log('🔧 Notion resolved - enabled:', notionEnabled, 'key length:', notionApiKey.length);
+
+      // Add Notion server if enabled
+      if (notionEnabled && notionApiKey) {
         mcpServers.notion = {
           command: 'npx',
           args: ['-y', '@notionhq/notion-mcp-server'],
           env: {
-            NOTION_API_KEY: config.get('mcp.notion.apiKey'),
+            NOTION_TOKEN: notionApiKey,
             NOTION_VERSION: '2022-06-28'
           }
         };
+      } else {
+        if (!notionEnabled) console.log('ℹ️ Notion MCP disabled by config');
+        if (!notionApiKey) console.log('ℹ️ Notion MCP missing API key');
       }
 
       // Add Google Calendar server if enabled - using standard MCP studio server path
-      if (config.get('mcp.google.enabled') && config.get('mcp.google.oauthCredentials')) {
+      if (mcpConfig.google.enabled && mcpConfig.google.oauthCredentials) {
         mcpServers.calendar = {
           command: 'npx',
           args: ['-y', '@cocal/google-calendar-mcp'],
           env: {
-            GOOGLE_OAUTH_CREDENTIALS: config.get('mcp.google.oauthCredentials'),
-            GOOGLE_CALENDAR_ID: config.get('mcp.google.calendarId')
+            GOOGLE_OAUTH_CREDENTIALS: mcpConfig.google.oauthCredentials,
+            GOOGLE_CALENDAR_ID: mcpConfig.google.calendarId
           }
         };
       }
 
       // Add Jira server if enabled - using standard MCP studio server path
-      if (config.get('mcp.jira.enabled') && config.get('mcp.jira.url') && config.get('mcp.jira.apiToken')) {
+      if (mcpConfig.jira.enabled && mcpConfig.jira.url && mcpConfig.jira.apiToken) {
         mcpServers.jira = {
           command: 'npx',
           args: ['-y', '@atlassianlabs/mcp-server-atlassian'],
           env: {
-            ATLASSIAN_URL: config.get('mcp.jira.url'),
-            ATLASSIAN_EMAIL: config.get('mcp.jira.username'),
-            ATLASSIAN_API_TOKEN: config.get('mcp.jira.apiToken')
+            ATLASSIAN_URL: mcpConfig.jira.url,
+            ATLASSIAN_EMAIL: mcpConfig.jira.username,
+            ATLASSIAN_API_TOKEN: mcpConfig.jira.apiToken
           }
         };
       }
 
       console.log('🔧 Enabled MCP servers:', Object.keys(mcpServers));
+      if (!Object.keys(mcpServers).length) {
+        console.warn('⚠️ No MCP servers configured. Check local.json or environment variables.');
+      }
 
       // Store server config and create client using standard fromDict method
       this.serverConfig = { mcpServers };
       this.client = MCPClient.fromDict(this.serverConfig);
 
       // Initialize LLM for the agent using standard mcp-use approach
-      const llmProvider = config.get('llm.provider');
-      const openaiKey = config.get('llm.openai.apiKey') || process.env.OPENAI_API_KEY;
-      const ollamaBaseUrl = config.get('llm.ollama.baseUrl');
+      const llmConfig = config.llm;
+      const llmProvider = llmConfig.defaultProvider;
+      const openaiKey = llmConfig.providers.openai.apiKey || process.env.OPENAI_API_KEY;
+      const rawOllamaBaseUrl = llmConfig.providers.ollama.baseUrl;
+      const ollamaBaseUrl = rawOllamaBaseUrl && rawOllamaBaseUrl.includes('localhost')
+        ? rawOllamaBaseUrl.replace('localhost', '127.0.0.1')
+        : rawOllamaBaseUrl;
       
       let llm: any = null;
       
@@ -157,14 +173,16 @@ class MCPService {
     }
 
     try {
+      console.log('🧪 MCP Agent runQuery start. maxSteps=', maxSteps, 'query snippet=', query.slice(0, 80));
       // Use standard mcp-use agent run method with timeout guard
       const result = await Promise.race([
         this.agent.run(query, maxSteps),
-        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('MCP agent timed out after 40 seconds')), 40_000))
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('MCP agent timed out after 90 seconds')), 90_000))
       ]);
+      console.log('🧪 MCP Agent runQuery done. result snippet=', String(result).slice(0, 120));
       return result as string;
     } catch (error) {
-      console.error('Error running MCP agent query:', error);
+      console.error('❌ MCP Agent runQuery error:', error);
       throw error;
     }
   }
@@ -246,7 +264,7 @@ class MCPService {
     await this.close();
     
     // Force reload configuration by re-importing
-    const configModule = await import('../config/config.js');
+    const configModule = await import('../config/index.js');
     const freshConfig = configModule.default;
     
     // Re-initialize with fresh config

@@ -3,14 +3,16 @@ import cors from 'cors';
 import apiRouter from './routes/api.js';
 import databaseService from './services/databaseService.js';
 import { initializeMCPRouter } from './services/newLlmRouter.js';
-import config from './config/config.js';
+import { config, getServerConfig, getMcpConfig, getDatabaseConfig, getLlmConfig, getRagConfig } from './config/index.js';
 import dotenv from 'dotenv';
+import mcpService from './services/mcpService.js';
 
 // Load environment variables first, then override with convict config
 dotenv.config();
 
 const app = express();
-const PORT = config.get('server.port');
+const serverConfig = getServerConfig();
+const PORT = serverConfig.port;
 
 app.use(cors());
 app.use(express.json());
@@ -28,6 +30,24 @@ async function startServer(): Promise<void> {
     await databaseService.initialize();
     console.log('✅ Database initialized successfully');
     
+    // Log Notion config resolution for debugging
+    try {
+      const mcpConfig = getMcpConfig();
+      const notionEnabled = mcpConfig.notion.enabled;
+      const notionKeyLen = mcpConfig.notion.apiKey?.length || 0;
+      console.log('🔧 Notion config at startup - enabled:', notionEnabled, 'key length:', notionKeyLen);
+    } catch (e) {
+      console.warn('⚠️ Could not read Notion config:', e);
+    }
+
+    // Initialize MCP Service (agent + servers) proactively
+    try {
+      await mcpService.initialize();
+      console.log('✅ MCP Service initialized at startup');
+    } catch (e) {
+      console.warn('⚠️ MCP Service init at startup failed:', e);
+    }
+    
     // Initialize MCP Router with load balancing
     try {
       await initializeMCPRouter();
@@ -37,14 +57,18 @@ async function startServer(): Promise<void> {
       // Don't fail startup if MCP router fails to initialize
     }
     
-    app.listen(PORT, config.get('server.host'), () => {
-      console.log(`🚀 EM TaskFlow AI server listening on ${config.get('server.host')}:${PORT}`);
-      console.log(`📊 Environment: ${config.get('env')}`);
-      console.log(`💾 Database: ${config.get('database.path')}`);
-      console.log(`🤖 LLM Provider: ${config.get('llm.provider')}`);
-      console.log(`🔍 RAG Enabled: ${config.get('rag.enabled')}`);
-      console.log(`🔗 Health check: http://${config.get('server.host')}:${PORT}/api/health`);
-      console.log(`📈 LLM status: http://${config.get('server.host')}:${PORT}/api/llm-status`);
+    const databaseConfig = getDatabaseConfig();
+    const llmConfig = getLlmConfig();
+    const ragConfig = getRagConfig();
+    
+    app.listen(PORT, serverConfig.host, () => {
+      console.log(`🚀 EM TaskFlow AI server listening on ${serverConfig.host}:${PORT}`);
+      console.log(`📊 Environment: ${config.env}`);
+      console.log(`💾 Database: ${databaseConfig.path}`);
+      console.log(`🤖 LLM Provider: ${llmConfig.defaultProvider}`);
+      console.log(`🔍 RAG Enabled: ${ragConfig.enabled}`);
+      console.log(`🔗 Health check: http://${serverConfig.host}:${PORT}/api/health`);
+      console.log(`📈 LLM status: http://${serverConfig.host}:${PORT}/api/llm-status`);
     });
   } catch (error) {
     console.error('Failed to initialize services:', error);

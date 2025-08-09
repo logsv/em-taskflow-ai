@@ -5,7 +5,7 @@ import databaseService from './databaseService.js';
 import mcpService from './mcpService.js';
 import ragService from './ragService.js';
 import axios from 'axios';
-import config from '../config/config.js';
+import { config, getLlmConfig } from '../config/index.js';
 
 // Type definitions
 interface IntentAnalysis {
@@ -124,7 +124,8 @@ async function fetchData(dataNeeded: string[], userQuery?: string): Promise<Reco
             .map(([source, _]) => source);
             
           const mcpResponse = await mcpService.runQuery(
-            `Based on this user query: "${userQuery}", use available MCP tools to gather relevant information from ${dataNeeded.join(', ')} sources. Available configured sources: ${availableSources.join(', ')}`
+            `Based on this user query: "${userQuery}", use available MCP tools to gather relevant information from ${dataNeeded.join(', ')} sources. Available configured sources: ${availableSources.join(', ')}`,
+            10
           );
           
           fetchedData.mcpResponse = mcpResponse;
@@ -247,6 +248,12 @@ async function generateResponse(userQuery: string, intent: string, fetchedData: 
   }
   
   context += '\n';
+
+  // Trim overly long context to keep downstream LLM requests small and responsive
+  const MAX_CONTEXT_CHARS = 3000;
+  if (context.length > MAX_CONTEXT_CHARS) {
+    context = context.slice(0, MAX_CONTEXT_CHARS) + '\n... [truncated]';
+  }
   
   // Different prompts based on MCP availability
   let responsePrompt: string;
@@ -297,13 +304,22 @@ Be thorough and provide maximum value by combining all available information sou
   try {
     // If MCP tools are unavailable, use a direct local LLM fallback for speed
     if (fetchedData.mcpFallback) {
-      const baseUrl = config.get('llm.ollama.baseUrl');
+      // Normalize base URL to avoid IPv6/localhost resolution issues
+      const llmConfig = getLlmConfig();
+      const rawBase = llmConfig.providers.ollama.baseUrl;
+      const baseUrl = rawBase.includes('localhost') ? rawBase.replace('localhost', '127.0.0.1') : rawBase;
       const model = 'mistral:latest';
+      // Build trimmed prompt to avoid excessively large payloads
+      const ragContext: string = fetchedData?.ragResults?.context || '';
+      const trimmedContext = ragContext.length > 3000 ? ragContext.slice(0, 3000) + '\n... [truncated]' : ragContext;
+      const fallbackPrompt = `Use the following document context to answer the question. If context is empty, answer from general knowledge but state that no matching document context was found.\n\nContext:\n${trimmedContext}\n\nUser Query: ${userQuery}\n\nAnswer:`;
+
       const resp = await axios.post(`${baseUrl}/api/generate`, {
         model,
-        prompt: responsePrompt,
-        stream: false
-      }, { timeout: 30_000 });
+        prompt: fallbackPrompt,
+        stream: false,
+        options: { num_predict: 256 }
+      }, { timeout: 40_000 });
       const text: string = resp.data?.response || '';
       return text || 'No response generated.';
     }

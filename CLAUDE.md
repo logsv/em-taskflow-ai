@@ -92,8 +92,10 @@ npm test
 
 ## Configuration Files
 
-- `backend/config/llm-router.yaml`: LLM provider configuration
-- `backend/config/llm-config.yaml`: Model settings
+- `backend/src/config/local.json`: Single unified configuration file (NOT committed to git)
+- `backend/src/config/local.example.json`: Example configuration file
+- `backend/src/config/schema.ts`: Complete configuration schema with validation
+- `backend/src/config/index.ts`: Configuration loader and helper functions
 - `backend/tsconfig.json`: TypeScript compilation for source
 - `backend/tsconfig.test.json`: TypeScript compilation for tests
 - `backend/jasmine.json`: Test runner configuration
@@ -123,11 +125,21 @@ When making changes:
 
 ## Common Development Tasks
 
-- **Adding new LLM providers**: Add handlers to `backend/src/services/newLlmRouter.ts` and update configuration in `backend/config/llm-router.yaml`
-- **LLM Router Configuration**: Modify `backend/config/llm-router.yaml` for provider settings, circuit breakers, and retry policies
-- **New MCP servers**: Add to `backend/src/services/mcpService.ts` configuration
+- **Adding new LLM providers**: Add providers to `backend/src/config/schema.ts` and update `backend/src/config/local.json`
+- **LLM Router Configuration**: Modify provider settings, circuit breakers, and retry policies in `backend/src/config/local.json`
+- **New MCP servers**: Add to `backend/src/services/mcpService.ts` configuration and enable in `backend/src/config/local.json`
 - **RAG enhancements**: Work with `backend/src/services/ragService.ts` for document processing
 - **Frontend components**: Located in `frontend/src/components/`
+
+## Configuration Management
+
+The project now uses a unified convict-powered configuration system:
+
+1. **Copy the example config**: `cp backend/src/config/local.example.json backend/src/config/local.json`
+2. **Edit your local settings**: Update `backend/src/config/local.json` with your API keys
+3. **Environment variables**: Override any setting using environment variables (e.g., `OPENAI_API_KEY`)
+4. **Single source**: One JSON file replaces all previous YAML files
+5. **Type safety**: Configuration is validated at startup with helpful error messages
 
 ## File Structure Notes
 

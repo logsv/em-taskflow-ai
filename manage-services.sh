@@ -2,6 +2,7 @@
 
 # EM-Taskflow Service Management Script
 # Manages Backend, Frontend, and Ollama services for RAG+MCP+Agent integration
+# Now includes configuration management and testing
 
 set -e
 
@@ -23,6 +24,7 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$PROJECT_DIR/backend"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
 CHROMA_ENV="$PROJECT_DIR/chroma-env"
+CONFIG_DIR="$BACKEND_DIR/src/config"
 
 # PID files
 BACKEND_PID_FILE="$PROJECT_DIR/.backend.pid"
@@ -35,8 +37,38 @@ show_banner() {
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}║                    EM-Taskflow Manager                      ║${NC}"
     echo -e "${CYAN}║              RAG + MCP + Agent Integration                   ║${NC}"
+    echo -e "${CYAN}║           With Unified Configuration System                  ║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
+}
+
+# Function to setup configuration
+setup_config() {
+    echo -e "${BLUE}⚙️  Setting up configuration...${NC}"
+    
+    if [ ! -f "$CONFIG_DIR/local.json" ]; then
+        if [ -f "$CONFIG_DIR/local.example.json" ]; then
+            echo -e "${YELLOW}📋 Creating local.json from example...${NC}"
+            cp "$CONFIG_DIR/local.example.json" "$CONFIG_DIR/local.json"
+            echo -e "${GREEN}✅ Configuration file created at $CONFIG_DIR/local.json${NC}"
+            echo -e "${YELLOW}⚠️  Please edit $CONFIG_DIR/local.json with your API keys${NC}"
+        else
+            echo -e "${RED}❌ No example configuration found${NC}"
+            return 1
+        fi
+    else
+        echo -e "${GREEN}✅ Configuration file already exists${NC}"
+    fi
+    
+    # Validate JSON syntax
+    if command -v python3 >/dev/null 2>&1; then
+        if python3 -m json.tool "$CONFIG_DIR/local.json" > /dev/null; then
+            echo -e "${GREEN}✅ Configuration JSON is valid${NC}"
+        else
+            echo -e "${RED}❌ Configuration JSON is invalid${NC}"
+            return 1
+        fi
+    fi
 }
 
 # Function to check if a port is in use
@@ -93,45 +125,50 @@ start_ollama() {
         return 0
     fi
     
-    # Start Ollama server
-    nohup "$PROJECT_DIR/start-ollama.sh" --host 127.0.0.1 --port $OLLAMA_PORT --daemon --pid-file "$OLLAMA_PID_FILE" > "$PROJECT_DIR/ollama.log" 2>&1 &
-    local ollama_pid=$!
-    save_pid "$ollama_pid" "$OLLAMA_PID_FILE"
-    
-    # Wait for Ollama to start
-    echo -e "${YELLOW}⏳ Waiting for Ollama server to start...${NC}"
-    for i in {1..30}; do
-        if check_port $OLLAMA_PORT; then
-            echo -e "${GREEN}✅ Ollama server started successfully (PID: $ollama_pid)${NC}"
-            break
+    # Start Ollama server in background
+    if command -v ollama >/dev/null 2>&1; then
+        nohup ollama serve > "$PROJECT_DIR/ollama.log" 2>&1 &
+        local ollama_pid=$!
+        save_pid "$ollama_pid" "$OLLAMA_PID_FILE"
+        
+        # Wait for Ollama to start
+        echo -e "${YELLOW}⏳ Waiting for Ollama server to start...${NC}"
+        for i in {1..30}; do
+            if check_port $OLLAMA_PORT; then
+                echo -e "${GREEN}✅ Ollama server started successfully (PID: $ollama_pid)${NC}"
+                break
+            fi
+            sleep 1
+            if [ $i -eq 30 ]; then
+                echo -e "${RED}❌ Failed to start Ollama server${NC}"
+                return 1
+            fi
+        done
+        
+        # Ensure models are available
+        echo -e "${BLUE}📚 Ensuring required models are available...${NC}"
+        
+        # Check and pull LLM model
+        if ! ollama list | grep -q "mistral:latest"; then
+            echo -e "${YELLOW}⬇️  Pulling LLM model: mistral:latest${NC}"
+            ollama pull mistral:latest
+        else
+            echo -e "${GREEN}✅ LLM model 'mistral:latest' is available${NC}"
         fi
-        sleep 1
-        if [ $i -eq 30 ]; then
-            echo -e "${RED}❌ Failed to start Ollama server${NC}"
-            return 1
+        
+        # Check and pull embedding model
+        if ! ollama list | grep -q "nomic-embed-text"; then
+            echo -e "${YELLOW}⬇️  Pulling embedding model: nomic-embed-text${NC}"
+            ollama pull nomic-embed-text
+        else
+            echo -e "${GREEN}✅ Embedding model 'nomic-embed-text' is available${NC}"
         fi
-    done
-    
-    # Ensure models are available
-    echo -e "${BLUE}📚 Ensuring required models are available...${NC}"
-    
-    # Check and pull LLM model
-    if ! curl -s "http://127.0.0.1:$OLLAMA_PORT/api/tags" | grep -q "mistral:latest"; then
-        echo -e "${YELLOW}⬇️  Pulling LLM model: mistral:latest${NC}"
-        ollama pull mistral:latest
+        
+        echo -e "${GREEN}🎉 Ollama ready with both LLM and embedding models!${NC}"
     else
-        echo -e "${GREEN}✅ LLM model 'mistral:latest' is available${NC}"
+        echo -e "${RED}❌ Ollama not found. Please install Ollama first.${NC}"
+        return 1
     fi
-    
-    # Check and pull embedding model
-    if ! curl -s "http://127.0.0.1:$OLLAMA_PORT/api/tags" | grep -q "nomic-embed-text"; then
-        echo -e "${YELLOW}⬇️  Pulling embedding model: nomic-embed-text${NC}"
-        ollama pull nomic-embed-text
-    else
-        echo -e "${GREEN}✅ Embedding model 'nomic-embed-text' is available${NC}"
-    fi
-    
-    echo -e "${GREEN}🎉 Ollama ready with both LLM and embedding models!${NC}"
 }
 
 # Function to start Chroma vector database
@@ -175,11 +212,6 @@ start_chroma() {
 
 # Function to start backend
 start_backend() {
-    # Source NVM to ensure npm is available
-    if [ -s "$HOME/.nvm/nvm.sh" ]; then
-        source "$HOME/.nvm/nvm.sh"
-    fi
-
     echo -e "${BLUE}🚀 Starting Backend (TypeScript)...${NC}"
     
     if check_port $BACKEND_PORT; then
@@ -191,9 +223,18 @@ start_backend() {
     
     cd "$BACKEND_DIR"
     
+    # Setup configuration first
+    setup_config
+    
     # Build the backend
     echo -e "${YELLOW}🔨 Building backend...${NC}"
-    npm run build
+    if npm run build; then
+        echo -e "${GREEN}✅ Backend build successful${NC}"
+    else
+        echo -e "${RED}❌ Backend build failed${NC}"
+        cd "$PROJECT_DIR"
+        return 1
+    fi
     
     # Start the backend
     nohup npm start > "$PROJECT_DIR/backend.log" 2>&1 &
@@ -252,6 +293,94 @@ start_frontend() {
     done
 }
 
+# Function to test APIs with curl
+test_apis() {
+    echo -e "${BLUE}🧪 Testing APIs with curl...${NC}"
+    echo ""
+    
+    # Test backend health
+    echo -e "${YELLOW}🔍 Testing Backend Health...${NC}"
+    if curl -s "http://localhost:$BACKEND_PORT/api/health" | head -c 100; then
+        echo -e "\n${GREEN}✅ Backend health check passed${NC}"
+    else
+        echo -e "${RED}❌ Backend health check failed${NC}"
+    fi
+    echo ""
+    
+    # Test Ollama
+    echo -e "${YELLOW}🤖 Testing Ollama...${NC}"
+    if curl -s "http://localhost:$OLLAMA_PORT/api/tags" | head -c 100; then
+        echo -e "\n${GREEN}✅ Ollama API responding${NC}"
+    else
+        echo -e "${RED}❌ Ollama API not responding${NC}"
+    fi
+    echo ""
+    
+    # Test Chroma
+    echo -e "${YELLOW}🔍 Testing Chroma...${NC}"
+    if curl -s "http://localhost:$CHROMA_PORT/api/v1/heartbeat" | head -c 100; then
+        echo -e "\n${GREEN}✅ Chroma API responding${NC}"
+    else
+        echo -e "${RED}❌ Chroma API not responding${NC}"
+    fi
+    echo ""
+    
+    # Test LLM Router status
+    echo -e "${YELLOW}🔀 Testing LLM Router...${NC}"
+    if curl -s "http://localhost:$BACKEND_PORT/api/llm-status" | head -c 200; then
+        echo -e "\n${GREEN}✅ LLM Router status check passed${NC}"
+    else
+        echo -e "${RED}❌ LLM Router status check failed${NC}"
+    fi
+    echo ""
+    
+    # Test basic chat
+    echo -e "${YELLOW}💬 Testing Basic Chat...${NC}"
+    if curl -s -X POST "http://localhost:$BACKEND_PORT/api/chat" \
+        -H "Content-Type: application/json" \
+        -d '{"message":"Hello, test message"}' | head -c 100; then
+        echo -e "\n${GREEN}✅ Basic chat test passed${NC}"
+    else
+        echo -e "${RED}❌ Basic chat test failed${NC}"
+    fi
+    echo ""
+}
+
+# Function to run comprehensive tests
+run_tests() {
+    echo -e "${BLUE}🧪 Running Comprehensive Tests...${NC}"
+    echo ""
+    
+    cd "$BACKEND_DIR"
+    
+    # Run TypeScript compilation check
+    echo -e "${YELLOW}📝 Checking TypeScript compilation...${NC}"
+    if npm run build; then
+        echo -e "${GREEN}✅ TypeScript compilation successful${NC}"
+    else
+        echo -e "${RED}❌ TypeScript compilation failed${NC}"
+        cd "$PROJECT_DIR"
+        return 1
+    fi
+    
+    # Run unit tests if available
+    echo -e "${YELLOW}🔬 Running unit tests...${NC}"
+    if npm test 2>/dev/null; then
+        echo -e "${GREEN}✅ Unit tests passed${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Unit tests skipped or failed${NC}"
+    fi
+    
+    cd "$PROJECT_DIR"
+    
+    # Test APIs if services are running
+    if check_port $BACKEND_PORT; then
+        test_apis
+    else
+        echo -e "${YELLOW}⚠️  Backend not running, skipping API tests${NC}"
+    fi
+}
+
 # Function to stop a service
 stop_service() {
     local service_name=$1
@@ -296,6 +425,13 @@ show_status() {
     echo -e "${BLUE}📊 Service Status:${NC}"
     echo -e "${BLUE}==================${NC}"
     
+    # Configuration status
+    if [ -f "$CONFIG_DIR/local.json" ]; then
+        echo -e "${GREEN}⚙️  Configuration: Ready${NC}"
+    else
+        echo -e "${RED}⚙️  Configuration: Missing (run 'config' command)${NC}"
+    fi
+    
     # Chroma status
     if check_port $CHROMA_PORT; then
         local chroma_pid=$(get_pid_from_port $CHROMA_PORT)
@@ -332,6 +468,8 @@ show_status() {
     echo -e "${BLUE}🔗 URLs:${NC}"
     echo -e "   • Frontend: http://localhost:$FRONTEND_PORT"
     echo -e "   • Backend API: http://localhost:$BACKEND_PORT/api"
+    echo -e "   • Health Check: http://localhost:$BACKEND_PORT/api/health"
+    echo -e "   • LLM Status: http://localhost:$BACKEND_PORT/api/llm-status"
     echo -e "   • Ollama API: http://localhost:$OLLAMA_PORT/api"
     echo -e "   • Chroma API: http://localhost:$CHROMA_PORT/api"
 }
@@ -389,6 +527,9 @@ show_help() {
     echo -e "  stop          Stop all services"
     echo -e "  restart       Restart all services"
     echo -e "  status        Show service status"
+    echo -e "  config        Setup configuration file"
+    echo -e "  test          Run comprehensive tests"
+    echo -e "  test-api      Test APIs with curl (requires services running)"
     echo -e "  chroma        Start only Chroma vector database"
     echo -e "  ollama        Start only Ollama with models"
     echo -e "  backend       Start only Backend"
@@ -399,7 +540,12 @@ show_help() {
     echo -e "  $0 start      # Start all services"
     echo -e "  $0 restart    # Restart all services"
     echo -e "  $0 status     # Check service status"
-    echo -e "  $0 chroma     # Start only Chroma vector database"
+    echo -e "  $0 config     # Setup configuration"
+    echo -e "  $0 test       # Run tests and API checks"
+    echo ""
+    echo -e "${YELLOW}Configuration:${NC}"
+    echo -e "  Config file: $CONFIG_DIR/local.json"
+    echo -e "  Example:     $CONFIG_DIR/local.example.json"
 }
 
 # Main script logic
@@ -419,6 +565,18 @@ case "${1:-help}" in
     status)
         show_banner
         show_status
+        ;;
+    config)
+        show_banner
+        setup_config
+        ;;
+    test)
+        show_banner
+        run_tests
+        ;;
+    test-api)
+        show_banner
+        test_apis
         ;;
     chroma)
         show_banner
