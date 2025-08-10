@@ -18,10 +18,11 @@ EM TaskFlow employs a multi-layered architecture:
 ## 🚀 Key Features
 
 ### 📚 Advanced RAG (Retrieval-Augmented Generation)
-- **Document Processing**: Intelligent PDF parsing with chunk optimization
-- **Vector Search**: Semantic search using Ollama embeddings and ChromaDB
-- **Context Integration**: Seamlessly combines document context with LLM responses
-- **Multi-source Knowledge**: Supports multiple document sources with metadata tracking
+- **Enhanced RAG Implementation**: Follows LangGraph agentic RAG best practices with query transformation, retrieval grading, and hallucination detection
+- **Document Processing**: Intelligent PDF parsing with semantic chunking and sentence boundaries
+- **Vector Search**: Semantic search using Ollama embeddings and ChromaDB with relevance grading
+- **Context Integration**: Seamlessly combines document context with LLM responses and multi-source knowledge
+- **Quality Assurance**: Built-in hallucination detection and response regeneration for improved accuracy
 
 ### 🔗 MCP (Model Context Protocol) Integration
 - **Notion Integration**: Access and manage Notion pages, databases, and content

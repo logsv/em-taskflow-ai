@@ -78,18 +78,57 @@ async function initializeMCPAgent(): Promise<MCPAgent> {
   try {
     const mcpConfig = getMcpConfig();
     console.log('🔄 Initializing MCP Agent with mcp-use...');
-    
-    mcpClient = new MCPClient({
-      name: "em-taskflow-enhanced-agent",
-      version: "2.0.0"
-    });
 
-    // Initialize available MCP servers from config
-    for (const [serverName, serverConfig] of Object.entries(mcpConfig.servers)) {
-      if ((serverConfig as any).enabled) {
-        console.log(`🔌 Adding MCP server: ${serverName}`);
-        await mcpClient.addServer(serverName, serverConfig);
-      }
+    // Initialize available MCP servers from config - adapt to actual config structure
+    const mcpServers: Record<string, any> = {};
+
+    // Add Notion server if enabled
+    if (mcpConfig.notion?.enabled && mcpConfig.notion?.apiKey) {
+      console.log(`🔌 Adding MCP server: notion`);
+      mcpServers.notion = {
+        command: 'npx',
+        args: ['-y', '@notionhq/notion-mcp-server'],
+        env: {
+          NOTION_TOKEN: mcpConfig.notion.apiKey,
+          NOTION_VERSION: '2022-06-28'
+        }
+      };
+    }
+
+    // Add Jira server if enabled
+    if (mcpConfig.jira?.enabled && mcpConfig.jira?.apiToken) {
+      console.log(`🔌 Adding MCP server: jira`);
+      mcpServers.jira = {
+        command: 'npx',
+        args: ['-y', '@atlassianlabs/mcp-server-atlassian'],
+        env: {
+          ATLASSIAN_URL: mcpConfig.jira.url,
+          ATLASSIAN_EMAIL: mcpConfig.jira.username,
+          ATLASSIAN_API_TOKEN: mcpConfig.jira.apiToken
+        }
+      };
+    }
+
+    // Add Google Calendar server if enabled
+    if (mcpConfig.google?.enabled && mcpConfig.google?.oauthCredentials) {
+      console.log(`🔌 Adding MCP server: calendar`);
+      mcpServers.calendar = {
+        command: 'npx',
+        args: ['-y', '@cocal/google-calendar-mcp'],
+        env: {
+          GOOGLE_OAUTH_CREDENTIALS: mcpConfig.google.oauthCredentials,
+          GOOGLE_CALENDAR_ID: mcpConfig.google.calendarId
+        }
+      };
+    }
+
+    console.log('🔧 Enabled MCP servers for enhanced agent:', Object.keys(mcpServers));
+
+    // Configure the MCP client with the servers
+    if (Object.keys(mcpServers).length > 0) {
+      mcpClient = MCPClient.fromDict({ mcpServers });
+    } else {
+      console.warn('⚠️ No MCP servers configured for enhanced agent');
     }
 
     const llmConfig = getLlmConfig();
@@ -153,6 +192,17 @@ async function intentAnalysisNode(state: AgentStateType): Promise<Partial<AgentS
 3. Whether document search would be helpful
 4. The complexity level of the query
 
+Available external services:
+- Notion API (for pages, databases, todos, notes, documents)
+- Jira API (for tickets, issues, projects)
+- Google Calendar API (for events, scheduling)
+
+External data is needed for queries about:
+- "my notion pages", "notion docs", "notion databases", "notion todos"
+- "jira tickets", "jira issues", "project status"  
+- "my calendar", "schedule", "meetings", "events"
+- Any query requesting current/live data from these services
+
 User query: "${state.userQuery}"
 
 Respond with a JSON object:
@@ -165,7 +215,16 @@ Respond with a JSON object:
 }`;
 
     const response = await llm.invoke(intentPrompt);
-    const analysis = JSON.parse(response.content.toString().trim());
+    const rawResponse = response.content.toString().trim();
+    
+    // Extract JSON from response, handling cases where LLM adds extra text
+    let jsonStr = rawResponse;
+    const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[0];
+    }
+    
+    const analysis = JSON.parse(jsonStr);
     
     console.log('🎯 Enhanced intent analysis:', analysis);
     
@@ -177,11 +236,18 @@ Respond with a JSON object:
     };
   } catch (error) {
     console.error('❌ Enhanced intent analysis failed:', error);
+    
+    // Fallback detection for MCP services when JSON parsing fails
+    const query = state.userQuery.toLowerCase();
+    const needsExternalData = query.includes('notion') || query.includes('jira') || 
+                             query.includes('calendar') || query.includes('my pages') ||
+                             query.includes('my docs') || query.includes('my todos');
+    
     return {
       intent: 'general_query',
-      needsExternalData: false,
+      needsExternalData,
       needsDocumentSearch: true,
-      messages: [...state.messages, new AIMessage('Intent analysis failed, using defaults')]
+      messages: [...state.messages, new AIMessage(`Intent analysis failed, using fallback detection. External data needed: ${needsExternalData}`)]
     };
   }
 }
@@ -262,7 +328,7 @@ async function mcpToolsNode(state: AgentStateType): Promise<Partial<AgentStateTy
     const agent = await initializeMCPAgent();
     
     console.log('🤖 Executing query with enhanced MCP Agent');
-    const result = await agent.run(state.userQuery);
+    const result = await agent.run(state.userQuery, 20); // Increased maxSteps to 20
     
     return {
       mcpResults: {
