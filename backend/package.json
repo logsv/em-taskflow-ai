@@ -11,8 +11,7 @@
     "dev:js": "nodemon src/index.js",
     "test": "npm run build && npx tsc -p tsconfig.test.json && NODE_OPTIONS='--loader @istanbuljs/esm-loader-hook' npx nyc jasmine dist/test/**/*.js",
     "start:google": "pnpm -C ../mcp-servers/google-workspace start",
-    "start:atlassian": "pnpm -C ../mcp-servers/atlassian-suite start",
-    "start:mcp": "pnpm start:google & pnpm start:atlassian"
+    "start:mcp": "pnpm start:google"
   },
   "keywords": [],
   "author": "",
@@ -66,7 +65,6 @@
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "googleapis": "^126.0.1",
-    "jira-client": "^8.2.2",
     "js-yaml": "^4.1.0",
     "langchain": "^0.3.29",
     "llm-router": "^1.1.0",

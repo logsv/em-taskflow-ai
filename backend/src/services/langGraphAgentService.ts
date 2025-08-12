@@ -95,7 +95,7 @@ async function initializeMCPAgent(): Promise<MCPAgent> {
     } else {
       llm = new ChatOllama({
         baseUrl: "http://127.0.0.1:11434",
-        model: "mistral:latest",
+        model: "gpt-oss:latest",
         temperature: 0.7,
       });
       console.log('✅ Using Ollama for MCP Agent');
@@ -318,7 +318,7 @@ Focus on being practical and valuable to the user.`;
     } else {
       llm = new ChatOllama({
         baseUrl: "http://127.0.0.1:11434",
-        model: "mistral:latest",
+        model: "gpt-oss:latest",
         temperature: 0.7,
       });
     }

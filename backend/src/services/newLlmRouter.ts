@@ -42,7 +42,7 @@ const createMCPAgents = async () => {
       const { ChatOllama } = await import('@langchain/ollama');
       const ollamaLLM = new ChatOllama({
         baseUrl: ollamaBaseUrl,
-        model: 'mistral:latest',
+        model: 'gpt-oss:latest',
         temperature: 0.7
       });
       
@@ -148,7 +148,7 @@ const createRouterConfig = (): RouterConfig => {
       enabled: true,
       priority: 2, // Lower priority than OpenAI
       models: [{
-         name: 'mistral-latest-mcp',
+         name: 'gpt-oss-latest-mcp',
         costPer1kInputTokens: 0, // Local model - no cost
         costPer1kOutputTokens: 0,
         maxTokens: 128000
@@ -163,7 +163,7 @@ const createRouterConfig = (): RouterConfig => {
 
   return {
     loadBalancingStrategy: 'round_robin',
-    defaultModel: 'mistral-latest-mcp',
+    defaultModel: 'gpt-oss-latest-mcp',
     providers,
     resilience: {
       retry: {

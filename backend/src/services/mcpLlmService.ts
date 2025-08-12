@@ -29,7 +29,7 @@ class MCPLlmService {
       response: result,
       metadata: {
         provider: 'mcp-router',
-        model: 'mistral-latest-mcp',
+        model: 'gpt-oss-latest-mcp',
         tokens: { input: 0, output: 0, total: 0 }
       }
     };

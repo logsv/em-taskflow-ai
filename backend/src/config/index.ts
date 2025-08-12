@@ -146,7 +146,7 @@ export const getLlmProviders = () => {
       ...llmConfig.providers.ollama,
       models: [
         {
-          name: 'mistral:latest',
+          name: 'gpt-oss:latest',
           costPer1kInputTokens: 0,
           costPer1kOutputTokens: 0,
           maxTokens: 4096
