@@ -149,11 +149,11 @@ start_ollama() {
         echo -e "${BLUE}📚 Ensuring required models are available...${NC}"
         
         # Check and pull LLM model
-        if ! ollama list | grep -q "mistral:latest"; then
-            echo -e "${YELLOW}⬇️  Pulling LLM model: mistral:latest${NC}"
-            ollama pull mistral:latest
+        if ! ollama list | grep -q "gpt-oss:latest"; then
+            echo -e "${YELLOW}⬇️  Pulling LLM model: gpt-oss:latest${NC}"
+            ollama pull gpt-oss:latest
         else
-            echo -e "${GREEN}✅ LLM model 'mistral:latest' is available${NC}"
+            echo -e "${GREEN}✅ LLM model 'gpt-oss:latest' is available${NC}"
         fi
         
         # Check and pull embedding model

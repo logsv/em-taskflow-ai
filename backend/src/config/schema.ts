@@ -111,7 +111,7 @@ export const configSchema = convict({
     defaultModel: {
       doc: 'Default model to use',
       format: String,
-      default: 'mistral:latest',
+      default: 'gpt-oss:latest',
       env: 'LLM_DEFAULT_MODEL'
     },
     loadBalancingStrategy: {

@@ -98,7 +98,7 @@ npm run build
   ```
 - Pull required models:
   ```sh
-  ollama pull mistral:latest
+  ollama pull gpt-oss:latest
   ollama pull nomic-embed-text
   ```
 
@@ -145,7 +145,7 @@ The LLM Router provides intelligent routing across multiple LLM providers with e
 - **OpenAI**: GPT-3.5, GPT-4, GPT-4 Turbo
 - **Anthropic**: Claude-2, Claude-3 series
 - **Google**: Gemini Pro
-- **Ollama**: Local models (Mistral, Llama2, etc.)
+- **Ollama**: Local models (GPT-OSS, Mistral, Llama2, etc.)
 
 #### **Load Balancing Strategies**
 ```yaml
@@ -175,7 +175,7 @@ providers:
     priority: 1
     baseUrl: http://localhost:11434
     models:
-      - name: mistral:latest
+      - name: gpt-oss:latest
         costPer1kInputTokens: 0
         costPer1kOutputTokens: 0
         maxTokens: 4096
@@ -195,53 +195,52 @@ providers:
 The MCP Service connects to external tools and services using the Model Context Protocol standard:
 
 #### **Supported Integrations**
-- **Notion MCP Server**: Official Notion integration
+- **Notion MCP Server**: Official Notion integration via local server
   - Access pages, databases, and content
   - Create and update Notion resources
+  - Uses `@notionhq/notion-mcp-server` with API key authentication
+- **Atlassian MCP Server**: Official Atlassian integration
+  - Query Jira tickets, projects, and workflows
+  - Access Atlassian ecosystem data via official MCP server
+  - Uses `mcp-remote` proxy to `https://mcp.atlassian.com/v1/sse`
 - **Google Calendar MCP**: Calendar management
   - Query events and scheduling information
   - Create and manage calendar entries
-- **Jira Context MCP**: Project management integration
-  - Query tickets, projects, and workflows
-  - Access Atlassian ecosystem data
 
 #### **MCP Architecture**
 ```typescript
-// MCP Service Configuration
-const mcpClient = new MultiServerMCPClient({
-  throwOnLoadError: false,
-  prefixToolNameWithServerName: true,
-  useStandardContentBlocks: true,
-  mcpServers: {
-    notion: {
-      transport: 'stdio',
-      command: 'npx',
-      args: ['-y', '@notionhq/notion-mcp-server'],
-      env: {
-        NOTION_API_KEY: process.env.NOTION_API_KEY,
-        NOTION_VERSION: '2022-06-28'
-      }
+// MCP Service Configuration with mcp-use
+const mcpServers = {
+  notion: {
+    command: 'npx',
+    args: ['-y', '@notionhq/notion-mcp-server'],
+    env: {
+      NOTION_TOKEN: process.env.NOTION_API_KEY,
+      NOTION_API_KEY: process.env.NOTION_API_KEY
     }
-    // Additional servers...
+  },
+  atlassian: {
+    command: 'npx',
+    args: ['-y', 'mcp-remote', 'https://mcp.atlassian.com/v1/sse']
   }
-});
+  // Additional servers...
+};
+
+const mcpClient = MCPClient.fromDict({ mcpServers });
 ```
 
 #### **Environment Variables**
 ```bash
 # Notion Integration
 NOTION_API_KEY=your_notion_api_key
-NOTION_VERSION=2022-06-28
+
+# Atlassian/Jira Integration (for authentication via official MCP server)
+# Authentication is handled automatically through the mcp-remote proxy
+# No additional environment variables required for basic functionality
 
 # Google Calendar
 GOOGLE_OAUTH_CREDENTIALS=your_oauth_credentials
 GOOGLE_CALENDAR_ID=primary
-
-# Jira Integration
-JIRA_URL=your_jira_instance_url
-JIRA_USERNAME=your_username
-JIRA_API_TOKEN=your_api_token
-JIRA_PROJECT_KEY=your_project_key
 ```
 
 ### 📚 RAG (Retrieval-Augmented Generation) System
@@ -402,8 +401,10 @@ export GOOGLE_API_KEY=your_google_key
 ```bash
 # Configure external service credentials
 export NOTION_API_KEY=your_notion_key
-export JIRA_URL=https://your-domain.atlassian.net
-export JIRA_API_TOKEN=your_jira_token
+
+# Atlassian/Jira integration uses official MCP server
+# Authentication is handled automatically via mcp-remote proxy
+
 export GOOGLE_OAUTH_CREDENTIALS=your_oauth_json
 ```
 
@@ -496,9 +497,12 @@ For detailed CI/CD documentation, see [`.github/CICD.md`](.github/CICD.md).
 - **Notion integration fails**:
   - Validate `NOTION_API_KEY` has proper permissions
   - Ensure Notion integration is properly configured in your workspace
-- **Jira integration issues**:
-  - Verify `JIRA_URL`, `JIRA_USERNAME`, and `JIRA_API_TOKEN`
-  - Check if Jira Context MCP server is built: `cd mcp-servers/jira-context-mcp && npm run build`
+  - Check that `@notionhq/notion-mcp-server` is accessible: `npx -y @notionhq/notion-mcp-server --version`
+- **Atlassian/Jira integration issues**:
+  - Verify `mcp-remote` proxy is working: `npx -y mcp-remote https://mcp.atlassian.com/v1/sse --help`
+  - Check network connectivity to `https://mcp.atlassian.com/v1/sse`
+  - Authentication is handled by the official Atlassian MCP server automatically
+  - Review MCP service logs for connection errors to the remote server
 - **Google Calendar problems**:
   - Validate OAuth credentials format and permissions
   - Ensure calendar access is granted for the service account

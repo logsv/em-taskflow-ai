@@ -38,16 +38,17 @@ class MCPService {
       const notionApiKey: string = mcpConfig.notion.apiKey || process.env.NOTION_API_KEY || '';
       console.log('🔧 Notion resolved - enabled:', notionEnabled, 'key length:', notionApiKey.length);
 
-      // Add Notion server if enabled
+      // Add Notion server if enabled - using local Notion MCP server with API key authentication
       if (notionEnabled && notionApiKey) {
         mcpServers.notion = {
           command: 'npx',
           args: ['-y', '@notionhq/notion-mcp-server'],
           env: {
             NOTION_TOKEN: notionApiKey,
-            NOTION_VERSION: '2022-06-28'
+            NOTION_API_KEY: notionApiKey // Support both env var names
           }
         };
+        console.log('✅ Using local Notion MCP server with API key authentication');
       } else {
         if (!notionEnabled) console.log('ℹ️ Notion MCP disabled by config');
         if (!notionApiKey) console.log('ℹ️ Notion MCP missing API key');
@@ -65,17 +66,13 @@ class MCPService {
         };
       }
 
-      // Add Jira server if enabled - using standard MCP studio server path
-      if (mcpConfig.jira.enabled && mcpConfig.jira.url && mcpConfig.jira.apiToken) {
-        mcpServers.jira = {
+      // Add Jira server if enabled - using official Atlassian MCP server via mcp-remote proxy
+      if (mcpConfig.jira.enabled) {
+        mcpServers.atlassian = {
           command: 'npx',
-          args: ['-y', '@atlassianlabs/mcp-server-atlassian'],
-          env: {
-            ATLASSIAN_URL: mcpConfig.jira.url,
-            ATLASSIAN_EMAIL: mcpConfig.jira.username,
-            ATLASSIAN_API_TOKEN: mcpConfig.jira.apiToken
-          }
+          args: ['-y', 'mcp-remote', 'https://mcp.atlassian.com/v1/sse']
         };
+        console.log('✅ Using official Atlassian MCP server via mcp-remote proxy');
       }
 
       console.log('🔧 Enabled MCP servers:', Object.keys(mcpServers));
@@ -123,10 +120,10 @@ class MCPService {
           
           llm = new ChatOllama({
             baseUrl: ollamaBaseUrl,
-            model: 'mistral:latest',
+            model: 'gpt-oss:latest',
             temperature: 0.7
           });
-          console.log('✅ Using ChatOllama (mistral:latest) for MCP Agent');
+          console.log('✅ Using ChatOllama (gpt-oss:latest) for MCP Agent');
         } catch (ollamaError) {
           console.warn('⚠️ Could not initialize ChatOllama:', ollamaError);
         }
@@ -218,11 +215,11 @@ class MCPService {
    */
   async getServerStatus(): Promise<Record<string, boolean>> {
     if (!this.client) {
-      return { notion: false, calendar: false, jira: false };
+      return { notion: false, calendar: false, atlassian: false };
     }
 
     const status: Record<string, boolean> = {};
-    const serverNames = ['notion', 'calendar', 'jira'];
+    const serverNames = ['notion', 'calendar', 'atlassian'];
 
     for (const serverName of serverNames) {
       // Check if the server is configured (agent will discover tools automatically)

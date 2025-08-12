@@ -273,7 +273,7 @@ router.post('/rag-query', async (req: RAGQueryRequest, res: Response) => {
       try {
         const baseUrl = config.llm.providers.ollama.baseUrl;
         const genResp = await axios.post(`${baseUrl}/api/generate`, {
-          model: 'mistral:latest',
+          model: 'gpt-oss:latest',
           prompt,
           stream: false
         }, { timeout: 30_000 });

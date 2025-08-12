@@ -108,7 +108,7 @@ async function fetchData(dataNeeded: string[], userQuery?: string): Promise<Reco
     fetchedData.mcpServiceStatus = mcpStatus;
     
     // Check if any MCP servers are available
-    mcpAvailable = Boolean(mcpStatus.notion || mcpStatus.jira || mcpStatus.calendar);
+    mcpAvailable = Boolean(mcpStatus.notion || mcpStatus.atlassian || mcpStatus.calendar);
     
     if (mcpAvailable) {
       console.log('✅ MCP servers available, using MCP tools');
@@ -211,13 +211,13 @@ async function generateResponse(userQuery: string, intent: string, fetchedData: 
       const status = fetchedData.mcpServiceStatus;
       context += 'MCP Integration Status:\n';
       context += `- Notion MCP: ${status.notion ? '✅ Connected' : '❌ Disconnected'}\n`;
-      context += `- Jira MCP: ${status.jira ? '✅ Connected' : '❌ Disconnected'}\n`;
+      context += `- Atlassian MCP: ${status.atlassian ? '✅ Connected' : '❌ Disconnected'}\n`;
       context += `- Google Calendar MCP: ${status.calendar ? '✅ Connected' : '❌ Disconnected'}\n\n`;
     }
     
     // Add available MCP tools information
-    if (fetchedData.mcpJiraToolsAvailable) {
-      context += `Available Jira MCP Tools: ${fetchedData.mcpJiraToolsAvailable.join(', ')}\n`;
+    if (fetchedData.mcpAtlassianToolsAvailable) {
+      context += `Available Atlassian MCP Tools: ${fetchedData.mcpAtlassianToolsAvailable.join(', ')}\n`;
     }
     if (fetchedData.mcpNotionToolsAvailable) {
       context += `Available Notion MCP Tools: ${fetchedData.mcpNotionToolsAvailable.join(', ')}\n`;
@@ -308,7 +308,7 @@ Be thorough and provide maximum value by combining all available information sou
       const llmConfig = getLlmConfig();
       const rawBase = llmConfig.providers.ollama.baseUrl;
       const baseUrl = rawBase.includes('localhost') ? rawBase.replace('localhost', '127.0.0.1') : rawBase;
-      const model = 'mistral:latest';
+      const model = 'gpt-oss:latest';
       // Build trimmed prompt to avoid excessively large payloads
       const ragContext: string = fetchedData?.ragResults?.context || '';
       const trimmedContext = ragContext.length > 3000 ? ragContext.slice(0, 3000) + '\n... [truncated]' : ragContext;

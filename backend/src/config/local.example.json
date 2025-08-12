@@ -26,7 +26,7 @@
   
   "llm": {
     "defaultProvider": "ollama",
-    "defaultModel": "mistral:latest",
+    "defaultModel": "gpt-oss:latest",
     "loadBalancingStrategy": "round_robin",
     
     "providers": {
