@@ -3,7 +3,7 @@ import cors from 'cors';
 import apiRouter from './routes/api.js';
 import databaseService from './services/databaseService.js';
 import { initializeMCPRouter } from './services/newLlmRouter.js';
-import { config, getServerConfig, getMcpConfig, getDatabaseConfig, getLlmConfig, getRagConfig } from './config/index.js';
+import { config, getServerConfig, getMcpConfig, getDatabaseConfig, getLlmConfig, getRagConfig, validateConfig } from './config.js';
 import dotenv from 'dotenv';
 import mcpService from './services/mcpService.js';
 
@@ -26,6 +26,10 @@ app.get('/', (req, res) => {
 // Initialize services and start server
 async function startServer(): Promise<void> {
   try {
+    // Validate configuration at startup
+    console.log('🔍 Validating configuration...');
+    validateConfig();
+
     // Initialize database
     await databaseService.initialize();
     console.log('✅ Database initialized successfully');

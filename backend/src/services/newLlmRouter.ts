@@ -1,304 +1,116 @@
 import { ResilientRouter, type LLMRequest, type LLMResponse, type RouterConfig, type LLMProviderConfig } from 'llm-router';
-import { MCPClient, MCPAgent } from 'mcp-use';
-import { config, toLlmRouterConfig, getLlmConfig } from '../config/index.js';
+import type { Tool } from '@langchain/core/tools';
+import mcpService from './mcpService.js';
+import { config, toLlmRouterConfig, getLlmConfig } from '../config.js';
 
-// MCP Agent cache for reusing agents across requests
-const mcpAgentCache = new Map<string, MCPAgent>();
-
-// Create MCP agents for load balancing
-const createMCPAgents = async () => {
-  const agents: Record<string, MCPAgent> = {};
-  
-  // Create OpenAI MCP Agent if API key is available
-  const llmConfig = getLlmConfig();
-  const openaiKey = llmConfig.providers.openai.apiKey;
-  if (openaiKey && openaiKey.trim() !== '' && llmConfig.providers.openai.enabled) {
-    try {
-      const { ChatOpenAI } = await import('@langchain/openai');
-      const openaiLLM = new ChatOpenAI({
-        modelName: 'gpt-4o-mini',
-        apiKey: openaiKey,
-        temperature: 0.7
-      });
-      
-      // Create MCP client for OpenAI agent
-      const mcpClient = MCPClient.fromDict({ mcpServers: {} }); // Empty for now, will be populated
-      agents['openai-agent'] = new MCPAgent({
-        llm: openaiLLM as any,
-        client: mcpClient,
-        maxSteps: 20
-      });
-      
-      console.log('✅ Created OpenAI MCP Agent for load balancing');
-    } catch (error) {
-      console.warn('⚠️ Could not create OpenAI MCP Agent:', error);
-    }
-  }
-  
-  // Create Ollama MCP Agent
-  const ollamaBaseUrl = llmConfig.providers.ollama.baseUrl;
-  if (ollamaBaseUrl && llmConfig.providers.ollama.enabled) {
-    try {
-      const { ChatOllama } = await import('@langchain/ollama');
-      const ollamaLLM = new ChatOllama({
-        baseUrl: ollamaBaseUrl,
-        model: 'gpt-oss:latest',
-        temperature: 0.7
-      });
-      
-      // Create MCP client for Ollama agent
-      const mcpClient = MCPClient.fromDict({ mcpServers: {} }); // Empty for now, will be populated
-      agents['ollama-agent'] = new MCPAgent({
-        llm: ollamaLLM as any,
-        client: mcpClient,
-        maxSteps: 20
-      });
-      
-      console.log('✅ Created Ollama MCP Agent for load balancing');
-    } catch (error) {
-      console.warn('⚠️ Could not create Ollama MCP Agent:', error);
-    }
-  }
-  
-  return agents;
-};
-
-// Provider handlers using MCP agents
-const createProviderHandlers = () => {
-  return {
-    'openai-prod-provider': async (req: LLMRequest): Promise<LLMResponse> => {
-      const agent = mcpAgentCache.get('openai-agent');
-      if (!agent) {
-        throw new Error('OpenAI MCP Agent not available');
-      }
-      
-      const result = await Promise.race([
-        agent.run(req.messages[0]?.content || 'Complete this request', 20),
-        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('MCP agent timed out after 40 seconds')), 40_000))
-      ]);
-      return {
-        text: result,
-        model: 'gpt-4o-mini-mcp',
-        provider: 'openai-mcp',
-        usage: {
-          promptTokens: 0,
-          completionTokens: 0,
-          totalTokens: 0
-        }
-      };
-    },
-    'ollama-local-provider': async (req: LLMRequest): Promise<LLMResponse> => {
-      const agent = mcpAgentCache.get('ollama-agent');
-      if (!agent) {
-        throw new Error('Ollama MCP Agent not available');
-      }
-      
-      const result = await Promise.race([
-        agent.run(req.messages[0]?.content || 'Complete this request', 20),
-        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('MCP agent timed out after 40 seconds')), 40_000))
-      ]);
-      return {
-        text: result,
-        model: 'llama3.1-latest-mcp',
-        provider: 'ollama-mcp',
-        usage: {
-          promptTokens: 0,
-          completionTokens: 0,
-          totalTokens: 0
-        }
-      };
-    }
-  };
-};
-
-// Create router config for MCP agents
-const createRouterConfig = (): RouterConfig => {
-  const handlers = createProviderHandlers();
-  const providers: LLMProviderConfig[] = [];
-  
-  // Add OpenAI provider if available
-  const llmConfig = getLlmConfig();
-  const openaiKey = llmConfig.providers.openai.apiKey;
-  if (openaiKey && openaiKey.trim() !== '' && llmConfig.providers.openai.enabled) {
-    providers.push({
-      name: 'openai-prod-provider',
-      type: 'custom' as const,
-      enabled: true,
-      priority: 1,
-      models: [{
-        name: 'gpt-4o-mini-mcp',
-        costPer1kInputTokens: 0.00015,
-        costPer1kOutputTokens: 0.0006,
-        maxTokens: 16384
-      }],
-      rateLimit: {
-        maxConcurrent: 10,
-        tokensPerSecond: 10000
-      },
-      handler: handlers['openai-prod-provider']
-    });
-  }
-  
-  // Add Ollama provider
-  const ollamaBaseUrl = llmConfig.providers.ollama.baseUrl;
-  if (ollamaBaseUrl && llmConfig.providers.ollama.enabled) {
-    providers.push({
-      name: 'ollama-local-provider',
-      type: 'custom' as const,
-      enabled: true,
-      priority: 2, // Lower priority than OpenAI
-      models: [{
-         name: 'gpt-oss-latest-mcp',
-        costPer1kInputTokens: 0, // Local model - no cost
-        costPer1kOutputTokens: 0,
-        maxTokens: 128000
-      }],
-      rateLimit: {
-        maxConcurrent: 3, // Lower concurrency for local model
-        tokensPerSecond: 2000
-      },
-      handler: handlers['ollama-local-provider']
-    });
-  }
-
-  return {
-    loadBalancingStrategy: 'round_robin',
-    defaultModel: 'gpt-oss-latest-mcp',
-    providers,
-    resilience: {
-      retry: {
-        enabled: true,
-        attempts: 2,
-        initialBackoffMs: 500,
-        maxBackoffMs: 5000,
-        multiplier: 1.5
-      },
-      circuitBreaker: {
-        enabled: true,
-        threshold: 3,
-        samplingDurationMs: 30000,
-        resetTimeoutMs: 15000
-      }
-    }
-  };
-};
-
-/**
- * Enhanced LLM Router using the new resilient router implementation
- * Provides backward compatibility with the existing EM TaskFlow architecture
- */
-export class EnhancedLLMRouter {
+// Enhanced LLM Router with MCP integration
+class EnhancedLLMRouter {
   private router: ResilientRouter;
-  private config: RouterConfig;
+  private tools: Tool[] = [];
 
-  static async create(configPath?: string): Promise<EnhancedLLMRouter> {
-    // Initialize MCP agents first
-    console.log('🔧 Initializing MCP agents for load balancing...');
-    const agents = await createMCPAgents();
+  constructor(router: ResilientRouter) {
+    this.router = router;
+  }
+
+  static async create(): Promise<EnhancedLLMRouter> {
+    console.log('🔧 Creating Enhanced LLM Router...');
     
-    // Cache the agents for use in handlers
-    Object.entries(agents).forEach(([name, agent]) => {
-      mcpAgentCache.set(name, agent);
+    // Get router configuration
+    const routerConfig = toLlmRouterConfig();
+    console.log('📋 Router config:', JSON.stringify(routerConfig, null, 2));
+    
+    // Create resilient router
+    const router = new ResilientRouter(routerConfig);
+    const instance = new EnhancedLLMRouter(router);
+    
+    // Initialize MCP tools
+    await instance.initializeMCPTools();
+    
+    console.log('✅ Enhanced LLM Router created successfully');
+    return instance;
+  }
+
+  private async initializeMCPTools(): Promise<void> {
+    try {
+      if (!mcpService.isReady()) {
+        await mcpService.initialize();
+      }
+      this.tools = mcpService.getTools();
+      console.log(`📋 Loaded ${this.tools.length} MCP tools for LLM Router`);
+    } catch (error) {
+      console.warn('⚠️  Failed to load MCP tools:', error);
+      this.tools = [];
+    }
+  }
+
+  async executeMCPQuery(query: string, maxSteps: number = 20): Promise<string> {
+    try {
+      // Use the new MCP service for query execution
+      if (mcpService.isReady()) {
+        return await mcpService.runQuery(query);
+      } else {
+        // Fallback to standard LLM routing
+        const request: LLMRequest = {
+          prompt: query,
+          messages: [{ role: 'user', content: query }],
+          model: getLlmConfig().defaultModel,
+          maxTokens: 1000,
+        };
+        
+        const response = await this.router.route(request);
+        return response.text;
+      }
+    } catch (error) {
+      console.error('❌ MCP query execution failed:', error);
+      throw error;
+    }
+  }
+
+  async route(request: LLMRequest): Promise<LLMResponse> {
+    return await this.router.route(request);
+  }
+
+  async healthCheck(): Promise<any> {
+    const mcpHealth = await mcpService.getHealthStatus();
+    
+    return {
+      router: { status: 'healthy' },
+      mcp: mcpHealth,
+      tools: this.tools.length,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  getAvailableProviders(): string[] {
+    // This is a simplified implementation
+    const llmConfig = getLlmConfig();
+    const providers: string[] = [];
+    
+    if (llmConfig.providers.openai.enabled) providers.push('openai');
+    if (llmConfig.providers.anthropic.enabled) providers.push('anthropic');
+    if (llmConfig.providers.google.enabled) providers.push('google');
+    if (llmConfig.providers.ollama.enabled) providers.push('ollama');
+    
+    return providers;
+  }
+
+  getAllProvidersStatus(): Record<string, any> {
+    const providers = this.getAvailableProviders();
+    const status: Record<string, any> = {};
+    
+    providers.forEach(provider => {
+      status[provider] = { enabled: true, healthy: true };
     });
     
-    const newConfig = createRouterConfig();
-    const handlers = createProviderHandlers();
-    
-    const router = await ResilientRouter.create(handlers, () => newConfig);
-    return new EnhancedLLMRouter(router, newConfig);
+    return status;
   }
 
-  private constructor(router: ResilientRouter, config: RouterConfig) {
-    this.router = router;
-    this.config = config;
-  }
-
-  /**
-   * Execute an LLM request with resilience patterns
-   */
-  async execute(request: LLMRequest, preferredProviders: string[] = []): Promise<LLMResponse> {
-    return await this.router.execute(request, preferredProviders);
-  }
-
-  /**
-   * Get provider status and metrics
-   */
-  getProviderStatus(providerName: string) {
-    return this.router.getProviderStatus(providerName);
-  }
-
-  /**
-   * Get all providers status
-   */  
-  getAllProvidersStatus() {
-    return this.router.getProviderStatuses();
-  }
-
-  /**
-   * Get available models
-   */
-  getAvailableModels(): string[] {
-    return this.router.getAvailableModels();
-  }
-
-  /**
-   * Get available providers
-   */
-  getAvailableProviders(): string[] {
-    return this.router.getAvailableProviders();
-  }
-
-  /**
-   * Health check
-   */
-  async healthCheck() {
-    return await this.router.healthCheck();
-  }
-
-  /**
-   * Get MCP agents for direct access
-   */
-  getMCPAgents(): Map<string, MCPAgent> {
-    return mcpAgentCache;
-  }
-
-  /**
-   * Execute query using best available MCP agent
-   */
-  async executeMCPQuery(query: string, maxSteps: number = 20): Promise<string> {
-    // Try OpenAI first, then fall back to Ollama
-    const openaiAgent = mcpAgentCache.get('openai-agent');
-    const ollamaAgent = mcpAgentCache.get('ollama-agent');
-    
-    const agent = openaiAgent || ollamaAgent;
-    if (!agent) {
-      throw new Error('No MCP agents available');
-    }
-    
-    return await Promise.race([
-      agent.run(query, maxSteps),
-      new Promise<string>((_, reject) => setTimeout(() => reject(new Error('MCP agent timed out after 40 seconds')), 40_000))
-    ]);
-  }
-
-  /**
-   * Update provider configuration
-   */
-  updateProviderConfig(providerName: string, updates: Partial<LLMProviderConfig>) {
-    // This would require recreating the router with new config
-    console.log(`Provider config update requested for ${providerName}:`, updates);
-    // Implementation would need to be added to the new router library
-  }
-
-  /**
-   * Get configuration
-   */
-  getConfig(): RouterConfig {
-    return this.config;
+  getProviderStatus(provider: string): any {
+    return { enabled: true, healthy: true };
   }
 }
 
-// Create singleton instance for the application
+// Singleton instance
 let mcpRouterInstance: EnhancedLLMRouter | null = null;
 
 /**

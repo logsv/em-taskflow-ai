@@ -5,7 +5,7 @@ import databaseService from './databaseService.js';
 import mcpService from './mcpService.js';
 import ragService from './ragService.js';
 import axios from 'axios';
-import { config, getLlmConfig } from '../config/index.js';
+import { config, getLlmConfig } from '../config.js';
 
 // Type definitions
 interface IntentAnalysis {
@@ -108,24 +108,27 @@ async function fetchData(dataNeeded: string[], userQuery?: string): Promise<Reco
     fetchedData.mcpServiceStatus = mcpStatus;
     
     // Check if any MCP servers are available
-    mcpAvailable = Boolean(mcpStatus.notion || mcpStatus.atlassian || mcpStatus.calendar);
+    mcpAvailable = Boolean(
+      mcpStatus.notion?.connected || 
+      mcpStatus.atlassian?.connected || 
+      mcpStatus.google?.connected
+    );
     
     if (mcpAvailable) {
       console.log('✅ MCP servers available, using MCP tools');
       
-      // Use MCP agent to execute tools when available
-      const mcpAgent = mcpService.getAgent();
+      // Use MCP tools for enhanced querying
+      const mcpTools = mcpService.getTools();
       
-      if (mcpAgent && userQuery) {
-        console.log('🤖 Using MCP agent to execute tools based on user query');
+      if (mcpTools.length > 0 && userQuery) {
+        console.log(`🤖 Using ${mcpTools.length} MCP tools for query execution`);
         try {
           const availableSources = Object.entries(mcpStatus)
-            .filter(([_, status]) => status)
+            .filter(([_, status]) => status.connected)
             .map(([source, _]) => source);
             
           const mcpResponse = await mcpService.runQuery(
-            `Based on this user query: "${userQuery}", use available MCP tools to gather relevant information from ${dataNeeded.join(', ')} sources. Available configured sources: ${availableSources.join(', ')}`,
-            10
+            `Based on this user query: "${userQuery}", use available MCP tools to gather relevant information from ${dataNeeded.join(', ')} sources. Available configured sources: ${availableSources.join(', ')}`
           );
           
           fetchedData.mcpResponse = mcpResponse;

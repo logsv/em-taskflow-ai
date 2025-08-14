@@ -3,10 +3,11 @@ import { StateGraph, END, START, Annotation } from "@langchain/langgraph";
 import { BaseMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
 import { ChatOllama } from "@langchain/ollama";
 import { ChatOpenAI } from "@langchain/openai";
-import { MCPAgent, MCPClient } from 'mcp-use';
+import type { Tool } from '@langchain/core/tools';
 import databaseService from './databaseService.js';
 import ragService from './ragService.js';
-import { config, getLlmConfig, getMcpConfig } from '../config/index.js';
+import mcpService from './mcpService.js';
+import { config, getLlmConfig, getMcpConfig } from '../config.js';
 
 // Define the state using Annotation.Root for proper LangGraph integration
 const AgentState = Annotation.Root({

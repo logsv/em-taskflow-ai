@@ -4,7 +4,7 @@ import path from 'path';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
 import * as chromaService from './chromaService.js';
-import { config, getRagConfig, getLlmConfig, getVectorDbConfig } from '../config/index.js';
+import { config, getRagConfig, getLlmConfig, getVectorDbConfig } from '../config.js';
 import { ChatOllama } from "@langchain/ollama";
 import { ChatOpenAI } from "@langchain/openai";
 

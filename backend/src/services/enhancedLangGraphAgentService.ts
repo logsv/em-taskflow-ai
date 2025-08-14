@@ -3,10 +3,11 @@ import { StateGraph, END, START, Annotation } from "@langchain/langgraph";
 import { BaseMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
 import { ChatOllama } from "@langchain/ollama";
 import { ChatOpenAI } from "@langchain/openai";
-import { MCPAgent, MCPClient } from 'mcp-use';
+import type { Tool } from '@langchain/core/tools';
 import databaseService from './databaseService.js';
+import mcpService from './mcpService.js';
 import enhancedRagService, { type RAGSearchResult, type HallucinationCheck } from './enhancedRagService.js';
-import { config, getLlmConfig, getMcpConfig } from '../config/index.js';
+import { config, getLlmConfig, getMcpConfig } from '../config.js';
 
 // Enhanced state with new RAG features
 const AgentState = Annotation.Root({

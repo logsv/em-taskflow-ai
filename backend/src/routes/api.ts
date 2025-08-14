@@ -16,7 +16,7 @@ import enhancedRagService from '../services/enhancedRagService.js';
 import databaseService from '../services/databaseService.js';
 import mcpService from '../services/mcpService.js';
 import databaseRouter from './database.js';
-import { config } from '../config/index.js';
+import { config } from '../config.js';
 
 // Get __dirname equivalent in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -556,20 +556,25 @@ router.post('/llm-test', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/mcp-status - MCP service status check
+// GET /api/mcp-status - Enhanced MCP service status check
 router.get('/mcp-status', async (req: Request, res: Response) => {
   try {
-    console.log('🔍 Checking MCP service status...');
+    console.log('🔍 Checking enhanced MCP service status...');
     
-    // Get MCP server status (tools are discovered automatically by the agent)
-    const serverStatus = await mcpService.getServerStatus();
+    // Get comprehensive health status
+    const healthStatus = await mcpService.getHealthStatus();
+    const tools = mcpService.getTools();
     
     res.json({
       status: 'success',
-      message: 'MCP status retrieved successfully - tools discovered automatically by agent',
-      servers: serverStatus,
+      message: 'Enhanced MCP status retrieved successfully',
+      health: healthStatus,
+      tools: tools.map(tool => ({
+        name: tool.name,
+        description: tool.description,
+        schema: tool.schema
+      })),
       initialized: mcpService.isReady(),
-      agentReady: mcpService.getAgent() !== null,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -596,7 +601,7 @@ router.post('/mcp-restart', async (req: Request, res: Response) => {
       message: 'MCP service force restarted successfully - tools will be discovered by agent',
       servers: serverStatus,
       initialized: mcpService.isReady(),
-      agentReady: mcpService.getAgent() !== null,
+      llmReady: mcpService.getLLM() !== null,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -614,12 +619,12 @@ router.get('/mcp-debug', async (req: Request, res: Response) => {
   try {
     console.log('🔍 MCP Debug endpoint called');
     const isReady = mcpService.isReady();
-    const agent = mcpService.getAgent();
+    const llm = mcpService.getLLM();
     const status = await mcpService.getServerStatus();
     
     res.json({
       ready: isReady,
-      agentAvailable: !!agent,
+      llmAvailable: !!llm,
       serverStatus: status,
       timestamp: new Date().toISOString()
     });
@@ -656,7 +661,7 @@ router.post('/mcp-test', async (req: Request, res: Response) => {
     }
     
     console.log('🧪 Testing MCP runQuery with:', query);
-    const result = await mcpService.runQuery(query, 10);
+    const result = await mcpService.runQuery(query);
     console.log('✅ MCP runQuery completed');
     
     res.json({
