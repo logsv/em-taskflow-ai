@@ -65,9 +65,8 @@ describe('Chat Component', () => {
     
     // Wait for API call
     await waitFor(() => {
-      expect(mockedAxios.post).toHaveBeenCalledWith('/api/query', {
-        query: 'Hello, how are you?',
-        options: expect.any(Object)
+      expect(mockedAxios.post).toHaveBeenCalledWith('/api/rag-query', {
+        query: 'Hello, how are you?'
       });
     });
     
@@ -88,9 +87,8 @@ describe('Chat Component', () => {
     
     // Wait for API call
     await waitFor(() => {
-      expect(mockedAxios.post).toHaveBeenCalledWith('/api/query', {
-        query: 'Test message',
-        options: expect.any(Object)
+      expect(mockedAxios.post).toHaveBeenCalledWith('/api/rag-query', {
+        query: 'Test message'
       });
     });
   });
@@ -177,7 +175,7 @@ describe('Chat Component', () => {
     
     // Wait for history to load
     await waitFor(() => {
-      expect(mockedAxios.get).toHaveBeenCalledWith('/api/history');
+      expect(mockedAxios.get).toHaveBeenCalledWith('/api/health');
     });
     
     // Should display the previous message

@@ -1,11 +1,14 @@
 import express from 'express';
 import cors from 'cors';
 import apiRouter from './routes/api.js';
-import databaseService from './services/databaseService.js';
-import { initializeMCPRouter } from './services/newLlmRouter.js';
-import { config, getServerConfig, getMcpConfig, getDatabaseConfig, getLlmConfig, getRagConfig } from './config/index.js';
+// import databaseService from './services/databaseService.js';
+// import { initializeMCPRouter } from './services/newLlmRouter.js';
+import { config, getServerConfig, getMcpConfig, getDatabaseConfig, getLlmConfig, getRagConfig, validateConfig } from './config.js';
 import dotenv from 'dotenv';
 import mcpService from './services/mcpService.js';
+import langGraphAgentService from './agent/index.js';
+import { initializeLLM, initializeLLMRouter } from './llm/index.js';
+import { initializeIngest } from './rag/index.js';
 
 // Load environment variables first, then override with convict config
 dotenv.config();
@@ -26,9 +29,16 @@ app.get('/', (req, res) => {
 // Initialize services and start server
 async function startServer(): Promise<void> {
   try {
-    // Initialize database
+    // Validate configuration at startup
+    console.log('🔍 Validating configuration...');
+    validateConfig();
+
+    // Initialize database - TEMPORARILY DISABLED
+    /*
     await databaseService.initialize();
     console.log('✅ Database initialized successfully');
+    */
+    console.log('⚠️  Database service disabled for testing');
     
     // Log Notion config resolution for debugging
     try {
@@ -40,6 +50,22 @@ async function startServer(): Promise<void> {
       console.warn('⚠️ Could not read Notion config:', e);
     }
 
+    // Initialize LLM clients
+    try {
+      await initializeLLM();
+      console.log('✅ LLM clients initialized at startup');
+    } catch (e) {
+      console.warn('⚠️ LLM client initialization failed:', e);
+    }
+
+    // Initialize RAG ingest pipeline
+    try {
+      await initializeIngest();
+      console.log('✅ RAG ingest pipeline initialized at startup');
+    } catch (e) {
+      console.warn('⚠️ RAG ingest initialization failed:', e);
+    }
+
     // Initialize MCP Service (agent + servers) proactively
     try {
       await mcpService.initialize();
@@ -48,13 +74,24 @@ async function startServer(): Promise<void> {
       console.warn('⚠️ MCP Service init at startup failed:', e);
     }
     
-    // Initialize MCP Router with load balancing
+    // Initialize MCP Router with load balancing - DISABLED
+    /*
     try {
       await initializeMCPRouter();
       console.log('✅ MCP Router with load balancing initialized successfully');
     } catch (mcpError) {
       console.warn('⚠️ MCP Router initialization failed, will retry on first use:', mcpError);
       // Don't fail startup if MCP router fails to initialize
+    }
+    */
+
+    // Initialize LangGraph Agent Service
+    try {
+      await langGraphAgentService.initialize();
+      console.log('✅ LangGraph Agent Service initialized successfully');
+    } catch (agentError) {
+      console.warn('⚠️ LangGraph Agent Service initialization failed, will retry on first use:', agentError);
+      // Don't fail startup if agent service fails to initialize
     }
     
     const databaseConfig = getDatabaseConfig();
@@ -79,7 +116,7 @@ async function startServer(): Promise<void> {
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('\nShutting down gracefully...');
-  databaseService.close();
+  // databaseService.close();
   console.log('✅ Services shut down successfully');
   process.exit(0);
 });

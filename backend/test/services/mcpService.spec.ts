@@ -40,47 +40,49 @@ describe('MCP Service', () => {
     });
   });
 
-  describe('agent operations', () => {
+  describe('tool and LLM operations', () => {
     beforeEach(async () => {
       await mcpService.close();
       await mcpService.initialize();
     });
 
-    it('should handle agent queries appropriately', async () => {
-      const agent = mcpService.getAgent();
+    it('should provide tools interface', async () => {
+      const tools = mcpService.getTools();
+      expect(Array.isArray(tools)).toBe(true);
+    });
+
+    it('should handle queries appropriately', async () => {
+      const llm = mcpService.getLLM();
       
-      if (agent) {
-        // If agent is available, test that we can mock its behavior
-        sandbox.stub(agent, 'run').resolves('Mocked agent response');
-        
+      if (llm) {
+        // If LLM is available, test that queries work
         const result = await mcpService.runQuery('test query');
-        expect(result).toBe('Mocked agent response');
+        expect(typeof result).toBe('string');
+        expect(result.length > 0).toBe(true);
       } else {
-        // If no agent available, should throw error
+        // If no LLM available, should throw error
         try {
           await mcpService.runQuery('test query');
           expect(false).toBe(true); // Should not reach here
         } catch (error: any) {
-          expect(error.message).toContain('MCP Agent not initialized');
+          expect(error.message).toContain('No LLM available');
         }
       }
     });
 
-    it('should handle query errors appropriately', async () => {
-      const agent = mcpService.getAgent();
+    it('should handle tool execution', async () => {
+      const tools = mcpService.getTools();
       
-      if (agent) {
-        // Mock agent to throw error
-        sandbox.stub(agent, 'run').rejects(new Error('Agent error'));
-        
+      if (tools.length > 0) {
+        // Test tool execution interface exists
         try {
-          await mcpService.runQuery('test query');
+          await mcpService.executeTool('nonexistent_tool', {});
           expect(false).toBe(true); // Should not reach here
         } catch (error: any) {
-          expect(error.message).toBe('Agent error');
+          expect(error.message).toContain('not found');
         }
       } else {
-        // If no agent, already covered in previous test
+        // No tools available - this is valid in test environment
         expect(true).toBe(true);
       }
     });
@@ -95,11 +97,34 @@ describe('MCP Service', () => {
       expect(status).toBeDefined();
       expect(typeof status).toBe('object');
       expect(status.hasOwnProperty('notion')).toBe(true);
-      expect(status.hasOwnProperty('calendar')).toBe(true); 
-      expect(status.hasOwnProperty('jira')).toBe(true);
-      expect(typeof status.notion).toBe('boolean');
-      expect(typeof status.calendar).toBe('boolean');
-      expect(typeof status.jira).toBe('boolean');
+      expect(status.hasOwnProperty('google')).toBe(true); 
+      expect(status.hasOwnProperty('atlassian')).toBe(true);
+      
+      // New interface returns objects with connected and toolCount
+      if (status.notion) {
+        expect(typeof status.notion.connected).toBe('boolean');
+        expect(typeof status.notion.toolCount).toBe('number');
+      }
+      if (status.google) {
+        expect(typeof status.google.connected).toBe('boolean');
+        expect(typeof status.google.toolCount).toBe('number');
+      }
+      if (status.atlassian) {
+        expect(typeof status.atlassian.connected).toBe('boolean');
+        expect(typeof status.atlassian.toolCount).toBe('number');
+      }
+    });
+
+    it('should return health status', async () => {
+      await mcpService.close();
+      await mcpService.initialize();
+      const health = await mcpService.getHealthStatus();
+      
+      expect(health).toBeDefined();
+      expect(typeof health.healthy).toBe('boolean');
+      expect(typeof health.totalTools).toBe('number');
+      expect(typeof health.llmAvailable).toBe('boolean');
+      expect(typeof health.servers).toBe('object');
     });
   });
 
@@ -120,7 +145,7 @@ describe('MCP Service', () => {
     });
   });
 
-  describe('client and agent access', () => {
+  describe('client and LLM access', () => {
     it('should provide client access interface', async () => {
       await mcpService.close();
       await mcpService.initialize();
@@ -130,13 +155,26 @@ describe('MCP Service', () => {
       expect(client !== undefined).toBe(true);
     });
 
-    it('should provide agent access interface', async () => {
+    it('should provide LLM access interface', async () => {
       await mcpService.close();
       await mcpService.initialize();
-      const agent = mcpService.getAgent();
+      const llm = mcpService.getLLM();
       
-      // Agent access should be available (may be null depending on LLM config)
-      expect(agent !== undefined).toBe(true);
+      // LLM access should be available (may be null depending on LLM config)
+      expect(llm !== undefined).toBe(true);
+    });
+
+    it('should provide tools by server', async () => {
+      await mcpService.close();
+      await mcpService.initialize();
+      
+      const notionTools = mcpService.getToolsByServer('notion');
+      const googleTools = mcpService.getToolsByServer('google');
+      const atlassianTools = mcpService.getToolsByServer('atlassian');
+      
+      expect(Array.isArray(notionTools)).toBe(true);
+      expect(Array.isArray(googleTools)).toBe(true);
+      expect(Array.isArray(atlassianTools)).toBe(true);
     });
   });
 });

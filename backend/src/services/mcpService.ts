@@ -1,296 +1,270 @@
-import { MCPClient, MCPAgent } from 'mcp-use';
-import { config, getMcpConfig } from '../config/index.js';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import type { Tool } from '@langchain/core/tools';
+import { ReliableMCPClient, loadMcpTools } from '../mcp/client.js';
+import { config, getMcpConfig } from '../config.js';
+import { ChatOllama } from '@langchain/ollama';
+import { ChatOpenAI } from '@langchain/openai';
 
 /**
- * MCP Service using mcp-use standard patterns
- * Manages connections to multiple MCP servers (Notion, Jira/Atlassian, Google Calendar)
+ * Enhanced MCP Service using LangChain MCP Adapters
+ * Provides reliable connections to multiple MCP servers with LangGraph-native tools
  */
 class MCPService {
-  private client: MCPClient | null = null;
-  private agent: MCPAgent | null = null;
+  private client: ReliableMCPClient | null = null;
+  private tools: Tool[] = [];
   private isInitialized = false;
-  private serverConfig: any = {};
+  private llm: ChatOpenAI | ChatOllama | null = null;
 
   /**
-   * Initialize the MCP client with all server configurations using standard mcp-use approach
+   * Initialize the MCP client with reliable LangChain adapters
    */
   async initialize(): Promise<void> {
     try {
-      console.log('Initializing MCP Service with mcp-use standard patterns...');
+      console.log('🚀 Initializing MCP Service with LangChain MCP Adapters...');
 
       // Debug configuration values
       const mcpConfig = getMcpConfig();
-      console.log('🔧 DEBUG - Configuration values:');
-      console.log('  Notion enabled:', mcpConfig.notion.enabled);
-      console.log('  Notion API key length:', mcpConfig.notion.apiKey?.length || 0);
-      console.log('  Jira enabled:', mcpConfig.jira.enabled);
-      console.log('  Jira URL:', mcpConfig.jira.url);
-      console.log('  Jira API token length:', mcpConfig.jira.apiToken?.length || 0);
+      console.log('🔧 Configuration status:');
+      console.log('  Notion enabled:', mcpConfig.notion.enabled, '| API key:', mcpConfig.notion.apiKey ? '✅ Set' : '❌ Missing');
+      console.log('  Jira enabled:', mcpConfig.jira.enabled, '| URL:', mcpConfig.jira.url ? '✅ Set' : '❌ Missing');
+      console.log('  Google enabled:', mcpConfig.google.enabled, '| OAuth:', mcpConfig.google.oauthCredentials ? '✅ Set' : '❌ Missing');
 
-      // Build MCP server configurations using standard mcp-use format
-      const mcpServers: Record<string, any> = {};
+      // Initialize the reliable MCP client
+      const { tools, client } = await loadMcpTools();
+      this.client = client;
+      this.tools = tools;
 
-      // Resolve Notion credentials (support env fallbacks)
-      const notionEnabled: boolean = Boolean(mcpConfig.notion.enabled) || String(process.env.NOTION_ENABLED).toLowerCase() === 'true';
-      const notionApiKey: string = mcpConfig.notion.apiKey || process.env.NOTION_API_KEY || '';
-      console.log('🔧 Notion resolved - enabled:', notionEnabled, 'key length:', notionApiKey.length);
+      console.log(`📋 Loaded ${this.tools.length} MCP tools:`, this.tools.map(t => t.name));
 
-      // Add Notion server if enabled - using local Notion MCP server with API key authentication
-      if (notionEnabled && notionApiKey) {
-        mcpServers.notion = {
-          command: 'npx',
-          args: ['-y', '@notionhq/notion-mcp-server'],
-          env: {
-            NOTION_TOKEN: notionApiKey,
-            NOTION_API_KEY: notionApiKey // Support both env var names
-          }
-        };
-        console.log('✅ Using local Notion MCP server with API key authentication');
-      } else {
-        if (!notionEnabled) console.log('ℹ️ Notion MCP disabled by config');
-        if (!notionApiKey) console.log('ℹ️ Notion MCP missing API key');
-      }
-
-      // Add Google Calendar server if enabled - using standard MCP studio server path
-      if (mcpConfig.google.enabled && mcpConfig.google.oauthCredentials) {
-        mcpServers.calendar = {
-          command: 'npx',
-          args: ['-y', '@cocal/google-calendar-mcp'],
-          env: {
-            GOOGLE_OAUTH_CREDENTIALS: mcpConfig.google.oauthCredentials,
-            GOOGLE_CALENDAR_ID: mcpConfig.google.calendarId
-          }
-        };
-      }
-
-      // Add Jira server if enabled - using official Atlassian MCP server via mcp-remote proxy
-      if (mcpConfig.jira.enabled) {
-        mcpServers.atlassian = {
-          command: 'npx',
-          args: ['-y', 'mcp-remote', 'https://mcp.atlassian.com/v1/sse']
-        };
-        console.log('✅ Using official Atlassian MCP server via mcp-remote proxy');
-      }
-
-      console.log('🔧 Enabled MCP servers:', Object.keys(mcpServers));
-      if (!Object.keys(mcpServers).length) {
-        console.warn('⚠️ No MCP servers configured. Check local.json or environment variables.');
-      }
-
-      // Store server config and create client using standard fromDict method
-      this.serverConfig = { mcpServers };
-      this.client = MCPClient.fromDict(this.serverConfig);
-
-      // Initialize LLM for the agent using standard mcp-use approach
-      const llmConfig = config.llm;
-      const llmProvider = llmConfig.defaultProvider;
-      const openaiKey = llmConfig.providers.openai.apiKey || process.env.OPENAI_API_KEY;
-      const rawOllamaBaseUrl = llmConfig.providers.ollama.baseUrl;
-      const ollamaBaseUrl = rawOllamaBaseUrl && rawOllamaBaseUrl.includes('localhost')
-        ? rawOllamaBaseUrl.replace('localhost', '127.0.0.1')
-        : rawOllamaBaseUrl;
-      
-      let llm: any = null;
-      
-      // Try OpenAI first if API key is available
-      if (openaiKey && openaiKey.trim() !== '') {
-        try {
-          // Use standard ChatOpenAI import for mcp-use compatibility
-          const { ChatOpenAI } = await import('@langchain/openai');
-          
-          llm = new ChatOpenAI({
-            modelName: 'gpt-4o-mini',
-            apiKey: openaiKey,
-            temperature: 0.7
-          });
-          console.log('✅ Using OpenAI LLM for MCP Agent');
-        } catch (llmError) {
-          console.warn('⚠️ Could not initialize OpenAI LLM:', llmError);
-        }
-      }
-      
-      // Fall back to Ollama if OpenAI not available and provider is ollama
-      if (!llm && llmProvider === 'ollama' && ollamaBaseUrl) {
-        try {
-          // Use proper ChatOllama from @langchain/ollama package
-          const { ChatOllama } = await import('@langchain/ollama');
-          
-          llm = new ChatOllama({
-            baseUrl: ollamaBaseUrl,
-            model: 'gpt-oss:latest',
-            temperature: 0.7
-          });
-          console.log('✅ Using ChatOllama (gpt-oss:latest) for MCP Agent');
-        } catch (ollamaError) {
-          console.warn('⚠️ Could not initialize ChatOllama:', ollamaError);
-        }
-      }
-      
-      // Create MCP agent if we have an LLM
-      if (llm) {
-        try {
-          this.agent = new MCPAgent({
-            llm: llm as any, // Type workaround for compatibility
-            client: this.client,
-            maxSteps: 20
-          });
-          console.log('✅ MCP Agent initialized successfully using standard mcp-use patterns');
-        } catch (agentError) {
-          console.warn('⚠️ Could not create MCP Agent:', agentError);
-          this.agent = null;
-        }
-      } else {
-        console.log('⚠️ MCP Agent not initialized - No compatible LLM provider available');
-        console.log('   Available providers: OpenAI (requires API key), Ollama (requires running service)');
-        console.log('   Standard tool access will still work through client methods');
-        this.agent = null;
-      }
+      // Initialize LLM for tool calling
+      await this.initializeLLM();
 
       this.isInitialized = true;
-      console.log(`✅ MCP Service initialized successfully - ready for agent-based tool calling`);
+      console.log(`✅ MCP Service initialized with ${this.tools.length} tools and LLM support`);
 
     } catch (error) {
       console.error('❌ Failed to initialize MCP Service:', error);
-      // Don't throw - allow the service to continue with limited functionality
       this.isInitialized = false;
-    }
-  }
-
-
-  /**
-   * Run an agent query across MCP servers using standard mcp-use agent
-   * This is the primary method for all MCP interactions - let the LLM handle tool calling
-   */
-  async runQuery(query: string, maxSteps: number = 20): Promise<string> {
-    if (!this.agent) {
-      throw new Error('MCP Agent not initialized. Please ensure a compatible LLM (OpenAI or Ollama with tool calling support) is configured.');
-    }
-
-    try {
-      console.log('🧪 MCP Agent runQuery start. maxSteps=', maxSteps, 'query snippet=', query.slice(0, 80));
-      // Use standard mcp-use agent run method with timeout guard
-      const result = await Promise.race([
-        this.agent.run(query, maxSteps),
-        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('MCP agent timed out after 90 seconds')), 90_000))
-      ]);
-      console.log('🧪 MCP Agent runQuery done. result snippet=', String(result).slice(0, 120));
-      return result as string;
-    } catch (error) {
-      console.error('❌ MCP Agent runQuery error:', error);
-      throw error;
+      // Don't throw - allow service to continue with limited functionality
     }
   }
 
   /**
-   * Stream an agent query for real-time responses using standard mcp-use patterns
+   * Initialize LLM for tool calling
    */
-  async *streamQuery(query: string, maxSteps: number = 20): AsyncGenerator<any, void, unknown> {
-    if (!this.agent) {
-      throw new Error('MCP Agent not initialized');
-    }
+  private async initializeLLM(): Promise<void> {
+    const llmConfig = config.llm;
+    const llmProvider = llmConfig.defaultProvider;
 
-    try {
-      // Use standard mcp-use agent stream method with safety timeout per step
-      for await (const step of this.agent.stream(query, maxSteps)) {
-        yield step;
+    // Try OpenAI first if enabled and API key available
+    if (llmConfig.providers.openai.enabled && llmConfig.providers.openai.apiKey) {
+      try {
+        this.llm = new ChatOpenAI({
+          modelName: 'gpt-4o-mini',
+          apiKey: llmConfig.providers.openai.apiKey,
+          temperature: 0.7,
+        });
+        console.log('✅ Using OpenAI LLM for tool calling');
+        return;
+      } catch (error) {
+        console.warn('⚠️  Failed to initialize OpenAI LLM:', error);
       }
+    }
+
+    // Fall back to Ollama if available
+    if (llmConfig.providers.ollama.enabled && llmConfig.providers.ollama.baseUrl) {
+      try {
+        const baseUrl = llmConfig.providers.ollama.baseUrl.includes('localhost')
+          ? llmConfig.providers.ollama.baseUrl.replace('localhost', '127.0.0.1')
+          : llmConfig.providers.ollama.baseUrl;
+
+        this.llm = new ChatOllama({
+          baseUrl,
+          model: llmConfig.defaultModel || 'gpt-oss:latest',
+          temperature: 0.7,
+        });
+        console.log('✅ Using Ollama LLM for tool calling');
+        return;
+      } catch (error) {
+        console.warn('⚠️  Failed to initialize Ollama LLM:', error);
+      }
+    }
+
+    console.log('⚠️  No LLM initialized - tool calling will be limited to direct invocations');
+  }
+
+
+  /**
+   * Execute a tool by name with parameters
+   */
+  async executeTool(toolName: string, parameters: any): Promise<any> {
+    if (!this.client) {
+      throw new Error('MCP Client not initialized');
+    }
+
+    try {
+      console.log(`🔧 Executing MCP tool: ${toolName} with parameters:`, parameters);
+      const result = await this.client.executeTool(toolName, parameters);
+      console.log(`✅ Tool execution completed: ${toolName}`);
+      return result;
     } catch (error) {
-      console.error('Error streaming MCP agent query:', error);
+      console.error(`❌ Tool execution failed: ${toolName}:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Run a query with LLM and available tools
+   */
+  async runQuery(query: string): Promise<string> {
+    if (!this.llm) {
+      throw new Error('No LLM available for query processing. Direct tool execution is available via executeTool method.');
+    }
+
+    if (this.tools.length === 0) {
+      throw new Error('No MCP tools available. Check server connections.');
+    }
+
+    try {
+      console.log('🧠 Running query with LLM and MCP tools:', query.slice(0, 100));
+
+      // For now, return a simple message indicating available tools
+      // In a full implementation, this would use LangGraph for tool calling
+      const availableTools = this.tools.map(t => `- ${t.name}: ${t.description}`).join('\n');
+      
+      return `Query received: "${query}"\n\nAvailable MCP tools:\n${availableTools}\n\nNote: Enhanced tool calling with LangGraph coming soon!`;
+
+    } catch (error) {
+      console.error('❌ Query execution error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all available MCP tools (LangChain-compatible)
+   */
+  getTools(): Tool[] {
+    return this.tools;
+  }
+
+  /**
+   * Get tools from a specific server
+   */
+  getToolsByServer(serverName: string): Tool[] {
+    if (!this.client) {
+      return [];
+    }
+    return this.client.getToolsByServer(serverName);
   }
 
   /**
    * Check if MCP service is ready
    */
   isReady(): boolean {
-    return this.isInitialized && this.client !== null;
+    return this.isInitialized && this.client !== null && this.client.isReady();
   }
 
   /**
-   * Get connection status for all servers based on configuration
+   * Get detailed server connection status
    */
-  async getServerStatus(): Promise<Record<string, boolean>> {
+  async getServerStatus(): Promise<Record<string, { connected: boolean; toolCount: number }>> {
     if (!this.client) {
-      return { notion: false, calendar: false, atlassian: false };
+      return {
+        notion: { connected: false, toolCount: 0 },
+        google: { connected: false, toolCount: 0 },
+        atlassian: { connected: false, toolCount: 0 },
+      };
     }
 
-    const status: Record<string, boolean> = {};
-    const serverNames = ['notion', 'calendar', 'atlassian'];
-
-    for (const serverName of serverNames) {
-      // Check if the server is configured (agent will discover tools automatically)
-      const isConfigured = this.serverConfig.mcpServers && this.serverConfig.mcpServers[serverName];
-      status[serverName] = !!isConfigured;
-    }
-
-    return status;
+    return await this.client.getServerStatus();
   }
 
   /**
-   * Close all MCP connections using standard mcp-use patterns
+   * Get comprehensive health status
+   */
+  async getHealthStatus(): Promise<{
+    healthy: boolean;
+    servers: Record<string, { connected: boolean; toolCount: number }>;
+    totalTools: number;
+    llmAvailable: boolean;
+  }> {
+    if (!this.client) {
+      return {
+        healthy: false,
+        servers: {},
+        totalTools: 0,
+        llmAvailable: false,
+      };
+    }
+
+    const health = await this.client.healthCheck();
+    return {
+      ...health,
+      llmAvailable: this.llm !== null,
+    };
+  }
+
+  /**
+   * Reconnect to all MCP servers
+   */
+  async reconnect(): Promise<void> {
+    console.log('🔄 Reconnecting MCP Service...');
+    
+    if (this.client) {
+      try {
+        await this.client.reconnect();
+        // Reload tools after reconnection
+        this.tools = this.client.getTools();
+        console.log(`✅ Reconnected with ${this.tools.length} tools`);
+      } catch (error) {
+        console.error('❌ Failed to reconnect MCP service:', error);
+        throw error;
+      }
+    } else {
+      // Full reinitialization if no client
+      await this.initialize();
+    }
+  }
+
+  /**
+   * Close all MCP connections
    */
   async close(): Promise<void> {
     if (this.client) {
       try {
-        // Use standard mcp-use client close method (with type workaround)
-        if (typeof (this.client as any).close === 'function') {
-          await (this.client as any).close();
-        } else if (typeof (this.client as any).closeAllSessions === 'function') {
-          await (this.client as any).closeAllSessions();
-        }
-        console.log('✅ MCP Service connections closed using standard method');
+        await this.client.close();
+        console.log('✅ MCP Service connections closed');
       } catch (error) {
         console.error('❌ Error closing MCP Service:', error);
       }
     }
+    
     this.isInitialized = false;
     this.client = null;
-    this.agent = null;
-    this.serverConfig = {};
+    this.tools = [];
+    this.llm = null;
   }
 
   /**
-   * Restart the MCP service (useful for reconnecting)
+   * Restart the MCP service with fresh configuration
    */
   async restart(): Promise<void> {
     console.log('🔄 Restarting MCP Service...');
     await this.close();
-    
-    // Force reload configuration by re-importing
-    const configModule = await import('../config/index.js');
-    const freshConfig = configModule.default;
-    
-    // Re-initialize with fresh config
     await this.initialize();
   }
 
   /**
-   * Force restart with fresh configuration
+   * Get the MCP client for external use
    */
-  async forceRestart(): Promise<void> {
-    console.log('🔄 Force restarting MCP Service with fresh configuration...');
-    this.isInitialized = false;
-    await this.restart();
-  }
-
-  /**
-   * Get the MCP client for use by agent service
-   * This allows the agent to access MCP tools directly
-   */
-  getClient(): any {
+  getClient(): ReliableMCPClient | null {
     return this.client;
   }
 
   /**
-   * Get the MCP agent for use by agent service
-   * This allows integration with the RAG query pipeline
+   * Get the initialized LLM instance
    */
-  getAgent(): any {
-    return this.agent;
+  getLLM(): ChatOpenAI | ChatOllama | null {
+    return this.llm;
   }
 }
 

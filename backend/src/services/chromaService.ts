@@ -1,7 +1,7 @@
 
 import { ChromaClient } from 'chromadb';
 import type { Collection, CollectionMetadata, Metadata } from 'chromadb';
-import { config, getVectorDbConfig } from '../config/index.js';
+import { config, getVectorDbConfig } from '../config.js';
 
 // Modern ChromaDB client configuration
 const getClient = (): ChromaClient => {

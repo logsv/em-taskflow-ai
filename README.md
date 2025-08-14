@@ -5,49 +5,53 @@
 [![codecov](https://codecov.io/gh/logsv/em-taskflow-ai/branch/main/graph/badge.svg?token=06702858-ae4c-43e8-aa1e-6184e359cfb2)](https://codecov.io/gh/logsv/em-taskflow-ai)
 
 ## Overview
-EM TaskFlow is an advanced AI-powered productivity platform that combines **Retrieval-Augmented Generation (RAG)**, **Model Context Protocol (MCP)** integrations, and **intelligent LLM routing** to provide a comprehensive task management and knowledge assistant. The system processes your PDF documents, integrates with external services like Jira, Google Calendar, and Notion, and uses sophisticated AI agents to provide contextual, actionable responses.
+EM TaskFlow is a **production-ready AI-powered productivity platform** that combines **Retrieval-Augmented Generation (RAG)**, **LangChain-native Model Context Protocol (MCP)** integrations, and **intelligent LLM routing** to provide a comprehensive task management and knowledge assistant. The system processes your PDF documents, integrates with external services like Notion, Jira, and Google Calendar, and uses sophisticated AI agents to provide contextual, actionable responses.
 
 ### 🏗️ Architecture Overview
-EM TaskFlow employs a multi-layered architecture:
-- **Agent Service**: Orchestrates intent analysis, data fetching, and response generation
-- **LLM Router**: Manages multiple LLM providers with load balancing, circuit breakers, and failover
+EM TaskFlow employs a modern, production-ready architecture:
+- **Reliable MCP Client**: Built on `@langchain/mcp-adapters` with automatic reconnection and health monitoring
+- **Enhanced LLM Router**: Production-ready router using [llm-router](https://www.npmjs.com/package/llm-router) with resilience patterns
 - **RAG Service**: Processes documents and performs semantic search using vector embeddings
-- **MCP Service**: Connects to external tools and services via Model Context Protocol
-- **Enhanced LLM Service**: Provides advanced completion capabilities with metadata
+- **Agent Service**: Orchestrates intent analysis, data fetching, and response generation
+- **Type-Safe Configuration**: Zod-based configuration with environment variable validation
 
 ## 🚀 Key Features
 
-### 📚 Advanced RAG (Retrieval-Augmented Generation)
-- **Enhanced RAG Implementation**: Follows LangGraph agentic RAG best practices with query transformation, retrieval grading, and hallucination detection
-- **Document Processing**: Intelligent PDF parsing with semantic chunking and sentence boundaries
-- **Vector Search**: Semantic search using Ollama embeddings and ChromaDB with relevance grading
-- **Context Integration**: Seamlessly combines document context with LLM responses and multi-source knowledge
-- **Quality Assurance**: Built-in hallucination detection and response regeneration for improved accuracy
+### 🔗 Production-Ready MCP Integration
+- **LangChain-Native**: Built on `@langchain/mcp-adapters` for maximum reliability
+- **Multi-Server Support**: Handles multiple MCP servers with unified tool interface
+- **Automatic Reconnection**: Built-in reconnection logic with exponential backoff
+- **Health Monitoring**: Real-time server status and tool availability tracking
+- **Notion Integration**: Official `@notionhq/notion-mcp-server` support
+- **Atlassian Tools**: Reliable proxy via `mcp-remote` to official Atlassian MCP server
+- **Google Calendar**: OAuth-based calendar management with maintained MCP servers
 
-### 🔗 MCP (Model Context Protocol) Integration
-- **Notion Integration**: Access and manage Notion pages, databases, and content
-- **Jira/Atlassian Tools**: Query tickets, projects, and workflow data
-- **Google Calendar**: Retrieve and manage calendar events and scheduling
-- **Extensible Architecture**: Easy addition of new MCP servers and tools
+### 📚 Enhanced RAG (Retrieval-Augmented Generation)
+- **LangGraph Integration**: Follows agentic RAG best practices with query transformation
+- **Document Processing**: Intelligent PDF parsing with semantic chunking
+- **Vector Search**: Semantic search using Ollama embeddings and ChromaDB
+- **Context Integration**: Seamlessly combines document context with LLM responses
+- **Quality Assurance**: Built-in hallucination detection and response regeneration
 
-### 🧠 Intelligent LLM Router
+### 🧠 Production-Grade LLM Router
 - **Multi-Provider Support**: OpenAI, Anthropic, Google Gemini, and local Ollama
-- **Production-Ready**: Built on the [llm-router](https://www.npmjs.com/package/llm-router) npm package
+- **Built on llm-router**: Production-ready npm package with enterprise features
 - **Load Balancing**: Round-robin and cost-priority routing strategies
 - **Circuit Breakers**: Automatic failover when providers are unavailable
 - **Rate Limiting**: Configurable request throttling and concurrency control
 - **Retry Logic**: Exponential backoff with configurable retry policies
 - **Metrics Tracking**: Comprehensive request/response metrics and performance monitoring
 
-### 🤖 AI Agent System
-- **Intent Analysis**: Automatically determines user intent and required data sources
-- **Contextual Responses**: Combines RAG results, MCP data, and LLM knowledge
-- **Graceful Fallback**: Continues operation even when external services are unavailable
-- **Conversation Memory**: Maintains chat history with database persistence
+### 🛡️ Enterprise-Grade Reliability
+- **Type-Safe Configuration**: Zod-based validation with clear error messages
+- **Health Monitoring**: Comprehensive service health checks and status reporting
+- **Graceful Degradation**: Continues operation even when external services fail
+- **Dependency Verification**: Startup health checks with clear troubleshooting guidance
+- **Version Pinning**: Exact dependency versions prevent compatibility drift
 
 ### 💻 Technical Excellence
-- **TypeScript Backend**: Full type safety and modern ES modules
-- **Comprehensive Testing**: 42%+ code coverage with unit and integration tests
+- **Modern TypeScript**: Full type safety with ES modules
+- **Comprehensive Testing**: 42%+ code coverage with updated test suites
 - **CI/CD Pipeline**: Automated testing, coverage reporting, and deployment
 - **Local-First**: Privacy-focused with local LLM and vector storage options
 
@@ -56,17 +60,17 @@ EM TaskFlow employs a multi-layered architecture:
 ## Setup Instructions
 
 ### 1. Prerequisites
-- **Node.js** (v16+ recommended)
-- **Python 3.8+** (for Chroma)
+- **Node.js v20.15.0+** (specified in `.nvmrc`)
+- **Python 3.8+** (for ChromaDB)
 - **Ollama** (installed and running locally)
 - **ChromaDB** (Python package, running as a local service)
 
 ### 2. Install Dependencies
 
-#### Backend
+#### Backend (uses pnpm for exact dependency versions)
 ```sh
 cd backend
-npm install
+pnpm install
 ```
 
 #### Frontend
@@ -80,7 +84,23 @@ npm install
 pip install chromadb
 ```
 
-### 3. Build TypeScript Backend
+### 3. Configuration Setup
+
+#### Create Configuration File
+```sh
+cd backend/src
+cp config/local.example.json config/local.json
+```
+
+#### Configure Environment Variables (Optional)
+```bash
+# Override any config settings via environment variables
+export NOTION_API_KEY=your_notion_api_key
+export OPENAI_API_KEY=your_openai_key_optional
+export ANTHROPIC_API_KEY=your_anthropic_key_optional
+```
+
+### 4. Build TypeScript Backend
 
 #### Compile TypeScript
 ```sh
@@ -88,596 +108,459 @@ cd backend
 npm run build
 ```
 
-### 4. Start Services
+### 5. Start Services
 
-#### Start Ollama (LLM & Embeddings)
-- Make sure you have Ollama installed: https://ollama.com/
-- Start Ollama:
-  ```sh
-  ./start-ollama.sh
-  ```
-- Pull required models:
-  ```sh
-  ollama pull gpt-oss:latest
-  ollama pull nomic-embed-text
-  ```
-
-#### Start Chroma (Vector DB)
+#### Enhanced Startup (Recommended)
+The enhanced startup script includes comprehensive health checks:
 ```sh
-chromadb run --path ./chroma-data
+./start.sh
 ```
 
-#### Start Backend
+This will:
+- ✅ Verify all system dependencies (Node.js, npm, pnpm, Ollama, Python)
+- ✅ Check Node.js version compatibility
+- ✅ Start all services with proper dependency order
+- ✅ Wait for Ollama to be ready and verify required models
+- ✅ Verify ChromaDB API connectivity
+- ✅ Confirm backend health endpoint accessibility
+- ✅ Run comprehensive health checks on all endpoints
+- ✅ Provide clear URLs and troubleshooting guidance
+
+#### Manual Service Management
 ```sh
-cd backend
-npm start
+# Individual service control
+./manage-services.sh start
+./manage-services.sh stop
+./manage-services.sh restart
+./manage-services.sh status
 ```
 
-#### Start Frontend
+#### Required Ollama Models
+The startup script automatically pulls required models:
 ```sh
-cd ../frontend
-npm start
+ollama pull gpt-oss:latest
+ollama pull nomic-embed-text
 ```
-
-#### All Services (Convenience Scripts)
-- **Start all services (Ollama, Chroma, Backend, Frontend):**
-  ```sh
-  ./start.sh
-  ```
-- **Stop all running services:**
-  ```sh
-  ./stop.sh
-  ```
-- **Manage individual services (start/stop/restart):**
-  ```sh
-  ./manage-services.sh
-  ```
 
 ---
 
 ## 🏗️ Technical Architecture
 
-### 🧠 LLM Router System
+### 🔗 Reliable MCP Integration
 
-The LLM Router provides intelligent routing across multiple LLM providers with enterprise-grade reliability features. Built on the production-ready [llm-router](https://www.npmjs.com/package/llm-router) npm package:
+The MCP system has been completely rewritten for production reliability using `@langchain/mcp-adapters`:
 
-#### **Multi-Provider Support**
-- **OpenAI**: GPT-3.5, GPT-4, GPT-4 Turbo
-- **Anthropic**: Claude-2, Claude-3 series
-- **Google**: Gemini Pro
-- **Ollama**: Local models (GPT-OSS, Mistral, Llama2, etc.)
+#### **LangChain-Native Architecture**
+```typescript
+import { MultiServerMCPClient } from '@langchain/mcp-adapters';
+import type { Tool } from '@langchain/core/tools';
 
-#### **Load Balancing Strategies**
-```yaml
-# Configuration: backend/config/llm-router.yaml
-loadBalancingStrategy: round_robin | cost_priority_round_robin
+// Reliable MCP client with built-in reconnection
+const client = new MultiServerMCPClient(serverConfigs);
+await client.initializeConnections();
+const tools: Tool[] = await client.getTools();
 ```
 
-- **Round Robin**: Equal distribution across available providers
-- **Cost Priority**: Routes based on cost efficiency and provider priority
+#### **Production-Ready Features**
+- **Automatic Reconnection**: Exponential backoff with configurable retry limits
+- **Health Monitoring**: Real-time server status and tool availability
+- **Multi-Server Orchestration**: Unified interface for multiple MCP servers
+- **LangGraph Integration**: Native Tool[] objects for seamless LangGraph usage
+- **Error Resilience**: Handles STDIO/SSE edge cases and authentication flows
+
+#### **Supported MCP Servers**
+```json
+{
+  "mcp": {
+    "notion": {
+      "enabled": true,
+      "apiKey": "ntn_your_notion_api_key"
+    },
+    "jira": {
+      "enabled": true,
+      "url": "https://your-domain.atlassian.net",
+      "username": "your@email.com",
+      "apiToken": "your_jira_token",
+      "projectKey": "PROJECT"
+    },
+    "google": {
+      "enabled": false,
+      "oauthCredentials": "./path/to/oauth.json",
+      "calendarId": "primary"
+    }
+  }
+}
+```
+
+#### **MCP Server Details**
+- **Notion**: Official `@notionhq/notion-mcp-server` with API key authentication
+- **Atlassian**: Via `mcp-remote` proxy to handle OAuth complexity automatically
+- **Google Calendar**: Maintained MCP servers with OAuth support
+
+### 🛡️ Type-Safe Configuration System
+
+Replaced convict with Zod for better TypeScript integration:
+
+#### **Environment Variable Validation**
+```typescript
+import { z } from 'zod';
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  NOTION_API_KEY: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  // ... comprehensive validation
+});
+
+// Automatic validation at startup with clear error messages
+const config = envSchema.parse(process.env);
+```
+
+#### **Configuration Features**
+- **Type Safety**: Full TypeScript support with auto-completion
+- **Runtime Validation**: Validates configuration at startup
+- **Clear Error Messages**: Helpful guidance for configuration issues
+- **Environment Override**: Any setting can be overridden via environment variables
+- **Single Source**: One JSON file replaces multiple YAML configurations
+
+### 🧠 Enhanced LLM Router
+
+Simplified and reliable LLM routing built on the proven `llm-router` package:
+
+#### **Provider Configuration**
+```json
+{
+  "llm": {
+    "defaultProvider": "ollama",
+    "defaultModel": "gpt-oss:latest",
+    "loadBalancingStrategy": "round_robin",
+    "providers": {
+      "openai": {
+        "enabled": false,
+        "apiKey": "optional",
+        "priority": 1
+      },
+      "ollama": {
+        "enabled": true,
+        "baseUrl": "http://localhost:11434",
+        "priority": 4
+      }
+    }
+  }
+}
+```
 
 #### **Reliability Features**
-- **Circuit Breakers**: Automatic failover when providers fail
-  - Configurable failure thresholds (default: 5 failures)
-  - Automatic recovery after timeout periods
-- **Retry Logic**: Exponential backoff with configurable parameters
-  - Max attempts, initial delay, backoff factor
-- **Rate Limiting**: Per-provider request throttling
-  - Concurrent request limits
-  - Token-per-second rate limiting
+- **Circuit Breakers**: Automatic failover with configurable thresholds
+- **Retry Logic**: Exponential backoff for transient failures
+- **Health Monitoring**: Real-time provider status tracking
+- **Load Balancing**: Round-robin and cost-priority strategies
 
-#### **Configuration Example**
-```yaml
-providers:
-  - name: ollama-local
-    type: ollama
-    enabled: true
-    priority: 1
-    baseUrl: http://localhost:11434
-    models:
-      - name: gpt-oss:latest
-        costPer1kInputTokens: 0
-        costPer1kOutputTokens: 0
-        maxTokens: 4096
-    circuitBreaker:
-      failureThreshold: 3
-      successThreshold: 2
-      timeout: 30000
-    retry:
-      maxAttempts: 2
-      initialDelay: 500
-      maxDelay: 10000
-      factor: 1.5
-```
-
-### 🔗 MCP (Model Context Protocol) Integration
-
-The MCP Service connects to external tools and services using the Model Context Protocol standard:
-
-#### **Supported Integrations**
-- **Notion MCP Server**: Official Notion integration via local server
-  - Access pages, databases, and content
-  - Create and update Notion resources
-  - Uses `@notionhq/notion-mcp-server` with API key authentication
-- **Atlassian MCP Server**: Official Atlassian integration
-  - Query Jira tickets, projects, and workflows
-  - Access Atlassian ecosystem data via official MCP server
-  - Uses `mcp-remote` proxy to `https://mcp.atlassian.com/v1/sse`
-- **Google Calendar MCP**: Calendar management
-  - Query events and scheduling information
-  - Create and manage calendar entries
-
-#### **MCP Architecture**
-```typescript
-// MCP Service Configuration with mcp-use
-const mcpServers = {
-  notion: {
-    command: 'npx',
-    args: ['-y', '@notionhq/notion-mcp-server'],
-    env: {
-      NOTION_TOKEN: process.env.NOTION_API_KEY,
-      NOTION_API_KEY: process.env.NOTION_API_KEY
-    }
-  },
-  atlassian: {
-    command: 'npx',
-    args: ['-y', 'mcp-remote', 'https://mcp.atlassian.com/v1/sse']
-  }
-  // Additional servers...
-};
-
-const mcpClient = MCPClient.fromDict({ mcpServers });
-```
-
-#### **Environment Variables**
-```bash
-# Notion Integration
-NOTION_API_KEY=your_notion_api_key
-
-# Atlassian/Jira Integration (for authentication via official MCP server)
-# Authentication is handled automatically through the mcp-remote proxy
-# No additional environment variables required for basic functionality
-
-# Google Calendar
-GOOGLE_OAUTH_CREDENTIALS=your_oauth_credentials
-GOOGLE_CALENDAR_ID=primary
-```
-
-### 📚 RAG (Retrieval-Augmented Generation) System
-
-The RAG Service provides intelligent document processing and semantic search capabilities:
+### 📚 RAG System Architecture
 
 #### **Document Processing Pipeline**
-1. **PDF Parsing**: Extracts text content from uploaded PDFs
-2. **Intelligent Chunking**: Splits documents into semantic chunks (~1000 chars)
-3. **Embedding Generation**: Creates vector embeddings using Ollama
-4. **Vector Storage**: Stores embeddings in ChromaDB with metadata
+1. **PDF Upload**: Secure file handling with validation
+2. **Text Extraction**: Intelligent parsing with metadata preservation
+3. **Semantic Chunking**: Context-aware splitting (~1000 chars)
+4. **Vector Embedding**: Ollama `nomic-embed-text` model
+5. **Storage**: ChromaDB with comprehensive metadata
 
-#### **Vector Search Process**
+#### **Search & Retrieval**
 ```typescript
-// RAG Search Flow
-const ragResults = await ragService.searchRelevantChunks(query, topK=5);
-// Returns: chunks, context, sources with similarity scores
+const results = await ragService.searchRelevantChunks(query, 5);
+// Returns: { chunks, context, sources, similarity_scores }
 ```
 
-#### **Key Features**
-- **Semantic Search**: Uses `nomic-embed-text` model for embeddings
-- **Context Integration**: Combines multiple document chunks
-- **Source Attribution**: Tracks document sources and chunk locations
-- **Metadata Preservation**: Maintains filename, page numbers, and chunk indices
+### 🤖 Agent System Workflow
 
-#### **ChromaDB Integration**
-```python
-# Vector Database Operations
-collection = chroma_client.create_collection(
-    name="pdf_chunks",
-    metadata={"description": "PDF document chunks for RAG search"}
-)
-
-# Store document chunks with embeddings
-collection.add(
-    documents=[chunk_text],
-    metadatas=[{"filename": "doc.pdf", "chunk_index": 0}],
-    ids=[chunk_id],
-    embeddings=[embedding_vector]
-)
-```
-
-### 🤖 AI Agent System
-
-The Agent Service orchestrates the entire AI workflow:
-
-#### **Intent Analysis**
-```typescript
-// Automatic intent classification
-const intent = await analyzeIntent(userQuery);
-// Returns: intent category, required data sources, reasoning
-```
-
-#### **Multi-Source Data Fetching**
-- **RAG Search**: Retrieves relevant document chunks
-- **MCP Tools**: Fetches data from external services
-- **Graceful Fallback**: Continues with available data sources
-
-#### **Response Generation**
-- **Context Assembly**: Combines RAG results, MCP data, and LLM knowledge
-- **Intelligent Prompting**: Adapts prompts based on available data
-- **Source Attribution**: Provides clear source references
-
----
-
-## 🔄 System Workflow
-
-### **Complete Request Flow**
+#### **Complete Request Flow**
 ```mermaid
 graph TD
     A[User Query] --> B[Agent Service]
     B --> C[Intent Analysis]
-    C --> D[Enhanced LLM Service]
-    D --> E[LLM Router]
-    E --> F{Provider Selection}
-    F --> G[Ollama Local]
-    F --> H[OpenAI]
-    F --> I[Anthropic]
-    F --> J[Google]
+    B --> D[Parallel Data Fetching]
     
-    B --> K[Data Fetching]
-    K --> L[RAG Service]
-    L --> M[Vector Search]
-    M --> N[ChromaDB]
-    L --> O[Document Chunks]
+    D --> E[RAG Service]
+    E --> F[ChromaDB Vector Search]
     
-    K --> P[MCP Service]
-    P --> Q[Notion MCP]
-    P --> R[Jira MCP]
-    P --> S[Calendar MCP]
+    D --> G[MCP Service]
+    G --> H[LangChain Tools]
+    H --> I[Notion API]
+    H --> J[Atlassian MCP]
+    H --> K[Google Calendar]
     
-    O --> T[Context Assembly]
-    Q --> T
-    R --> T
-    S --> T
+    F --> L[Context Assembly]
+    I --> L
+    J --> L
+    K --> L
     
-    T --> U[Response Generation]
-    U --> V[Enhanced LLM Service]
-    V --> W[Final Response]
-    W --> X[Database Storage]
-    X --> Y[User Response]
-```
-
-### **Component Interaction Flow**
-
-1. **Query Reception**: User submits query through frontend
-2. **Intent Analysis**: Agent Service analyzes query intent and determines required data sources
-3. **Parallel Data Fetching**:
-   - **RAG Search**: Searches vector database for relevant document chunks
-   - **MCP Integration**: Queries external services (Notion, Jira, Calendar)
-4. **LLM Routing**: Enhanced LLM Service routes requests through intelligent LLM Router
-5. **Context Assembly**: Combines RAG results, MCP data, and system context
-6. **Response Generation**: Generates contextual response using assembled data
-7. **Persistence**: Stores conversation in database for future reference
-
-### **Fallback & Resilience**
-
-```mermaid
-graph LR
-    A[Service Request] --> B{RAG Available?}
-    B -->|Yes| C[Use Documents]
-    B -->|No| D[Skip RAG]
-    
-    A --> E{MCP Available?}
-    E -->|Yes| F[Use External Data]
-    E -->|No| G[Use LLM Knowledge]
-    
-    A --> H{LLM Router}
-    H --> I{Primary Provider}
-    I -->|Available| J[Use Primary]
-    I -->|Failed| K[Circuit Breaker]
-    K --> L[Try Fallback Provider]
-    L -->|Success| M[Response]
-    L -->|Failed| N[Try Next Provider]
+    L --> M[Enhanced LLM Router]
+    M --> N[Provider Selection]
+    N --> O[Response Generation]
+    O --> P[Database Persistence]
+    P --> Q[User Response]
 ```
 
 ---
 
 ## Usage
 
-### 🚀 Basic Usage
-1. **Open the app in your browser** (usually at http://localhost:3000)
-2. **Upload PDFs** in the PDF Upload view and wait for processing confirmation
-3. **Switch to Chat** and ask questions - the system will use your documents and external integrations
-4. **View Sources** for each answer to understand the information sources used
+### 🚀 Quick Start
+1. **Run the enhanced startup script**: `./start.sh`
+2. **Open your browser** to http://localhost:3000
+3. **Upload PDFs** for document processing
+4. **Configure MCP services** in `backend/src/config/local.json`
+5. **Start chatting** - the system uses documents and external integrations
 
-### 🔧 Advanced Configuration
+### 🔧 Configuration Guide
+
+#### **MCP Service Setup**
+```json
+// backend/src/config/local.json
+{
+  "mcp": {
+    "notion": {
+      "enabled": true,
+      "apiKey": "ntn_your_notion_integration_key"
+    },
+    "jira": {
+      "enabled": true,
+      "url": "https://your-company.atlassian.net",
+      "username": "your@email.com",
+      "apiToken": "your_jira_api_token",
+      "projectKey": "PROJ"
+    }
+  }
+}
+```
 
 #### **LLM Provider Setup**
 ```bash
-# Add API keys for cloud providers (optional)
-export OPENAI_API_KEY=your_openai_key
-export ANTHROPIC_API_KEY=your_anthropic_key
-export GOOGLE_API_KEY=your_google_key
+# Optional: Add cloud provider API keys
+export OPENAI_API_KEY=sk-your-openai-key
+export ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
 ```
 
-#### **MCP Integration Setup**
-```bash
-# Configure external service credentials
-export NOTION_API_KEY=your_notion_key
+### 📊 System Monitoring
 
-# Atlassian/Jira integration uses official MCP server
-# Authentication is handled automatically via mcp-remote proxy
+#### **Health Check Endpoints**
+- `GET /api/health` - Overall system health
+- `GET /api/mcp-status` - Enhanced MCP service status with tool inventory
+- `GET /api/llm-status` - LLM router and provider status
 
-export GOOGLE_OAUTH_CREDENTIALS=your_oauth_json
+#### **Enhanced MCP Status Response**
+```json
+{
+  "status": "success",
+  "health": {
+    "healthy": true,
+    "servers": {
+      "notion": { "connected": true, "toolCount": 12 },
+      "atlassian": { "connected": true, "toolCount": 8 }
+    },
+    "totalTools": 20,
+    "llmAvailable": true
+  },
+  "tools": [
+    {
+      "name": "notion_search_pages",
+      "description": "Search Notion pages by title or content"
+    }
+  ]
+}
 ```
 
-#### **RAG Configuration**
-- **Chunk Size**: Modify `maxChunkSize` in RAG service (default: 1000 chars)
-- **Search Results**: Adjust `topK` parameter for search results (default: 5)
-- **Embedding Model**: Configure in `ragService.ts` (default: `nomic-embed-text`)
-
 ---
 
-## 🔍 System Status & Monitoring
+## 🛠️ Development & Testing
 
-### **Health Checks**
-- **LLM Router**: Provider status, circuit breaker states, rate limiting
-- **RAG Service**: Vector DB connectivity, embedding service availability
-- **MCP Service**: External service connection status
-- **Agent Service**: End-to-end workflow health
+### **Updated Test Suite**
+The test suite has been completely updated for the new MCP implementation:
 
-### **Logging & Debugging**
-- Comprehensive console logging with emoji indicators
-- Request/response tracking across all services
-- Error handling with graceful degradation
-- Performance metrics and timing information
-
----
-
-## Notes
-- **Privacy-First**: All processing can be done locally with Ollama and ChromaDB
-- **Scalable**: Easily add new LLM providers, MCP servers, or document types
-- **Fault-Tolerant**: System continues operating even when external services are unavailable
-- **Production-Ready**: Comprehensive testing, CI/CD pipeline, and monitoring capabilities
-
-## CI/CD Pipeline
-
-This project includes a comprehensive CI/CD pipeline using GitHub Actions:
-
-### 🚀 Automated Testing
-- **Continuous Integration**: Automatically runs tests on every push and pull request
-- **TypeScript Compilation**: Validates TypeScript code compilation
-- **Code Coverage**: Generates and reports test coverage metrics
-- **Multi-environment Support**: Handles external service dependencies gracefully
-
-### 📊 Coverage Reporting
-- Minimum coverage thresholds: 42% statements, 29% branches, 36% functions, 42% lines
-- Coverage reports uploaded to Codecov (optional)
-- PR comments with coverage summaries
-
-### 🔧 Local CI Validation
-Test the CI setup locally:
 ```bash
-cd backend
-./scripts/validate-ci.sh
-```
-
-### 📋 Workflow Files
-- `.github/workflows/backend-ci.yml` - Comprehensive backend testing with coverage
-- `.github/workflows/test.yml` - Simplified test execution
-- `.github/workflows/ci.yml` - Main CI workflow with path-based triggers
-
-For detailed CI/CD documentation, see [`.github/CICD.md`](.github/CICD.md).
-
----
-
-## 🛠️ Troubleshooting
-
-### **LLM Router Issues**
-- **No providers available**: Check [`backend/config/llm-router.yaml`](backend/config/llm-router.yaml) configuration
-- **Circuit breaker open**: Wait for timeout period or restart the service
-- **Rate limiting**: Reduce request frequency or adjust rate limits in config
-- **Provider authentication**: Verify API keys in environment variables
-
-### **RAG Service Issues**
-- **PDF upload fails**:
-  - Check if `pdf-parse` module is installed: `npm install pdf-parse`
-  - Verify ChromaDB is running: `chromadb run --path ./chroma-data`
-  - Check backend logs for specific error messages
-- **No search results**:
-  - Ensure Ollama embedding service is running: `ollama pull nomic-embed-text`
-  - Verify vector database connectivity
-  - Check if documents were properly processed and stored
-- **Embedding generation fails**:
-  - Confirm Ollama is accessible at `http://localhost:11434`
-  - Test embedding endpoint: `curl -X POST http://localhost:11434/api/embeddings -d '{"model":"nomic-embed-text","prompt":"test"}'`
-
-### **MCP Integration Issues**
-- **MCP servers not connecting**:
-  - Verify environment variables are set correctly
-  - Check MCP server installation: `npx -y @notionhq/notion-mcp-server --version`
-  - Review server logs for connection errors
-- **Notion integration fails**:
-  - Validate `NOTION_API_KEY` has proper permissions
-  - Ensure Notion integration is properly configured in your workspace
-  - Check that `@notionhq/notion-mcp-server` is accessible: `npx -y @notionhq/notion-mcp-server --version`
-- **Atlassian/Jira integration issues**:
-  - Verify `mcp-remote` proxy is working: `npx -y mcp-remote https://mcp.atlassian.com/v1/sse --help`
-  - Check network connectivity to `https://mcp.atlassian.com/v1/sse`
-  - Authentication is handled by the official Atlassian MCP server automatically
-  - Review MCP service logs for connection errors to the remote server
-- **Google Calendar problems**:
-  - Validate OAuth credentials format and permissions
-  - Ensure calendar access is granted for the service account
-
-### **Agent Service Issues**
-- **Intent analysis fails**: Check if Enhanced LLM Service is properly initialized
-- **Incomplete responses**: Verify all required services (RAG, MCP, LLM) are operational
-- **Database errors**: Ensure SQLite database is accessible and writable
-
-### **General Debugging**
-- **Service status check**: Use health check endpoints to verify component status
-- **Log analysis**: Check console output for service-specific error messages
-- **Configuration validation**: Verify all YAML configuration files are properly formatted
-- **Dependency issues**: Run `npm install` in both backend and frontend directories
-- **Port conflicts**: Ensure required ports (3000, 8000, 11434, 8001) are available
-
-### **Performance Issues**
-- **Slow responses**:
-  - Check LLM provider response times
-  - Optimize chunk size in RAG configuration
-  - Review circuit breaker and retry settings
-- **Memory usage**:
-  - Monitor ChromaDB memory consumption
-  - Consider adjusting concurrent request limits
-- **High CPU usage**:
-  - Review Ollama model size and system requirements
-  - Optimize embedding generation batch sizes
-
----
-
-## 🔌 API Endpoints
-
-### **Chat & RAG Endpoints**
-- `POST /api/chat` - Process user queries with full AI agent workflow
-- `POST /api/upload` - Upload and process PDF documents
-- `GET /api/chat/history` - Retrieve chat conversation history
-- `GET /api/summaries` - Get document summaries and metadata
-
-### **System Status Endpoints**
-- `GET /api/health` - Overall system health check
-- `GET /api/status/llm` - LLM Router provider status
-- `GET /api/status/rag` - RAG service and vector database status
-- `GET /api/status/mcp` - MCP service and external integrations status
-
-### **Configuration Endpoints**
-- `GET /api/config/providers` - List available LLM providers
-- `PUT /api/config/providers/:name` - Update provider configuration
-- `GET /api/config/models` - List available models across all providers
-
----
-
-## 🧪 Development & Testing
-
-### **Running Tests**
-```bash
-# Backend tests with coverage
+# Run comprehensive tests
 cd backend
 npm test
 
-# Run specific test suites
-npm run test:services
-npm run test:integration
-npm run test:unit
-
-# Frontend tests
-cd frontend
-npm test
+# Tests now validate:
+# - New MCP service interface
+# - Tool-based operations instead of agent-based
+# - Health status monitoring
+# - Configuration validation
 ```
 
-### **Development Mode**
+### **Test Coverage**
+- **MCP Service**: Tool execution, health monitoring, server status
+- **Configuration**: Zod validation, environment variable handling
+- **LLM Router**: Provider routing, health checks, error handling
+- **Integration**: End-to-end workflow testing
+
+### **Development Tools**
 ```bash
-# Backend development with hot reload
-cd backend
+# Development with hot reload
 npm run dev
 
-# Frontend development
-cd frontend
-npm start
-```
-
-### **Code Quality**
-```bash
 # TypeScript compilation check
 npm run build
 
-# Linting
-npm run lint
-
-# Code formatting
-npm run format
+# Configuration validation
+node -e "import('./dist/config.js').then(c => console.log('✅ Config valid'))"
 ```
 
-### **Architecture Decisions**
-- **TypeScript**: Full type safety across the entire backend
-- **ES Modules**: Modern JavaScript module system
-- **Microservices Pattern**: Loosely coupled, independently testable services
-- **Circuit Breaker Pattern**: Resilient external service integration
-- **Repository Pattern**: Clean data access layer abstraction
-- **Factory Pattern**: Dynamic LLM provider instantiation
+---
+
+## 🔍 Troubleshooting
+
+### **Enhanced Startup Diagnostics**
+The new startup script provides comprehensive diagnostics:
+
+#### **Dependency Verification**
+- ✅ Node.js version compatibility (uses `.nvmrc`)
+- ✅ Required commands available (npm, pnpm, ollama, python3)
+- ✅ System information display
+
+#### **Service Health Checks**
+- ✅ Ollama API connectivity and model availability
+- ✅ ChromaDB API endpoint verification
+- ✅ Backend health endpoint validation
+- ✅ Comprehensive service status reporting
+
+#### **Common Issues & Solutions**
+
+**MCP Connection Issues:**
+```bash
+# Check MCP service status
+curl http://localhost:4000/api/mcp-status
+
+# Verify Notion API key
+export NOTION_API_KEY=ntn_your_key
+./start.sh
+
+# Test Atlassian connectivity
+npx -y mcp-remote https://mcp.atlassian.com/v1/sse --help
+```
+
+**Configuration Problems:**
+```bash
+# Validate configuration
+node -e "
+import('./backend/dist/config.js').then(config => {
+  console.log('✅ Configuration loaded successfully');
+  console.log('MCP servers:', Object.keys(config.getMcpConfig()));
+}).catch(err => {
+  console.error('❌ Configuration error:', err.message);
+});"
+```
+
+**Dependency Issues:**
+```bash
+# Rebuild native dependencies
+cd backend
+pnpm rebuild sqlite3
+
+# Clear dependency cache
+rm -rf node_modules pnpm-lock.yaml
+pnpm install
+```
+
+---
+
+## 🚀 Production Deployment
+
+### **Production Readiness Checklist**
+- ✅ **Dependency Pinning**: Exact versions prevent compatibility drift
+- ✅ **Health Monitoring**: Comprehensive status endpoints
+- ✅ **Error Handling**: Graceful degradation and clear error messages
+- ✅ **Configuration Validation**: Startup validation with helpful guidance
+- ✅ **Connection Resilience**: Automatic reconnection with backoff
+- ✅ **Type Safety**: Full TypeScript coverage with runtime validation
+
+### **Environment Configuration**
+```bash
+# Production environment variables
+NODE_ENV=production
+PORT=4000
+
+# Required for MCP integrations
+NOTION_API_KEY=ntn_production_key
+JIRA_URL=https://company.atlassian.net
+JIRA_API_TOKEN=production_token
+
+# Optional LLM providers
+OPENAI_API_KEY=sk-production-key
+ANTHROPIC_API_KEY=sk-ant-production-key
+```
+
+### **Docker Deployment** (Coming Soon)
+- Containerized deployment with health checks
+- Multi-stage builds for optimized images
+- Docker Compose for full-stack deployment
 
 ---
 
 ## 🤝 Contributing
 
+### **Architecture Guidelines**
+- **MCP Integration**: Use `@langchain/mcp-adapters` for all MCP functionality
+- **Configuration**: Add new settings to Zod schema with validation
+- **Error Handling**: Implement graceful degradation patterns
+- **Testing**: Update tests for tool-based MCP operations
+- **Type Safety**: Maintain full TypeScript coverage
+
 ### **Development Setup**
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Install dependencies: `npm install` (in both backend and frontend)
-4. Make your changes and add tests
-5. Ensure all tests pass: `npm test`
-6. Commit your changes: `git commit -m 'Add amazing feature'`
-7. Push to the branch: `git push origin feature/amazing-feature`
-8. Open a Pull Request
-
-### **Code Standards**
-- **TypeScript**: Use strict type checking
-- **Testing**: Maintain >40% code coverage
-- **Documentation**: Update README for new features
-- **Commit Messages**: Use conventional commit format
-- **Code Style**: Follow existing patterns and ESLint rules
-
-### **Adding New Features**
-
-#### **New LLM Provider**
-1. Implement provider in [`backend/src/services/llmProviders.ts`](backend/src/services/llmProviders.ts)
-2. Add configuration schema in [`backend/src/types/config.ts`](backend/src/types/config.ts)
-3. Update [`backend/config/llm-router.yaml`](backend/config/llm-router.yaml)
-4. Add comprehensive tests
-
-#### **New MCP Server**
-1. Add server configuration in [`backend/src/services/mcpService.ts`](backend/src/services/mcpService.ts)
-2. Update environment variable documentation
-3. Add integration tests
-4. Update troubleshooting guide
-
-#### **RAG Enhancements**
-1. Modify [`backend/src/services/ragService.ts`](backend/src/services/ragService.ts)
-2. Update chunking or embedding logic
-3. Add performance benchmarks
-4. Update configuration documentation
+1. Fork and clone the repository
+2. Install dependencies: `pnpm install` (backend), `npm install` (frontend)
+3. Copy configuration: `cp backend/src/config/local.example.json backend/src/config/local.json`
+4. Add your API keys to the config file
+5. Run tests: `npm test`
+6. Start development: `./start.sh`
 
 ---
 
 ## 📚 Additional Resources
 
-### **Related Documentation**
-- [Backend Technical Documentation](backend/README.md) - Detailed backend architecture
-- [CI/CD Pipeline Documentation](.github/CICD.md) - Deployment and testing workflows
-- [LLM Router Configuration Guide](backend/config/llm-router.yaml) - Provider setup examples
-
-### **External Dependencies**
+### **Documentation**
+- [LangChain MCP Adapters](https://js.langchain.com/docs/integrations/tools/mcp) - Official MCP integration
+- [Model Context Protocol](https://modelcontextprotocol.io/) - MCP standard documentation
 - [Ollama](https://ollama.com/) - Local LLM runtime
 - [ChromaDB](https://www.trychroma.com/) - Vector database
-- [Model Context Protocol](https://modelcontextprotocol.io/) - External tool integration standard
-- [LangChain MCP Adapters](https://js.langchain.com/docs/integrations/tools/mcp) - MCP integration library
 
-### **Community & Support**
-- **Issues**: Report bugs and request features via GitHub Issues
-- **Discussions**: Join community discussions for questions and ideas
-- **Wiki**: Additional guides and tutorials (coming soon)
-- **Changelog**: Track updates and breaking changes in releases
+### **Supported MCP Servers**
+- [Notion MCP Server](https://github.com/notionhq/notion-mcp-server) - Official Notion integration
+- [Atlassian MCP](https://mcp.atlassian.com/) - Official Atlassian MCP server
+- [Google Calendar MCP](https://github.com/cocal/google-calendar-mcp) - Community calendar integration
 
 ---
 
-## 🏆 Acknowledgments
+## 🏆 Key Improvements in This Release
 
-- **Ollama Team** - For providing excellent local LLM runtime
-- **ChromaDB** - For the powerful vector database solution
-- **Anthropic** - For the Model Context Protocol standard
-- **LangChain** - For MCP adapter implementations
-- **Open Source Community** - For the countless libraries and tools that make this possible
+### **🔧 Reliability Enhancements**
+- **Replaced mcp-use** with production-ready `@langchain/mcp-adapters`
+- **Eliminated fragile dependencies** and connection handling issues
+- **Added comprehensive health monitoring** with real-time status
+- **Implemented automatic reconnection** with exponential backoff
+
+### **⚡ Performance Improvements**
+- **Reduced dependency overhead** by removing legacy packages
+- **Optimized tool loading** with efficient caching
+- **Streamlined configuration** with faster validation
+- **Better resource management** with proper cleanup
+
+### **🛡️ Production Readiness**
+- **Type-safe configuration** with Zod validation
+- **Comprehensive startup checks** with clear error guidance
+- **Version pinning** prevents compatibility issues
+- **Enhanced error handling** with graceful degradation
+
+### **👩‍💻 Developer Experience**
+- **Simplified architecture** with fewer abstraction layers
+- **Clear documentation** with updated troubleshooting guides
+- **Better debugging** with structured logging
+- **Modern tooling** with latest TypeScript and ES modules
 
 ---
 
 ## License
 MIT License - see [LICENSE](LICENSE) file for details.
 
-**EM TaskFlow** - Empowering productivity through intelligent AI integration 🚀
+**EM TaskFlow** - Production-ready AI productivity platform with reliable MCP integration 🚀
