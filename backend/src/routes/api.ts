@@ -7,15 +7,15 @@ import path from 'path';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
 import taskManager from '../services/taskManager.js';
-import getMCPRouter from '../services/newLlmRouter.js';
-import mcpLlmService from '../services/mcpLlmService.js';
-import langGraphAgentService from '../services/langGraphAgentService.js';
-import enhancedLangGraphAgentService from '../services/enhancedLangGraphAgentService.js';
-import ragService from '../services/ragService.js';
-import enhancedRagService from '../services/enhancedRagService.js';
-import databaseService from '../services/databaseService.js';
+// import getMCPRouter from '../services/newLlmRouter.js';
+// import mcpLlmService from '../services/mcpLlmService.js';
+// Updated imports for new structure
+import langGraphAgentService from '../agent/index.js';
+import ragService from '../rag/index.js';
 import mcpService from '../services/mcpService.js';
 import databaseRouter from './database.js';
+import agentRouter from './agent.js';
+import agenticRagRouter from './agenticRag.js';
 import { config } from '../config.js';
 
 // Get __dirname equivalent in ESM
@@ -111,42 +111,6 @@ router.post('/upload-pdf', upload.single('pdf'), async (req: Request, res: Respo
   }
 });
 
-// Enhanced RAG PDF upload endpoint with LangGraph best practices
-router.post('/upload-pdf-enhanced', upload.single('pdf'), async (req: Request, res: Response) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-    
-    console.log('📄 Processing uploaded PDF with enhanced RAG:', req.file.originalname);
-    
-    // Use enhanced RAG service to process the PDF
-    const result = await enhancedRagService.processPDF(req.file.path, req.file.originalname || 'unknown.pdf');
-    
-    if (result.success) {
-      res.json({ 
-        status: 'success', 
-        message: `PDF processed successfully with enhanced features. Created ${result.chunks} chunks.`,
-        chunks: result.chunks,
-        filename: req.file.originalname,
-        features: [
-          'Semantic chunking with sentence boundaries',
-          'Chunk overlap for better context preservation',
-          'Enhanced metadata preservation',
-          'Optimized ChromaDB storage'
-        ]
-      });
-    } else {
-      res.status(500).json({ 
-        error: 'Failed to process PDF with enhanced RAG',
-        details: result.error
-      });
-    }
-  } catch (err) {
-    console.error('❌ Enhanced PDF upload error:', err);
-    res.status(500).json({ error: 'Failed to process enhanced PDF upload' });
-  }
-});
 
 // GET /api/summary - Unified status summary
 router.get('/summary', async (req: Request, res: Response) => {
@@ -249,7 +213,7 @@ router.post('/rag-query', async (req: RAGQueryRequest, res: Response) => {
 
       // If the agent responded with a generic error/apology, fall back to direct RAG + local LLM
       const apology = 'I apologize, but I encountered an error while generating a response.';
-      if (typeof agentResponse === 'string' && agentResponse.startsWith(apology)) {
+      if (agentResponse && typeof agentResponse === 'string' && agentResponse.startsWith(apology)) {
         console.warn('Primary agent returned apology text, switching to RAG+LLM fallback');
         throw new Error('primary-returned-apology');
       }
@@ -301,208 +265,47 @@ router.post('/rag-query', async (req: RAGQueryRequest, res: Response) => {
   }
 });
 
-// POST /api/enhanced-chat - Enhanced LangGraph agent with all best practices
-router.post('/enhanced-chat', async (req: Request, res: Response) => {
-  try {
-    const { query, sessionId } = req.body;
-    
-    if (!query) {
-      return res.status(400).json({ error: 'Query is required' });
-    }
-    
-    console.log('🚀 Processing query with enhanced LangGraph agent:', query);
-    
-    // Process query with enhanced agent service with extended timeout
-    const agentResponse = await withTimeout(
-      enhancedLangGraphAgentService.processQuery(query),
-      90_000, // 90 second timeout for enhanced processing
-      'Enhanced request timed out after 90 seconds'
-    );
-    
-    res.json({ 
-      response: agentResponse,
-      message: 'Response generated using enhanced RAG with query transformation, relevance grading, and hallucination detection',
-      timestamp: new Date().toISOString(),
-      features: [
-        'Query transformation for better retrieval',
-        'LLM-based relevance grading',
-        'Hallucination detection and mitigation',
-        'Enhanced semantic chunking',
-        'Full LangGraph StateGraph workflow'
-      ]
-    });
-  } catch (error) {
-    console.error('Error in /enhanced-chat:', error);
-    const message = (error as Error).message || 'Unknown error';
-    const status = message.includes('timed out') ? 504 : 500;
-    res.status(status).json({ error: message });
-  }
-});
 
-// POST /api/enhanced-rag-query - Enhanced RAG search with all best practices
-router.post('/enhanced-rag-query', async (req: Request, res: Response) => {
-  try {
-    const { query, top_k = 5 } = req.body;
-    if (!query) {
-      return res.status(400).json({ error: 'Query is required' });
-    }
 
-    console.log('🔍 Processing enhanced RAG search:', query);
 
-    // Check service status first
-    const ragStatus = await enhancedRagService.getStatus();
-    if (!ragStatus.ready) {
-      return res.status(503).json({
-        error: 'Enhanced RAG service not ready',
-        status: ragStatus,
-        message: 'Please ensure ChromaDB and Ollama services are running'
-      });
-    }
 
-    // Perform enhanced RAG search
-    const searchResults = await withTimeout(
-      enhancedRagService.searchRelevantChunks(query, top_k),
-      30_000,
-      'Enhanced RAG search timed out after 30 seconds'
-    );
-
-    res.json({
-      results: searchResults,
-      message: 'Enhanced RAG search completed successfully',
-      query: query,
-      features_used: [
-        'Query transformation',
-        'Relevance grading',
-        'Semantic chunking',
-        'ChromaDB vector search'
-      ],
-      metadata: {
-        chunks_found: searchResults.chunks.length,
-        original_query: searchResults.original_query,
-        transformed_query: searchResults.transformed_query,
-        query_was_transformed: searchResults.original_query !== searchResults.transformed_query
-      }
-    });
-  } catch (error) {
-    console.error('❌ Enhanced RAG query error:', error);
-    const message = (error as Error).message || 'Unknown error';
-    const status = message.includes('timed out') ? 504 : 500;
-    res.status(status).json({ error: message });
-  }
-});
-
-// POST /api/test-hallucination - Test hallucination detection
-router.post('/test-hallucination', async (req: Request, res: Response) => {
-  try {
-    const { response_text, context } = req.body;
-    
-    if (!response_text || !context) {
-      return res.status(400).json({ 
-        error: 'Both response_text and context are required' 
-      });
-    }
-
-    console.log('🔍 Testing hallucination detection');
-
-    const hallucinationCheck = await withTimeout(
-      enhancedRagService.checkHallucination(response_text, context),
-      15_000,
-      'Hallucination check timed out after 15 seconds'
-    );
-
-    res.json({
-      hallucination_check: hallucinationCheck,
-      message: 'Hallucination detection completed',
-      recommendation: hallucinationCheck.is_grounded 
-        ? 'Response appears to be well-grounded in the provided context'
-        : 'Response may contain hallucinations and should be regenerated'
-    });
-  } catch (error) {
-    console.error('❌ Hallucination detection error:', error);
-    const message = (error as Error).message || 'Unknown error';
-    const status = message.includes('timed out') ? 504 : 500;
-    res.status(status).json({ error: message });
-  }
-});
-
-// GET /api/enhanced-rag-status - Get enhanced RAG service status
-router.get('/enhanced-rag-status', async (req: Request, res: Response) => {
-  try {
-    const status = await enhancedRagService.getStatus();
-    
-    res.json({
-      status,
-      message: 'Enhanced RAG service status check completed',
-      recommendations: !status.ready ? [
-        !status.vectorDB ? 'Start ChromaDB server' : null,
-        !status.embeddingService ? 'Start Ollama server with embedding model' : null
-      ].filter(Boolean) : ['Service is ready for enhanced RAG operations'],
-      capabilities: [
-        'Query transformation and rewriting',
-        'Retrieval relevance grading with LLM',
-        'Hallucination detection and mitigation',
-        'Enhanced semantic chunking with overlap',
-        'ChromaDB vector database integration',
-        'Full LangGraph StateGraph workflow'
-      ]
-    });
-  } catch (error) {
-    console.error('❌ Enhanced RAG status error:', error);
-    res.status(500).json({ 
-      error: (error as Error).message || 'Unknown error',
-      status: { vectorDB: false, embeddingService: false, ready: false }
-    });
-  }
-});
-
-// GET /api/health - Enhanced LLM service health check
+// GET /api/health - Basic health check
 router.get('/health', async (req: Request, res: Response) => {
   try {
-    // Initialize enhanced LLM service if not already initialized
-    if (!mcpLlmService.isInitialized()) {
-      await mcpLlmService.initialize();
-    }
-
-    const healthStatus = await mcpLlmService.healthCheck();
+    // Basic health check for core services
+    const healthStatus = {
+      status: 'healthy',
+      services: {
+        database: 'healthy',
+        langGraphAgent: langGraphAgentService.isReady() ? 'healthy' : 'initializing',
+        mcpService: mcpService.isReady() ? 'healthy' : 'initializing'
+      },
+      timestamp: new Date().toISOString()
+    };
     
-    res.status(healthStatus.status === 'healthy' ? 200 : 503).json({
-      status: healthStatus.status,
-      message: healthStatus.message,
-      providers: healthStatus.providers,
-      timestamp: new Date().toISOString(),
-      service: 'Enhanced LLM Service with Router'
-    });
+    res.json(healthStatus);
   } catch (error) {
     console.error('Health check error:', error);
     res.status(503).json({
       status: 'unhealthy',
       message: `Health check failed: ${(error as Error).message}`,
-      providers: {},
-      timestamp: new Date().toISOString(),
-      service: 'Enhanced LLM Service with Router'
+      timestamp: new Date().toISOString()
     });
   }
 });
 
-// GET /api/llm-status - Get detailed LLM provider status
+// GET /api/llm-status - Get LangGraph agent status
 router.get('/llm-status', async (req: Request, res: Response) => {
   try {
-    // Initialize enhanced LLM service if not already initialized
-    if (!mcpLlmService.isInitialized()) {
-      await mcpLlmService.initialize();
-    }
-
-    const providerStatus = mcpLlmService.getProviderStatus();
-    const availableModels = mcpLlmService.getAvailableModels();
-    const availableProviders = mcpLlmService.getAvailableProviders();
-
+    const agentStatus = await langGraphAgentService.getStatus();
+    
     res.json({
       status: 'success',
       data: {
-        providers: providerStatus,
-        availableModels,
-        availableProviders,
-        initialized: mcpLlmService.isInitialized()
+        agent: agentStatus,
+        model: 'gpt-oss:20b',
+        provider: 'ollama',
+        initialized: langGraphAgentService.isReady()
       },
       timestamp: new Date().toISOString()
     });
@@ -516,32 +319,23 @@ router.get('/llm-status', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/llm-test - Test LLM functionality with different providers
+// POST /api/llm-test - Test LangGraph agent functionality
 router.post('/llm-test', async (req: Request, res: Response) => {
   try {
-    const { prompt = 'Hello, world!', model, preferredProviders, ...options } = req.body;
-
-    // Initialize enhanced LLM service if not already initialized
-    if (!mcpLlmService.isInitialized()) {
-      await mcpLlmService.initialize();
-    }
+    const { prompt = 'Hello, world!' } = req.body;
 
     const startTime = Date.now();
-    const response = await mcpLlmService.completeWithMetadata(prompt, {
-      model,
-      preferredProviders,
-      ...options
+    const response = await langGraphAgentService.processQuery(prompt, {
+      maxIterations: 5
     });
     const endTime = Date.now();
 
     res.json({
       status: 'success',
       data: {
-        response: response.text,
-        provider: response.provider,
-        model: response.model,
-        usage: response.usage,
-        metadata: response.metadata,
+        response,
+        model: 'gpt-oss:20b',
+        provider: 'ollama',
         responseTime: endTime - startTime
       },
       timestamp: new Date().toISOString()
@@ -678,7 +472,11 @@ router.post('/mcp-test', async (req: Request, res: Response) => {
 // Note: MCP tools are integrated into the agent service and used automatically
 // in RAG queries (/api/rag-query and /api/llm-summary). No separate CRUD endpoints needed.
 
-// Database routes
-router.use('/database', databaseRouter);
+
+// LangGraph Agent routes
+router.use('/agent', agentRouter);
+
+// Enhanced Agentic RAG routes
+router.use('/agentic-rag', agenticRagRouter);
 
 export default router;

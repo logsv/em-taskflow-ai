@@ -59,10 +59,10 @@ const envSchema = z.object({
   NOTION_API_KEY: z.string().optional(),
   
   MCP_JIRA_ENABLED: z.coerce.boolean().default(false),
-  JIRA_URL: z.string().url().optional(),
-  JIRA_USERNAME: z.string().optional(),
-  JIRA_API_TOKEN: z.string().optional(),
-  JIRA_PROJECT_KEY: z.string().optional(),
+  JIRA_URL: z.string().default('https://example.jira.com'),
+  JIRA_USERNAME: z.string().default(''),
+  JIRA_API_TOKEN: z.string().default(''),
+  JIRA_PROJECT_KEY: z.string().default(''),
   
   MCP_GOOGLE_ENABLED: z.coerce.boolean().default(false),
   GOOGLE_OAUTH_CREDENTIALS: z.string().optional(),
@@ -144,7 +144,7 @@ const configSchema = z.object({
     }),
     jira: z.object({
       enabled: z.boolean(),
-      url: z.string().url().optional(),
+      url: z.string().optional(),
       username: z.string().optional(),
       apiToken: z.string().optional(),
       projectKey: z.string().optional(),

@@ -73,7 +73,7 @@
     "multer": "2.0.2",
     "openai": "4.20.1",
     "pdf-parse": "1.1.1",
-    "sqlite3": "5.1.7",
+    "sqlite3": "^5.1.7",
     "zod": "3.25.76"
   },
   "devDependencies": {

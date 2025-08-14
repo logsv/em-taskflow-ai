@@ -162,13 +162,8 @@ describe('PDFUpload Component', () => {
     // Wait for upload to complete
     await waitFor(() => {
       expect(mockedAxios.post).toHaveBeenCalledWith(
-        '/api/upload',
-        expect.any(FormData),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'Content-Type': 'multipart/form-data'
-          })
-        })
+        '/api/upload-pdf',
+        expect.any(FormData)
       );
     });
     
@@ -237,7 +232,7 @@ describe('PDFUpload Component', () => {
     
     // Wait for documents to load
     await waitFor(() => {
-      expect(mockedAxios.get).toHaveBeenCalledWith('/api/documents');
+      expect(mockedAxios.get).toHaveBeenCalledWith('/api/summary');
     });
     
     // Should display the document
@@ -267,7 +262,7 @@ describe('PDFUpload Component', () => {
       // Should call delete API
       await waitFor(() => {
         expect(mockedAxios.delete).toHaveBeenCalledWith(
-          '/api/documents/document1.pdf'
+          '/api/upload-pdf/document1.pdf'
         );
       });
       

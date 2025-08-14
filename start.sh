@@ -63,7 +63,7 @@ verify_ollama_models() {
     echo -e "${BLUE}🔍 Verifying Ollama models...${NC}"
     
     # Check for required models
-    local models=("gpt-oss:latest" "nomic-embed-text")
+    local models=("gpt-oss:latest" "gpt-oss:20b" "nomic-embed-text")
     local missing_models=()
     
     for model in "${models[@]}"; do
@@ -164,11 +164,23 @@ enhanced_startup() {
     check_node_version
     echo ""
     
-    # Step 3: Start services via management script
+    # Step 3: Rebuild TypeScript backend
+    echo -e "${BLUE}🔨 Building TypeScript backend...${NC}"
+    cd "$SCRIPT_DIR/backend"
+    if npm run build; then
+        echo -e "${GREEN}✅ TypeScript build completed successfully${NC}"
+    else
+        echo -e "${RED}❌ TypeScript build failed${NC}"
+        exit 1
+    fi
+    cd "$SCRIPT_DIR"
+    echo ""
+    
+    # Step 4: Start services via management script
     echo -e "${BLUE}🚀 Starting services...${NC}"
     "$SCRIPT_DIR/manage-services.sh" start
     
-    # Step 4: Enhanced health checks with retries
+    # Step 5: Enhanced health checks with retries
     echo ""
     echo -e "${BLUE}🏥 Performing enhanced health checks...${NC}"
     
