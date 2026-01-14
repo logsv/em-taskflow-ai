@@ -110,8 +110,6 @@ cd "$SCRIPT_DIR/backend"
 
 # Start backend with proper environment variables
 NOTION_API_KEY="${NOTION_API_KEY}" \
-MCP_NOTION_ENABLED="${MCP_NOTION_ENABLED:-true}" \
-MCP_JIRA_ENABLED="${MCP_JIRA_ENABLED:-true}" \
 LLM_DEFAULT_MODEL="${LLM_DEFAULT_MODEL:-llama3.2:latest}" \
 npm start > ../backend.log 2>&1 &
 BACKEND_PID=$!

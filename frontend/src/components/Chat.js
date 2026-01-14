@@ -15,8 +15,12 @@ function Chat() {
   ]);
 
   const formatMessage = (text) => {
-    // Parse <think> tags and make them grey
-    return text.replace(/<think>([\s\S]*?)<\/think>/g, '<span class="think-content">$1</span>');
+    const safeText =
+      typeof text === 'string' ? text : text == null ? '' : String(text);
+    return safeText.replace(
+      /<think>([\s\S]*?)<\/think>/g,
+      '<span class="think-content">$1</span>'
+    );
   };
 
   const sendMessage = async (customMessage = null) => {
@@ -34,15 +38,34 @@ function Chat() {
         body: JSON.stringify({ query: messageText }),
       });
       const data = await res.json();
-      setMessages(prev => [
-        ...prev,
-        { 
-          sender: 'assistant', 
-          text: data.answer, 
-          sources: data.sources,
-          timestamp: new Date()
-        }
-      ]);
+
+      if (!res.ok) {
+        const errorText =
+          data && typeof data.error === 'string' && data.error.trim()
+            ? data.error
+            : 'I apologize, but I encountered an error while generating a response. Please try again.';
+
+        setMessages(prev => [
+          ...prev,
+          {
+            sender: 'assistant',
+            text: errorText,
+            timestamp: new Date()
+          }
+        ]);
+      } else {
+        setMessages(prev => [
+          ...prev,
+          {
+            sender: 'assistant',
+            text: data && typeof data.answer === 'string' && data.answer.trim()
+              ? data.answer
+              : 'No response generated.',
+            sources: Array.isArray(data?.sources) ? data.sources : [],
+            timestamp: new Date()
+          }
+        ]);
+      }
     } catch (err) {
       setMessages(prev => [
         ...prev,
