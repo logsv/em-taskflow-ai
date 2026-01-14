@@ -1,0 +1,14 @@
+{
+  "name": "em-taskflow-ai",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "cd backend && npm test",
+    "start": "cd backend && npm start",
+    "dev": "cd backend && npm run dev",
+    "backend:test": "cd backend && npm test",
+    "backend:install": "cd backend && npm install",
+    "frontend:install": "cd frontend && npm install",
+    "frontend:start": "cd frontend && npm start",
+    "frontend:test": "cd frontend && npm test"
+  }
+}

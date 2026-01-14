@@ -1,0 +1,155 @@
+import { ReliableMCPClient, loadMcpTools } from "./client.js";
+import { config, getMcpConfig } from "../config.js";
+import { getChatOllama } from "../llm/index.js";
+import { ChatOpenAI } from "@langchain/openai";
+
+let mcpClient = null;
+let mcpTools = [];
+let llm = null;
+let isInitialized = false;
+
+export async function initializeMCP() {
+  if (isInitialized) return;
+
+  try {
+    console.log("🚀 Initializing MCP MultiServer client...");
+
+    const mcpConfig = getMcpConfig();
+    console.log("🔧 MCP Configuration:");
+    console.log("  Notion:", mcpConfig.notion.enabled ? "✅ Enabled" : "❌ Disabled");
+    console.log("  Jira:", mcpConfig.jira.enabled ? "✅ Enabled" : "❌ Disabled");
+    console.log("  Google:", mcpConfig.google.enabled ? "✅ Enabled" : "❌ Disabled");
+
+    const { tools, client } = await loadMcpTools();
+    mcpClient = client;
+    mcpTools = tools;
+
+    console.log(`📋 Loaded ${mcpTools.length} MCP tools:`, mcpTools.map((t) => t.name));
+
+    const llmConfig = config.llm;
+    if (llmConfig.providers.openai.enabled && llmConfig.providers.openai.apiKey) {
+      try {
+        llm = new ChatOpenAI({
+          modelName: "gpt-4o-mini",
+          apiKey: llmConfig.providers.openai.apiKey,
+          temperature: 0.1,
+        });
+        console.log("✅ Using OpenAI for MCP tool calling");
+      } catch (error) {
+        console.warn("⚠️  OpenAI initialization failed, will use Ollama");
+      }
+    }
+
+    isInitialized = true;
+    console.log(`✅ MCP MultiServer initialized with ${mcpTools.length} tools`);
+  } catch (error) {
+    console.error("❌ Failed to initialize MCP MultiServer:", error);
+    isInitialized = false;
+  }
+}
+
+export function getMCPClient() {
+  return mcpClient;
+}
+
+export function getMCPTools() {
+  return mcpTools;
+}
+
+export function getMCPToolsByServer(serverName) {
+  if (!mcpClient) return [];
+  return mcpClient.getToolsByServer(serverName);
+}
+
+export async function executeMCPTool(toolName, parameters) {
+  if (!mcpClient) {
+    throw new Error("MCP client not initialized");
+  }
+
+  try {
+    console.log(`🔧 Executing MCP tool: ${toolName}`);
+    const result = await mcpClient.executeTool(toolName, parameters);
+    console.log(`✅ MCP tool completed: ${toolName}`);
+    return result;
+  } catch (error) {
+    console.error(`❌ MCP tool failed: ${toolName}:`, error);
+    throw error;
+  }
+}
+
+export function getMCPLLM() {
+  return llm;
+}
+
+export function isMCPReady() {
+  return isInitialized && mcpClient !== null && mcpClient.isReady();
+}
+
+export async function getMCPServerStatus() {
+  if (!mcpClient) {
+    return {
+      notion: { connected: false, toolCount: 0 },
+      google: { connected: false, toolCount: 0 },
+      atlassian: { connected: false, toolCount: 0 },
+    };
+  }
+
+  return await mcpClient.getServerStatus();
+}
+
+export async function getMCPHealthStatus() {
+  if (!mcpClient) {
+    return {
+      healthy: false,
+      servers: {},
+      totalTools: 0,
+      llmAvailable: false,
+    };
+  }
+
+  const health = await mcpClient.healthCheck();
+  return {
+    ...health,
+    llmAvailable: llm !== null,
+  };
+}
+
+export async function reconnectMCP() {
+  console.log("🔄 Reconnecting MCP servers...");
+
+  if (mcpClient) {
+    try {
+      await mcpClient.reconnect();
+      mcpTools = mcpClient.getTools();
+      console.log(`✅ MCP reconnected with ${mcpTools.length} tools`);
+    } catch (error) {
+      console.error("❌ MCP reconnection failed:", error);
+      throw error;
+    }
+  } else {
+    await initializeMCP();
+  }
+}
+
+export async function closeMCP() {
+  if (mcpClient) {
+    try {
+      await mcpClient.close();
+      console.log("✅ MCP connections closed");
+    } catch (error) {
+      console.error("❌ Error closing MCP:", error);
+    }
+  }
+
+  isInitialized = false;
+  mcpClient = null;
+  mcpTools = [];
+  llm = null;
+}
+
+export async function ensureMCPReady() {
+  if (!isInitialized) {
+    await initializeMCP();
+  }
+}
+
