@@ -56,6 +56,37 @@ export function getMCPTools() {
   return mcpTools;
 }
 
+export function getMCPToolGroups() {
+  const allTools = mcpTools || [];
+  if (!mcpClient) {
+    return {
+      jiraTools: [],
+      githubTools: [],
+      notionTools: [],
+      otherTools: allTools,
+    };
+  }
+
+  const jiraTools = mcpClient.getToolsByServer("atlassian");
+  const notionTools = mcpClient.getToolsByServer("notion");
+  const githubTools = mcpClient.getToolsByServer("github");
+
+  const usedNames = new Set([
+    ...jiraTools.map((t) => t.name),
+    ...notionTools.map((t) => t.name),
+    ...githubTools.map((t) => t.name),
+  ]);
+
+  const otherTools = allTools.filter((tool) => !usedNames.has(tool.name));
+
+  return {
+    jiraTools,
+    githubTools,
+    notionTools,
+    otherTools,
+  };
+}
+
 export function getMCPToolsByServer(serverName) {
   if (!mcpClient) return [];
   return mcpClient.getToolsByServer(serverName);
@@ -152,4 +183,3 @@ export async function ensureMCPReady() {
     await initializeMCP();
   }
 }
-

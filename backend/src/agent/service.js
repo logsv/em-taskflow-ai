@@ -90,7 +90,7 @@ Please answer the user's question using the provided context when relevant, and 
         }
       }
 
-      console.log("🤖 Executing LangGraph ReAct agent...");
+      console.log("🤖 Executing LangGraph supervisor agent...");
       const agentResult = await executeAgentQuery(enhancedQuery, {
         maxIterations: (options && options.maxIterations) || 10,
         stream: (options && options.stream) || false,
@@ -100,7 +100,10 @@ Please answer the user's question using the provided context when relevant, and 
         return agentResult;
       }
 
-      const result = agentResult;
+      const result =
+        typeof agentResult === "string"
+          ? { response: agentResult, toolsUsed: [] }
+          : agentResult;
 
       if (result.toolsUsed && result.toolsUsed.length > 0) {
         sources.push({
@@ -163,28 +166,26 @@ Please answer the user's question using the provided context when relevant, and 
       });
 
       for await (const chunk of stream) {
-        if (chunk.agent) {
-          if (chunk.agent.messages) {
-            const lastMessage = chunk.agent.messages[chunk.agent.messages.length - 1];
-            if (lastMessage.content) {
-              yield {
-                type: "thinking",
-                content: lastMessage.content,
-              };
-            }
+        const nodeValues = Object.values(chunk || {});
+        for (const node of nodeValues) {
+          if (!node || !node.messages || !Array.isArray(node.messages)) {
+            continue;
           }
-        } else if (chunk.tools) {
-          const toolMessage = chunk.tools.messages[chunk.tools.messages.length - 1];
-          if (toolMessage.tool_calls) {
-            for (const toolCall of toolMessage.tool_calls) {
-              yield {
-                type: "tool_use",
-                content: `Using ${toolCall.name}...`,
-                toolName: toolCall.name,
-                data: toolCall.args,
-              };
-            }
+          const lastMessage = node.messages[node.messages.length - 1];
+          if (!lastMessage || !lastMessage.content) {
+            continue;
           }
+          const content =
+            typeof lastMessage.content === "string"
+              ? lastMessage.content
+              : JSON.stringify(lastMessage.content);
+          if (!content) {
+            continue;
+          }
+          yield {
+            type: "thinking",
+            content,
+          };
         }
       }
 
@@ -249,4 +250,3 @@ Please answer the user's question using the provided context when relevant, and 
 
 const langGraphAgentService = new LangGraphAgentService();
 export default langGraphAgentService;
-
