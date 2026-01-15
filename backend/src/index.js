@@ -5,7 +5,7 @@ import { config, getServerConfig, getMcpConfig, getDatabaseConfig, getLlmConfig,
 import dotenv from 'dotenv';
 import { initializeMCP } from './mcp/index.js';
 import langGraphAgentService from './agent/index.js';
-import { initializeLLM, initializeLLMRouter } from './llm/index.js';
+import { initializeLLM } from './llm/index.js';
 import { initializeIngest } from './rag/index.js';
 
 dotenv.config();
@@ -93,4 +93,3 @@ process.on('SIGINT', () => {
 });
 
 startServer();
-

@@ -25,9 +25,13 @@ export async function initializeLLM() {
   const llmConfig = getLlmConfig();
   const ollamaConfig = llmConfig.providers.ollama;
 
+  const configuredModel = llmConfig.defaultModel || 'llama3.2:latest';
+  const effectiveModel =
+    configuredModel === 'gpt-oss:latest' ? 'llama3.2:latest' : configuredModel;
+
   // Initialize ChatOllama for text generation
   chatOllama = new ChatOllama({
-    model: llmConfig.defaultModel || 'gpt-oss:latest',
+    model: effectiveModel,
     baseUrl: ollamaConfig.baseUrl,
     temperature: 0.1,
   });

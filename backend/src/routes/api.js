@@ -135,10 +135,14 @@ router.post('/rag-query', async (req, res) => {
 
       try {
         const baseUrl = config.llm.providers.ollama.baseUrl;
+        const model = 'llama3.2:latest';
+
+        console.log('RAG fallback using model:', model);
+
         const genResp = await axios.post(
           `${baseUrl}/api/generate`,
           {
-            model: 'gpt-oss:latest',
+            model,
             prompt,
             stream: false,
           },
@@ -149,6 +153,7 @@ router.post('/rag-query', async (req, res) => {
           answer: text || 'No response generated.',
           message: 'Response generated via direct RAG + local LLM fallback',
           query,
+          model,
           timestamp: new Date().toISOString(),
         });
       } catch (fallbackError) {
@@ -156,7 +161,9 @@ router.post('/rag-query', async (req, res) => {
         const msg = fallbackError instanceof Error ? fallbackError.message : 'Unknown error';
         const status = msg.includes('timed out') ? 504 : 500;
         return res.status(status).json({
-          error: msg.includes('timed out') ? 'Request timed out after 45 seconds' : 'Failed to process RAG query',
+          error: msg.includes('timed out')
+            ? 'Request timed out after 45 seconds'
+            : msg,
         });
       }
     }
@@ -203,8 +210,8 @@ router.get('/llm-status', async (req, res) => {
       status: 'success',
       data: {
         agent: agentStatus,
-        model: 'gpt-oss:20b',
-        provider: 'ollama',
+        model: config.llm.defaultModel,
+        provider: config.llm.defaultProvider,
         initialized: langGraphAgentService.isReady(),
       },
       timestamp: new Date().toISOString(),
@@ -231,12 +238,12 @@ router.post('/llm-test', async (req, res) => {
 
     res.json({
       status: 'success',
-      data: {
-        response,
-        model: 'gpt-oss:20b',
-        provider: 'ollama',
-        responseTime: endTime - startTime,
-      },
+        data: {
+          response,
+          model: config.llm.defaultModel,
+          provider: config.llm.defaultProvider,
+          responseTime: endTime - startTime,
+        },
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

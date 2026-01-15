@@ -18,7 +18,7 @@ const envSchema = z.object({
   RAG_DEFAULT_COLLECTION: z.string().default('pdf_chunks'),
   RAG_MAX_CHUNK_SIZE: z.coerce.number().int().min(100).default(1000),
   LLM_DEFAULT_PROVIDER: z.string().default('ollama'),
-  LLM_DEFAULT_MODEL: z.string().default('gpt-oss:latest'),
+  LLM_DEFAULT_MODEL: z.string().default('llama3.2:latest'),
   LLM_LOAD_BALANCING: z.enum(['round_robin', 'cost_priority_round_robin']).default('round_robin'),
   LLM_OPENAI_ENABLED: z.coerce.boolean().default(false),
   OPENAI_API_KEY: z.string().optional(),
@@ -179,6 +179,12 @@ const getDefaultModels = (providerType) => {
       ];
     case 'ollama':
       return [
+        {
+          name: 'llama3.2:latest',
+          costPer1kInputTokens: 0,
+          costPer1kOutputTokens: 0,
+          maxTokens: 4096,
+        },
         {
           name: 'gpt-oss:latest',
           costPer1kInputTokens: 0,
@@ -385,4 +391,3 @@ export function validateConfig() {
 
   return warnings.length === 0;
 }
-
