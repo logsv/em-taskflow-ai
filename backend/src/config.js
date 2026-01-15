@@ -343,26 +343,7 @@ export const getLlmProviders = () => {
   return providers.sort((a, b) => b.priority - a.priority);
 };
 
-export const toLlmRouterConfig = () => {
-  const llmConfig = config.llm;
-  const providers = getLlmProviders();
 
-  return {
-    loadBalancingStrategy: llmConfig.loadBalancingStrategy,
-    defaultModel: llmConfig.defaultModel,
-    providers: providers.map((provider) => ({
-      name: provider.name,
-      type: provider.type,
-      enabled: provider.enabled,
-      priority: provider.priority,
-      apiKey: provider.apiKey,
-      baseUrl: provider.baseUrl,
-      models: provider.models,
-      circuitBreaker: provider.circuitBreaker,
-      retry: provider.retry,
-    })),
-  };
-};
 
 export function validateConfig() {
   console.log('🔍 Validating configuration...');

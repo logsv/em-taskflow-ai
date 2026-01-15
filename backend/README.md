@@ -55,7 +55,6 @@ backend/test/
 │   ├── agentService.spec.ts
 │   ├── llmService.spec.ts
 │   ├── ragService.spec.ts
-│   ├── mcpService.spec.ts
 │   └── databaseService.integration.spec.ts
 ├── routes/            # API route tests
 │   └── api.spec.ts

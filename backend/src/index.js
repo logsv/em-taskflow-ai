@@ -3,7 +3,7 @@ import cors from 'cors';
 import apiRouter from './routes/api.js';
 import { config, getServerConfig, getMcpConfig, getDatabaseConfig, getLlmConfig, getRagConfig, validateConfig } from './config.js';
 import dotenv from 'dotenv';
-import mcpService from './services/mcpService.js';
+import { initializeMCP } from './mcp/index.js';
 import langGraphAgentService from './agent/index.js';
 import { initializeLLM, initializeLLMRouter } from './llm/index.js';
 import { initializeIngest } from './rag/index.js';
@@ -54,7 +54,7 @@ async function startServer() {
     }
 
     try {
-      await mcpService.initialize();
+      await initializeMCP();
       console.log('✅ MCP Service initialized at startup');
     } catch (e) {
       console.warn('⚠️ MCP Service init at startup failed:', e);

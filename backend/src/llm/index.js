@@ -133,16 +133,6 @@ export async function ensureLLMReady() {
   }
 }
 
-// Re-export router functionality
-export {
-  initializeLLMRouter,
-  getLLMRouter,
-  routedChatCompletion,
-  getRouterStatus,
-  testRouter,
-  isRouterInitialized,
-} from './router.js';
-
 // Re-export BGE adapter
 export { BGEEmbeddingsAdapter } from './bgeEmbeddingsAdapter.js';
 

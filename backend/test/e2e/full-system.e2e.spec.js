@@ -41,8 +41,6 @@ describe('Full System End-to-End Tests', () => {
 
       const databaseService = await import('../../src/services/databaseService.js');
       sandbox.stub(databaseService.default, 'initialize').resolves();
-
-      await import('../../src/services/newLlmRouter.js');
     } catch (error) {
       console.log('Server setup mock completed with expected configuration dependencies');
     }

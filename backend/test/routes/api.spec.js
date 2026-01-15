@@ -4,7 +4,6 @@ import request from 'supertest';
 import apiRouter from '../../src/routes/api.js';
 import agentService from '../../src/agent/service.js';
 import ragService from '../../src/services/ragService.js';
-import taskManager from '../../src/services/taskManager.js';
 
 // Create express app for testing
 const app = express();
@@ -14,12 +13,10 @@ app.use('/api', apiRouter);
 describe('API Routes', () => {
   let agentStub;
   let ragStub;
-  let taskManagerStub;
 
   beforeEach(() => {
     agentStub = sinon.stub(agentService, 'processQuery');
     ragStub = sinon.stub(ragService, 'processPDF');
-    taskManagerStub = sinon.stub(taskManager, 'fetchAllStatus');
   });
 
   afterEach(() => {
@@ -115,100 +112,7 @@ describe('API Routes', () => {
     });
   });
 
-  describe('GET /api/summary', () => {
-    it('should fetch summary successfully', async () => {
-      const mockSummary = {
-        jiraTasks: [{ id: 'TASK-1', title: 'Test task' }],
-        notionPages: [{ id: 'page1', title: 'Test page' }],
-        calendarEvents: [{ id: 'event1', title: 'Test event' }],
-        calendarConflicts: []
-      };
 
-      taskManagerStub.resolves(mockSummary);
-      sinon.stub(taskManager, 'summarizePageUpdates').resolves(['Update 1', 'Update 2']);
-
-      const response = await request(app)
-        .get('/api/summary');
-
-      expect(response.status).toBe(200);
-      expect(response.body.jira).toEqual(mockSummary.jiraTasks);
-      expect(response.body.notion).toEqual(mockSummary.notionPages);
-      expect(response.body.calendar).toEqual(mockSummary.calendarEvents);
-    });
-
-    it('should handle task manager errors', async () => {
-      taskManagerStub.rejects(new Error('Task manager unavailable'));
-
-      const response = await request(app)
-        .get('/api/summary');
-
-      expect(response.status).toBe(500);
-      expect(response.body.error).toBe('Failed to fetch summary.');
-    });
-  });
-
-  describe('POST /api/complete', () => {
-    it('should mark task as complete', async () => {
-      sinon.stub(taskManager, 'markTaskComplete').resolves(true);
-
-      const response = await request(app)
-        .post('/api/complete')
-        .send({
-          taskType: 'jira',
-          taskId: 'TASK-1',
-          note: 'Task completed successfully'
-        });
-
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-    });
-
-    it('should handle missing required fields', async () => {
-      const response = await request(app)
-        .post('/api/complete')
-        .send({
-          taskType: 'jira'
-          // Missing taskId and note
-        });
-
-      expect(response.status).toBe(400);
-      expect(response.body.error).toBe('taskType, taskId, and note are required.');
-    });
-
-    it('should handle task completion errors', async () => {
-      sinon.stub(taskManager, 'markTaskComplete').rejects(new Error('Task not found'));
-
-      const response = await request(app)
-        .post('/api/complete')
-        .send({
-          taskType: 'jira',
-          taskId: 'INVALID-TASK',
-          note: 'Trying to complete invalid task'
-        });
-
-      expect(response.status).toBe(500);
-      expect(response.body.error).toBe('Failed to mark task complete.');
-    });
-  });
-
-  describe('GET /api/suggestions', () => {
-    it('should return suggestions', async () => {
-      const response = await request(app)
-        .get('/api/suggestions');
-
-      expect(response.status).toBe(200);
-      expect(Array.isArray(response.body.suggestions)).toBe(true);
-      expect(response.body.suggestions.length).toBeGreaterThan(0);
-    });
-
-    it('should handle session ID parameter', async () => {
-      const response = await request(app)
-        .get('/api/suggestions?sessionId=test-session');
-
-      expect(response.status).toBe(200);
-      expect(Array.isArray(response.body.suggestions)).toBe(true);
-    });
-  });
 
   describe('PDF Upload', () => {
     it('should handle missing file', async () => {

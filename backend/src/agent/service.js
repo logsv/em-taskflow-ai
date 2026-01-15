@@ -1,6 +1,5 @@
 import { executeAgentQuery, checkAgentReadiness, getAgentTools } from "./graph.js";
 import ragService from "../services/ragService.js";
-import { initializeLLMRouter, getRouterStatus } from "../llm/router.js";
 
 export class LangGraphAgentService {
   constructor() {
@@ -12,13 +11,6 @@ export class LangGraphAgentService {
   async initialize() {
     try {
       console.log("🚀 Initializing LangGraph Agent Service...");
-
-      try {
-        await initializeLLMRouter();
-        console.log("✅ LLM Router initialized with cost/round-robin + circuit breaker");
-      } catch (error) {
-        console.warn("⚠️  LLM Router initialization failed, using direct Ollama fallback:", error);
-      }
 
       try {
         const ragStatus = await ragService.getStatus();
@@ -202,14 +194,11 @@ Please answer the user's question using the provided context when relevant, and 
   async getStatus() {
     try {
       const readiness = await checkAgentReadiness();
-      const routerStatus = await getRouterStatus();
-
       return {
         ready: this.initialized && readiness.ready,
         toolCount: this.tools.length,
         ragEnabled: this.ragEnabled,
         model: readiness.model,
-        router: routerStatus,
         error: readiness.error,
       };
     } catch (error) {
@@ -218,7 +207,6 @@ Please answer the user's question using the provided context when relevant, and 
         toolCount: 0,
         ragEnabled: false,
         model: "gpt-oss:20b",
-        router: { initialized: false, providers: [], activeProviders: 0, strategy: "none" },
         error: error.message,
       };
     }

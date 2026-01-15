@@ -72,8 +72,6 @@ describe('API End-to-End Tests', () => {
       context: 'test context',
       sources: [{ filename: 'test.pdf' }],
     });
-
-    await import('../../src/services/newLlmRouter.js');
   }
 
   function mockRequest(method, url, body) {

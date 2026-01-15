@@ -4,10 +4,9 @@ import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
-import taskManager from '../services/taskManager.js';
 import langGraphAgentService from '../agent/index.js';
 import ragService from '../rag/index.js';
-import mcpService from '../services/mcpService.js';
+import { isMCPReady } from '../mcp/index.js';
 import databaseRouter from './database.js';
 import agentRouter from './agent.js';
 import agenticRagRouter from './agenticRag.js';
@@ -68,48 +67,7 @@ router.post('/upload-pdf', upload.single('pdf'), async (req, res) => {
   }
 });
 
-router.get('/summary', async (req, res) => {
-  try {
-    const { jiraTasks, notionPages, calendarEvents, calendarConflicts } = await taskManager.fetchAllStatus();
-    const pageUpdates = {};
-    if (notionPages) {
-      for (const page of notionPages) {
-        pageUpdates[page.id] = await taskManager.summarizePageUpdates(page.id);
-      }
-    }
-    res.json({
-      jira: jiraTasks,
-      notion: notionPages,
-      notionUpdates: pageUpdates,
-      calendar: calendarEvents,
-      calendarConflicts,
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch summary.' });
-  }
-});
 
-router.post('/complete', async (req, res) => {
-  const { taskType, taskId, note } = req.body;
-  if (!taskType || !taskId || !note) {
-    return res.status(400).json({ error: 'taskType, taskId, and note are required.' });
-  }
-  try {
-    const result = await taskManager.markTaskComplete(taskId);
-    res.json({ success: result });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to mark task complete.' });
-  }
-});
-
-router.get('/suggestions', async (req, res) => {
-  try {
-    const suggestions = ['Review pending tasks', 'Check calendar conflicts', 'Update project status'];
-    res.json({ suggestions });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to generate suggestions.' });
-  }
-});
 
 router.post('/llm-summary', async (req, res) => {
   try {
@@ -221,7 +179,7 @@ router.get('/health', async (req, res) => {
       services: {
         database: 'healthy',
         langGraphAgent: langGraphAgentService.isReady() ? 'healthy' : 'initializing',
-        mcpService: mcpService.isReady() ? 'healthy' : 'initializing',
+        mcpService: isMCPReady() ? 'healthy' : 'initializing',
       },
       timestamp: new Date().toISOString(),
     };
@@ -291,78 +249,7 @@ router.post('/llm-test', async (req, res) => {
   }
 });
 
-router.get('/mcp-status', async (req, res) => {
-  try {
-    console.log('🔍 Checking enhanced MCP service status...');
 
-    const healthStatus = await mcpService.getHealthStatus();
-    const tools = mcpService.getTools();
-
-    res.json({
-      status: 'success',
-      message: 'Enhanced MCP status retrieved successfully',
-      health: healthStatus,
-      tools: tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        schema: tool.schema,
-      })),
-      initialized: mcpService.isReady(),
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('MCP status error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: `Failed to get MCP status: ${error.message}`,
-      timestamp: new Date().toISOString(),
-    });
-  }
-});
-
-router.post('/mcp-restart', async (req, res) => {
-  try {
-    console.log('🔧 DEBUG - Force restarting MCP service...');
-    await mcpService.forceRestart();
-
-    const serverStatus = await mcpService.getServerStatus();
-
-    res.json({
-      status: 'success',
-      message: 'MCP service force restarted successfully - tools will be discovered by agent',
-      servers: serverStatus,
-      initialized: mcpService.isReady(),
-      llmReady: mcpService.getLLM() !== null,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('MCP restart error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: `Failed to restart MCP service: ${error.message}`,
-      timestamp: new Date().toISOString(),
-    });
-  }
-});
-
-router.get('/mcp-debug', async (req, res) => {
-  try {
-    console.log('🔍 MCP Debug endpoint called');
-    const isReady = mcpService.isReady();
-    const llm = mcpService.getLLM();
-    const status = await mcpService.getServerStatus();
-
-    res.json({
-      ready: isReady,
-      llmAvailable: !!llm,
-      serverStatus: status,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('MCP Debug error:', error);
-    res.status(500).json({ error: 'MCP Debug failed', message: error.message });
-  }
-});
 
 router.get('/rag-debug', async (req, res) => {
   try {
@@ -379,29 +266,7 @@ router.get('/rag-debug', async (req, res) => {
   }
 });
 
-router.post('/mcp-test', async (req, res) => {
-  try {
-    console.log('🔍 MCP Test endpoint called');
-    const query = req.body.query || 'list my notion pages';
 
-    if (!mcpService.isReady()) {
-      await mcpService.initialize();
-    }
-
-    console.log('🧪 Testing MCP runQuery with:', query);
-    const result = await mcpService.runQuery(query);
-    console.log('✅ MCP runQuery completed');
-
-    res.json({
-      query,
-      result,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('MCP Test error:', error);
-    res.status(500).json({ error: 'MCP Test failed', message: error.message });
-  }
-});
 
 router.use('/agent', agentRouter);
 router.use('/agentic-rag', agenticRagRouter);
