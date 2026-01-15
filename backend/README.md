@@ -1,14 +1,15 @@
 # EM-TaskFlow Backend
 
-A comprehensive Node.js/TypeScript backend service with integrated RAG (Retrieval-Augmented Generation), MCP (Model Context Protocol), and LLM capabilities.
+A Node.js backend service with integrated RAG (Retrieval-Augmented Generation), MCP (Model Context Protocol), LangGraph supervisor multi-agent orchestration, and LLM capabilities.
 
 ## 🚀 Features
 
-- **TypeScript/Node.js** backend with ES modules
+- **Node.js** backend with ES modules
 - **RAG Service** for document processing and vector search
-- **MCP Integration** for external tool connectivity (Notion, Jira, Calendar)
-- **LLM Services** with multiple provider support (Ollama, OpenAI)
-- **Agent Service** for intelligent query processing
+- **MCP Adapter Integration** for external tools (Notion, Jira, Google Calendar) via MCP
+- **LangGraph Supervisor Multi-Agent** system coordinating Jira/GitHub/Notion specialists
+- **LLM Clients** with Ollama-first support and optional external providers
+- **Agent Service** for intelligent query processing over MCP tools and RAG
 - **Comprehensive Testing** with Jasmine and Sinon
 - **Code Coverage** with NYC (Istanbul)
 - **CI/CD Pipeline** with GitHub Actions
@@ -185,37 +186,72 @@ DATABASE_URL=postgres://user:pass@localhost:5432/testdb
 NODE_OPTIONS='--loader @istanbuljs/esm-loader-hook'
 ```
 
+## � Supervisor Multi-Agent Architecture
+
+The backend uses a LangGraph-based supervisor multi-agent system defined in [`src/agent/graph.js`](./src/agent/graph.js):
+
+- A **supervisor agent** receives user queries and routes work between:
+  - A Jira-focused agent
+  - A GitHub-focused agent
+  - A Notion-focused agent
+- Each specialist agent:
+  - Uses MCP tools provided by the MCP adapter (`src/mcp/index.js`, `src/mcp/client.js`)
+  - Runs on top of a shared LLM client from `src/llm/index.js` (ChatOllama)
+- The supervisor:
+  - Coordinates tool usage across agents
+  - Produces a single, coherent response for the user
+  - Is accessed through the `LangGraphAgentService` in [`src/agent/service.js`](./src/agent/service.js)
+
+High-level flows:
+
+- `/api/llm-summary` and `/api/rag-query` call the supervisor via `LangGraphAgentService`
+- RAG context is injected where available, and MCP tools are used from within the agents
+- Direct LLM calls (e.g., for RAG fallbacks) use the Ollama-based client in `src/llm/index.js`
+
 ## 🧩 Services Overview
 
 ### Agent Service
-- Intelligent query processing
-- Intent analysis and routing
-- RAG and MCP integration
-- Error handling and fallbacks
+- Supervisor multi-agent built with LangGraph
+- Orchestrates Jira, GitHub, and Notion agents over MCP tools
+- Integrates RAG context into queries when available
+- Central entrypoint for `/api/llm-summary`, `/api/rag-query`, and LLM health/status endpoints
 
 ### LLM Service
-- Multiple provider support (Ollama, OpenAI)
-- Request/response handling
-- Error recovery and retries
-- Model management
+- Ollama-based Chat and embeddings client (`src/llm/index.js`)
+- Optional multi-provider configuration via `src/config.js`
+- Used by the supervisor and RAG fallbacks for text generation
+- No separate LLM router component; calls go directly through the LLM client
 
 ### RAG Service
-- Document processing (PDF, text)
-- Vector database integration
-- Semantic search capabilities
-- Chunk management
+- Document processing (PDF, text) and ingestion
+- Vector database integration (Chroma)
+- Semantic search over stored chunks
+- Used by the agent and RAG-specific endpoints
 
 ### MCP Service
-- External tool connectivity
-- Notion, Jira, Calendar integration
-- Tool discovery and execution
-- Connection management
+- MCP adapter and `ReliableMCPClient` manage external MCP servers
+- Provides MCP tools (Jira, Notion, Google, etc.) to LangGraph agents
+- Tool discovery and grouping (e.g., Jira/GitHub/Notion tool sets)
+- No separate MCP REST routes; MCP is accessed from inside the agent graph
 
 ### Database Service
-- SQLite3 integration
-- Query execution
-- Transaction management
-- Migration support
+- SQLite-backed persistence for chat history and metadata
+- Query execution and basic transaction handling
+
+## 🔄 Recent Architecture Changes
+
+- **Supervisor Multi-Agent**:
+  - Introduced a LangGraph-based supervisor with Jira/GitHub/Notion specialist agents
+  - Centralized agent entry in `src/agent/service.js` and `src/agent/graph.js`
+- **MCP Integration**:
+  - MCP connectivity is handled via the MCP adapter in `src/mcp/index.js` and `src/mcp/client.js`
+  - Legacy `mcpService` and dedicated MCP HTTP routes have been removed
+- **LLM Routing**:
+  - Removed the legacy LLM router (`src/llm/router.js`) and `newLlmRouter` service
+  - All generation now goes through the shared LLM client from `src/llm/index.js`
+- **Task Management and Summary Helpers**:
+  - Removed `taskManager` and `summaryFormatter` services and their API routes/tests
+  - Task completion and summaries are now expected to be handled through MCP tools invoked by the agents
 
 ## 🔍 Testing Best Practices
 

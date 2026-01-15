@@ -64,16 +64,40 @@ export LLM_DEFAULT_MODEL="llama3.2:latest"
 3. **Build fails**: `cd backend && npm install && npm run build`
 4. **Python services fail**: `cd python-services && pip install -r embeddings/requirements.txt`
 
-### File Structure
+### System Design Overview
 
-- `start.sh` - Start all services
-- `stop.sh` - Stop all services  
-- `backend/` - Node.js TypeScript API server
-- `frontend/` - React application
-- `python-services/` - BGE embeddings & reranker
+The core system is built around a LangGraph **supervisor multi-agent** that uses MCP tools, RAG, and an LLM:
 
-### Configuration
+```mermaid
+graph TD
+    U[User] --> UI[Web UI]
+    UI --> API[Backend API]
 
-Main configuration is in `backend/src/config.ts` with environment variable overrides.
+    API --> AG[LangGraphAgentService]
+    AG --> S[Supervisor Agent]
 
-No complex shell scripts or configuration files needed! 🎉
+    S --> AJ[Jira Agent]
+    S --> AGH[GitHub Agent]
+    S --> AN[Notion Agent]
+
+    AJ --> MCP[MCP Adapter\nReliableMCPClient]
+    AGH --> MCP
+    AN --> MCP
+
+    MCP --> J[Jira MCP Server]
+    MCP --> N[Notion MCP Server]
+    MCP --> G[Google MCP Server]
+
+    AG --> RAG[RAG Service]
+    RAG --> V[ChromaDB]
+
+    AG --> LLM[LLM (ChatOllama)]
+    LLM --> UI
+```
+
+At a glance:
+- The **LangGraphAgentService** exposes the supervisor graph to the API.
+- The **Supervisor Agent** routes work to Jira/GitHub/Notion specialist agents.
+- Specialist agents call tools through the **MCP adapter** and `ReliableMCPClient`.
+- The **RAG Service** enriches queries with context from ChromaDB when available.
+- The shared **LLM (ChatOllama)** generates the final response using MCP and RAG context.
