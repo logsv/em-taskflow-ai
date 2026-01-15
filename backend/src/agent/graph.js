@@ -1,7 +1,9 @@
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { createSupervisor } from "@langchain/langgraph-supervisor";
+import { DynamicTool } from "@langchain/core/tools";
 import { getChatOllama } from "../llm/index.js";
 import { getMCPTools, getMCPToolGroups, isMCPReady, initializeMCP } from "../mcp/index.js";
+import ragService from "../services/ragService.js";
 
 let supervisorApp = null;
 let agentTools = [];
@@ -51,11 +53,30 @@ export async function initializeAgent() {
         "You are a Notion workspace expert. Manage pages, databases, tasks, and project documentation using Notion tools.",
     });
 
+    const ragTool = new DynamicTool({
+      name: "rag_db_query_retriever",
+      description:
+        "Use this tool to search the document knowledge base. It converts the user question into a focused database query using an LLM, retrieves the most relevant document chunks, and returns them as JSON.",
+      func: async (input) => {
+        const query = typeof input === "string" ? input : JSON.stringify(input);
+        const result = await ragService.searchRelevantChunks(query, 5);
+        return JSON.stringify(result);
+      },
+    });
+
+    const ragAgent = createReactAgent({
+      llm,
+      tools: [ragTool],
+      name: "rag_agent",
+      prompt:
+        "You are a retrieval specialist for the local document knowledge base. When asked about documents, policies, or reference material, use your RAG tool to convert the question into a focused database query, retrieve the most relevant chunks, and summarize them clearly with citations.",
+    });
+
     const workflow = createSupervisor({
-      agents: [jiraAgent, githubAgent, notionAgent],
+      agents: [jiraAgent, githubAgent, notionAgent, ragAgent],
       llm,
       prompt:
-        "You are a supervisor agent that routes work between Jira, GitHub, and Notion specialists. Decide which agent should handle each part of the task and ensure a coherent final answer for the user.",
+        "You are a supervisor agent that routes work between Jira, GitHub, Notion, and a RAG document specialist. Decide which agent should handle each part of the task and ensure a coherent final answer for the user.",
       outputMode: "last_message",
     });
 

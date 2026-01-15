@@ -3,8 +3,10 @@ import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
+import { ChatPromptTemplate } from '@langchain/core/prompts';
 import * as chromaService from './chromaService.js';
 import { getRagConfig, getLlmConfig, getVectorDbConfig } from '../config.js';
+import { getChatOllama, ensureLLMReady } from '../llm/index.js';
 
 // Dynamic pdf-parse import with error handling
 let pdfParse = null;
@@ -229,14 +231,51 @@ class RAGService {
   }
 
   /**
+   * Use LLM to create a database query from user query
+   */
+  async createDbQueryFromUserQuery(userQuery) {
+    try {
+      await ensureLLMReady();
+      const llm = getChatOllama();
+      const prompt = ChatPromptTemplate.fromMessages([
+        [
+          'system',
+          'You convert user questions into focused search queries for a document database. Return only valid JSON in the form {"search_query": "..."} with no extra text.',
+        ],
+        ['human', '{input}'],
+      ]);
+      const formatted = await prompt.format({ input: userQuery });
+      const response = await llm.invoke(formatted);
+      const content = response.content ? response.content.toString() : '';
+      let searchQuery = userQuery;
+      if (content && content.trim().length > 0) {
+        try {
+          const parsed = JSON.parse(content);
+          if (parsed && typeof parsed.search_query === 'string' && parsed.search_query.trim().length > 0) {
+            searchQuery = parsed.search_query.trim();
+          }
+        } catch (parseError) {
+          console.warn('⚠️ Failed to parse LLM DB query JSON, using original query:', parseError);
+        }
+      }
+      console.log(`🧠 LLM DB query generated: "${searchQuery}"`);
+      return { searchQuery };
+    } catch (error) {
+      console.warn('⚠️ Failed to create DB query with LLM, using original query:', error);
+      return { searchQuery: userQuery };
+    }
+  }
+
+  /**
    * Search for relevant chunks based on query
    */
   async searchRelevantChunks(query, topK = 5) {
     try {
-      console.log(`🔍 Searching for relevant chunks: "${query}"`);
+      const { searchQuery } = await this.createDbQueryFromUserQuery(query);
+      const effectiveQuery = searchQuery || query;
+      console.log(`🔍 Searching for relevant chunks with DB query: "${effectiveQuery}"`);
 
-      // Generate query embedding
-      const queryEmbedding = await this.generateEmbedding(query);
+      const queryEmbedding = await this.generateEmbedding(effectiveQuery);
 
       // Search in Chroma using Python script
       const response = await this.chromaService.queryCollection(
@@ -339,10 +378,16 @@ class RAGService {
 const ragService = new RAGService(fs, chromaService, axios);
 export default ragService;
 
-export const __test__ = {
-  setPdfParse: (fn) => { pdfParse = fn; },
-  setLoadPdfParse: (fn) => { loadPdfParse = fn; },
-  setChromaService: (service) => { ragService.setChromaService(service); },
-  setFs: (fsModule) => { ragService.setFs(fsModule); },
-  setAxios: (axiosInstance) => { ragService.setAxios(axiosInstance); }
-};
+let __test__ = undefined;
+
+if (process.env.NODE_ENV === 'test') {
+  __test__ = {
+    setPdfParse: (fn) => { pdfParse = fn; },
+    setLoadPdfParse: (fn) => { loadPdfParse = fn; },
+    setChromaService: (service) => { ragService.setChromaService(service); },
+    setFs: (fsModule) => { ragService.setFs(fsModule); },
+    setAxios: (axiosInstance) => { ragService.setAxios(axiosInstance); }
+  };
+}
+
+export { __test__ };
