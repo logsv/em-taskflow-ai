@@ -1,18 +1,47 @@
-/**
- * LLM module - Singleton clients for ChatOllama, embeddings, and BGE services
- * Provides centralized access to all LLM-related functionality
- */
-
-import { ChatOllama } from '@langchain/ollama';
-import { OllamaEmbeddings } from '@langchain/ollama';
+import { ChatOpenAI } from '@langchain/openai';
 import { getLlmConfig, getRagConfig } from '../config.js';
 import { bgeEmbeddingsClient } from '../services/bgeEmbeddingsClient.js';
 import { bgeRerankerClient } from '../services/bgeRerankerClient.js';
 
-// Singleton instances
-let chatOllama = null;
-let ollamaEmbeddings = null;
+let chatModel = null;
 let initialized = false;
+
+function createChatModelForProvider(providerKey, options = {}) {
+  const llmConfig = getLlmConfig();
+  const provider = llmConfig.providers[providerKey];
+
+  if (!provider || !provider.enabled) {
+    throw new Error(`LLM provider "${providerKey}" is not enabled or not configured`);
+  }
+
+  const modelName = options.model || llmConfig.defaultModel || 'gpt-4o-mini';
+  const temperature = options.temperature ?? 0.1;
+
+  if (providerKey === 'ollama') {
+    const base = provider.baseUrl?.replace(/\/$/, '') || 'http://localhost:11434';
+    const baseURL = `${base}/v1`;
+
+    return new ChatOpenAI({
+      modelName,
+      openAIApiKey: 'ollama',
+      configuration: {
+        baseURL,
+      },
+      temperature,
+    });
+  }
+
+  const apiKey = provider.apiKey || process.env.OPENAI_API_KEY || 'EMPTY';
+
+  return new ChatOpenAI({
+    modelName,
+    openAIApiKey: apiKey,
+    configuration: {
+      baseURL: provider.baseUrl,
+    },
+    temperature,
+  });
+}
 
 /**
  * Initialize all LLM clients
@@ -23,22 +52,11 @@ export async function initializeLLM() {
   console.log('🤖 Initializing LLM clients...');
   
   const llmConfig = getLlmConfig();
-  const ollamaConfig = llmConfig.providers.ollama;
+  const providerKey = llmConfig.defaultProvider || 'openai';
 
-  const effectiveModel = llmConfig.defaultModel || 'llama3.2:latest';
-
-  // Initialize ChatOllama for text generation
-  chatOllama = new ChatOllama({
-    model: effectiveModel,
-    baseUrl: ollamaConfig.baseUrl,
+  chatModel = createChatModelForProvider(providerKey, {
+    model: llmConfig.defaultModel,
     temperature: 0.1,
-  });
-
-  // Initialize Ollama embeddings (fallback)
-  const ragConfig = getRagConfig();
-  ollamaEmbeddings = new OllamaEmbeddings({
-    model: ragConfig.embeddingModel,
-    baseUrl: ollamaConfig.baseUrl,
   });
 
   initialized = true;
@@ -46,23 +64,13 @@ export async function initializeLLM() {
 }
 
 /**
- * Get ChatOllama instance (singleton)
+ * Get default chat model instance (singleton)
  */
 export function getChatOllama() {
-  if (!chatOllama) {
+  if (!chatModel) {
     throw new Error('LLM not initialized. Call initializeLLM() first.');
   }
-  return chatOllama;
-}
-
-/**
- * Get Ollama embeddings instance (singleton)
- */
-export function getOllamaEmbeddings() {
-  if (!ollamaEmbeddings) {
-    throw new Error('Ollama embeddings not initialized. Call initializeLLM() first.');
-  }
-  return ollamaEmbeddings;
+  return chatModel;
 }
 
 /**
@@ -92,8 +100,7 @@ export function isInitialized() {
 export async function getLLMStatus() {
   const status = {
     initialized,
-    chatOllama: !!chatOllama,
-    ollamaEmbeddings: !!ollamaEmbeddings,
+    chatModel: !!chatModel,
     bgeEmbeddings: false,
     bgeReranker: false,
   };
@@ -115,16 +122,13 @@ export async function getLLMStatus() {
 }
 
 /**
- * Create a new ChatOllama instance with custom settings
+ * Create a new chat model instance with custom settings
  */
 export function createChatOllama(options) {
   const llmConfig = getLlmConfig();
-  
-  return new ChatOllama({
-    model: options.model || llmConfig.defaultModel || 'llama3.2:latest',
-    baseUrl: llmConfig.providers.ollama.baseUrl,
-    temperature: options.temperature ?? 0.1,
-  });
+  const providerKey = llmConfig.defaultProvider || 'openai';
+
+  return createChatModelForProvider(providerKey, options || {});
 }
 
 /**
@@ -138,6 +142,3 @@ export async function ensureLLMReady() {
 
 // Re-export BGE adapter
 export { BGEEmbeddingsAdapter } from './bgeEmbeddingsAdapter.js';
-
-// Export singleton instances for backward compatibility
-export { chatOllama, ollamaEmbeddings };

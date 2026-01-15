@@ -1,8 +1,6 @@
 import { RecursiveCharacterTextSplitter, TokenTextSplitter } from 'langchain/text_splitter';
 import { Document } from 'langchain/document';
 import { Chroma } from '@langchain/community/vectorstores/chroma';
-import { OllamaEmbeddings } from '@langchain/ollama';
-import { ChatOllama } from '@langchain/ollama';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import fs from 'fs/promises';
 import pdf from 'pdf-parse';
@@ -10,6 +8,7 @@ import { ChromaClient } from 'chromadb';
 import { config, getRagConfig, getLlmConfig } from '../config.js';
 import { bgeEmbeddingsClient } from './bgeEmbeddingsClient.js';
 import { bgeRerankerClient } from './bgeRerankerClient.js';
+import { getChatOllama, ensureLLMReady } from '../llm/index.js';
 
 /**
  * Enhanced Agentic RAG Service with:
@@ -55,6 +54,9 @@ export class AgenticRAGService {
         return;
       }
 
+      await ensureLLMReady();
+      this.llm = getChatOllama();
+
       // Initialize ChromaDB client with enhanced HNSW parameters
       this.chromaClient = new ChromaClient({
         host: config.vectorDb?.chroma?.host || 'localhost',
@@ -71,18 +73,26 @@ export class AgenticRAGService {
           throw new Error('BGE-M3 service not available');
         }
       } catch (error) {
-        console.warn('⚠️ BGE-M3 embeddings not available, falling back to Ollama:', error);
-        this.embeddings = new OllamaEmbeddings({
-          model: ragConfig.embeddingModel,
-          baseUrl: llmConfig.providers.ollama.baseUrl,
-        });
+        console.warn('⚠️ BGE-M3 embeddings not available, using deterministic fallback embeddings:', error);
+        const dim = 768;
+        this.embeddings = {
+          embedQuery: async (text) => {
+            const result = new Array(dim);
+            for (let i = 0; i < dim; i += 1) {
+              const code = text.charCodeAt(i % text.length) || 0;
+              result[i] = Math.sin(code + i) * 0.01;
+            }
+            return result;
+          },
+          embedDocuments: async (docs) => {
+            const results = [];
+            for (const doc of docs) {
+              results.push(await this.embeddings.embedQuery(doc));
+            }
+            return results;
+          },
+        };
       }
-
-      this.llm = new ChatOllama({
-        model: llmConfig.defaultModel,
-        baseUrl: llmConfig.providers.ollama.baseUrl,
-        temperature: 0.1,
-      });
 
       // Initialize vector store with enhanced configuration
       await this.initializeVectorStore();

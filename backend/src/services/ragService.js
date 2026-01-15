@@ -4,6 +4,7 @@ import path from 'path';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
+import { OpenAIEmbeddings } from '@langchain/openai';
 import * as chromaService from './chromaService.js';
 import { getRagConfig, getLlmConfig, getVectorDbConfig } from '../config.js';
 import { getChatOllama, ensureLLMReady } from '../llm/index.js';
@@ -41,7 +42,8 @@ class RAGService {
     this.axios = axiosModule;
     const rawBase = getLlmConfig().providers.ollama.baseUrl;
     const normalizedBase = rawBase.includes('localhost') ? rawBase.replace('localhost', '127.0.0.1') : rawBase;
-    this.ollamaBaseUrl = normalizedBase + '/api';
+    this.embeddingBaseUrl = normalizedBase.replace(/\/$/, '') + '/v1';
+    this.embeddings = null;
     // Ensure PDF storage directory exists
     this.pdfDir = path.join(__dirname, '../../data/pdfs/');
     if (!this.fs.existsSync(this.pdfDir)) {
@@ -202,29 +204,29 @@ class RAGService {
     }
   }
 
-  /**
-   * Generate embedding for text using Ollama
-   */
   async generateEmbedding(text) {
     try {
-      const response = await this.axios.post(`${this.ollamaBaseUrl}/embeddings`, {
-        model: this.embeddingModel,
-        prompt: text
-      }, {
-        timeout: 30000 // 30 second timeout for embeddings
-      });
-      
-      if (!response.data.embedding || !Array.isArray(response.data.embedding)) {
-        throw new Error('Invalid embedding response from Ollama');
+      if (!this.embeddings) {
+        this.embeddings = new OpenAIEmbeddings({
+          model: this.embeddingModel,
+          openAIApiKey: 'ollama',
+          configuration: {
+            baseURL: this.embeddingBaseUrl,
+          },
+        });
       }
-      
-      return response.data.embedding;
+
+      const vector = await this.embeddings.embedQuery(text);
+
+      if (!Array.isArray(vector)) {
+        throw new Error('Invalid embedding response');
+      }
+
+      return vector;
     } catch (error) {
       const msg = (error && error.message) ? error.message : String(error);
       console.error('❌ Embedding generation failed:', msg);
-      // Return a small random vector to avoid total failure; this ensures RAG doesn’t block answers
-      // and lets fallback LLM respond. Use deterministic length (e.g., 384) to match typical embedding dims.
-      const dim = 768; // match typical nomic-embed-text dimension and existing collection
+      const dim = 768;
       const pseudoEmbedding = Array.from({ length: dim }, (_, i) => Math.sin(i) * 0.01);
       return pseudoEmbedding;
     }
@@ -342,17 +344,24 @@ class RAGService {
     }
   }
 
-  /**
-   * Check if embedding service is available
-   */
   async isEmbeddingServiceAvailable() {
     try {
-      // Simple HTTP check to Ollama without calling embeddings API
-      const ollamaVersionUrl = `${getLlmConfig().providers.ollama.baseUrl}/api/version`;
-      const response = await this.axios.get(ollamaVersionUrl, {
-        timeout: 2000
-      });
-      return response.status === 200;
+      if (!this.embeddings) {
+        const rawBase = getLlmConfig().providers.ollama.baseUrl;
+        const normalizedBase = rawBase.includes('localhost') ? rawBase.replace('localhost', '127.0.0.1') : rawBase;
+        const baseURL = normalizedBase.replace(/\/$/, '') + '/v1';
+
+        this.embeddings = new OpenAIEmbeddings({
+          model: this.embeddingModel,
+          openAIApiKey: 'ollama',
+          configuration: {
+            baseURL,
+          },
+        });
+      }
+
+      const vector = await this.embeddings.embedQuery('healthcheck');
+      return Array.isArray(vector) && vector.length > 0;
     } catch (error) {
       console.warn('⚠️ Embedding service not available:', error);
       return false;

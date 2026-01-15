@@ -27,11 +27,15 @@ export async function initializeMCP() {
     console.log(`📋 Loaded ${mcpTools.length} MCP tools:`, mcpTools.map((t) => t.name));
 
     const llmConfig = config.llm;
-    if (llmConfig.providers.openai.enabled && llmConfig.providers.openai.apiKey) {
+    const openaiProvider = llmConfig.providers.openai;
+    if (openaiProvider.enabled && openaiProvider.apiKey) {
       try {
         llm = new ChatOpenAI({
           modelName: "gpt-4o-mini",
-          apiKey: llmConfig.providers.openai.apiKey,
+          openAIApiKey: openaiProvider.apiKey,
+          configuration: {
+            baseURL: openaiProvider.baseUrl,
+          },
           temperature: 0.1,
         });
         console.log("✅ Using OpenAI for MCP tool calling");

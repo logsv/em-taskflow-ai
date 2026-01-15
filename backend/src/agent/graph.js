@@ -1,6 +1,9 @@
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
-import { createSupervisor } from "@langchain/langgraph-supervisor";
-import { DynamicTool } from "@langchain/core/tools";
+import { START, StateGraph, Command, getCurrentTaskInput } from "@langchain/langgraph";
+import { createReactAgent, createReactAgentAnnotation } from "@langchain/langgraph/prebuilt";
+import { AIMessage, ToolMessage } from "@langchain/core/messages";
+import { DynamicTool, tool } from "@langchain/core/tools";
+import { z } from "zod";
+import { v4 as uuidv4 } from "uuid";
 import { getChatOllama } from "../llm/index.js";
 import { getMCPTools, getMCPToolGroups, isMCPReady, initializeMCP } from "../mcp/index.js";
 import ragService from "../services/ragService.js";
@@ -9,6 +12,142 @@ import { config } from "../config.js";
 let supervisorApp = null;
 let agentTools = [];
 let initialized = false;
+
+const WHITESPACE_RE = /\s+/;
+
+function normalizeAgentName(agentName) {
+  return agentName.trim().replace(WHITESPACE_RE, "_").toLowerCase();
+}
+
+function createHandoffTool({ agentName }) {
+  const toolName = `transfer_to_${normalizeAgentName(agentName)}`;
+
+  const handoffTool = tool(
+    async (_, config) => {
+      const toolMessage = new ToolMessage({
+        content: `Successfully transferred to ${agentName}`,
+        name: toolName,
+        tool_call_id: config.toolCall.id,
+      });
+
+      const state = getCurrentTaskInput();
+
+      return new Command({
+        goto: agentName,
+        graph: Command.PARENT,
+        update: { messages: state.messages.concat(toolMessage) },
+      });
+    },
+    {
+      name: toolName,
+      schema: z.object({}),
+      description: "Ask another agent for help.",
+    },
+  );
+
+  return handoffTool;
+}
+
+function createHandoffBackMessages(agentName, supervisorName) {
+  const toolCallId = uuidv4();
+  const toolName = `transfer_back_to_${normalizeAgentName(supervisorName)}`;
+  const toolCalls = [{ name: toolName, args: {}, id: toolCallId }];
+
+  return [
+    new AIMessage({
+      content: `Transferring back to ${supervisorName}`,
+      tool_calls: toolCalls,
+      name: agentName,
+    }),
+    new ToolMessage({
+      content: `Successfully transferred back to ${supervisorName}`,
+      name: toolName,
+      tool_call_id: toolCallId,
+    }),
+  ];
+}
+
+function makeCallAgent(agent, outputMode, addHandoffBackMessages, supervisorName) {
+  if (!["full_history", "last_message"].includes(outputMode)) {
+    throw new Error(
+      `Invalid agent output mode: ${outputMode}. Needs to be one of ["full_history", "last_message"]`,
+    );
+  }
+
+  return async (state) => {
+    const output = await agent.invoke(state);
+    let { messages } = output;
+
+    if (outputMode === "last_message") {
+      messages = messages.slice(-1);
+    }
+
+    if (addHandoffBackMessages) {
+      messages.push(...createHandoffBackMessages(agent.name, supervisorName));
+    }
+
+    return { ...output, messages };
+  };
+}
+
+function createSupervisorWorkflow({
+  agents,
+  llm,
+  tools,
+  prompt,
+  stateSchema,
+  outputMode = "last_message",
+  addHandoffBackMessages = true,
+  supervisorName = "supervisor",
+}) {
+  const agentNames = new Set();
+
+  for (const agent of agents) {
+    if (!agent.name || agent.name === "LangGraph") {
+      throw new Error(
+        "Please specify a name when you create your agent, either via `createReactAgent({ ..., name: agentName })` or via `graph.compile({ name: agentName })`.",
+      );
+    }
+
+    if (agentNames.has(agent.name)) {
+      throw new Error(`Agent with name '${agent.name}' already exists. Agent names must be unique.`);
+    }
+
+    agentNames.add(agent.name);
+  }
+
+  const handoffTools = agents.map((agent) => createHandoffTool({ agentName: agent.name }));
+  const allTools = [...(tools ?? []), ...handoffTools];
+
+  const schema = stateSchema ?? createReactAgentAnnotation();
+
+  const supervisorAgent = createReactAgent({
+    name: supervisorName,
+    llm,
+    tools: allTools,
+    prompt,
+    stateSchema: schema,
+  });
+
+  let builder = new StateGraph(schema)
+    .addNode(supervisorAgent.name, supervisorAgent, {
+      ends: [...agentNames],
+    })
+    .addEdge(START, supervisorAgent.name);
+
+  for (const agent of agents) {
+    builder = builder.addNode(
+      agent.name,
+      makeCallAgent(agent, outputMode, addHandoffBackMessages, supervisorName),
+      {
+        subgraphs: [agent],
+      },
+    );
+    builder = builder.addEdge(agent.name, supervisorAgent.name);
+  }
+
+  return builder;
+}
 
 export async function initializeAgent() {
   if (initialized) return;
@@ -29,6 +168,12 @@ export async function initializeAgent() {
     );
 
     const llm = getChatOllama();
+
+    if (typeof llm.bindTools !== "function") {
+      llm.bindTools = function (tools) {
+        return this.bind({ tools });
+      };
+    }
 
     const jiraAgent = createReactAgent({
       llm,
@@ -73,7 +218,7 @@ export async function initializeAgent() {
         "You are a retrieval specialist for the local document knowledge base. When asked about documents, policies, or reference material, use your RAG tool to convert the question into a focused database query, retrieve the most relevant chunks, and summarize them clearly with citations.",
     });
 
-    const workflow = createSupervisor({
+    const workflow = createSupervisorWorkflow({
       agents: [jiraAgent, githubAgent, notionAgent, ragAgent],
       llm,
       prompt:
@@ -154,7 +299,7 @@ export async function checkAgentReadiness() {
     }
 
     return {
-      ready: initialized && !!supervisorApp && agentTools.length > 0,
+      ready: initialized && !!supervisorApp,
       model: config.llm.defaultModel,
       toolCount: agentTools.length,
     };

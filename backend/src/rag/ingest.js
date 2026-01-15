@@ -10,7 +10,6 @@ import fs from 'fs/promises';
 import pdf from 'pdf-parse';
 import { ChromaClient } from 'chromadb';
 import { config, getRagConfig } from '../config.js';
-import { getOllamaEmbeddings } from '../llm/index.js';
 import { BGEEmbeddingsAdapter } from '../llm/bgeEmbeddingsAdapter.js';
 
 // Dependencies for injection
@@ -48,10 +47,8 @@ export async function initializeIngest() {
       port: config.vectorDb?.chroma?.port || 8000,
     });
 
-    // Initialize vector store with enhanced HNSW parameters
     const collectionName = ragConfig.defaultCollection || 'pdf_chunks';
     
-    // Try BGE embeddings first, fallback to Ollama
     let embeddings;
     
     try {
@@ -64,8 +61,25 @@ export async function initializeIngest() {
         throw new Error('BGE not available');
       }
     } catch (error) {
-      console.warn('⚠️ BGE-M3 not available, using Ollama embeddings');
-      embeddings = getOllamaEmbeddings();
+      console.warn('⚠️ BGE-M3 not available, using deterministic fallback embeddings');
+      embeddings = {
+        embedQuery: async (text) => {
+          const dim = 768;
+          const result = new Array(dim);
+          for (let i = 0; i < dim; i += 1) {
+            const code = text.charCodeAt(i % text.length) || 0;
+            result[i] = Math.sin(code + i) * 0.01;
+          }
+          return result;
+        },
+        embedDocuments: async (docs) => {
+          const results = [];
+          for (const doc of docs) {
+            results.push(await embeddings.embedQuery(doc));
+          }
+          return results;
+        },
+      };
     }
 
     vectorStore = new Chroma(embeddings, {
