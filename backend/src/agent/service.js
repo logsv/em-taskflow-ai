@@ -1,8 +1,6 @@
 import { executeAgentQuery, checkAgentReadiness, getAgentTools } from "./graph.js";
 import ragService from "../services/ragService.js";
-import databaseService from "../services/databaseService.js";
-import { config } from "../config.js";
-import { initializeLLMRouter, routedChatCompletion, getRouterStatus } from "../llm/router.js";
+import { initializeLLMRouter, getRouterStatus } from "../llm/router.js";
 
 export class LangGraphAgentService {
   constructor() {

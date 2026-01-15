@@ -5,7 +5,6 @@ import path from 'path';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
 import taskManager from '../services/taskManager.js';
-import agentService from '../agent/service.js';
 import langGraphAgentService from '../agent/index.js';
 import ragService from '../rag/index.js';
 import mcpService from '../services/mcpService.js';
@@ -121,7 +120,7 @@ router.post('/llm-summary', async (req, res) => {
     }
 
     const agentResponse = await withTimeout(
-      agentService.processQuery(prompt),
+      langGraphAgentService.processQuery(prompt),
       45_000,
       'Request timed out after 45 seconds',
     );
@@ -150,7 +149,7 @@ router.post('/rag-query', async (req, res) => {
 
     try {
       const agentResponse = await withTimeout(
-        agentService.processQuery(query),
+        langGraphAgentService.processQuery(query),
         120_000,
         'Request timed out after 120 seconds',
       );
