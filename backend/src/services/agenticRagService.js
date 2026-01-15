@@ -61,7 +61,6 @@ export class AgenticRAGService {
         port: config.vectorDb?.chroma?.port || 8000,
       });
 
-      // Try to initialize BGE-M3 embeddings first, fallback to Ollama
       try {
         this.bgeEmbeddings = bgeEmbeddingsClient;
         const bgeAvailable = await this.bgeEmbeddings.isAvailable();
@@ -74,14 +73,13 @@ export class AgenticRAGService {
       } catch (error) {
         console.warn('⚠️ BGE-M3 embeddings not available, falling back to Ollama:', error);
         this.embeddings = new OllamaEmbeddings({
-          model: ragConfig.embeddingModel || 'nomic-embed-text',
+          model: ragConfig.embeddingModel,
           baseUrl: llmConfig.providers.ollama.baseUrl,
         });
       }
 
-      // Initialize LLM for contextual compression and query rewriting
       this.llm = new ChatOllama({
-        model: 'gpt-oss:latest',
+        model: llmConfig.defaultModel,
         baseUrl: llmConfig.providers.ollama.baseUrl,
         temperature: 0.1,
       });

@@ -4,6 +4,7 @@ import { DynamicTool } from "@langchain/core/tools";
 import { getChatOllama } from "../llm/index.js";
 import { getMCPTools, getMCPToolGroups, isMCPReady, initializeMCP } from "../mcp/index.js";
 import ragService from "../services/ragService.js";
+import { config } from "../config.js";
 
 let supervisorApp = null;
 let agentTools = [];
@@ -154,13 +155,13 @@ export async function checkAgentReadiness() {
 
     return {
       ready: initialized && !!supervisorApp && agentTools.length > 0,
-      model: "gpt-oss:latest",
+      model: config.llm.defaultModel,
       toolCount: agentTools.length,
     };
   } catch (error) {
     return {
       ready: false,
-      model: "gpt-oss:latest",
+      model: config.llm.defaultModel,
       toolCount: 0,
       error: error.message,
     };

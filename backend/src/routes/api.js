@@ -135,7 +135,7 @@ router.post('/rag-query', async (req, res) => {
 
       try {
         const baseUrl = config.llm.providers.ollama.baseUrl;
-        const model = 'llama3.2:latest';
+        const model = config.llm.defaultModel || 'llama3.2:latest';
 
         console.log('RAG fallback using model:', model);
 

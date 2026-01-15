@@ -5,7 +5,7 @@
 
 import { ChatOllama } from '@langchain/ollama';
 import { OllamaEmbeddings } from '@langchain/ollama';
-import { getLlmConfig } from '../config.js';
+import { getLlmConfig, getRagConfig } from '../config.js';
 import { bgeEmbeddingsClient } from '../services/bgeEmbeddingsClient.js';
 import { bgeRerankerClient } from '../services/bgeRerankerClient.js';
 
@@ -25,9 +25,7 @@ export async function initializeLLM() {
   const llmConfig = getLlmConfig();
   const ollamaConfig = llmConfig.providers.ollama;
 
-  const configuredModel = llmConfig.defaultModel || 'llama3.2:latest';
-  const effectiveModel =
-    configuredModel === 'gpt-oss:latest' ? 'llama3.2:latest' : configuredModel;
+  const effectiveModel = llmConfig.defaultModel || 'llama3.2:latest';
 
   // Initialize ChatOllama for text generation
   chatOllama = new ChatOllama({
@@ -37,8 +35,9 @@ export async function initializeLLM() {
   });
 
   // Initialize Ollama embeddings (fallback)
+  const ragConfig = getRagConfig();
   ollamaEmbeddings = new OllamaEmbeddings({
-    model: 'nomic-embed-text',
+    model: ragConfig.embeddingModel,
     baseUrl: ollamaConfig.baseUrl,
   });
 
@@ -122,7 +121,7 @@ export function createChatOllama(options) {
   const llmConfig = getLlmConfig();
   
   return new ChatOllama({
-    model: options.model || 'gpt-oss:latest',
+    model: options.model || llmConfig.defaultModel || 'llama3.2:latest',
     baseUrl: llmConfig.providers.ollama.baseUrl,
     temperature: options.temperature ?? 0.1,
   });
