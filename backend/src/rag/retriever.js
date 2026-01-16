@@ -133,15 +133,24 @@ async function baseRetrieve(query, k) {
   }
 
   try {
-    const retriever = vectorStore.asRetriever({
-      k,
-      searchType: 'mmr', // Maximum Marginal Relevance for diversity
-      searchKwargs: {
-        lambda: MMR_LAMBDA, // Balance relevance vs diversity
-      }
-    });
+    try {
+      const retriever = vectorStore.asRetriever({
+        k,
+        searchType: 'mmr', // Maximum Marginal Relevance for diversity
+        searchKwargs: {
+          lambda: MMR_LAMBDA, // Balance relevance vs diversity
+        }
+      });
 
-    return await retriever.getRelevantDocuments(query);
+      return await retriever.getRelevantDocuments(query);
+    } catch (mmrError) {
+      console.warn('⚠️ MMR search failed, falling back to similarity search:', mmrError);
+      const retriever = vectorStore.asRetriever({
+        k,
+        searchType: 'similarity',
+      });
+      return await retriever.getRelevantDocuments(query);
+    }
   } catch (error) {
     console.error('❌ Base retrieval failed:', error);
     return [];

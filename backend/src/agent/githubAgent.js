@@ -3,7 +3,6 @@ import { getChatModel } from "../llm/index.js";
 
 export async function createGithubAgent() {
   const llm = getChatModel();
-
   let githubTools = [];
   try {
     const githubModule = await import("../mcp/github.js");

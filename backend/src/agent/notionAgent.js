@@ -3,7 +3,6 @@ import { getChatModel } from "../llm/index.js";
 
 export async function createNotionAgent() {
   const llm = getChatModel();
-
   let notionTools = [];
   try {
     const notionModule = await import("../mcp/notion.js");

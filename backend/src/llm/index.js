@@ -17,11 +17,13 @@ function createChatModelForProvider(providerKey, options = {}) {
   const modelName = options.model || llmConfig.defaultModel || 'gpt-4o-mini';
   const temperature = options.temperature ?? 0.1;
 
+  let model;
+
   if (providerKey === 'ollama') {
     const base = provider.baseUrl?.replace(/\/$/, '') || 'http://localhost:11434';
     const baseURL = `${base}/v1`;
 
-    return new ChatOpenAI({
+    model = new ChatOpenAI({
       modelName,
       openAIApiKey: 'ollama',
       configuration: {
@@ -29,18 +31,20 @@ function createChatModelForProvider(providerKey, options = {}) {
       },
       temperature,
     });
+  } else {
+    const apiKey = provider.apiKey || process.env.OPENAI_API_KEY || 'EMPTY';
+
+    model = new ChatOpenAI({
+      modelName,
+      openAIApiKey: apiKey,
+      configuration: {
+        baseURL: provider.baseUrl,
+      },
+      temperature,
+    });
   }
 
-  const apiKey = provider.apiKey || process.env.OPENAI_API_KEY || 'EMPTY';
-
-  return new ChatOpenAI({
-    modelName,
-    openAIApiKey: apiKey,
-    configuration: {
-      baseURL: provider.baseUrl,
-    },
-    temperature,
-  });
+  return model;
 }
 
 /**

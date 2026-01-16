@@ -3,7 +3,6 @@ import { getChatModel } from "../llm/index.js";
 
 export async function createJiraAgent() {
   const llm = getChatModel();
-
   let jiraTools = [];
   try {
     const jiraModule = await import("../mcp/jira.js");

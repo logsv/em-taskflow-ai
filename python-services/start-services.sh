@@ -25,13 +25,12 @@ check_venv() {
     
     if [ ! -d "$venv_path" ]; then
         echo -e "${YELLOW}⚠️  Virtual environment not found in $service_dir${NC}"
-        echo -e "${BLUE}📦 Creating virtual environment...${NC}"
+        echo -e "${BLUE}📦 Creating virtual environment with uv...${NC}"
         
         cd "$service_dir"
-        python3 -m venv venv
+        uv venv venv
         source venv/bin/activate
-        pip install --upgrade pip
-        pip install -r requirements.txt
+        uv pip install -r requirements.txt
         
         echo -e "${GREEN}✅ Virtual environment created and dependencies installed${NC}"
         cd "$SCRIPT_DIR"
@@ -100,6 +99,14 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 echo -e "${GREEN}✅ Python found: $(python3 --version)${NC}"
+
+# Check uv installation
+if ! command -v uv >/dev/null 2>&1; then
+    echo -e "${RED}❌ uv not found. Please install uv (https://github.com/astral-sh/uv) and try again.${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ uv found: $(uv --version)${NC}"
 
 # Setup and start BGE-M3 Embeddings Service
 echo ""

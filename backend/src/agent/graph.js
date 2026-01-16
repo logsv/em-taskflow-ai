@@ -9,11 +9,11 @@ import {
   getGithubMCPTools,
   getNotionMCPTools,
 } from "../mcp/index.js";
-import ragService from "../rag/index.js";
 import { config } from "../config.js";
 import { createJiraAgent } from "./jiraAgent.js";
 import { createGithubAgent } from "./githubAgent.js";
 import { createNotionAgent } from "./notionAgent.js";
+import { createRagAgent } from "./ragAgent.js";
 
 let supervisorApp = null;
 let agentTools = [];
@@ -36,34 +36,36 @@ export async function initializeAgent() {
     agentTools = [...jiraTools, ...githubTools, ...notionTools];
     const llm = getChatModel();
 
+    if (typeof llm.bindTools === "function" && !llm.__langgraphPatched) {
+      const originalBindTools = llm.bindTools.bind(llm);
+      llm.bindTools = (tools, config) => {
+        const bound = originalBindTools(tools, config);
+        if (bound && typeof bound === "object" && !("bindTools" in bound)) {
+          Object.defineProperty(bound, "bindTools", {
+            value: originalBindTools,
+            writable: false,
+            enumerable: false,
+          });
+        }
+        return bound;
+      };
+      Object.defineProperty(llm, "__langgraphPatched", {
+        value: true,
+        writable: false,
+        enumerable: false,
+      });
+    }
+
     const jiraAgent = await createJiraAgent();
     const githubAgent = await createGithubAgent();
     const notionAgent = await createNotionAgent();
-
-    const ragTool = new DynamicTool({
-      name: "rag_db_query_retriever",
-      description:
-        "Use this tool to search the document knowledge base. It converts the user question into a focused database query using an LLM, retrieves the most relevant document chunks, and returns them as JSON.",
-      func: async (input) => {
-        const query = typeof input === "string" ? input : JSON.stringify(input);
-        const result = await ragService.searchRelevantChunks(query, 5);
-        return JSON.stringify(result);
-      },
-    });
-
-    const ragAgent = createReactAgent({
-      llm,
-      tools: [ragTool],
-      name: "rag_agent",
-      prompt:
-        "You are a retrieval specialist for the local document knowledge base. When asked about documents, policies, or reference material, use your RAG tool to convert the question into a focused database query, retrieve the most relevant chunks, and summarize them clearly with citations.",
-    });
+    const ragAgent = await createRagAgent();
 
     const workflow = createSupervisor({
       agents: [jiraAgent, githubAgent, notionAgent, ragAgent],
       llm,
       prompt:
-        "You are a supervisor agent that routes work between Jira, GitHub, Notion, and a RAG document specialist. Decide which agent should handle each part of the task and ensure a coherent final answer for the user.",
+        "You are a supervisor agent that routes work between Jira, GitHub, Notion, and a dedicated RAG retrieval agent. Decide which specialist should handle each part of the task, delegate work accordingly, and ensure a coherent final answer for the user.",
       outputMode: "last_message",
     });
 
