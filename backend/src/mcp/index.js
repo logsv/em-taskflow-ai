@@ -5,6 +5,9 @@ import { ChatOpenAI } from "@langchain/openai";
 
 let mcpClient = null;
 let mcpTools = [];
+let jiraMcpTools = [];
+let notionMcpTools = [];
+let githubMcpTools = [];
 let llm = null;
 let isInitialized = false;
 
@@ -20,11 +23,17 @@ export async function initializeMCP() {
     console.log("  Jira:", mcpConfig.jira.enabled ? "✅ Enabled" : "❌ Disabled");
     console.log("  Google:", mcpConfig.google.enabled ? "✅ Enabled" : "❌ Disabled");
 
-    const { tools, client } = await loadMcpTools();
+    const { tools, client, toolsByServer } = await loadMcpTools();
     mcpClient = client;
     mcpTools = tools;
 
-    console.log(`📋 Loaded ${mcpTools.length} MCP tools:`, mcpTools.map((t) => t.name));
+    jiraMcpTools = toolsByServer.atlassian || [];
+    notionMcpTools = toolsByServer.notion || [];
+    githubMcpTools = toolsByServer.github || [];
+
+    console.log(
+      `📋 Loaded ${mcpTools.length} MCP tools (Jira: ${jiraMcpTools.length}, GitHub: ${githubMcpTools.length}, Notion: ${notionMcpTools.length})`,
+    );
 
     const llmConfig = config.llm;
     const openaiProvider = llmConfig.providers.openai;
@@ -58,6 +67,18 @@ export function getMCPClient() {
 
 export function getMCPTools() {
   return mcpTools;
+}
+
+export function getJiraMCPTools() {
+  return jiraMcpTools;
+}
+
+export function getNotionMCPTools() {
+  return notionMcpTools;
+}
+
+export function getGithubMCPTools() {
+  return githubMcpTools;
 }
 
 export function getMCPToolGroups() {
@@ -156,7 +177,17 @@ export async function reconnectMCP() {
     try {
       await mcpClient.reconnect();
       mcpTools = mcpClient.getTools();
-      console.log(`✅ MCP reconnected with ${mcpTools.length} tools`);
+      const toolsByServer = mcpClient.getAllToolsByServer
+        ? mcpClient.getAllToolsByServer()
+        : {};
+
+      jiraMcpTools = toolsByServer.atlassian || [];
+      notionMcpTools = toolsByServer.notion || [];
+      githubMcpTools = toolsByServer.github || [];
+
+      console.log(
+        `✅ MCP reconnected with ${mcpTools.length} tools (Jira: ${jiraMcpTools.length}, GitHub: ${githubMcpTools.length}, Notion: ${notionMcpTools.length})`,
+      );
     } catch (error) {
       console.error("❌ MCP reconnection failed:", error);
       throw error;
@@ -179,6 +210,9 @@ export async function closeMCP() {
   isInitialized = false;
   mcpClient = null;
   mcpTools = [];
+  jiraMcpTools = [];
+  notionMcpTools = [];
+  githubMcpTools = [];
   llm = null;
 }
 

@@ -1,10 +1,12 @@
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { DynamicTool } from "@langchain/core/tools";
 import { createSupervisor } from "@langchain/langgraph-supervisor";
 import { getChatOllama } from "../llm/index.js";
-import { getMCPTools, getMCPToolGroups, isMCPReady, initializeMCP } from "../mcp/index.js";
+import { getMCPTools, isMCPReady, initializeMCP } from "../mcp/index.js";
 import ragService from "../services/ragService.js";
 import { config } from "../config.js";
+import { createJiraAgent } from "./jiraAgent.js";
+import { createGithubAgent } from "./githubAgent.js";
+import { createNotionAgent } from "./notionAgent.js";
 
 let supervisorApp = null;
 let agentTools = [];
@@ -22,12 +24,6 @@ export async function initializeAgent() {
     }
 
     agentTools = getMCPTools();
-    const { jiraTools, githubTools, notionTools } = getMCPToolGroups();
-
-    console.log(
-      `📋 MCP tools loaded. Total: ${agentTools.length}, Jira: ${jiraTools.length}, GitHub: ${githubTools.length}, Notion: ${notionTools.length}`,
-    );
-
     const llm = getChatOllama();
 
     if (typeof llm.bindTools !== "function") {
@@ -36,29 +32,9 @@ export async function initializeAgent() {
       };
     }
 
-    const jiraAgent = createReactAgent({
-      llm,
-      tools: jiraTools.length > 0 ? jiraTools : agentTools,
-      name: "jira_agent",
-      prompt:
-        "You are a Jira expert. Manage issues, sprints, roadmaps, and work items. Use only tools relevant to Jira and related Atlassian resources.",
-    });
-
-    const githubAgent = createReactAgent({
-      llm,
-      tools: githubTools.length > 0 ? githubTools : agentTools,
-      name: "github_agent",
-      prompt:
-        "You are a GitHub expert. Manage repositories, pull requests, issues, and reviews. Use tools related to GitHub or source control.",
-    });
-
-    const notionAgent = createReactAgent({
-      llm,
-      tools: notionTools.length > 0 ? notionTools : agentTools,
-      name: "notion_agent",
-      prompt:
-        "You are a Notion workspace expert. Manage pages, databases, tasks, and project documentation using Notion tools.",
-    });
+    const jiraAgent = await createJiraAgent();
+    const githubAgent = await createGithubAgent();
+    const notionAgent = await createNotionAgent();
 
     const ragTool = new DynamicTool({
       name: "rag_db_query_retriever",

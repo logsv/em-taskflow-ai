@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MultiServerMCPClient } from '@langchain/mcp-adapters';
+import { MCPClient, mcpToLangChainTools } from '@langchain/mcp';
 import { getMcpConfig } from '../config.js';
 
 // MCP Server Configuration Schema
@@ -12,14 +12,11 @@ const mcpServerConfigSchema = z.object({
   headers: z.record(z.string()).optional(),
 });
 
-/**
- * Reliable MCP Client using LangChain MCP Adapters
- * Handles lifecycle management, reconnection, and provides LangChain-compatible tools
- */
 export class ReliableMCPClient {
   constructor() {
-    this.client = null;
+    this.clients = {};
     this.tools = [];
+    this.toolsByServer = {};
     this.isInitialized = false;
     this.serverConfigs = {};
     this.reconnectAttempts = 0;
@@ -32,7 +29,7 @@ export class ReliableMCPClient {
    */
   async initialize() {
     try {
-      console.log('🔧 Initializing Reliable MCP Client with LangChain adapters...');
+      console.log('🔧 Initializing Reliable MCP Client with LangChain MCP...');
       
       const mcpConfig = getMcpConfig();
       this.serverConfigs = this.buildServerConfigs(mcpConfig);
@@ -44,13 +41,8 @@ export class ReliableMCPClient {
 
       console.log('🔧 Configured MCP servers:', Object.keys(this.serverConfigs));
       
-      // Create MultiServerMCPClient with robust configuration
-      this.client = new MultiServerMCPClient(this.serverConfigs);
-      
-      // Initialize connections with retry logic
       await this.initializeWithRetry();
       
-      // Load tools from connected servers
       await this.loadTools();
       
       this.isInitialized = true;
@@ -72,11 +64,7 @@ export class ReliableMCPClient {
       try {
         console.log(`🔄 Connection attempt ${attempt}/${this.maxReconnectAttempts}...`);
         
-        if (!this.client) {
-          throw new Error('Client not created');
-        }
-        
-        await this.client.initializeConnections();
+        await this.connectAllServers();
         console.log('✅ MCP connections initialized successfully');
         this.reconnectAttempts = 0;
         return;
@@ -97,34 +85,29 @@ export class ReliableMCPClient {
     throw new Error(`Failed to initialize MCP connections after ${this.maxReconnectAttempts} attempts: ${lastError?.message}`);
   }
 
-  /**
-   * Build server configurations from config
-   */
   buildServerConfigs(mcpConfig) {
     const servers = {};
     
-    // Notion MCP Server
     if (mcpConfig.notion.enabled && mcpConfig.notion.apiKey) {
       servers.notion = {
+        type: 'stdio',
         command: 'npx',
         args: ['-y', '@notionhq/notion-mcp-server'],
         env: {
           NOTION_TOKEN: mcpConfig.notion.apiKey,
           NOTION_API_KEY: mcpConfig.notion.apiKey,
-          // Add Node.js environment variables for better compatibility
-          NODE_TLS_REJECT_UNAUTHORIZED: '0', // Handle self-signed certificates in dev
+          NODE_TLS_REJECT_UNAUTHORIZED: '0',
         },
       };
       console.log('✅ Configured Notion MCP server');
     }
     
-    // Atlassian MCP Server (via mcp-remote proxy for reliability)
     if (mcpConfig.jira.enabled) {
       servers.atlassian = {
+        type: 'stdio',
         command: 'npx',
         args: ['-y', 'mcp-remote', 'https://mcp.atlassian.com/v1/sse'],
         env: {
-          // Add Jira credentials if available
           ...(mcpConfig.jira.url && { JIRA_URL: mcpConfig.jira.url }),
           ...(mcpConfig.jira.username && { JIRA_USERNAME: mcpConfig.jira.username }),
           ...(mcpConfig.jira.apiToken && { JIRA_API_TOKEN: mcpConfig.jira.apiToken }),
@@ -134,9 +117,9 @@ export class ReliableMCPClient {
       console.log('✅ Configured Atlassian MCP server via mcp-remote proxy');
     }
     
-    // Google Calendar MCP Server
     if (mcpConfig.google.enabled && mcpConfig.google.oauthCredentials) {
       servers.google = {
+        type: 'stdio',
         command: 'npx',
         args: ['-y', '@cocal/google-calendar-mcp'],
         env: {
@@ -150,20 +133,70 @@ export class ReliableMCPClient {
     return servers;
   }
 
-  /**
-   * Load tools from connected MCP servers
-   */
-  async loadTools() {
-    if (!this.client) {
-      throw new Error('Client not initialized');
+  async connectAllServers() {
+    await this.closeAllClients();
+
+    const serverNames = Object.keys(this.serverConfigs || {});
+    if (serverNames.length === 0) {
+      throw new Error('No MCP servers configured');
     }
-    
+
+    this.clients = {};
+
+    const errors = [];
+
+    for (const serverName of serverNames) {
+      const transportConfig = this.serverConfigs[serverName];
+      try {
+        const client = new MCPClient({
+          name: serverName,
+          transport: transportConfig,
+        });
+        await client.connect();
+        this.clients[serverName] = client;
+        console.log(`✅ Connected to MCP server: ${serverName}`);
+      } catch (error) {
+        console.warn(`⚠️  Failed to connect to MCP server ${serverName}:`, error);
+        errors.push(error);
+      }
+    }
+
+    if (Object.keys(this.clients).length === 0) {
+      throw new Error(
+        `Failed to connect to any MCP servers: ${errors.map((e) => e?.message || 'Unknown error').join('; ')}`
+      );
+    }
+  }
+
+  async loadTools() {
     try {
-      // Get LangChain-compatible tools from the adapter (it returns a Promise)
-      this.tools = await this.client.getTools();
+      const serverNames = Object.keys(this.clients || {});
+      this.tools = [];
+      this.toolsByServer = {};
+
+      for (const serverName of serverNames) {
+        const client = this.clients[serverName];
+        try {
+          const serverTools = await mcpToLangChainTools(client);
+          const namespacedTools = serverTools.map((tool) => {
+            const originalName =
+              tool.name || (tool.lc_kwargs && typeof tool.lc_kwargs === 'object' && tool.lc_kwargs.name) || 'tool';
+            const prefixedName = `${serverName}_${originalName}`;
+            tool.name = prefixedName;
+            if (tool.lc_kwargs && typeof tool.lc_kwargs === 'object') {
+              tool.lc_kwargs.name = prefixedName;
+            }
+            return tool;
+          });
+
+          this.toolsByServer[serverName] = namespacedTools;
+          this.tools.push(...namespacedTools);
+        } catch (error) {
+          console.warn(`⚠️  Failed to load tools for MCP server ${serverName}:`, error);
+        }
+      }
+
       console.log(`📋 Loaded ${this.tools.length} MCP tools:`, this.tools.map(t => t.name));
-      
-      // Log tool schemas for debugging
       if (this.tools.length > 0) {
         console.log('🔍 Available tool schemas:');
         this.tools.forEach(tool => {
@@ -188,8 +221,11 @@ export class ReliableMCPClient {
    * Get tools filtered by server name
    */
   getToolsByServer(serverName) {
-    // Tools from MultiServerMCPClient are prefixed with server name
-    return this.tools.filter(tool => tool.name.startsWith(`${serverName}_`));
+    return this.toolsByServer[serverName] || [];
+  }
+
+  getAllToolsByServer() {
+    return { ...this.toolsByServer };
   }
 
   /**
@@ -234,16 +270,6 @@ export class ReliableMCPClient {
    */
   async reconnect() {
     console.log('🔄 Reconnecting MCP client...');
-    
-    if (this.client) {
-      try {
-        await this.client.close();
-      } catch (error) {
-        console.warn('Warning during connection cleanup:', error);
-      }
-    }
-    
-    // Reinitialize
     await this.initialize();
   }
 
@@ -265,34 +291,41 @@ export class ReliableMCPClient {
    * Check if client is ready
    */
   isReady() {
-    return this.isInitialized && this.client !== null && this.tools.length > 0;
+    return this.isInitialized && Object.keys(this.clients || {}).length > 0 && this.tools.length > 0;
   }
 
   /**
-   * Get the underlying MultiServerMCPClient for advanced use cases
+   * Get the underlying MCP clients for advanced use cases
    */
   getClient() {
-    return this.client;
+    return this.clients;
   }
 
   /**
    * Close all connections
    */
   async close() {
-    if (this.client) {
-      try {
-        // Use the correct close method from MultiServerMCPClient
-        await this.client.close();
-        console.log('✅ MCP connections closed');
-      } catch (error) {
-        console.error('❌ Error closing MCP connections:', error);
-      }
-    }
+    await this.closeAllClients();
     
-    this.client = null;
+    this.clients = {};
     this.tools = [];
+    this.toolsByServer = {};
     this.isInitialized = false;
     this.reconnectAttempts = 0;
+  }
+
+  async closeAllClients() {
+    const clientEntries = Object.entries(this.clients || {});
+    for (const [, client] of clientEntries) {
+      if (!client) continue;
+      try {
+        if (typeof client.close === 'function') {
+          await client.close();
+        }
+      } catch (error) {
+        console.error('❌ Error closing MCP client:', error);
+      }
+    }
   }
 
   /**
@@ -329,10 +362,13 @@ export async function getMCPClient() {
 export async function loadMcpTools() {
   const client = await getMCPClient();
   const tools = client.getTools();
+  const toolsByServer = client.getAllToolsByServer
+    ? client.getAllToolsByServer()
+    : {};
   
   console.log(`🛠️  Loaded ${tools.length} MCP tools for LangGraph integration`);
   
-  return { tools, client };
+  return { tools, client, toolsByServer };
 }
 
 /**
