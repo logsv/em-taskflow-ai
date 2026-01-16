@@ -40,7 +40,7 @@ describe('API End-to-End Tests', () => {
   });
 
   async function setupServiceMocks() {
-    const databaseService = await import('../../src/services/databaseService.js');
+    const databaseService = await import('../../src/db/index.js');
     sandbox.stub(databaseService.default, 'initialize').resolves();
     sandbox.stub(databaseService.default, 'saveChatHistory').resolves({ id: 1 });
     sandbox.stub(databaseService.default, 'getChatHistory').resolves([
@@ -57,7 +57,7 @@ describe('API End-to-End Tests', () => {
     const agentService = await import('../../src/services/agentService.js');
     sandbox.stub(agentService.default, 'processQuery').resolves('Test response from agent');
 
-    const ragService = await import('../../src/services/ragService.js');
+    const ragService = await import('../../src/rag/index.js');
     sandbox.stub(ragService.default, 'getStatus').resolves({
       vectorDB: true,
       embeddingService: true,

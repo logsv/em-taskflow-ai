@@ -39,7 +39,7 @@ describe('Full System End-to-End Tests', () => {
         }),
       };
 
-      const databaseService = await import('../../src/services/databaseService.js');
+      const databaseService = await import('../../src/db/index.js');
       sandbox.stub(databaseService.default, 'initialize').resolves();
     } catch (error) {
       console.log('Server setup mock completed with expected configuration dependencies');

@@ -1,7 +1,7 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { getLlmConfig, getRagConfig } from '../config.js';
-import { bgeEmbeddingsClient } from '../services/bgeEmbeddingsClient.js';
-import { bgeRerankerClient } from '../services/bgeRerankerClient.js';
+import { bgeEmbeddingsClient } from './bgeEmbeddingsClient.js';
+import { bgeRerankerClient } from './bgeRerankerClient.js';
 
 let chatModel = null;
 let initialized = false;
@@ -73,12 +73,6 @@ export function getChatModel() {
   return chatModel;
 }
 
-/**
- * @deprecated Use getChatModel() instead
- */
-export function getChatOllama() {
-  return getChatModel();
-}
 
 /**
  * Get BGE embeddings client (external service)
@@ -131,7 +125,7 @@ export async function getLLMStatus() {
 /**
  * Create a new chat model instance with custom settings
  */
-export function createChatOllama(options) {
+export function createChatModelInstance(options) {
   const llmConfig = getLlmConfig();
   const providerKey = llmConfig.defaultProvider || 'openai';
 

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import langGraphAgentService from '../agent/index.js';
 import ragService from '../rag/index.js';
 import { isMCPReady } from '../mcp/index.js';
-import databaseRouter from './database.js';
+import storageRouter from './storage.js';
 import agentRouter from './agent.js';
 import agenticRagRouter from './agenticRag.js';
 import { config } from '../config.js';
@@ -277,5 +277,6 @@ router.get('/rag-debug', async (req, res) => {
 
 router.use('/agent', agentRouter);
 router.use('/agentic-rag', agenticRagRouter);
+router.use('/storage', storageRouter);
 
 export default router;

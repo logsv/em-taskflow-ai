@@ -1,5 +1,5 @@
 import express from 'express';
-import langGraphAgentService from '../agent/service.js';
+import langGraphAgentService from '../services/agentService.js';
 import { checkAgentReadiness, getAgentTools } from '../agent/graph.js';
 
 const router = express.Router();

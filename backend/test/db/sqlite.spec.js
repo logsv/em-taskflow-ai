@@ -1,5 +1,5 @@
 import sinon from 'sinon';
-import databaseService from '../../src/services/databaseService.js';
+import databaseService from '../../src/db/sqlite.js';
 
 describe('Database Service', () => {
   let sandbox;

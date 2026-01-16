@@ -2,8 +2,8 @@ import sinon from 'sinon';
 import express from 'express';
 import request from 'supertest';
 import apiRouter from '../../src/routes/api.js';
-import agentService from '../../src/agent/service.js';
-import ragService from '../../src/services/ragService.js';
+import agentService from '../../src/services/agentService.js';
+import ragService from '../../src/rag/index.js';
 
 // Create express app for testing
 const app = express();

@@ -9,7 +9,7 @@ import {
   getGithubMCPTools,
   getNotionMCPTools,
 } from "../mcp/index.js";
-import ragService from "../services/ragService.js";
+import ragService from "../rag/index.js";
 import { config } from "../config.js";
 import { createJiraAgent } from "./jiraAgent.js";
 import { createGithubAgent } from "./githubAgent.js";

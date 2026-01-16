@@ -7,4 +7,4 @@ export {
   resetAgent,
 } from './graph.js';
 
-export { default } from './service.js';
+export { default } from '../services/agentService.js';

@@ -1,12 +1,12 @@
 import express from "express";
-import databaseService from "../services/databaseService.js";
+import db from "../db/index.js";
 
 const router = express.Router();
 
 router.get("/chat-history", async (req, res) => {
   try {
     const { limit = "50", sessionId } = req.query;
-    const history = await databaseService.getChatHistory(parseInt(limit, 10), sessionId || null);
+    const history = await db.getChatHistory(parseInt(limit, 10), sessionId || null);
     res.json({ history });
   } catch (error) {
     console.error("Error fetching chat history:", error);
@@ -16,7 +16,7 @@ router.get("/chat-history", async (req, res) => {
 
 router.get("/stats", async (req, res) => {
   try {
-    const stats = await databaseService.getStats();
+    const stats = await db.getStats();
     res.json({ stats });
   } catch (error) {
     console.error("Error fetching database stats:", error);
@@ -43,7 +43,7 @@ router.post("/preferences", async (req, res) => {
 router.get("/preferences/:key", async (req, res) => {
   try {
     const { key } = req.params;
-    const value = await databaseService.getUserPreference(key);
+    const value = await db.getUserPreference(key);
 
     if (value === null) {
       return res.status(404).json({ error: "Preference not found" });

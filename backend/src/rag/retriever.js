@@ -6,7 +6,7 @@
 import { Document } from 'langchain/document';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { getVectorStore } from './ingest.js';
-import { getChatOllama, getBgeReranker } from '../llm/index.js';
+import { getChatModel, getBgeReranker } from '../llm/index.js';
 
 // Retrieval configuration
 const MAX_RETRIEVAL_K = 30; // Initial retrieval
@@ -152,7 +152,7 @@ async function baseRetrieve(query, k) {
  * Query rewriting using LLM
  */
 async function rewriteQueries(originalQuery, maxQueries) {
-  const llm = getChatOllama();
+  const llm = getChatModel();
   
   try {
     const prompt = ChatPromptTemplate.fromMessages([
@@ -275,7 +275,7 @@ async function compressDocuments(query, documents) {
  * Generate final answer from retrieved context
  */
 async function generateAnswer(query, documents) {
-  const llm = getChatOllama();
+  const llm = getChatModel();
   
   try {
     const prompt = ChatPromptTemplate.fromMessages([
