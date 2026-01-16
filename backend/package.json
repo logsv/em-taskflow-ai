@@ -51,7 +51,6 @@
     "@langchain/core": "0.3.70",
     "@langchain/langgraph": "0.2.55",
     "@langchain/langgraph-supervisor": "0.0.9",
-    "@langchain/mcp": "*",
     "@langchain/mcp-adapters": "0.6.0",
     "@notionhq/client": "2.2.13",
     "@notionhq/notion-mcp-server": "1.8.1",

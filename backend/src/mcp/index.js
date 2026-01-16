@@ -1,9 +1,6 @@
-import { ReliableMCPClient, loadMcpTools } from "./client.js";
 import { config, getMcpConfig } from "../config.js";
-import { getChatOllama } from "../llm/index.js";
 import { ChatOpenAI } from "@langchain/openai";
 
-let mcpClient = null;
 let mcpTools = [];
 let jiraMcpTools = [];
 let notionMcpTools = [];
@@ -23,13 +20,14 @@ export async function initializeMCP() {
     console.log("  Jira:", mcpConfig.jira.enabled ? "✅ Enabled" : "❌ Disabled");
     console.log("  Google:", mcpConfig.google.enabled ? "✅ Enabled" : "❌ Disabled");
 
-    const { tools, client, toolsByServer } = await loadMcpTools();
-    mcpClient = client;
-    mcpTools = tools;
+    const jiraModule = await import("./jira.js").catch(() => null);
+    const notionModule = await import("./notion.js").catch(() => null);
+    const githubModule = await import("./github.js").catch(() => null);
 
-    jiraMcpTools = toolsByServer.atlassian || [];
-    notionMcpTools = toolsByServer.notion || [];
-    githubMcpTools = toolsByServer.github || [];
+    jiraMcpTools = jiraModule ? await jiraModule.getJiraTools().catch(() => []) : [];
+    notionMcpTools = notionModule ? await notionModule.getNotionTools().catch(() => []) : [];
+    githubMcpTools = githubModule ? await githubModule.getGithubTools().catch(() => []) : [];
+    mcpTools = [...jiraMcpTools, ...notionMcpTools, ...githubMcpTools];
 
     console.log(
       `📋 Loaded ${mcpTools.length} MCP tools (Jira: ${jiraMcpTools.length}, GitHub: ${githubMcpTools.length}, Notion: ${notionMcpTools.length})`,
@@ -62,7 +60,7 @@ export async function initializeMCP() {
 }
 
 export function getMCPClient() {
-  return mcpClient;
+  return null;
 }
 
 export function getMCPTools() {
@@ -83,48 +81,41 @@ export function getGithubMCPTools() {
 
 export function getMCPToolGroups() {
   const allTools = mcpTools || [];
-  if (!mcpClient) {
-    return {
-      jiraTools: [],
-      githubTools: [],
-      notionTools: [],
-      otherTools: allTools,
-    };
-  }
-
-  const jiraTools = mcpClient.getToolsByServer("atlassian");
-  const notionTools = mcpClient.getToolsByServer("notion");
-  const githubTools = mcpClient.getToolsByServer("github");
-
-  const usedNames = new Set([
-    ...jiraTools.map((t) => t.name),
-    ...notionTools.map((t) => t.name),
-    ...githubTools.map((t) => t.name),
-  ]);
-
-  const otherTools = allTools.filter((tool) => !usedNames.has(tool.name));
-
   return {
-    jiraTools,
-    githubTools,
-    notionTools,
-    otherTools,
+    jiraTools: jiraMcpTools,
+    githubTools: githubMcpTools,
+    notionTools: notionMcpTools,
+    otherTools: allTools.filter(
+      (tool) =>
+        ![...jiraMcpTools, ...githubMcpTools, ...notionMcpTools].some((t) => t.name === tool.name),
+    ),
   };
 }
 
 export function getMCPToolsByServer(serverName) {
-  if (!mcpClient) return [];
-  return mcpClient.getToolsByServer(serverName);
+  switch (serverName) {
+    case "atlassian":
+      return jiraMcpTools;
+    case "notion":
+      return notionMcpTools;
+    case "github":
+      return githubMcpTools;
+    default:
+      return [];
+  }
 }
 
 export async function executeMCPTool(toolName, parameters) {
-  if (!mcpClient) {
-    throw new Error("MCP client not initialized");
-  }
-
   try {
     console.log(`🔧 Executing MCP tool: ${toolName}`);
-    const result = await mcpClient.executeTool(toolName, parameters);
+    const tool =
+      jiraMcpTools.find((t) => t.name === toolName) ||
+      notionMcpTools.find((t) => t.name === toolName) ||
+      githubMcpTools.find((t) => t.name === toolName);
+    if (!tool) {
+      throw new Error(`Tool '${toolName}' not found`);
+    }
+    const result = await tool.invoke(parameters);
     console.log(`✅ MCP tool completed: ${toolName}`);
     return result;
   } catch (error) {
@@ -138,34 +129,22 @@ export function getMCPLLM() {
 }
 
 export function isMCPReady() {
-  return isInitialized && mcpClient !== null && mcpClient.isReady();
+  return isInitialized && mcpTools.length > 0;
 }
 
 export async function getMCPServerStatus() {
-  if (!mcpClient) {
-    return {
-      notion: { connected: false, toolCount: 0 },
-      google: { connected: false, toolCount: 0 },
-      atlassian: { connected: false, toolCount: 0 },
-    };
-  }
-
-  return await mcpClient.getServerStatus();
+  return {
+    notion: { connected: notionMcpTools.length > 0, toolCount: notionMcpTools.length },
+    github: { connected: githubMcpTools.length > 0, toolCount: githubMcpTools.length },
+    atlassian: { connected: jiraMcpTools.length > 0, toolCount: jiraMcpTools.length },
+  };
 }
 
 export async function getMCPHealthStatus() {
-  if (!mcpClient) {
-    return {
-      healthy: false,
-      servers: {},
-      totalTools: 0,
-      llmAvailable: false,
-    };
-  }
-
-  const health = await mcpClient.healthCheck();
   return {
-    ...health,
+    healthy: isInitialized && mcpTools.length > 0,
+    servers: await getMCPServerStatus(),
+    totalTools: mcpTools.length,
     llmAvailable: llm !== null,
   };
 }
@@ -173,42 +152,29 @@ export async function getMCPHealthStatus() {
 export async function reconnectMCP() {
   console.log("🔄 Reconnecting MCP servers...");
 
-  if (mcpClient) {
-    try {
-      await mcpClient.reconnect();
-      mcpTools = mcpClient.getTools();
-      const toolsByServer = mcpClient.getAllToolsByServer
-        ? mcpClient.getAllToolsByServer()
-        : {};
-
-      jiraMcpTools = toolsByServer.atlassian || [];
-      notionMcpTools = toolsByServer.notion || [];
-      githubMcpTools = toolsByServer.github || [];
-
-      console.log(
-        `✅ MCP reconnected with ${mcpTools.length} tools (Jira: ${jiraMcpTools.length}, GitHub: ${githubMcpTools.length}, Notion: ${notionMcpTools.length})`,
-      );
-    } catch (error) {
-      console.error("❌ MCP reconnection failed:", error);
-      throw error;
-    }
-  } else {
+  try {
+    await closeMCP();
     await initializeMCP();
+  } catch (error) {
+    console.error("❌ MCP reconnection failed:", error);
+    throw error;
   }
 }
 
 export async function closeMCP() {
-  if (mcpClient) {
-    try {
-      await mcpClient.close();
-      console.log("✅ MCP connections closed");
-    } catch (error) {
-      console.error("❌ Error closing MCP:", error);
-    }
+  const jiraModule = await import("./jira.js").catch(() => null);
+  const notionModule = await import("./notion.js").catch(() => null);
+  const githubModule = await import("./github.js").catch(() => null);
+
+  const closers = [];
+  if (jiraModule?.closeJiraMcp) closers.push(jiraModule.closeJiraMcp());
+  if (notionModule?.closeNotionMcp) closers.push(notionModule.closeNotionMcp());
+  if (githubModule?.closeGithubMcp) closers.push(githubModule.closeGithubMcp());
+  if (closers.length) {
+    await Promise.all(closers);
   }
 
   isInitialized = false;
-  mcpClient = null;
   mcpTools = [];
   jiraMcpTools = [];
   notionMcpTools = [];

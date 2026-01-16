@@ -1,6 +1,5 @@
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { getChatOllama } from "../llm/index.js";
-import { getNotionMCPTools, getMCPTools } from "../mcp/index.js";
 
 export async function createNotionAgent() {
   const llm = getChatOllama();
@@ -11,15 +10,20 @@ export async function createNotionAgent() {
     };
   }
 
-  const allTools = getMCPTools();
-  const notionTools = getNotionMCPTools();
+  let notionTools = [];
+  try {
+    const notionModule = await import("../mcp/notion.js");
+    notionTools = await notionModule.getNotionTools();
+  } catch (e) {
+    console.warn("⚠️ Notion MCP tools unavailable, continuing without Notion tools");
+    notionTools = [];
+  }
 
   return createReactAgent({
     llm,
-    tools: notionTools.length > 0 ? notionTools : allTools,
+    tools: notionTools,
     name: "notion_agent",
     prompt:
       "You are a Notion workspace expert. Manage pages, databases, tasks, and project documentation using Notion tools.",
   });
 }
-
