@@ -35,10 +35,11 @@ export async function initializeMCP() {
 
     const llmConfig = config.llm;
     const openaiProvider = llmConfig.providers.openai;
+    const openaiModelName = llmConfig.defaultModel || "gpt-4o-mini";
     if (openaiProvider.enabled && openaiProvider.apiKey) {
       try {
         llm = new ChatOpenAI({
-          modelName: "gpt-4o-mini",
+          modelName: openaiModelName,
           openAIApiKey: openaiProvider.apiKey,
           configuration: {
             baseURL: openaiProvider.baseUrl,
