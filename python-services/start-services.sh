@@ -108,11 +108,15 @@ fi
 
 echo -e "${GREEN}✅ uv found: $(uv --version)${NC}"
 
-# Setup and start BGE-M3 Embeddings Service
+# Setup and start BGE-M3 Embeddings Service (if directory exists)
 echo ""
 echo -e "${BLUE}📋 Setting up BGE-M3 Embeddings Service...${NC}"
-check_venv "$SCRIPT_DIR/embeddings"
-start_service "BGE-M3-Embeddings" "$SCRIPT_DIR/embeddings" 8001 "$SCRIPT_DIR/embeddings.log"
+if [ -d "$SCRIPT_DIR/embeddings" ]; then
+    check_venv "$SCRIPT_DIR/embeddings"
+    start_service "BGE-M3-Embeddings" "$SCRIPT_DIR/embeddings" 8001 "$SCRIPT_DIR/embeddings.log"
+else
+    echo -e "${YELLOW}⚠️  Embeddings service directory not found at $SCRIPT_DIR/embeddings, skipping embeddings service${NC}"
+fi
 
 # Setup and start BGE-Reranker Service
 echo ""
@@ -124,10 +128,14 @@ start_service "BGE-Reranker-v2-M3" "$SCRIPT_DIR/reranker" 8002 "$SCRIPT_DIR/rera
 echo ""
 echo -e "${BLUE}🏥 Performing health checks...${NC}"
 
-if wait_for_service "BGE-M3-Embeddings" 8001; then
-    echo -e "${GREEN}✅ BGE-M3 Embeddings Service is healthy${NC}"
+if [ -d "$SCRIPT_DIR/embeddings" ]; then
+    if wait_for_service "BGE-M3-Embeddings" 8001; then
+        echo -e "${GREEN}✅ BGE-M3 Embeddings Service is healthy${NC}"
+    else
+        echo -e "${RED}❌ BGE-M3 Embeddings Service failed to start${NC}"
+    fi
 else
-    echo -e "${RED}❌ BGE-M3 Embeddings Service failed to start${NC}"
+    echo -e "${YELLOW}⚠️  Skipping health check for BGE-M3 Embeddings (directory not found)${NC}"
 fi
 
 if wait_for_service "BGE-Reranker-v2-M3" 8002; then

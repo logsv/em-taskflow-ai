@@ -7,6 +7,7 @@ import { initializeMCP } from './mcp/index.js';
 import langGraphAgentService from './agent/index.js';
 import { initializeLLM } from './llm/index.js';
 import { initializeIngest } from './rag/index.js';
+import db from './db/index.js';
 
 dotenv.config();
 
@@ -28,7 +29,12 @@ async function startServer() {
     console.log('🔍 Validating configuration...');
     validateConfig();
 
-    console.log('⚠️  Database service disabled for testing');
+    try {
+      await db.initialize();
+      console.log('✅ Database service initialized at startup');
+    } catch (e) {
+      console.warn('⚠️ Database initialization failed:', e);
+    }
 
     try {
       const mcpConfig = getMcpConfig();

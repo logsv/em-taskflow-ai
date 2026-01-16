@@ -1,0 +1,79 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ./backend
+    container_name: em-taskflow-backend
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      HOST: 0.0.0.0
+      DATABASE_PATH: ./data/taskflow.db
+      CHROMA_HOST: chroma
+      CHROMA_PORT: 8000
+      RAG_ENABLED: "true"
+      LLM_DEFAULT_PROVIDER: ollama
+      LLM_DEFAULT_MODEL: llama3.2:latest
+      OLLAMA_BASE_URL: http://ollama:11434
+    depends_on:
+      - chroma
+      - ollama
+      - python-services
+    volumes:
+      - backend_data:/app/data
+    ports:
+      - "4000:4000"
+    networks:
+      - em-taskflow-net
+
+  frontend:
+    build: ./frontend
+    container_name: em-taskflow-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    networks:
+      - em-taskflow-net
+
+  chroma:
+    image: chromadb/chroma
+    container_name: em-taskflow-chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=TRUE
+    volumes:
+      - chroma_data:/data
+    ports:
+      - "8000:8000"
+    networks:
+      - em-taskflow-net
+
+  ollama:
+    image: ollama/ollama
+    container_name: em-taskflow-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - em-taskflow-net
+
+  python-services:
+    build: ./python-services
+    container_name: em-taskflow-python
+    ports:
+      - "8001:8001"
+      - "8002:8002"
+    networks:
+      - em-taskflow-net
+
+networks:
+  em-taskflow-net:
+    driver: bridge
+
+volumes:
+  backend_data:
+  chroma_data:
+  ollama_data:
+

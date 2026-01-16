@@ -97,6 +97,14 @@ fi
 
 # Step 4: Start Backend
 echo -e "${BLUE}🔧 Starting Backend server...${NC}"
+
+# Ensure no existing backend is running on port 4000
+if lsof -ti:4000 >/dev/null 2>&1; then
+    echo -e "${YELLOW}⚠️  Port 4000 already in use, stopping existing process...${NC}"
+    lsof -ti:4000 | xargs kill -9 2>/dev/null || true
+    sleep 2
+fi
+
 cd "$SCRIPT_DIR/backend"
 
 # Start backend with proper environment variables

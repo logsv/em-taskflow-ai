@@ -11,7 +11,8 @@ const __dirname = path.dirname(__filename);
 class DatabaseService {
   constructor() {
     this.db = null;
-    // Use configured database path, resolve relative paths from project root
+    this.initialized = false;
+    this.initializing = null;
     const configPath = getDatabaseConfig().path;
     this.dbPath = path.isAbsolute(configPath) 
       ? configPath 
@@ -20,8 +21,15 @@ class DatabaseService {
 
   // Initialize database connection and create tables
   async initialize() {
-    return new Promise((resolve, reject) => {
-      // Create data directory if it doesn't exist
+    if (this.initialized && this.db) {
+      return;
+    }
+
+    if (this.initializing) {
+      return this.initializing;
+    }
+
+    this.initializing = new Promise((resolve, reject) => {
       const dataDir = path.dirname(this.dbPath);
       if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
@@ -30,13 +38,35 @@ class DatabaseService {
       this.db = new (sqlite3.verbose().Database)(this.dbPath, (err) => {
         if (err) {
           console.error('Error opening database:', err);
+          this.db = null;
+          this.initialized = false;
+          this.initializing = null;
           reject(err);
           return;
         }
         console.log('Connected to SQLite database');
-        this.createTables().then(resolve).catch(reject);
+        this.createTables()
+          .then(() => {
+            this.initialized = true;
+            this.initializing = null;
+            resolve();
+          })
+          .catch((tableErr) => {
+            this.initialized = false;
+            this.initializing = null;
+            reject(tableErr);
+          });
       });
     });
+
+    return this.initializing;
+  }
+
+  async ensureInitialized() {
+    if (this.db && this.initialized) {
+      return;
+    }
+    await this.initialize();
   }
 
   // Create necessary tables
@@ -95,6 +125,7 @@ class DatabaseService {
 
   // Save chat interaction
   async saveChatHistory(userMessage, aiResponse, sessionId = null, metadata = null) {
+    await this.ensureInitialized();
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error('Database not initialized'));
@@ -125,6 +156,7 @@ class DatabaseService {
 
   // Get chat history
   async getChatHistory(limit = 50, sessionId = null) {
+    await this.ensureInitialized();
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error('Database not initialized'));
@@ -152,6 +184,7 @@ class DatabaseService {
 
   // Cache task data
   async cacheTaskData(source, taskId, data) {
+    await this.ensureInitialized();
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error('Database not initialized'));
@@ -177,6 +210,7 @@ class DatabaseService {
 
   // Get cached task data
   async getCachedTaskData(source, maxAge = 3600) {
+    await this.ensureInitialized();
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error('Database not initialized'));
@@ -206,6 +240,7 @@ class DatabaseService {
 
   // Save or update user preference
   async setUserPreference(key, value) {
+    await this.ensureInitialized();
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error('Database not initialized'));
@@ -231,6 +266,7 @@ class DatabaseService {
 
   // Get user preference
   async getUserPreference(key) {
+    await this.ensureInitialized();
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error('Database not initialized'));
@@ -253,6 +289,7 @@ class DatabaseService {
 
   // Get database statistics
   async getStats() {
+    await this.ensureInitialized();
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error('Database not initialized'));
@@ -292,6 +329,9 @@ class DatabaseService {
           console.log('Database connection closed');
         }
       });
+      this.db = null;
+      this.initialized = false;
+      this.initializing = null;
     }
   }
 }
