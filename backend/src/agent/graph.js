@@ -1,7 +1,7 @@
 import { DynamicTool } from "@langchain/core/tools";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { createSupervisor } from "@langchain/langgraph-supervisor";
-import { getChatOllama } from "../llm/index.js";
+import { getChatModel } from "../llm/index.js";
 import {
   isMCPReady,
   initializeMCP,
@@ -34,13 +34,7 @@ export async function initializeAgent() {
     const githubTools = getGithubMCPTools();
     const notionTools = getNotionMCPTools();
     agentTools = [...jiraTools, ...githubTools, ...notionTools];
-    const llm = getChatOllama();
-
-    if (typeof llm.bindTools !== "function") {
-      llm.bindTools = function (tools) {
-        return this.bind({ tools });
-      };
-    }
+    const llm = getChatModel();
 
     const jiraAgent = await createJiraAgent();
     const githubAgent = await createGithubAgent();

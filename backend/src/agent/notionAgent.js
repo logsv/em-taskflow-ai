@@ -1,14 +1,8 @@
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
-import { getChatOllama } from "../llm/index.js";
+import { getChatModel } from "../llm/index.js";
 
 export async function createNotionAgent() {
-  const llm = getChatOllama();
-
-  if (typeof llm.bindTools !== "function") {
-    llm.bindTools = function (tools) {
-      return this.bind({ tools });
-    };
-  }
+  const llm = getChatModel();
 
   let notionTools = [];
   try {

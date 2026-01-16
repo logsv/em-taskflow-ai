@@ -66,11 +66,18 @@ export async function initializeLLM() {
 /**
  * Get default chat model instance (singleton)
  */
-export function getChatOllama() {
+export function getChatModel() {
   if (!chatModel) {
     throw new Error('LLM not initialized. Call initializeLLM() first.');
   }
   return chatModel;
+}
+
+/**
+ * @deprecated Use getChatModel() instead
+ */
+export function getChatOllama() {
+  return getChatModel();
 }
 
 /**
