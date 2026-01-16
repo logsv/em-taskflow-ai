@@ -74,15 +74,6 @@ if [ -d "$SCRIPT_DIR/python-services" ]; then
     
     # Check if start script exists and run it
     if [ -x "./start-services.sh" ]; then
-        echo -e "${BLUE}   📥 Installing Python dependencies...${NC}"
-        # Install dependencies if needed
-        if [ -f "embeddings/requirements.txt" ]; then
-            cd embeddings && pip install -q -r requirements.txt && cd ..
-        fi
-        if [ -f "reranker/requirements.txt" ]; then
-            cd reranker && pip install -q -r requirements.txt && cd ..
-        fi
-        
         echo -e "${BLUE}   🚀 Starting BGE services...${NC}"
         ./start-services.sh > "$SCRIPT_DIR/python-services.log" 2>&1 &
         echo $! > "$SCRIPT_DIR/python-services.pid"
