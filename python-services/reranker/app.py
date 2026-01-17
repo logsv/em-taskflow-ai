@@ -1,21 +1,18 @@
-"""
-BGE-Reranker-v2-M3 Cross-Encoder Microservice
-Provides high-quality document reranking for RAG systems
-"""
-
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import numpy as np
 import uvicorn
-from sentence_transformers import CrossEncoder
+import torch
+import torch.nn.functional as F
+from transformers import AutoProcessor, AutoModelForImageTextToText
 import logging
 import time
 from contextlib import asynccontextmanager
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 class Document(BaseModel):
     content: str
@@ -40,161 +37,164 @@ class HealthResponse(BaseModel):
     model_loaded: bool
     model_name: str
 
-# Global model variable
-reranker = None
-MODEL_NAME = "BAAI/bge-reranker-v2-m3"
+MODEL_NAME = "Qwen/Qwen3-VL-Embedding-8B"
+MODEL_DEVICE = "cpu"
+processor = None
+model = None
+
+
+def encode_texts(texts: List[str], normalize: bool) -> np.ndarray:
+    global processor, model, MODEL_DEVICE
+    if processor is None or model is None:
+        raise RuntimeError("Model not loaded")
+    if not texts:
+        raise ValueError("No texts provided")
+    inputs = processor(text=texts, return_tensors="pt", padding=True, truncation=True)
+    device = MODEL_DEVICE
+    inputs = {k: v.to(device) for k, v in inputs.items()}
+    with torch.no_grad():
+        outputs = model(**inputs)
+    hidden = outputs.last_hidden_state
+    mask = inputs["attention_mask"].unsqueeze(-1)
+    summed = (hidden * mask).sum(dim=1)
+    counts = mask.sum(dim=1)
+    embeddings = summed / counts.clamp(min=1)
+    if normalize:
+        embeddings = F.normalize(embeddings, p=2, dim=1)
+    return embeddings.cpu().numpy()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load model on startup"""
-    global reranker
+    global processor, model, MODEL_DEVICE
     try:
-        logger.info(f"Loading BGE-Reranker-v2-M3 model: {MODEL_NAME}")
+        logger.info(f"Loading Qwen3-VL embedding model for reranker: {MODEL_NAME}")
         start_time = time.time()
-        
-        # Load BGE-Reranker-v2-M3 cross-encoder
-        reranker = CrossEncoder(MODEL_NAME, max_length=1024)
-        
+        MODEL_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        processor = AutoProcessor.from_pretrained(MODEL_NAME)
+        model = AutoModelForImageTextToText.from_pretrained(MODEL_NAME)
+        model.to(MODEL_DEVICE)
+        model.eval()
         load_time = time.time() - start_time
-        logger.info(f"✅ BGE-Reranker model loaded successfully in {load_time:.2f}s")
-        
+        logger.info(f"Model loaded in {load_time:.2f}s on {MODEL_DEVICE}")
         yield
     except Exception as e:
-        logger.error(f"❌ Failed to load BGE-Reranker model: {e}")
-        # Fallback to a smaller model if the main one fails
-        try:
-            logger.info("Attempting fallback to smaller reranker model...")
-            reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", max_length=512)
-            logger.info("✅ Fallback reranker model loaded")
-            yield
-        except Exception as fallback_error:
-            logger.error(f"❌ Fallback model also failed: {fallback_error}")
-            raise
+        logger.error(f"Failed to load Qwen3-VL embedding model for reranker: {e}")
+        raise
     finally:
         logger.info("Shutting down reranker service")
 
 app = FastAPI(
-    title="BGE-Reranker-v2-M3 Service",
-    description="High-quality cross-encoder reranking using BGE-Reranker-v2-M3",
+    title="Qwen3-VL Embedding Reranker Service",
+    description="Reranking using Qwen3-VL-Embedding-8B cosine similarity",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
+
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint"""
-    global reranker
-    
+    global model
+    loaded = model is not None
     return HealthResponse(
-        status="healthy" if reranker is not None else "initializing",
-        model_loaded=reranker is not None,
-        model_name=MODEL_NAME
+        status="healthy" if loaded else "initializing",
+        model_loaded=loaded,
+        model_name=MODEL_NAME,
     )
+
 
 @app.post("/rerank", response_model=RerankResponse)
 async def rerank_documents(request: RerankRequest):
-    """Rerank documents based on query relevance"""
-    global reranker
-    
-    if reranker is None:
+    global processor, model
+    if model is None or processor is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
-    
     if not request.documents:
         raise HTTPException(status_code=400, detail="No documents provided")
-    
     if len(request.documents) > 100:
         raise HTTPException(status_code=400, detail="Too many documents (max 100)")
-    
     try:
         start_time = time.time()
-        logger.info(f"🔄 Reranking {len(request.documents)} documents for query")
-        
-        # Prepare query-document pairs for the cross-encoder
-        pairs = []
+        logger.info(f"Reranking {len(request.documents)} documents for query")
+        contents = []
         for doc in request.documents:
-            # Truncate document content to avoid token limits
-            content = doc.content[:2000] if len(doc.content) > 2000 else doc.content
-            pairs.append([request.query, content])
-        
-        # Get relevance scores from cross-encoder
-        scores = reranker.predict(pairs)
-        
-        # Create scored documents
+            if doc.content:
+                if len(doc.content) > 2000:
+                    contents.append(doc.content[:2000])
+                else:
+                    contents.append(doc.content)
+            else:
+                contents.append("")
+        query_embeddings = encode_texts([request.query], True)
+        doc_embeddings = encode_texts(contents, True)
+        query_vec = query_embeddings[0]
+        scores = doc_embeddings @ query_vec
         scored_docs = []
         for i, doc in enumerate(request.documents):
+            score_value = float(scores[i])
             scored_doc = Document(
                 content=doc.content,
                 metadata=doc.metadata,
-                score=float(scores[i]) if request.return_scores else None
+                score=score_value if request.return_scores else None,
             )
-            scored_docs.append((scored_doc, scores[i]))
-        
-        # Sort by relevance score (descending)
+            scored_docs.append((scored_doc, score_value))
         scored_docs.sort(key=lambda x: x[1], reverse=True)
-        
-        # Return top-k documents
         top_k = min(request.top_k, len(scored_docs))
-        reranked = [doc for doc, score in scored_docs[:top_k]]
-        
+        reranked = [doc for doc, _ in scored_docs[:top_k]]
         processing_time = time.time() - start_time
-        logger.info(f"✅ Reranked documents in {processing_time:.3f}s, returning top {top_k}")
-        
+        logger.info(f"Reranked documents in {processing_time:.3f}s, returning top {top_k}")
         return RerankResponse(
             reranked_documents=reranked,
             model=MODEL_NAME,
             processing_time=processing_time,
             original_count=len(request.documents),
-            returned_count=len(reranked)
+            returned_count=len(reranked),
         )
-        
     except Exception as e:
-        logger.error(f"❌ Reranking failed: {e}")
+        logger.error(f"Reranking failed: {e}")
         raise HTTPException(status_code=500, detail=f"Reranking failed: {str(e)}")
+
 
 @app.post("/score")
 async def score_pairs(
     query: str,
     texts: List[str],
-    return_raw_scores: bool = False
+    return_raw_scores: bool = False,
 ):
-    """Score query-text pairs directly"""
-    global reranker
-    
-    if reranker is None:
+    global processor, model
+    if model is None or processor is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
-    
     if not texts:
         raise HTTPException(status_code=400, detail="No texts provided")
-    
     try:
-        pairs = [[query, text] for text in texts]
-        scores = reranker.predict(pairs)
-        
+        query_embeddings = encode_texts([query], True)
+        text_embeddings = encode_texts(texts, True)
+        query_vec = query_embeddings[0]
+        scores = text_embeddings @ query_vec
         if return_raw_scores:
             return {"scores": scores.tolist()}
-        else:
-            # Apply sigmoid to get probabilities
-            probabilities = 1 / (1 + np.exp(-scores))
-            return {"probabilities": probabilities.tolist()}
-            
+        probabilities = 1 / (1 + np.exp(-scores))
+        return {"probabilities": probabilities.tolist()}
     except Exception as e:
-        logger.error(f"❌ Scoring failed: {e}")
+        logger.error(f"Scoring failed: {e}")
         raise HTTPException(status_code=500, detail=f"Scoring failed: {str(e)}")
+
 
 @app.get("/")
 async def root():
-    """Root endpoint with service info"""
+    global model
+    status = "running" if model is not None else "initializing"
     return {
-        "service": "BGE-Reranker-v2-M3",
+        "service": "Qwen3-VL-Embedding-Reranker",
         "model": MODEL_NAME,
-        "status": "running" if reranker else "initializing",
+        "status": status,
         "endpoints": {
             "health": "/health",
             "rerank": "/rerank",
             "score": "/score",
-            "docs": "/docs"
-        }
+            "docs": "/docs",
+        },
     }
+
 
 if __name__ == "__main__":
     uvicorn.run(
@@ -202,5 +202,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8002,
         reload=False,
-        log_level="info"
+        log_level="info",
     )
