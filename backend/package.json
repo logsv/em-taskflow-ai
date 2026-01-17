@@ -54,6 +54,7 @@
     "@langchain/mcp-adapters": "0.6.0",
     "@notionhq/client": "2.2.13",
     "@notionhq/notion-mcp-server": "1.8.1",
+    "@chroma-core/default-embed": "0.1.9",
     "axios": "1.6.0",
     "bottleneck": "2.19.5",
     "chalk": "4.1.2",
