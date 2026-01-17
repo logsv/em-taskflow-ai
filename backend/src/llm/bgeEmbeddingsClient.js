@@ -1,26 +1,53 @@
-import axios from 'axios';
+import { pipeline } from '@huggingface/transformers';
+
+const EMBEDDINGS_MODEL_ID = 'Xenova/multilingual-e5-large';
+
+let embeddingsPipelinePromise = null;
+
+async function getEmbeddingsPipeline() {
+  if (!embeddingsPipelinePromise) {
+    embeddingsPipelinePromise = pipeline('feature-extraction', EMBEDDINGS_MODEL_ID, {
+      dtype: 'q4',
+    });
+  }
+  return embeddingsPipelinePromise;
+}
 
 /**
- * Client for BGE-M3 Embeddings microservice
- * Provides high-quality multilingual embeddings
+ * Client for Qwen3-VL Embeddings microservice
+ * Provides high-quality multilingual embeddings via Qwen3-VL-Embedding-8B
  */
 export class BgeEmbeddingsClient {
-  constructor(baseUrl = 'http://localhost:8001', timeout = 30000) {
+  constructor(baseUrl = 'local://transformers-js/embeddings', timeout = 30000) {
     this.baseUrl = baseUrl;
     this.timeout = timeout;
+    this.dimensions = null;
   }
 
   /**
-   * Check if the BGE-M3 service is healthy
+   * Check if the Qwen3-VL embeddings service is healthy
    */
   async healthCheck() {
     try {
-      const response = await axios.get(`${this.baseUrl}/health`, {
-        timeout: 5000,
-      });
-      return response.data;
+      const start = Date.now();
+      const pipe = await getEmbeddingsPipeline();
+      if (!this.dimensions) {
+        const output = await pipe('healthcheck', { pooling: 'mean', normalize: true });
+        const list = output.tolist();
+        if (Array.isArray(list) && list.length > 0 && Array.isArray(list[0])) {
+          this.dimensions = list[0].length;
+        }
+      }
+      const elapsed = (Date.now() - start) / 1000;
+      return {
+        status: 'healthy',
+        model_loaded: true,
+        model_name: EMBEDDINGS_MODEL_ID,
+        dimensions: this.dimensions,
+        processing_time: elapsed,
+      };
     } catch (error) {
-      throw new Error(`BGE embeddings service health check failed: ${error.message}`);
+      throw new Error(`Qwen3-VL embeddings service health check failed: ${error.message}`);
     }
   }
 
@@ -37,26 +64,24 @@ export class BgeEmbeddingsClient {
     }
 
     try {
-      const request = {
-        texts,
-        normalize,
-      };
-
-      const response = await axios.post(`${this.baseUrl}/embed`, request, {
-        timeout: this.timeout,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      return response.data;
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const status = error.response?.status;
-        const message = error.response?.data?.detail || error.message;
-        throw new Error(`BGE embeddings failed (${status}): ${message}`);
+      const start = Date.now();
+      const pipe = await getEmbeddingsPipeline();
+      const output = await pipe(texts, { pooling: 'mean', normalize });
+      const list = output.tolist();
+      if (!Array.isArray(list) || list.length === 0) {
+        throw new Error('No embeddings returned from transformers.js pipeline');
       }
-      throw new Error(`BGE embeddings request failed: ${error.message}`);
+      const dims = Array.isArray(list[0]) ? list[0].length : 0;
+      this.dimensions = dims || this.dimensions;
+      const elapsed = (Date.now() - start) / 1000;
+      return {
+        embeddings: list,
+        dimensions: this.dimensions,
+        model: EMBEDDINGS_MODEL_ID,
+        processing_time: elapsed,
+      };
+    } catch (error) {
+      throw new Error(`Qwen3-VL embeddings request failed: ${error.message}`);
     }
   }
 

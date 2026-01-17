@@ -47,6 +47,7 @@
   "dependencies": {
     "@cocal/google-calendar-mcp": "1.4.8",
     "@huggingface/inference": "4.0.5",
+    "@huggingface/transformers": "^3.0.0",
     "@langchain/community": "0.3.48",
     "@langchain/core": "0.3.70",
     "@langchain/langgraph": "0.2.55",

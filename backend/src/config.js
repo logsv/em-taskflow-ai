@@ -15,6 +15,8 @@ const envSchema = z.object({
   CHROMA_PORT: z.coerce.number().int().min(1).max(65535).default(8000),
   RAG_ENABLED: z.coerce.boolean().default(true),
   RAG_EMBEDDING_MODEL: z.string().default('nomic-embed-text'),
+  RAG_EMBEDDING_PROVIDER: z.string().default('qwen3-vl'),
+  RAG_RERANK_PROVIDER: z.string().default('qwen3-vl'),
   RAG_DEFAULT_COLLECTION: z.string().default('pdf_chunks'),
   RAG_MAX_CHUNK_SIZE: z.coerce.number().int().min(100).default(1000),
   LLM_DEFAULT_PROVIDER: z.string().default('ollama'),
@@ -98,6 +100,8 @@ const configSchema = z.object({
   rag: z.object({
     enabled: z.boolean(),
     embeddingModel: z.string(),
+    embeddingProvider: z.string(),
+    rerankProvider: z.string(),
     defaultCollection: z.string(),
     maxChunkSize: z.number().int().min(100),
   }),
@@ -240,6 +244,8 @@ function loadConfig() {
     rag: {
       enabled: env.RAG_ENABLED,
       embeddingModel: env.RAG_EMBEDDING_MODEL,
+      embeddingProvider: env.RAG_EMBEDDING_PROVIDER,
+      rerankProvider: env.RAG_RERANK_PROVIDER,
       defaultCollection: env.RAG_DEFAULT_COLLECTION,
       maxChunkSize: env.RAG_MAX_CHUNK_SIZE,
     },

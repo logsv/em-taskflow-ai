@@ -48,20 +48,31 @@ export async function initializeIngest() {
     });
 
     const collectionName = ragConfig.defaultCollection || 'pdf_chunks';
-    
+
     let embeddings;
-    
-    try {
-      const bgeAdapter = new BGEEmbeddingsAdapter();
-      const bgeAvailable = await bgeAdapter.isAvailable();
-      if (bgeAvailable) {
-        console.log('✅ Using BGE-M3 embeddings for ingestion');
-        embeddings = bgeAdapter;
-      } else {
-        throw new Error('BGE not available');
+    const provider = (ragConfig.embeddingProvider || 'qwen3-vl').toLowerCase();
+
+    if (provider === 'qwen3-vl' || provider === 'bge-m3' || provider === 'microservice' || provider === 'auto') {
+      try {
+        const bgeAdapter = new BGEEmbeddingsAdapter();
+        const bgeAvailable = await bgeAdapter.isAvailable();
+        if (bgeAvailable) {
+          console.log('✅ Using Qwen3-VL embeddings microservice for ingestion');
+          embeddings = bgeAdapter;
+        } else {
+          throw new Error('Embeddings microservice not available');
+        }
+      } catch (error) {
+        console.warn('⚠️ Embeddings microservice not available, using deterministic fallback embeddings');
       }
-    } catch (error) {
-      console.warn('⚠️ BGE-M3 not available, using deterministic fallback embeddings');
+    }
+
+    if (!embeddings) {
+      if (provider === 'nomic') {
+        console.warn('⚠️ RAG embedding provider "nomic" selected but Ollama embeddings are not configured; using deterministic fallback embeddings');
+      } else if (provider !== 'qwen3-vl' && provider !== 'bge-m3' && provider !== 'microservice' && provider !== 'auto') {
+        console.warn(`⚠️ Unknown RAG embedding provider "${ragConfig.embeddingProvider}", using deterministic fallback embeddings`);
+      }
       embeddings = {
         embedQuery: async (text) => {
           const dim = 768;

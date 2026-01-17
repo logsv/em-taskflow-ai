@@ -10,17 +10,17 @@ EM-Taskflow now features a state-of-the-art **Agentic RAG** system that combines
 - **Structure Preservation**: Respects sentence boundaries and document structure
 - **Enhanced Metadata**: Automatic chunk type classification (content, summary, introduction, structured)
 
-### 2. **BGE-M3 Embeddings** ✅
-- **Production-Ready**: Python microservice using `BAAI/bge-m3` model
-- **Multilingual Support**: Handles 100+ languages with superior semantic understanding
-- **Fallback**: Graceful fallback to Ollama `nomic-embed-text` when microservice unavailable
+### 2. **Transformers.js Embeddings** ✅
+- **Production-Ready**: Node.js embeddings using `Xenova/multilingual-e5-large`
+- **Multilingual Support**: Handles many languages with strong semantic understanding
+- **Fallback**: Graceful fallback to Ollama `nomic-embed-text` when unavailable
 - **Batch Processing**: Efficient handling of large document collections
 
-### 3. **BGE-Reranker-v2-M3 Cross-Encoder** ✅
-- **High-Quality Reranking**: Cross-encoder model for precise relevance scoring
-- **Production Microservice**: FastAPI service on port 8002
+### 3. **Transformers.js Embedding Reranker** ✅
+- **High-Quality Reranking**: Embedding-based cosine similarity for precise relevance scoring
+- **In-Process Service**: Runs inside the Node.js backend
 - **Smart Batching**: Handles large document sets with automatic batching
-- **Fallback**: Lexical similarity reranking when microservice unavailable
+- **Fallback**: Lexical similarity reranking when unavailable
 
 ### 4. **Contextual Compression** ✅
 - **Intelligent Filtering**: Removes irrelevant content while preserving key information
@@ -53,28 +53,14 @@ graph TD
     G --> H[Contextual Compression]
     H --> I[LLM Answer Generation]
     
-    J[BGE-M3 Service] --> D
-    K[BGE-Reranker Service] --> F
+    J[Transformers.js Embeddings] --> D
+    K[Transformers.js Reranker] --> F
     L[ChromaDB HNSW] --> D
 ```
 
 ## 🚀 Quick Start
 
-### 1. Start Python Microservices
-
-```bash
-# Start BGE-M3 Embeddings and BGE-Reranker services
-cd python-services
-./start-services.sh
-```
-
-This will:
-- Create Python virtual environments
-- Install BGE-M3 and BGE-Reranker-v2-M3 models
-- Start services on ports 8001 (embeddings) and 8002 (reranker)
-- Perform health checks
-
-### 2. Upload Documents
+### 1. Upload Documents
 
 ```bash
 # Upload PDF with enhanced processing
@@ -82,7 +68,7 @@ curl -X POST http://localhost:4000/api/agentic-rag/upload-pdf \
   -F "pdf=@document.pdf"
 ```
 
-### 3. Query with Agentic RAG
+### 2. Query with Agentic RAG
 
 ```bash
 # Full agentic pipeline
@@ -108,18 +94,16 @@ curl -X POST http://localhost:4000/api/agentic-rag/query \
 - `POST /api/agentic-rag/query` - Full agentic RAG pipeline
 - `POST /api/agentic-rag/search` - Document search without answer generation
 
-### Microservice Management
+### Embeddings and Reranker Management
 
-- `GET /api/agentic-rag/microservices` - BGE services status
-- `POST /api/agentic-rag/test-embeddings` - Test BGE-M3 directly
-- `POST /api/agentic-rag/test-reranker` - Test BGE-Reranker directly
+- `GET /api/agentic-rag/microservices` - Embeddings and reranker status
+- `POST /api/agentic-rag/test-embeddings` - Test transformers.js embeddings directly
+- `POST /api/agentic-rag/test-reranker` - Test transformers.js reranker directly
 
 ## ⚙️ Configuration
 
 ### Service Ports
 
-- **BGE-M3 Embeddings**: `http://localhost:8001`
-- **BGE-Reranker-v2-M3**: `http://localhost:8002`
 - **ChromaDB**: `http://localhost:8000`
 - **Backend API**: `http://localhost:4000`
 

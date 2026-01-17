@@ -1,12 +1,13 @@
 /**
  * RAG Retriever module - Advanced retrieval with reranking and compression
- * Implements agentic retrieval patterns with BGE reranking and contextual compression
+ * Implements agentic retrieval patterns with Qwen3-VL reranking and contextual compression
  */
 
 import { Document } from 'langchain/document';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { getVectorStore } from './ingest.js';
 import { getChatModel, getBgeReranker } from '../llm/index.js';
+import { getRagConfig } from '../config.js';
 
 // Retrieval configuration
 const MAX_RETRIEVAL_K = 30; // Initial retrieval
@@ -47,7 +48,7 @@ export async function agenticRetrieve(query, options = {}) {
     const uniqueDocs = deduplicateDocuments(allDocuments);
     console.log(`📋 Retrieved ${uniqueDocs.length} unique documents from ${allDocuments.length} total`);
 
-    // Step 3: Reranking with BGE cross-encoder
+    // Step 3: Reranking with Qwen3-VL reranker
     let rankedDocs = uniqueDocs;
     if (enableReranking) {
       rankedDocs = await rerankDocuments(query, uniqueDocs, topK);
@@ -151,7 +152,7 @@ async function baseRetrieve(query, k) {
       });
       return await retriever.getRelevantDocuments(query);
     }
-  } catch (error) {
+    } catch (error) {
     console.error('❌ Base retrieval failed:', error);
     return [];
   }
@@ -190,33 +191,36 @@ Return only the alternative questions, one per line, without numbering or bullet
 }
 
 /**
- * Rerank documents using BGE reranker or fallback
+ * Rerank documents using Qwen3-VL reranker or fallback
  */
 async function rerankDocuments(query, documents, topK) {
+  const ragConfig = getRagConfig();
+  const provider = (ragConfig.rerankProvider || 'qwen3-vl').toLowerCase();
+
+  if (provider === 'lexical') {
+    return lexicalRerank(query, documents, topK);
+  }
+
   const bgeReranker = getBgeReranker();
-  
+
   try {
-    // Try BGE reranker first
     const rerankerAvailable = await bgeReranker.isAvailable();
     if (rerankerAvailable) {
       const rerankerDocs = documents.map(doc => ({
         content: doc.pageContent,
         metadata: doc.metadata,
       }));
-      
+
       const result = await bgeReranker.rerank(query, rerankerDocs, topK, true);
-      
+
       return result.reranked_documents.map(rankedDoc => new Document({
         pageContent: rankedDoc.content,
         metadata: rankedDoc.metadata || {},
       }));
-    } else {
-      throw new Error('BGE reranker not available');
     }
+    throw new Error('Reranker not available');
   } catch (error) {
-    console.warn('⚠️ BGE reranker failed, using lexical fallback:', error);
-    
-    // Fallback to lexical similarity reranking
+    console.warn('⚠️ Qwen3-VL reranker failed or unavailable, using lexical fallback:', error);
     return lexicalRerank(query, documents, topK);
   }
 }

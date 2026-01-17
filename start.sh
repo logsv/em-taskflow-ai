@@ -64,38 +64,7 @@ else
 fi
 cd "$SCRIPT_DIR"
 
-# Step 3: Start Python BGE Services (optional for RAG)
-echo -e "${BLUE}🐍 Starting Python BGE services...${NC}"
-if [ -d "$SCRIPT_DIR/python-services" ]; then
-    cd "$SCRIPT_DIR/python-services"
-    
-    # Stop any existing Python services
-    pkill -f "python.*app.py" 2>/dev/null && echo -e "${YELLOW}⚠️  Stopped existing Python services${NC}" || true
-    
-    # Check if start script exists and run it
-    if [ -x "./start-services.sh" ]; then
-        echo -e "${BLUE}   🚀 Starting BGE services...${NC}"
-        ./start-services.sh > "$SCRIPT_DIR/python-services.log" 2>&1 &
-        echo $! > "$SCRIPT_DIR/python-services.pid"
-        
-        # Wait a moment for services to start
-        sleep 3
-        
-        # Check if services are running
-        if curl -s http://localhost:8001/health >/dev/null 2>&1 && curl -s http://localhost:8002/health >/dev/null 2>&1; then
-            echo -e "${GREEN}✅ Python BGE services started successfully${NC}"
-        else
-            echo -e "${YELLOW}⚠️  Python BGE services started but may need more time to initialize${NC}"
-        fi
-    else
-        echo -e "${YELLOW}⚠️  Python BGE services script not found (optional)${NC}"
-    fi
-    cd "$SCRIPT_DIR"
-else
-    echo -e "${YELLOW}⚠️  Python services directory not found (optional)${NC}"
-fi
-
-# Step 4: Start Backend
+# Step 3: Start Backend
 echo -e "${BLUE}🔧 Starting Backend server...${NC}"
 
 # Ensure no existing backend is running on port 4000
@@ -142,15 +111,12 @@ echo -e "${BLUE}📊 Service Status:${NC}"
 echo "   🦙 Ollama:   http://localhost:11434/api/tags"
 echo "   🔧 Backend:  http://127.0.0.1:4000/api/health"
 echo "   ⚛️  Frontend: http://localhost:3000"
-echo "   🐍 Python:   http://localhost:8001/health (BGE Embeddings)"
-echo "   🔄 Python:   http://localhost:8002/health (BGE Reranker)"
 echo ""
 echo -e "${BLUE}📋 Management:${NC}"
 echo "   🛑 Stop all: ./stop.sh"
 echo "   📄 Backend logs: tail -f backend.log"
 echo "   📄 Frontend logs: tail -f frontend.log"
 echo "   📄 Ollama logs: tail -f ollama.log"
-echo "   📄 Python logs: tail -f python-services.log"
 echo ""
 echo -e "${GREEN}💡 All services are now running with Llama 3.2!${NC}"
 echo ""

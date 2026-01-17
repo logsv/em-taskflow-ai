@@ -56,7 +56,7 @@ router.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
           "Token-aware recursive chunking",
           "Enhanced metadata preservation",
           "Optimized ChromaDB storage with HNSW",
-          "BGE-M3 embeddings (if available)",
+          "Qwen3-VL embeddings microservice (if available)",
           "Ready for agentic retrieval",
         ],
       });
@@ -118,7 +118,7 @@ router.post("/query", async (req, res) => {
         enableQueryRewriting ? "Multi-query expansion" : null,
         "Token-aware chunking",
         "ChromaDB vector search with HNSW",
-        result.reranked ? "BGE cross-encoder reranking" : "Lexical reranking",
+        result.reranked ? "Qwen3-VL embedding-based reranking" : "Lexical reranking",
         result.compressionApplied ? "Contextual compression" : null,
         "LLM answer generation",
       ].filter(Boolean),
@@ -152,13 +152,13 @@ router.post("/search", async (req, res) => {
       results: result,
       message: "Enhanced document search completed",
       query,
-      features_used: [
-        "Token-aware chunking",
-        "Multi-query expansion",
-        "BGE-M3 embeddings (if available)",
-        "ChromaDB vector search",
-        "Cross-encoder reranking (if available)",
-      ],
+        features_used: [
+          "Token-aware chunking",
+          "Multi-query expansion",
+          "Qwen3-VL embeddings microservice (if available)",
+          "ChromaDB vector search",
+          "Embedding-based reranking (if available)",
+        ],
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
@@ -186,12 +186,12 @@ router.get("/status", async (req, res) => {
         embeddings: bgeEmbeddingsInfo,
         reranker: bgeRerankerInfo,
       },
-      message: "Enhanced agentic RAG service status",
+      message: "Enhanced agentic RAG service status (local transformers.js embeddings and reranker)",
       capabilities: [
         "Token-aware recursive chunking with overlaps",
         "Multi-query expansion and rewriting",
-        "BGE-M3 embeddings (if microservice available)",
-        "BGE-Reranker-v2-M3 cross-encoder reranking (if microservice available)",
+        "Qwen3-VL embeddings via transformers.js (if available)",
+        "Qwen3-VL embedding-based reranking via transformers.js (if available)",
         "Contextual compression with LLM",
         "ChromaDB vector store with HNSW optimization",
         "LangGraph agentic orchestration",
@@ -242,20 +242,15 @@ router.get("/microservices", async (req, res) => {
     res.json({
       embeddings: {
         ...embeddingsStatus,
-        url: "http://localhost:8001",
-        description: "BGE-M3 multilingual embeddings",
+        url: "local://transformers-js/embeddings",
+        description: "Qwen3-VL multilingual embeddings (via transformers.js)",
       },
       reranker: {
         ...rerankerStatus,
-        url: "http://localhost:8002",
-        description: "BGE-Reranker-v2-M3 cross-encoder",
+        url: "local://transformers-js/reranker",
+        description: "Qwen3-VL embedding-based reranker (via transformers.js)",
       },
-      message: "BGE microservices status",
-      setup_commands: [
-        "cd python-services && ./start-services.sh",
-        "Or manually: cd python-services/embeddings && python app.py",
-        "And: cd python-services/reranker && python app.py",
-      ],
+      message: "Qwen3-VL local transformers.js status",
     });
   } catch (error) {
     console.error("❌ Microservices status error:", error);
@@ -275,7 +270,7 @@ router.post("/test-embeddings", async (req, res) => {
       return res.status(400).json({ error: "Maximum 10 texts for testing" });
     }
 
-    console.log("🧪 Testing BGE-M3 embeddings with", texts.length, "texts");
+    console.log("🧪 Testing Qwen3-VL embeddings (transformers.js) with", texts.length, "texts");
 
     const bgeEmbeddings = getBgeEmbeddings();
     const result = await withTimeout(
@@ -286,12 +281,12 @@ router.post("/test-embeddings", async (req, res) => {
 
     res.json({
       result,
-      message: "BGE-M3 embeddings test completed",
+      message: "Qwen3-VL embeddings transformers.js test completed",
       test_info: {
         input_texts: texts.length,
         embedding_dimensions: result.dimensions || "unknown",
         processing_time: result.processing_time || "unknown",
-        model: result.model || "bge-m3",
+        model: result.model || "Xenova/multilingual-e5-large",
       },
     });
   } catch (error) {
@@ -316,7 +311,7 @@ router.post("/test-reranker", async (req, res) => {
       return res.status(400).json({ error: "Maximum 20 documents for testing" });
     }
 
-    console.log("🧪 Testing BGE-Reranker with query and", documents.length, "documents");
+    console.log("🧪 Testing Qwen3-VL reranker (transformers.js) with query and", documents.length, "documents");
 
     const rerankDocs = documents.map((doc) => ({
       content: typeof doc === "string" ? doc : doc.content || String(doc),
@@ -332,13 +327,13 @@ router.post("/test-reranker", async (req, res) => {
 
     res.json({
       result,
-      message: "BGE-Reranker-v2-M3 test completed",
+      message: "Qwen3-VL reranker transformers.js test completed",
       test_info: {
         query,
         input_documents: documents.length,
         returned_documents: result.returned_count || top_k,
         processing_time: result.processing_time || "unknown",
-        model: result.model || "bge-reranker-v2-m3",
+        model: result.model || "Xenova/multilingual-e5-large",
       },
     });
   } catch (error) {
@@ -348,4 +343,3 @@ router.post("/test-reranker", async (req, res) => {
 });
 
 export default router;
-

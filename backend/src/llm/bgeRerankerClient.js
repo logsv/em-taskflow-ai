@@ -1,26 +1,44 @@
-import axios from 'axios';
+import { pipeline, cos_sim } from '@huggingface/transformers';
+
+const RERANKER_MODEL_ID = 'Xenova/multilingual-e5-large';
+
+let rerankerPipelinePromise = null;
+
+async function getRerankerPipeline() {
+  if (!rerankerPipelinePromise) {
+    rerankerPipelinePromise = pipeline('feature-extraction', RERANKER_MODEL_ID, {
+      dtype: 'q4',
+    });
+  }
+  return rerankerPipelinePromise;
+}
 
 /**
- * Client for BGE-Reranker-v2-M3 microservice
- * Provides high-quality cross-encoder document reranking
+ * Client for Qwen3-VL Embedding Reranker microservice
+ * Provides high-quality embedding-based document reranking
  */
 export class BgeRerankerClient {
-  constructor(baseUrl = 'http://localhost:8002', timeout = 60000) {
+  constructor(baseUrl = 'local://transformers-js/reranker', timeout = 60000) {
     this.baseUrl = baseUrl;
     this.timeout = timeout;
   }
 
   /**
-   * Check if the BGE-Reranker service is healthy
+   * Check if the Qwen3-VL reranker service is healthy
    */
   async healthCheck() {
     try {
-      const response = await axios.get(`${this.baseUrl}/health`, {
-        timeout: 5000,
-      });
-      return response.data;
+      const start = Date.now();
+      await getRerankerPipeline();
+      const elapsed = (Date.now() - start) / 1000;
+      return {
+        status: 'healthy',
+        model_loaded: true,
+        model_name: RERANKER_MODEL_ID,
+        processing_time: elapsed,
+      };
     } catch (error) {
-      throw new Error(`BGE reranker service health check failed: ${error.message}`);
+      throw new Error(`Qwen3-VL reranker service health check failed: ${error.message}`);
     }
   }
 
@@ -41,28 +59,53 @@ export class BgeRerankerClient {
     }
 
     try {
-      const request = {
-        query: query.trim(),
-        documents,
-        top_k: topK,
-        return_scores: returnScores,
-      };
-
-      const response = await axios.post(`${this.baseUrl}/rerank`, request, {
-        timeout: this.timeout,
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      const start = Date.now();
+      const pipe = await getRerankerPipeline();
+      const contents = documents.map((doc) => {
+        if (typeof doc === 'string') {
+          return doc;
+        }
+        if (doc && typeof doc.content === 'string') {
+          return doc.content;
+        }
+        return String(doc ?? '');
       });
-
-      return response.data;
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const status = error.response?.status;
-        const message = error.response?.data?.detail || error.message;
-        throw new Error(`BGE reranking failed (${status}): ${message}`);
+      const docsOutput = await pipe(contents, { pooling: 'mean', normalize: true });
+      const docsList = docsOutput.tolist();
+      if (!Array.isArray(docsList) || docsList.length === 0) {
+        throw new Error('No document embeddings returned from transformers.js pipeline');
       }
-      throw new Error(`BGE reranking request failed: ${error.message}`);
+      const queryOutput = await pipe(query.trim(), { pooling: 'mean', normalize: true });
+      const queryVector = queryOutput.data;
+      const scored = docsList.map((embedding, index) => {
+        const score = cos_sim(queryVector, embedding);
+        const original = documents[index];
+        const content = typeof original === 'string' ? original : original?.content ?? String(original ?? '');
+        const metadata = typeof original === 'object' && original !== null && original.metadata ? original.metadata : {};
+        return {
+          content,
+          metadata,
+          score,
+          index,
+        };
+      });
+      scored.sort((a, b) => b.score - a.score);
+      const limitedTopK = Math.min(topK, scored.length);
+      const rerankedDocuments = scored.slice(0, limitedTopK).map((item) => ({
+        content: item.content,
+        metadata: item.metadata,
+        score: returnScores ? item.score : undefined,
+      }));
+      const elapsed = (Date.now() - start) / 1000;
+      return {
+        reranked_documents: rerankedDocuments,
+        model: RERANKER_MODEL_ID,
+        processing_time: elapsed,
+        original_count: documents.length,
+        returned_count: rerankedDocuments.length,
+      };
+    } catch (error) {
+      throw new Error(`Qwen3-VL reranking request failed: ${error.message}`);
     }
   }
 
@@ -79,30 +122,22 @@ export class BgeRerankerClient {
     }
 
     try {
-      const response = await axios.post(`${this.baseUrl}/score`, null, {
-        params: {
-          query: query.trim(),
-          return_raw_scores: returnRawScores,
-        },
-        data: {
-          query: query.trim(),
-          texts,
-          return_raw_scores: returnRawScores,
-        },
-        timeout: this.timeout,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      return response.data;
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const status = error.response?.status;
-        const message = error.response?.data?.detail || error.message;
-        throw new Error(`BGE scoring failed (${status}): ${message}`);
+      const pipe = await getRerankerPipeline();
+      const queryOutput = await pipe(query.trim(), { pooling: 'mean', normalize: true });
+      const queryVector = queryOutput.data;
+      const textsOutput = await pipe(texts, { pooling: 'mean', normalize: true });
+      const textsList = textsOutput.tolist();
+      if (!Array.isArray(textsList) || textsList.length === 0) {
+        throw new Error('No text embeddings returned from transformers.js pipeline');
       }
-      throw new Error(`BGE scoring request failed: ${error.message}`);
+      const scores = textsList.map((embedding) => cos_sim(queryVector, embedding));
+      if (returnRawScores) {
+        return { scores };
+      }
+      const probabilities = scores.map((s) => 1 / (1 + Math.exp(-s)));
+      return { probabilities };
+    } catch (error) {
+      throw new Error(`Qwen3-VL scoring request failed: ${error.message}`);
     }
   }
 

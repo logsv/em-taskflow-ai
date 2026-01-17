@@ -18,7 +18,6 @@ services:
     depends_on:
       - chroma
       - ollama
-      - python-services
     volumes:
       - backend_data:/app/data
     ports:
@@ -59,14 +58,6 @@ services:
     networks:
       - em-taskflow-net
 
-  python-services:
-    build: ./python-services
-    container_name: em-taskflow-python
-    ports:
-      - "8001:8001"
-      - "8002:8002"
-    networks:
-      - em-taskflow-net
 
 networks:
   em-taskflow-net:
@@ -76,4 +67,3 @@ volumes:
   backend_data:
   chroma_data:
   ollama_data:
-

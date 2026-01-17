@@ -79,14 +79,14 @@ export function getChatModel() {
 
 
 /**
- * Get BGE embeddings client (external service)
+ * Get Qwen3-VL embeddings client (external service)
  */
 export function getBgeEmbeddings() {
   return bgeEmbeddingsClient;
 }
 
 /**
- * Get BGE reranker client (external service)  
+ * Get Qwen3-VL reranker client (external service)  
  */
 export function getBgeReranker() {
   return bgeRerankerClient;
@@ -110,17 +110,14 @@ export async function getLLMStatus() {
     bgeReranker: false,
   };
 
-  // Check BGE services availability
   try {
     status.bgeEmbeddings = await bgeEmbeddingsClient.isAvailable();
   } catch (error) {
-    // BGE embeddings not available
   }
 
   try {
     status.bgeReranker = await bgeRerankerClient.isAvailable();
   } catch (error) {
-    // BGE reranker not available
   }
 
   return status;
@@ -145,5 +142,5 @@ export async function ensureLLMReady() {
   }
 }
 
-// Re-export BGE adapter
+// Re-export Qwen3-VL embeddings adapter
 export { BGEEmbeddingsAdapter } from './bgeEmbeddingsAdapter.js';

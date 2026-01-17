@@ -1,13 +1,13 @@
 /**
- * BGE Embeddings Adapter for LangChain
- * Adapts BGE Python service to LangChain Embeddings interface
+ * Qwen3-VL Embeddings Adapter for LangChain
+ * Adapts Qwen3-VL Python service to LangChain Embeddings interface
  */
 
 import { Embeddings } from '@langchain/core/embeddings';
 import { getBgeEmbeddings } from './index.js';
 
 /**
- * LangChain embeddings adapter for BGE-M3 Python service
+ * LangChain embeddings adapter for Qwen3-VL embeddings microservice
  */
 export class BGEEmbeddingsAdapter extends Embeddings {
   constructor() {
@@ -16,17 +16,17 @@ export class BGEEmbeddingsAdapter extends Embeddings {
   }
 
   /**
-   * Embed documents using BGE-M3 service
+   * Embed documents using Qwen3-VL embeddings service
    */
   async embedDocuments(texts) {
     try {
-      // Check if BGE service is available
+      // Check if Qwen3-VL embeddings service is available
       const isAvailable = await this.bgeClient.isAvailable();
       if (!isAvailable) {
-        throw new Error('BGE embeddings service not available');
+        throw new Error('Qwen3-VL embeddings service not available');
       }
 
-      // Use BGE service to embed documents
+      // Use Qwen3-VL service to embed documents
       const result = await this.bgeClient.embed(texts, true); // normalize=true
       
       // Extract embeddings from result
@@ -34,29 +34,29 @@ export class BGEEmbeddingsAdapter extends Embeddings {
         return result.embeddings;
       }
 
-      throw new Error('Invalid response format from BGE embeddings service');
+      throw new Error('Invalid response format from Qwen3-VL embeddings service');
 
     } catch (error) {
-      console.error('❌ BGE embeddings failed:', error);
+      console.error('❌ Qwen3-VL embeddings failed:', error);
       throw error;
     }
   }
 
   /**
-   * Embed query using BGE-M3 service
+   * Embed query using Qwen3-VL embeddings service
    */
   async embedQuery(text) {
     try {
       const embeddings = await this.embedDocuments([text]);
       return embeddings[0];
     } catch (error) {
-      console.error('❌ BGE query embedding failed:', error);
+      console.error('❌ Qwen3-VL query embedding failed:', error);
       throw error;
     }
   }
 
   /**
-   * Check if BGE service is available
+   * Check if Qwen3-VL embeddings service is available
    */
   async isAvailable() {
     try {

@@ -58,22 +58,6 @@ else
     echo -e "${YELLOW}⚠️  Frontend PID file not found${NC}"
 fi
 
-# Stop Python BGE Services
-echo -e "${BLUE}🐍 Stopping Python BGE services...${NC}"
-if [ -f "$SCRIPT_DIR/python-services.pid" ]; then
-    PYTHON_PID=$(cat "$SCRIPT_DIR/python-services.pid")
-    if kill -0 $PYTHON_PID 2>/dev/null; then
-        kill $PYTHON_PID
-        echo -e "${GREEN}✅ Python BGE services stopped (PID: $PYTHON_PID)${NC}"
-    else
-        echo -e "${YELLOW}⚠️  Python BGE services were not running${NC}"
-    fi
-    rm -f "$SCRIPT_DIR/python-services.pid"
-else
-    # Try to stop any running Python services
-    pkill -f "python.*app.py" 2>/dev/null && echo -e "${GREEN}✅ Python BGE services stopped${NC}" || echo -e "${YELLOW}⚠️  No Python BGE services found${NC}"
-fi
-
 echo ""
 echo -e "${GREEN}🎉 All services stopped!${NC}"
 echo ""
@@ -81,7 +65,6 @@ echo -e "${BLUE}📋 Clean up completed:${NC}"
 echo "   🦙 Ollama:   Stopped"
 echo "   🔧 Backend:  Stopped"
 echo "   ⚛️  Frontend: Stopped"
-echo "   🐍 Python:   Stopped"
 echo ""
 echo -e "${GREEN}💡 All EM TaskFlow services have been stopped${NC}"
 echo ""

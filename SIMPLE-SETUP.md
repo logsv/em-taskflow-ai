@@ -46,7 +46,6 @@ export LLM_DEFAULT_MODEL="llama3.2:latest"
 
 - **Backend**: `tail -f backend.log`
 - **Frontend**: `tail -f frontend.log`
-- **Python**: Check terminal where start.sh was run
 
 ### Features Enabled
 
@@ -54,15 +53,14 @@ export LLM_DEFAULT_MODEL="llama3.2:latest"
 - ✅ **Jira/Confluence** (25 tools) 
 - ✅ **RAG with ChromaDB** (document search)
 - ✅ **Llama 3.2** (fast LLM responses)
-- ✅ **Python BGE** (embeddings & reranking)
+- ✅ **Transformers.js embeddings and reranking** (Node-only, no Python required)
 - ✅ **Agent System** (44 total tools)
 
 ### Troubleshooting
 
 1. **Ollama not running**: `ollama serve`
-2. **Port conflicts**: Check if ports 3000/4000/8001/8002 are free
+2. **Port conflicts**: Check if ports 3000/4000 are free
 3. **Build fails**: `cd backend && npm install && npm run build`
-4. **Python services fail**: `cd python-services && pip install -r embeddings/requirements.txt`
 
 ### System Design Overview
 
