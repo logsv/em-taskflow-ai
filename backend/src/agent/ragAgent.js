@@ -2,6 +2,7 @@ import { DynamicTool } from "@langchain/core/tools";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { getChatModel } from "../llm/index.js";
 import ragService from "../rag/index.js";
+import { ragAgentPromptTemplate } from "./prompts.js";
 
 export async function createRagAgent() {
   const llm = getChatModel();
@@ -17,12 +18,14 @@ export async function createRagAgent() {
     },
   });
 
+  const promptValue = await ragAgentPromptTemplate.invoke({});
+  const systemMessage = promptValue.toChatMessages()[0];
+
   return createReactAgent({
     llm,
     tools: [ragTool],
     name: "rag_agent",
-    prompt:
-      "You are a retrieval specialist for the local document knowledge base. Use your RAG tool to convert questions into focused database queries, retrieve the most relevant chunks, and summarize them clearly with citations.",
+    prompt: systemMessage,
   });
 }
 

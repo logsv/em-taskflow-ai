@@ -1,5 +1,6 @@
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { getChatModel } from "../llm/index.js";
+import { notionAgentPromptTemplate } from "./prompts.js";
 
 export async function createNotionAgent() {
   const llm = getChatModel();
@@ -12,11 +13,13 @@ export async function createNotionAgent() {
     notionTools = [];
   }
 
+  const promptValue = await notionAgentPromptTemplate.invoke({});
+  const systemMessage = promptValue.toChatMessages()[0];
+
   return createReactAgent({
     llm,
     tools: notionTools,
     name: "notion_agent",
-    prompt:
-      "You are a Notion workspace expert. Manage pages, databases, tasks, and project documentation using Notion tools.",
+    prompt: systemMessage,
   });
 }

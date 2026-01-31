@@ -1,5 +1,6 @@
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { getChatModel } from "../llm/index.js";
+import { githubAgentPromptTemplate } from "./prompts.js";
 
 export async function createGithubAgent() {
   const llm = getChatModel();
@@ -12,11 +13,13 @@ export async function createGithubAgent() {
     githubTools = [];
   }
 
+  const promptValue = await githubAgentPromptTemplate.invoke({});
+  const systemMessage = promptValue.toChatMessages()[0];
+
   return createReactAgent({
     llm,
     tools: githubTools,
     name: "github_agent",
-    prompt:
-      "You are a GitHub expert. Manage repositories, pull requests, issues, and reviews. Use tools related to GitHub or source control.",
+    prompt: systemMessage,
   });
 }

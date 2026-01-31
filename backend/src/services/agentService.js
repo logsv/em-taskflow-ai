@@ -67,12 +67,10 @@ export class LangGraphAgentService {
               },
             });
 
-            enhancedQuery = `Context from documents:
-${ragResults.context}
-
-User question: ${userQuery}
-
-Please answer the user's question using the provided context when relevant, and use your tools to get additional information if needed.`;
+            enhancedQuery = await ragEnhancementTemplate.format({
+              context: ragResults.context,
+              question: userQuery
+            });
 
             console.log(`✅ Added RAG context from ${ragResults.chunks.length} document chunks`);
           }
@@ -142,7 +140,10 @@ Please answer the user's question using the provided context when relevant, and 
       try {
         const ragResults = await ragService.searchRelevantChunks(userQuery, 3);
         if (ragResults.chunks.length > 0) {
-          enhancedQuery = `Context: ${ragResults.context}\n\nUser question: ${userQuery}`;
+          enhancedQuery = await ragStreamEnhancementTemplate.format({
+            context: ragResults.context,
+            question: userQuery
+          });
           yield {
             type: "thinking",
             content: `Found ${ragResults.chunks.length} relevant documents to help answer your question.`,

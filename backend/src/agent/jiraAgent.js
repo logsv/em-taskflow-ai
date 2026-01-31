@@ -1,5 +1,6 @@
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { getChatModel } from "../llm/index.js";
+import { jiraAgentPromptTemplate } from "./prompts.js";
 
 export async function createJiraAgent() {
   const llm = getChatModel();
@@ -12,11 +13,13 @@ export async function createJiraAgent() {
     jiraTools = [];
   }
 
+  const promptValue = await jiraAgentPromptTemplate.invoke({});
+  const systemMessage = promptValue.toChatMessages()[0];
+
   return createReactAgent({
     llm,
     tools: jiraTools,
     name: "jira_agent",
-    prompt:
-      "You are a Jira expert. Manage issues, sprints, roadmaps, and work items. Use only tools relevant to Jira and related Atlassian resources.",
+    prompt: systemMessage,
   });
 }

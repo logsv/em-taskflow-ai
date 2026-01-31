@@ -61,11 +61,13 @@ export async function initializeAgent() {
     const notionAgent = await createNotionAgent();
     const ragAgent = await createRagAgent();
 
+    const promptValue = await supervisorAgentPromptTemplate.invoke({});
+    const systemMessage = promptValue.toChatMessages()[0];
+
     const workflow = createSupervisor({
       agents: [jiraAgent, githubAgent, notionAgent, ragAgent],
       llm,
-      prompt:
-        "You are a supervisor agent that routes work between Jira, GitHub, Notion, and a dedicated RAG retrieval agent. Decide which specialist should handle each part of the task, delegate work accordingly, and ensure a coherent final answer for the user.",
+      prompt: systemMessage,
       outputMode: "last_message",
     });
 
