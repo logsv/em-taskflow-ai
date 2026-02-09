@@ -19,6 +19,17 @@ const envSchema = z.object({
   RAG_RERANK_PROVIDER: z.string().default('qwen3-vl'),
   RAG_DEFAULT_COLLECTION: z.string().default('pdf_chunks'),
   RAG_MAX_CHUNK_SIZE: z.coerce.number().int().min(100).default(1000),
+  RAG_TOP_K: z.coerce.number().int().min(1).default(6),
+  RAG_ADVANCED_ENABLED: z.coerce.boolean().default(false),
+  RAG_ADVANCED_QUERY_REWRITE: z.coerce.boolean().default(true),
+  RAG_ADVANCED_MAX_QUERIES: z.coerce.number().int().min(1).default(3),
+  RAG_ADVANCED_INITIAL_K: z.coerce.number().int().min(1).default(30),
+  RAG_ADVANCED_RETRIEVAL_STRATEGY: z.enum(['similarity', 'mmr']).default('mmr'),
+  RAG_ADVANCED_MMR_LAMBDA: z.coerce.number().min(0).max(1).default(0.7),
+  RAG_ADVANCED_RERANK_ENABLED: z.coerce.boolean().default(true),
+  RAG_ADVANCED_RERANK_PROVIDER: z.string().default('qwen3-vl'),
+  RAG_ADVANCED_RERANK_TOP_K: z.coerce.number().int().min(1).default(8),
+  RAG_ADVANCED_COMPRESSION_ENABLED: z.coerce.boolean().default(true),
   LLM_DEFAULT_PROVIDER: z.string().default('ollama'),
   LLM_DEFAULT_MODEL: z.string().default(''),
   LLM_LOAD_BALANCING: z.enum(['round_robin', 'cost_priority_round_robin']).default('round_robin'),
@@ -104,6 +115,27 @@ const configSchema = z.object({
     rerankProvider: z.string(),
     defaultCollection: z.string(),
     maxChunkSize: z.number().int().min(100),
+    topK: z.number().int().min(1),
+  }),
+  ragAdvanced: z.object({
+    enabled: z.boolean(),
+    queryRewrite: z.object({
+      enabled: z.boolean(),
+      maxQueries: z.number().int().min(1),
+    }),
+    retrieval: z.object({
+      strategy: z.enum(['similarity', 'mmr']),
+      mmrLambda: z.number().min(0).max(1),
+      initialK: z.number().int().min(1),
+    }),
+    rerank: z.object({
+      enabled: z.boolean(),
+      provider: z.string(),
+      topK: z.number().int().min(1),
+    }),
+    compression: z.object({
+      enabled: z.boolean(),
+    }),
   }),
   llm: z.object({
     defaultProvider: z.string(),
@@ -248,6 +280,27 @@ function loadConfig() {
       rerankProvider: env.RAG_RERANK_PROVIDER,
       defaultCollection: env.RAG_DEFAULT_COLLECTION,
       maxChunkSize: env.RAG_MAX_CHUNK_SIZE,
+      topK: env.RAG_TOP_K,
+    },
+    ragAdvanced: {
+      enabled: env.RAG_ADVANCED_ENABLED,
+      queryRewrite: {
+        enabled: env.RAG_ADVANCED_QUERY_REWRITE,
+        maxQueries: env.RAG_ADVANCED_MAX_QUERIES,
+      },
+      retrieval: {
+        strategy: env.RAG_ADVANCED_RETRIEVAL_STRATEGY,
+        mmrLambda: env.RAG_ADVANCED_MMR_LAMBDA,
+        initialK: env.RAG_ADVANCED_INITIAL_K,
+      },
+      rerank: {
+        enabled: env.RAG_ADVANCED_RERANK_ENABLED,
+        provider: env.RAG_ADVANCED_RERANK_PROVIDER,
+        topK: env.RAG_ADVANCED_RERANK_TOP_K,
+      },
+      compression: {
+        enabled: env.RAG_ADVANCED_COMPRESSION_ENABLED,
+      },
     },
     llm: {
       defaultProvider: env.LLM_DEFAULT_PROVIDER,
@@ -342,6 +395,7 @@ export const getServerConfig = () => config.server;
 export const getDatabaseConfig = () => config.database;
 export const getVectorDbConfig = () => config.vectorDb;
 export const getRagConfig = () => config.rag;
+export const getRagAdvancedConfig = () => config.ragAdvanced;
 export const getLlmConfig = () => config.llm;
 export const getMcpConfig = () => config.mcp;
 

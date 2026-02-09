@@ -41,7 +41,7 @@ describe('Chat Component', () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
-    expect(global.fetch.mock.calls[0][0]).toBe('/api/rag-query');
+    expect(global.fetch.mock.calls[0][0]).toBe('/api/rag/query');
     expect(input.value).toBe('');
   });
 

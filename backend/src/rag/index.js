@@ -15,6 +15,7 @@ export {
 
 // Re-export retrieval functionality
 export {
+  baselineRetrieve,
   agenticRetrieve,
   simpleRetrieve,
   getRetrieverStatus,
@@ -22,7 +23,7 @@ export {
 
 // Combined RAG service for backward compatibility
 import { initializeIngest, ingestPDF, getIngestStatus, getVectorStore } from './ingest.js';
-import { agenticRetrieve, simpleRetrieve, getRetrieverStatus } from './retriever.js';
+import { baselineRetrieve, agenticRetrieve, simpleRetrieve, getRetrieverStatus } from './retriever.js';
 
 /**
  * Legacy RAG service interface for backward compatibility
@@ -50,6 +51,11 @@ export class RAGService {
   async searchRelevantChunks(query, topK = 5) {
     await this.ensureInitialized();
     return simpleRetrieve(query, topK);
+  }
+
+  async baselineRetrieve(query, options = {}) {
+    await this.ensureInitialized();
+    return baselineRetrieve(query, options);
   }
 
   async agenticRetrieve(query, options = {}) {

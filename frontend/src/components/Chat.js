@@ -32,7 +32,7 @@ function Chat() {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/rag-query', {
+      const res = await fetch('/api/rag/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: messageText }),
@@ -187,7 +187,9 @@ function Chat() {
                       <summary>Sources ({msg.sources.length})</summary>
                       <ul>
                         {msg.sources.map((src, i) => (
-                          <li key={i}>{src.filename} (chunk {src.chunk_index + 1})</li>
+                          <li key={i}>
+                            {(src?.metadata?.filename || src?.filename || 'unknown')} (chunk {((src?.metadata?.chunkIndex ?? src?.chunk_index ?? 0) + 1)})
+                          </li>
                         ))}
                       </ul>
                     </details>

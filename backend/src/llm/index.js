@@ -1,4 +1,5 @@
 import { ChatOpenAI } from '@langchain/openai';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { getLlmConfig, getRagConfig } from '../config.js';
 import { bgeEmbeddingsClient } from './bgeEmbeddingsClient.js';
 import { bgeRerankerClient } from './bgeRerankerClient.js';
@@ -29,6 +30,17 @@ function createChatModelForProvider(providerKey, options = {}) {
       configuration: {
         baseURL,
       },
+      temperature,
+    });
+  } else if (providerKey === 'google') {
+    const apiKey = provider.apiKey || process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      throw new Error('GOOGLE_API_KEY is required for Google Gemini provider');
+    }
+
+    model = new ChatGoogleGenerativeAI({
+      apiKey,
+      model: modelName || 'gemini-1.5-flash',
       temperature,
     });
   } else {

@@ -7,7 +7,7 @@ import { Document } from 'langchain/document';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { getVectorStore } from './ingest.js';
 import { getChatModel, getBgeReranker } from '../llm/index.js';
-import { getRagConfig } from '../config.js';
+import { getRagConfig, getRagAdvancedConfig } from '../config.js';
 
 // Retrieval configuration
 const MAX_RETRIEVAL_K = 30; // Initial retrieval
@@ -15,16 +15,56 @@ const FINAL_K = 8; // Final results after reranking
 const MMR_LAMBDA = 0.7; // Balance between relevance and diversity
 
 /**
+ * Baseline retrieval: vector search + answer generation (no rewriting, reranking, or compression)
+ */
+export async function baselineRetrieve(query, options = {}) {
+  const startTime = Date.now();
+  const ragConfig = getRagConfig();
+  const {
+    topK = ragConfig.topK || 6,
+  } = options;
+
+  try {
+    const docs = await baseRetrieve(query, topK, { strategy: 'similarity' });
+    const answer = await generateAnswer(query, docs);
+    const executionTime = Date.now() - startTime;
+
+    return {
+      answer,
+      sources: docs,
+      originalQuery: query,
+      executionTime,
+    };
+  } catch (error) {
+    const executionTime = Date.now() - startTime;
+    console.error('❌ Baseline retrieval failed:', error);
+    return {
+      answer: `I encountered an error during retrieval: ${error.message}`,
+      sources: [],
+      originalQuery: query,
+      executionTime,
+    };
+  }
+}
+
+/**
  * Perform agentic retrieval with query rewriting, reranking, and compression
  */
 export async function agenticRetrieve(query, options = {}) {
   const startTime = Date.now();
+  const ragConfig = getRagConfig();
+  const ragAdvanced = getRagAdvancedConfig();
+
   const {
-    enableQueryRewriting = true,
-    enableCompression = true,
-    enableReranking = true,
-    maxQueries = 3,
-    topK = FINAL_K
+    enableQueryRewriting = ragAdvanced.queryRewrite.enabled,
+    enableCompression = ragAdvanced.compression.enabled,
+    enableReranking = ragAdvanced.rerank.enabled,
+    maxQueries = ragAdvanced.queryRewrite.maxQueries,
+    initialK = ragAdvanced.retrieval.initialK,
+    retrievalStrategy = ragAdvanced.retrieval.strategy,
+    mmrLambda = ragAdvanced.retrieval.mmrLambda,
+    topK = ragAdvanced.rerank.topK || ragConfig.topK || FINAL_K,
+    rerankProvider = ragAdvanced.rerank.provider || ragConfig.rerankProvider,
   } = options;
 
   try {
@@ -40,7 +80,10 @@ export async function agenticRetrieve(query, options = {}) {
     // Step 2: Multi-query retrieval
     const allDocuments = [];
     for (const q of queries) {
-      const docs = await baseRetrieve(q, MAX_RETRIEVAL_K);
+      const docs = await baseRetrieve(q, initialK || MAX_RETRIEVAL_K, {
+        strategy: retrievalStrategy,
+        mmrLambda,
+      });
       allDocuments.push(...docs);
     }
 
@@ -51,7 +94,7 @@ export async function agenticRetrieve(query, options = {}) {
     // Step 3: Reranking with Qwen3-VL reranker
     let rankedDocs = uniqueDocs;
     if (enableReranking) {
-      rankedDocs = await rerankDocuments(query, uniqueDocs, topK);
+      rankedDocs = await rerankDocuments(query, uniqueDocs, topK, rerankProvider);
       console.log(`📊 Reranked to top ${rankedDocs.length} documents`);
     } else {
       rankedDocs = uniqueDocs.slice(0, topK);
@@ -75,7 +118,7 @@ export async function agenticRetrieve(query, options = {}) {
       sources: finalDocs,
       originalQuery: query,
       rewrittenQueries: queries,
-      relevanceScores: finalDocs.map(() => 0.85), // Placeholder scores
+      relevanceScores: finalDocs.map((doc) => doc.metadata?.compressionScore ?? null),
       compressionApplied: enableCompression,
       reranked: enableReranking,
       executionTime,
@@ -127,32 +170,40 @@ export async function simpleRetrieve(query, topK = 5) {
 /**
  * Base retrieval from vector store
  */
-async function baseRetrieve(query, k) {
+async function baseRetrieve(query, k, options = {}) {
   const vectorStore = getVectorStore();
   if (!vectorStore) {
     throw new Error('Vector store not initialized');
   }
 
-  try {
-    try {
-      const retriever = vectorStore.asRetriever({
-        k,
-        searchType: 'mmr', // Maximum Marginal Relevance for diversity
-        searchKwargs: {
-          lambda: MMR_LAMBDA, // Balance relevance vs diversity
-        }
-      });
+  const { strategy = 'similarity', mmrLambda = MMR_LAMBDA } = options;
 
-      return await retriever.getRelevantDocuments(query);
-    } catch (mmrError) {
-      console.warn('⚠️ MMR search failed, falling back to similarity search:', mmrError);
+  try {
+    if (strategy === 'mmr') {
+      try {
+        const retriever = vectorStore.asRetriever({
+          k,
+          searchType: 'mmr', // Maximum Marginal Relevance for diversity
+          searchKwargs: {
+            lambda: mmrLambda, // Balance relevance vs diversity
+          }
+        });
+
+        return await retriever.getRelevantDocuments(query);
+      } catch (mmrError) {
+        console.warn('⚠️ MMR search failed, falling back to similarity search:', mmrError);
+      }
+    }
+
+    try {
       const retriever = vectorStore.asRetriever({
         k,
         searchType: 'similarity',
       });
+
       return await retriever.getRelevantDocuments(query);
     }
-    } catch (error) {
+  } catch (error) {
     console.error('❌ Base retrieval failed:', error);
     return [];
   }
@@ -193,9 +244,9 @@ Return only the alternative questions, one per line, without numbering or bullet
 /**
  * Rerank documents using Qwen3-VL reranker or fallback
  */
-async function rerankDocuments(query, documents, topK) {
+async function rerankDocuments(query, documents, topK, providerOverride) {
   const ragConfig = getRagConfig();
-  const provider = (ragConfig.rerankProvider || 'qwen3-vl').toLowerCase();
+  const provider = (providerOverride || ragConfig.rerankProvider || 'qwen3-vl').toLowerCase();
 
   if (provider === 'lexical') {
     return lexicalRerank(query, documents, topK);
