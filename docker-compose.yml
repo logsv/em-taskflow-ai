@@ -1,14 +1,13 @@
-version: "3.9"
-
 services:
   backend:
     build: ./backend
     container_name: em-taskflow-backend
     environment:
       NODE_ENV: production
+      RUNTIME_MODE: rag_only
       PORT: 4000
       HOST: 0.0.0.0
-      DATABASE_PATH: ./data/taskflow.db
+      DATABASE_URL: postgresql://taskflow:taskflow@postgres:5432/taskflow
       CHROMA_HOST: chroma
       CHROMA_PORT: 8000
       RAG_ENABLED: "true"
@@ -16,12 +15,22 @@ services:
       LLM_DEFAULT_MODEL: llama3.2:latest
       OLLAMA_BASE_URL: http://ollama:11434
     depends_on:
-      - chroma
-      - ollama
+      chroma:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     volumes:
       - backend_data:/app/data
     ports:
       - "4000:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:4000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
     networks:
       - em-taskflow-net
 
@@ -29,7 +38,8 @@ services:
     build: ./frontend
     container_name: em-taskflow-frontend
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "3000:80"
     networks:
@@ -45,6 +55,12 @@ services:
       - chroma_data:/data
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8000/api/v2/heartbeat || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     networks:
       - em-taskflow-net
 
@@ -58,6 +74,49 @@ services:
     networks:
       - em-taskflow-net
 
+  postgres:
+    image: postgres:16
+    container_name: em-taskflow-postgres
+    environment:
+      POSTGRES_USER: taskflow
+      POSTGRES_PASSWORD: taskflow
+      POSTGRES_DB: taskflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskflow -d taskflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - em-taskflow-net
+
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: em-taskflow-vllm
+    profiles: ["gpu"]
+    command: >
+      --model Qwen/Qwen2.5-3B-Instruct
+      --host 0.0.0.0
+      --port 8000
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+    volumes:
+      - vllm_cache:/root/.cache/huggingface
+    ports:
+      - "8001:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8000/v1/models || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    networks:
+      - em-taskflow-net
+
 
 networks:
   em-taskflow-net:
@@ -67,3 +126,5 @@ volumes:
   backend_data:
   chroma_data:
   ollama_data:
+  postgres_data:
+  vllm_cache:

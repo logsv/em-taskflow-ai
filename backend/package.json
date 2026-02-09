@@ -50,7 +50,6 @@
     "@huggingface/transformers": "^3.0.0",
     "@langchain/community": "0.3.48",
     "@langchain/core": "0.3.70",
-    "@langchain/google-genai": "0.1.6",
     "@langchain/langgraph": "0.2.55",
     "@langchain/langgraph-supervisor": "0.0.9",
     "@langchain/mcp-adapters": "0.6.0",
@@ -75,7 +74,7 @@
     "multer": "2.0.2",
     "openai": "4.20.1",
     "pdf-parse": "1.1.1",
-    "sqlite3": "^5.1.7",
+    "pg": "^8.13.1",
     "zod": "3.25.76"
   },
   "devDependencies": {
@@ -92,7 +91,6 @@
     "@types/node": "24.1.0",
     "@types/pdf-parse": "1.1.5",
     "@types/sinon": "17.0.4",
-    "@types/sqlite3": "3.1.11",
     "@types/supertest": "6.0.3",
     "jasmine": "5.9.0",
     "jasmine-ts-console-reporter": "3.1.1",

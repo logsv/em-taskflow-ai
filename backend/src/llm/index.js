@@ -1,8 +1,6 @@
 import { ChatOpenAI } from '@langchain/openai';
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { getLlmConfig, getRagConfig } from '../config.js';
+import { getLlmConfig } from '../config.js';
 import { bgeEmbeddingsClient } from './bgeEmbeddingsClient.js';
-import { bgeRerankerClient } from './bgeRerankerClient.js';
 
 let chatModel = null;
 let initialized = false;
@@ -38,9 +36,13 @@ function createChatModelForProvider(providerKey, options = {}) {
       throw new Error('GOOGLE_API_KEY is required for Google Gemini provider');
     }
 
-    model = new ChatGoogleGenerativeAI({
-      apiKey,
-      model: modelName || 'gemini-1.5-flash',
+    const baseURL = provider.baseUrl?.replace(/\/$/, '') || 'https://generativelanguage.googleapis.com/v1beta/openai';
+    model = new ChatOpenAI({
+      modelName: modelName || 'gemini-1.5-flash',
+      openAIApiKey: apiKey,
+      configuration: {
+        baseURL,
+      },
       temperature,
     });
   } else {
@@ -98,13 +100,6 @@ export function getBgeEmbeddings() {
 }
 
 /**
- * Get Qwen3-VL reranker client (external service)  
- */
-export function getBgeReranker() {
-  return bgeRerankerClient;
-}
-
-/**
  * Check if LLM services are initialized
  */
 export function isInitialized() {
@@ -119,16 +114,10 @@ export async function getLLMStatus() {
     initialized,
     chatModel: !!chatModel,
     bgeEmbeddings: false,
-    bgeReranker: false,
   };
 
   try {
     status.bgeEmbeddings = await bgeEmbeddingsClient.isAvailable();
-  } catch (error) {
-  }
-
-  try {
-    status.bgeReranker = await bgeRerankerClient.isAvailable();
   } catch (error) {
   }
 

@@ -1,48 +1,133 @@
-# EM TaskFlow
+# EM TaskFlow AI
 
-[![Backend CI](https://github.com/logsv/em-taskflow-ai/workflows/Backend%20CI/badge.svg)](https://github.com/logsv/em-taskflow-ai/actions/workflows/backend-ci.yml)
-[![Tests](https://github.com/logsv/em-taskflow-ai/workflows/Tests/badge.svg)](https://github.com/logsv/em-taskflow-ai/actions/workflows/test.yml)
-[![codecov](https://codecov.io/gh/logsv/em-taskflow-ai/branch/main/graph/badge.svg?token=06702858-ae4c-43e8-aa1e-6184e359cfb2)](https://codecov.io/gh/logsv/em-taskflow-ai)
+Local-first production-style deployment with Docker Compose.
 
-**EM TaskFlow** is a production-ready AI-powered productivity platform. It combines **Retrieval-Augmented Generation (RAG)**, **Model Context Protocol (MCP)**, and **Multi-Agent Orchestration** to help you manage tasks and knowledge across Notion, Jira, GitHub, and Google Calendar.
+Default runtime:
+- `frontend`
+- `backend` (`RUNTIME_MODE=rag_only`)
+- `postgres`
+- `chroma`
+- `ollama`
 
-## 🚀 Key Features
+Optional runtime:
+- `vllm` (GPU profile)
 
-- **Multi-Agent System**: Supervisor architecture orchestrating specialist agents for Jira, GitHub, and Notion.
-- **Production-Ready MCP**: Reliable integration with external tools using `@langchain/mcp-adapters`.
-- **Advanced RAG**: Semantic search and document processing using embeddings and ChromaDB.
-- **Local-First AI**: Optimized for Ollama but supports OpenAI, Anthropic, and Gemini via `llm-router`.
-- **Modern Stack**: Node.js backend, React frontend, PWA support, and full TypeScript typing.
+## Prerequisites
 
-## 📂 Project Structure
+- Docker Desktop (or Docker Engine + Compose plugin)
+- 8GB+ RAM recommended
+- For vLLM profile: NVIDIA GPU + NVIDIA Container Toolkit
 
-- **[Backend](./backend/README.md)**: Node.js service containing the Agent Graph, RAG pipeline, and MCP integrations.
-- **[Frontend](./frontend/README.md)**: React-based UI for chat, document management, and task visualization.
+## Quick Start
 
-## ⚡ Quick Start
+1. Start services:
+```bash
+./start.sh
+```
 
-1. **Prerequisites**: Node.js 20+, Python 3.8+, Ollama (running).
-2. **Install Dependencies**:
-   ```bash
-   # Backend
-   cd backend && pnpm install
-   # Frontend
-   cd ../frontend && npm install
-   ```
-3. **Start All Services**:
-   ```bash
-   ./start.sh
-   ```
-   This script verifies dependencies, starts the backend and frontend, and initializes local AI models.
+2. Open app:
+- `http://localhost:3000`
 
-4. **Access the App**: Open [http://localhost:3000](http://localhost:3000).
+3. Stop services:
+```bash
+./stop.sh
+```
 
-## 📚 Documentation
+## GPU Profile (Optional)
 
-For detailed architecture, configuration, and API documentation, please refer to the sub-project READMEs:
+```bash
+./start.sh --gpu
+```
 
-- [Backend Documentation & Architecture](./backend/README.md)
-- [Frontend Documentation](./frontend/README.md)
+## Configuration
 
-## 📄 License
-MIT License
+- Active local config: `backend/.env`
+- Template: `backend/.env.example`
+- Default provider is local Ollama.
+- Default runtime mode is `rag_only`.
+
+## Smoke Tests
+
+1. Backend health:
+```bash
+curl -s http://localhost:4000/api/health
+```
+
+2. Upload PDF:
+```bash
+curl -X POST http://localhost:4000/api/upload-pdf \
+  -F "pdf=@/absolute/path/to/file.pdf"
+```
+
+3. Query baseline RAG:
+```bash
+curl -X POST http://localhost:4000/api/rag/query \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Summarize the uploaded document","mode":"baseline"}'
+```
+
+4. Query advanced RAG (if enabled):
+```bash
+curl -X POST http://localhost:4000/api/rag/query \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Summarize key risks","mode":"advanced"}'
+```
+
+## Ops Commands
+
+Start:
+```bash
+docker compose up -d --build
+```
+
+Start with GPU profile:
+```bash
+docker compose --profile gpu up -d --build
+```
+
+Logs:
+```bash
+docker compose logs -f backend frontend postgres chroma ollama
+```
+
+Stop:
+```bash
+docker compose down
+```
+
+Stop and remove volumes:
+```bash
+docker compose down -v
+```
+
+## Rollback Notes
+
+If a deployment change fails locally:
+
+1. Stop current stack:
+```bash
+docker compose down
+```
+
+2. Check out previous known-good commit.
+
+3. Rebuild and start:
+```bash
+docker compose up -d --build
+```
+
+4. Re-run smoke tests above.
+
+## Release Checklist
+
+- `backend/.env` contains no real secrets committed to git.
+- `docker compose config` is valid.
+- Backend health endpoint returns healthy.
+- PDF upload and `POST /api/rag/query` both work.
+- Frontend loads and can submit chat query.
+- Logs are clean for backend start and DB migration/init.
+
+## Component Docs
+
+- Backend internals: `backend/README.md`
+- Frontend internals: `frontend/README.md`

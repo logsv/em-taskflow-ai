@@ -245,6 +245,20 @@
   margin: 0 auto;
 }
 
+.mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  color: #374151;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.mode-toggle input {
+  margin: 0;
+}
+
 .chat-input {
   display: flex;
   align-items: flex-end;

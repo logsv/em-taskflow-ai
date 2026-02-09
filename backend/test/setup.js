@@ -1,7 +1,7 @@
 import sinon from 'sinon';
 
 process.env.NODE_ENV = 'test';
-process.env.DATABASE_URL = ':memory:';
+process.env.DATABASE_URL = 'postgresql://taskflow:taskflow@localhost:5432/taskflow_test';
 
 jasmine.DEFAULT_TIMEOUT_INTERVAL = 30000;
 
@@ -22,4 +22,3 @@ afterAll(() => {
 });
 
 global.createMockSandbox = () => sinon.createSandbox();
-

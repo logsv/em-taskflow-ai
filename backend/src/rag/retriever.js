@@ -1,21 +1,20 @@
 /**
- * RAG Retriever module - Advanced retrieval with reranking and compression
- * Implements agentic retrieval patterns with Qwen3-VL reranking and contextual compression
+ * RAG Retriever module - Advanced retrieval with compression
+ * Implements agentic retrieval patterns with query rewriting and retrieval strategy controls
  */
 
 import { Document } from 'langchain/document';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { getVectorStore } from './ingest.js';
-import { getChatModel, getBgeReranker } from '../llm/index.js';
+import { getChatModel } from '../llm/index.js';
 import { getRagConfig, getRagAdvancedConfig } from '../config.js';
 
 // Retrieval configuration
 const MAX_RETRIEVAL_K = 30; // Initial retrieval
-const FINAL_K = 8; // Final results after reranking
 const MMR_LAMBDA = 0.7; // Balance between relevance and diversity
 
 /**
- * Baseline retrieval: vector search + answer generation (no rewriting, reranking, or compression)
+ * Baseline retrieval: vector search + answer generation
  */
 export async function baselineRetrieve(query, options = {}) {
   const startTime = Date.now();
@@ -48,7 +47,7 @@ export async function baselineRetrieve(query, options = {}) {
 }
 
 /**
- * Perform agentic retrieval with query rewriting, reranking, and compression
+ * Perform agentic retrieval with query rewriting, retrieval strategy, and compression
  */
 export async function agenticRetrieve(query, options = {}) {
   const startTime = Date.now();
@@ -58,13 +57,11 @@ export async function agenticRetrieve(query, options = {}) {
   const {
     enableQueryRewriting = ragAdvanced.queryRewrite.enabled,
     enableCompression = ragAdvanced.compression.enabled,
-    enableReranking = ragAdvanced.rerank.enabled,
     maxQueries = ragAdvanced.queryRewrite.maxQueries,
     initialK = ragAdvanced.retrieval.initialK,
     retrievalStrategy = ragAdvanced.retrieval.strategy,
     mmrLambda = ragAdvanced.retrieval.mmrLambda,
-    topK = ragAdvanced.rerank.topK || ragConfig.topK || FINAL_K,
-    rerankProvider = ragAdvanced.rerank.provider || ragConfig.rerankProvider,
+    topK = ragConfig.topK || 6,
   } = options;
 
   try {
@@ -91,14 +88,8 @@ export async function agenticRetrieve(query, options = {}) {
     const uniqueDocs = deduplicateDocuments(allDocuments);
     console.log(`📋 Retrieved ${uniqueDocs.length} unique documents from ${allDocuments.length} total`);
 
-    // Step 3: Reranking with Qwen3-VL reranker
-    let rankedDocs = uniqueDocs;
-    if (enableReranking) {
-      rankedDocs = await rerankDocuments(query, uniqueDocs, topK, rerankProvider);
-      console.log(`📊 Reranked to top ${rankedDocs.length} documents`);
-    } else {
-      rankedDocs = uniqueDocs.slice(0, topK);
-    }
+    // Step 3: Select top K after retrieval
+    let rankedDocs = uniqueDocs.slice(0, topK);
 
     // Step 4: Contextual compression
     let finalDocs = rankedDocs;
@@ -120,7 +111,6 @@ export async function agenticRetrieve(query, options = {}) {
       rewrittenQueries: queries,
       relevanceScores: finalDocs.map((doc) => doc.metadata?.compressionScore ?? null),
       compressionApplied: enableCompression,
-      reranked: enableReranking,
       executionTime,
     };
 
@@ -135,7 +125,6 @@ export async function agenticRetrieve(query, options = {}) {
       rewrittenQueries: [query],
       relevanceScores: [],
       compressionApplied: false,
-      reranked: false,
       executionTime,
     };
   }
@@ -195,14 +184,12 @@ async function baseRetrieve(query, k, options = {}) {
       }
     }
 
-    try {
-      const retriever = vectorStore.asRetriever({
-        k,
-        searchType: 'similarity',
-      });
+    const retriever = vectorStore.asRetriever({
+      k,
+      searchType: 'similarity',
+    });
 
-      return await retriever.getRelevantDocuments(query);
-    }
+    return await retriever.getRelevantDocuments(query);
   } catch (error) {
     console.error('❌ Base retrieval failed:', error);
     return [];
@@ -239,60 +226,6 @@ Return only the alternative questions, one per line, without numbering or bullet
     console.error('⚠️ Query rewriting failed:', error);
     return [originalQuery];
   }
-}
-
-/**
- * Rerank documents using Qwen3-VL reranker or fallback
- */
-async function rerankDocuments(query, documents, topK, providerOverride) {
-  const ragConfig = getRagConfig();
-  const provider = (providerOverride || ragConfig.rerankProvider || 'qwen3-vl').toLowerCase();
-
-  if (provider === 'lexical') {
-    return lexicalRerank(query, documents, topK);
-  }
-
-  const bgeReranker = getBgeReranker();
-
-  try {
-    const rerankerAvailable = await bgeReranker.isAvailable();
-    if (rerankerAvailable) {
-      const rerankerDocs = documents.map(doc => ({
-        content: doc.pageContent,
-        metadata: doc.metadata,
-      }));
-
-      const result = await bgeReranker.rerank(query, rerankerDocs, topK, true);
-
-      return result.reranked_documents.map(rankedDoc => new Document({
-        pageContent: rankedDoc.content,
-        metadata: rankedDoc.metadata || {},
-      }));
-    }
-    throw new Error('Reranker not available');
-  } catch (error) {
-    console.warn('⚠️ Qwen3-VL reranker failed or unavailable, using lexical fallback:', error);
-    return lexicalRerank(query, documents, topK);
-  }
-}
-
-/**
- * Fallback lexical reranking
- */
-function lexicalRerank(query, documents, topK) {
-  const queryTokens = query.toLowerCase().split(/\s+/);
-  
-  const scored = documents.map(doc => {
-    const docText = doc.pageContent.toLowerCase();
-    const matchCount = queryTokens.filter(token => docText.includes(token)).length;
-    const score = matchCount / queryTokens.length;
-    return { doc, score };
-  });
-
-  return scored
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK)
-    .map(item => item.doc);
 }
 
 /**
@@ -394,18 +327,8 @@ function deduplicateDocuments(documents) {
  */
 export async function getRetrieverStatus() {
   const vectorStore = getVectorStore();
-  const bgeReranker = getBgeReranker();
-  
-  let bgeAvailable = false;
-  try {
-    bgeAvailable = await bgeReranker.isAvailable();
-  } catch (error) {
-    // BGE not available
-  }
-  
   return {
     vectorStoreReady: !!vectorStore,
-    bgeRerankerAvailable: bgeAvailable,
-    llmAvailable: true, // Ollama should always be available
+    llmAvailable: true,
   };
 }

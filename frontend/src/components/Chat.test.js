@@ -42,6 +42,10 @@ describe('Chat Component', () => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
     expect(global.fetch.mock.calls[0][0]).toBe('/api/rag/query');
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toEqual({
+      query: 'Hello, how are you?',
+      mode: 'baseline',
+    });
     expect(input.value).toBe('');
   });
 
@@ -86,7 +90,7 @@ describe('Chat Component', () => {
     fireEvent.click(sendButton);
     expect(sendButton).toBeDisabled();
     await waitFor(() => {
-      expect(sendButton).not.toBeDisabled();
+      expect(screen.queryByText('Delayed response')).toBeInTheDocument();
     });
   });
 
@@ -157,6 +161,27 @@ describe('Chat Component', () => {
     fireEvent.click(sendButton);
     await waitFor(() => {
       expect(screen.getByText(specialMessage)).toBeInTheDocument();
+    });
+  });
+
+  test('sends advanced mode when toggle is enabled', async () => {
+    render(<Chat />);
+
+    const toggle = screen.getByLabelText(/advanced rag/i);
+    const input = screen.getByPlaceholderText(/message em taskflow ai/i);
+    const sendButton = document.querySelector('.send-btn');
+
+    fireEvent.click(toggle);
+    fireEvent.change(input, { target: { value: 'Use advanced mode' } });
+    fireEvent.click(sendButton);
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toEqual({
+      query: 'Use advanced mode',
+      mode: 'advanced',
     });
   });
 

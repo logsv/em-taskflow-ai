@@ -3,12 +3,6 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import App from './App';
 
-// Mock axios to prevent actual API calls
-jest.mock('axios', () => ({
-  post: jest.fn(() => Promise.resolve({ data: { response: 'Mock response' } })),
-  get: jest.fn(() => Promise.resolve({ data: [] }))
-}));
-
 // Mock components to isolate App component testing
 jest.mock('./components/Chat', () => {
   return function MockChat() {
@@ -29,7 +23,7 @@ jest.mock('./components/Sidebar', () => {
         <button onClick={() => setView('chat')} data-testid="chat-nav">
           Chat
         </button>
-        <button onClick={() => setView('upload')} data-testid="upload-nav">
+        <button onClick={() => setView('pdf')} data-testid="upload-nav">
           Upload
         </button>
         <button onClick={() => setIsOpen(!isOpen)} data-testid="toggle-sidebar">

@@ -6,6 +6,7 @@ function Chat() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
+  const [useAdvancedMode, setUseAdvancedMode] = useState(false);
   const fileInputRef = useRef(null);
   const [suggestions] = useState([
     'What should I focus on today?',
@@ -35,7 +36,10 @@ function Chat() {
       const res = await fetch('/api/rag/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: messageText }),
+        body: JSON.stringify({
+          query: messageText,
+          mode: useAdvancedMode ? 'advanced' : 'baseline',
+        }),
       });
       const data = await res.json();
 
@@ -223,6 +227,16 @@ function Chat() {
         )}
         
         <div className="chat-input-wrapper">
+          <label className="mode-toggle" htmlFor="advanced-mode-toggle">
+            <input
+              id="advanced-mode-toggle"
+              type="checkbox"
+              checked={useAdvancedMode}
+              onChange={(e) => setUseAdvancedMode(e.target.checked)}
+              disabled={loading}
+            />
+            <span>Advanced RAG</span>
+          </label>
           <div className="chat-input">
             <button 
               className="attachment-btn"

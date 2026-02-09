@@ -1,15 +1,27 @@
 import express from 'express';
+import { z } from 'zod';
 import { baselineRetrieve, agenticRetrieve } from '../rag/index.js';
 import { getRagConfig, getRagAdvancedConfig } from '../config.js';
 
 const router = express.Router();
+const querySchema = z.object({
+  query: z.string().min(1).max(10_000),
+  mode: z.enum(['baseline', 'advanced']).optional(),
+});
 
 router.post('/query', async (req, res) => {
   try {
-    const { query, mode } = req.body || {};
-    if (!query) {
-      return res.status(400).json({ error: 'Query is required' });
+    const parsed = querySchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: 'Invalid request body',
+        details: parsed.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        })),
+      });
     }
+    const { query, mode } = parsed.data;
 
     const ragConfig = getRagConfig();
     const ragAdvanced = getRagAdvancedConfig();
@@ -29,11 +41,6 @@ router.post('/query', async (req, res) => {
           content: doc.pageContent,
           metadata: doc.metadata,
         })),
-        meta: {
-          mode: 'baseline',
-          topK: ragConfig.topK,
-          executionTime: result.executionTime,
-        },
       });
     }
 
@@ -48,7 +55,6 @@ router.post('/query', async (req, res) => {
         mode: 'advanced',
         rewrittenQueries: result.rewrittenQueries,
         compressionApplied: result.compressionApplied,
-        reranked: result.reranked,
         executionTime: result.executionTime,
       },
     });

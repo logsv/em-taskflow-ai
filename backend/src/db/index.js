@@ -1,3 +1,3 @@
-import databaseService from './sqlite.js';
+import databaseService from './postgres.js';
 
 export default databaseService;

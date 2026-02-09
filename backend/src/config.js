@@ -8,15 +8,15 @@ const __dirname = path.dirname(__filename);
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  RUNTIME_MODE: z.enum(['rag_only', 'full']).default('rag_only'),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   HOST: z.string().ip().default('127.0.0.1'),
-  DATABASE_PATH: z.string().default('./data/taskflow.db'),
+  DATABASE_URL: z.string().url().default('postgresql://taskflow:taskflow@localhost:5432/taskflow'),
   CHROMA_HOST: z.string().default('localhost'),
   CHROMA_PORT: z.coerce.number().int().min(1).max(65535).default(8000),
   RAG_ENABLED: z.coerce.boolean().default(true),
   RAG_EMBEDDING_MODEL: z.string().default('nomic-embed-text'),
   RAG_EMBEDDING_PROVIDER: z.string().default('qwen3-vl'),
-  RAG_RERANK_PROVIDER: z.string().default('qwen3-vl'),
   RAG_DEFAULT_COLLECTION: z.string().default('pdf_chunks'),
   RAG_MAX_CHUNK_SIZE: z.coerce.number().int().min(100).default(1000),
   RAG_TOP_K: z.coerce.number().int().min(1).default(6),
@@ -26,9 +26,6 @@ const envSchema = z.object({
   RAG_ADVANCED_INITIAL_K: z.coerce.number().int().min(1).default(30),
   RAG_ADVANCED_RETRIEVAL_STRATEGY: z.enum(['similarity', 'mmr']).default('mmr'),
   RAG_ADVANCED_MMR_LAMBDA: z.coerce.number().min(0).max(1).default(0.7),
-  RAG_ADVANCED_RERANK_ENABLED: z.coerce.boolean().default(true),
-  RAG_ADVANCED_RERANK_PROVIDER: z.string().default('qwen3-vl'),
-  RAG_ADVANCED_RERANK_TOP_K: z.coerce.number().int().min(1).default(8),
   RAG_ADVANCED_COMPRESSION_ENABLED: z.coerce.boolean().default(true),
   LLM_DEFAULT_PROVIDER: z.string().default('ollama'),
   LLM_DEFAULT_MODEL: z.string().default(''),
@@ -43,7 +40,7 @@ const envSchema = z.object({
   LLM_ANTHROPIC_PRIORITY: z.coerce.number().int().min(0).default(2),
   LLM_GOOGLE_ENABLED: z.coerce.boolean().default(false),
   GOOGLE_API_KEY: z.string().optional(),
-  LLM_GOOGLE_BASE_URL: z.string().url().default('https://generativelanguage.googleapis.com/v1beta'),
+  LLM_GOOGLE_BASE_URL: z.string().url().default('https://generativelanguage.googleapis.com/v1beta/openai'),
   LLM_GOOGLE_PRIORITY: z.coerce.number().int().min(0).default(3),
   LLM_OLLAMA_ENABLED: z.coerce.boolean().default(true),
   OLLAMA_BASE_URL: z.string().url().default('http://localhost:11434'),
@@ -86,21 +83,17 @@ const llmProviderSchema = z.object({
   retry: retrySchema,
 });
 
-const modelSchema = z.object({
-  name: z.string(),
-  costPer1kInputTokens: z.number().min(0).default(0),
-  costPer1kOutputTokens: z.number().min(0).default(0),
-  maxTokens: z.number().int().min(1).default(4096),
-});
-
 const configSchema = z.object({
   env: z.enum(['development', 'test', 'production']),
+  runtime: z.object({
+    mode: z.enum(['rag_only', 'full']),
+  }),
   server: z.object({
     port: z.number().int().min(1).max(65535),
     host: z.string().ip(),
   }),
   database: z.object({
-    path: z.string(),
+    url: z.string().url(),
   }),
   vectorDb: z.object({
     chroma: z.object({
@@ -112,7 +105,6 @@ const configSchema = z.object({
     enabled: z.boolean(),
     embeddingModel: z.string(),
     embeddingProvider: z.string(),
-    rerankProvider: z.string(),
     defaultCollection: z.string(),
     maxChunkSize: z.number().int().min(100),
     topK: z.number().int().min(1),
@@ -127,11 +119,6 @@ const configSchema = z.object({
       strategy: z.enum(['similarity', 'mmr']),
       mmrLambda: z.number().min(0).max(1),
       initialK: z.number().int().min(1),
-    }),
-    rerank: z.object({
-      enabled: z.boolean(),
-      provider: z.string(),
-      topK: z.number().int().min(1),
     }),
     compression: z.object({
       enabled: z.boolean(),
@@ -260,12 +247,15 @@ function loadConfig() {
 
   const config = {
     env: env.NODE_ENV,
+    runtime: {
+      mode: env.RUNTIME_MODE,
+    },
     server: {
       port: env.PORT,
       host: env.HOST,
     },
     database: {
-      path: env.DATABASE_PATH,
+      url: env.DATABASE_URL,
     },
     vectorDb: {
       chroma: {
@@ -277,7 +267,6 @@ function loadConfig() {
       enabled: env.RAG_ENABLED,
       embeddingModel: env.RAG_EMBEDDING_MODEL,
       embeddingProvider: env.RAG_EMBEDDING_PROVIDER,
-      rerankProvider: env.RAG_RERANK_PROVIDER,
       defaultCollection: env.RAG_DEFAULT_COLLECTION,
       maxChunkSize: env.RAG_MAX_CHUNK_SIZE,
       topK: env.RAG_TOP_K,
@@ -292,11 +281,6 @@ function loadConfig() {
         strategy: env.RAG_ADVANCED_RETRIEVAL_STRATEGY,
         mmrLambda: env.RAG_ADVANCED_MMR_LAMBDA,
         initialK: env.RAG_ADVANCED_INITIAL_K,
-      },
-      rerank: {
-        enabled: env.RAG_ADVANCED_RERANK_ENABLED,
-        provider: env.RAG_ADVANCED_RERANK_PROVIDER,
-        topK: env.RAG_ADVANCED_RERANK_TOP_K,
       },
       compression: {
         enabled: env.RAG_ADVANCED_COMPRESSION_ENABLED,
@@ -392,6 +376,7 @@ export const config = loadConfig();
 export default config;
 
 export const getServerConfig = () => config.server;
+export const getRuntimeConfig = () => config.runtime;
 export const getDatabaseConfig = () => config.database;
 export const getVectorDbConfig = () => config.vectorDb;
 export const getRagConfig = () => config.rag;
