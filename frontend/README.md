@@ -1,61 +1,40 @@
-# EM-TaskFlow Frontend
+# EM TaskFlow Frontend
 
-The frontend for EM TaskFlow, built with **React** and **Create React App**. It provides a modern, responsive interface for interacting with the AI agents, managing tasks, and processing documents.
+React frontend for the simplified EM TaskFlow runtime.
 
-## 🚀 Features
+Current UI scope:
+- Chat view (queries `POST /api/rag/query`)
+- PDF upload view (uploads to `POST /api/upload-pdf`)
+- Sidebar-based navigation
 
-- **AI Chat Interface**: Real-time chat with the Supervisor Agent.
-- **Document Management**: PDF upload and processing for RAG context.
-- **Task Visualization**: View tasks fetched from Jira/Notion.
-- **PWA Support**: Installable as a Progressive Web App.
-- **Responsive Design**: Optimized for desktop and mobile.
+## Setup
 
-## 🛠️ Setup & Installation
-
-### Prerequisites
-- Node.js 20.x
-- npm or pnpm
-
-### Installation
 ```bash
 cd frontend
 npm install
-```
-
-### Configuration
-The frontend proxies API requests to the backend. Update `package.json` if your backend runs on a different port:
-```json
-"proxy": "http://localhost:4000"
-```
-
-### Running the App
-```bash
-# Start development server
 npm start
+```
 
-# Build for production
+The frontend proxies API requests to backend on `http://localhost:4000` via `package.json`.
+
+## Build
+
+```bash
 npm run build
 ```
 
-## 🏗️ Project Structure
-
-```
-src/
-├── components/
-│   ├── Chat.js        # Main chat interface
-│   ├── PDFUpload.js   # Document upload component
-│   ├── TaskList.js    # Task visualization
-│   └── Summary.js     # Summary display
-├── App.js             # Main application layout
-└── index.js           # Entry point
-```
-
-## 🧪 Testing
+## Tests
 
 ```bash
-# Run test suite
 npm test
 ```
 
-## 📄 License
-ISC License
+Useful targeted tests:
+```bash
+npm test -- --watchAll=false src/components/Chat.test.js src/App.test.js
+```
+
+## Notes
+
+- PWA/service worker scaffolding is removed for simpler production behavior.
+- Unused legacy components were pruned to keep the UI aligned with the active backend API.

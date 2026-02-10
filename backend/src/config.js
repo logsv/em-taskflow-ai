@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  RUNTIME_MODE: z.enum(['rag_only', 'full']).default('rag_only'),
+  RUNTIME_MODE: z.enum(['rag_only', 'full']).default('full'),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   HOST: z.string().ip().default('127.0.0.1'),
   DATABASE_URL: z.string().url().default('postgresql://taskflow:taskflow@localhost:5432/taskflow'),
