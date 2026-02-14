@@ -22,7 +22,7 @@ app.use(express.json({ limit: '2mb' }));
 app.use('/api', apiRouter);
 
 app.get('/', (req, res) => {
-  res.send('EM TaskFlow AI is running with SQLite database.');
+  res.send('EM TaskFlow AI is running.');
 });
 
 async function startServer() {
@@ -84,7 +84,7 @@ async function startServer() {
       console.log(`🤖 LLM Provider: ${llmConfig.defaultProvider}`);
       console.log(`🔍 RAG Enabled: ${ragConfig.enabled}`);
       console.log(`🔗 Health check: http://${serverConfig.host}:${PORT}/api/health`);
-      console.log(`📈 LLM status: http://${serverConfig.host}:${PORT}/api/llm-status`);
+      console.log(`💬 Query API: POST http://${serverConfig.host}:${PORT}/api/query`);
     });
   } catch (error) {
     console.error('Failed to initialize services:', error);

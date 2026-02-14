@@ -8,6 +8,7 @@ describe('Chat Component', () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
+        threadId: 'th_test',
         answer: 'Test response from backend',
         sources: [],
       }),
@@ -41,8 +42,8 @@ describe('Chat Component', () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
-    expect(global.fetch.mock.calls[0][0]).toBe('/api/rag/query');
-    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toEqual({
+    expect(global.fetch.mock.calls[0][0]).toBe('/api/query');
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({
       query: 'Hello, how are you?',
       mode: 'baseline',
     });
@@ -179,7 +180,7 @@ describe('Chat Component', () => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
-    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toEqual({
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({
       query: 'Use advanced mode',
       mode: 'advanced',
     });

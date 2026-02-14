@@ -1,14 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import './Sidebar.css';
 
 function Sidebar({ view, setView, isOpen, setIsOpen }) {
-  const [chatHistory] = useState([
-    { id: 1, title: 'Task Management Tips', date: 'Today' },
-    { id: 2, title: 'Project Planning Discussion', date: 'Yesterday' },
-    { id: 3, title: 'Document Analysis', date: '2 days ago' },
-    { id: 4, title: 'Meeting Schedule Review', date: '3 days ago' },
-    { id: 5, title: 'Productivity Insights', date: '1 week ago' },
-  ]);
+  const [chatHistory, setChatHistory] = useState([]);
 
   const toggleSidebar = () => {
     setIsOpen(!isOpen);
@@ -18,6 +12,33 @@ function Sidebar({ view, setView, isOpen, setIsOpen }) {
     // In a real app, this would create a new chat session
     console.log('Starting new chat...');
   };
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadThreads() {
+      try {
+        const response = await fetch('/api/threads?limit=20');
+        const data = await response.json();
+        if (!isMounted) return;
+        const threads = Array.isArray(data?.threads) ? data.threads : [];
+        setChatHistory(
+          threads.map((thread) => ({
+            id: thread.id,
+            title: thread.title || (thread.last_user_message || 'New Chat'),
+            date: new Date(thread.updated_at || thread.created_at || Date.now()).toLocaleDateString(),
+          })),
+        );
+      } catch (error) {
+        if (isMounted) {
+          setChatHistory([]);
+        }
+      }
+    }
+    loadThreads();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <>

@@ -1,5 +1,3 @@
-import { DynamicTool } from "@langchain/core/tools";
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { createSupervisor } from "@langchain/langgraph-supervisor";
 import { getChatModel } from "../llm/index.js";
 import {
@@ -8,14 +6,18 @@ import {
   getJiraMCPTools,
   getGithubMCPTools,
   getNotionMCPTools,
+  getGoogleMCPTools,
 } from "../mcp/index.js";
 import { config } from "../config.js";
 import { createJiraAgent } from "./jiraAgent.js";
 import { createGithubAgent } from "./githubAgent.js";
 import { createNotionAgent } from "./notionAgent.js";
+import { createCalendarAgent } from "./calendarAgent.js";
 import { createRagAgent } from "./ragAgent.js";
+import { supervisorAgentPromptTemplate } from "./prompts.js";
 
-let supervisorApp = null;
+let supervisorWithRag = null;
+let supervisorWithoutRag = null;
 let agentTools = [];
 let initialized = false;
 
@@ -33,13 +35,14 @@ export async function initializeAgent() {
     const jiraTools = getJiraMCPTools();
     const githubTools = getGithubMCPTools();
     const notionTools = getNotionMCPTools();
-    agentTools = [...jiraTools, ...githubTools, ...notionTools];
+    const calendarTools = getGoogleMCPTools();
+    agentTools = [...jiraTools, ...githubTools, ...notionTools, ...calendarTools];
     const llm = getChatModel();
 
     if (typeof llm.bindTools === "function" && !llm.__langgraphPatched) {
       const originalBindTools = llm.bindTools.bind(llm);
-      llm.bindTools = (tools, config) => {
-        const bound = originalBindTools(tools, config);
+      llm.bindTools = (tools, options) => {
+        const bound = originalBindTools(tools, options);
         if (bound && typeof bound === "object" && !("bindTools" in bound)) {
           Object.defineProperty(bound, "bindTools", {
             value: originalBindTools,
@@ -59,19 +62,30 @@ export async function initializeAgent() {
     const jiraAgent = await createJiraAgent();
     const githubAgent = await createGithubAgent();
     const notionAgent = await createNotionAgent();
+    const calendarAgent = await createCalendarAgent();
     const ragAgent = await createRagAgent();
 
     const promptValue = await supervisorAgentPromptTemplate.invoke({});
     const systemMessage = promptValue.toChatMessages()[0];
 
-    const workflow = createSupervisor({
-      agents: [jiraAgent, githubAgent, notionAgent, ragAgent],
+    const baseAgents = [jiraAgent, githubAgent, notionAgent, calendarAgent];
+
+    const withRagWorkflow = createSupervisor({
+      agents: [...baseAgents, ragAgent],
       llm,
       prompt: systemMessage,
       outputMode: "last_message",
     });
 
-    supervisorApp = workflow.compile();
+    const withoutRagWorkflow = createSupervisor({
+      agents: baseAgents,
+      llm,
+      prompt: systemMessage,
+      outputMode: "last_message",
+    });
+
+    supervisorWithRag = withRagWorkflow.compile();
+    supervisorWithoutRag = withoutRagWorkflow.compile();
 
     initialized = true;
     console.log("✅ Supervisor multi-agent system initialized");
@@ -84,11 +98,13 @@ export async function initializeAgent() {
 export async function executeAgentQuery(query, options = {}) {
   await ensureAgentReady();
 
-  const { maxIterations = 10, stream = false } = options;
+  const { maxIterations = 10, stream = false, includeRagAgent = true, threadId } = options;
+  const app = includeRagAgent ? supervisorWithRag : supervisorWithoutRag;
+  if (!app) {
+    throw new Error("Supervisor graph not initialized");
+  }
 
   try {
-    console.log("🔍 Executing supervisor agent query:", query.slice(0, 100) + "...");
-
     const input = {
       messages: [
         {
@@ -98,43 +114,68 @@ export async function executeAgentQuery(query, options = {}) {
       ],
     };
 
+    const runId = threadId || `thread_${Date.now()}`;
     if (stream) {
-      return supervisorApp.stream(input, {
+      return app.stream(input, {
         configurable: {
-          thread_id: `thread_${Date.now()}`,
+          thread_id: runId,
         },
         recursionLimit: maxIterations,
       });
     }
 
-    const result = await supervisorApp.invoke(input, {
+    const result = await app.invoke(input, {
       configurable: {
-        thread_id: `thread_${Date.now()}`,
+        thread_id: runId,
       },
       recursionLimit: maxIterations,
     });
 
-    const messages = result.messages || [];
+    const messages = Array.isArray(result.messages) ? result.messages : [];
     const lastMessage = messages[messages.length - 1];
-
-    let responseText = "";
-    if (lastMessage && lastMessage.content) {
-      responseText =
-        typeof lastMessage.content === "string" ? lastMessage.content : String(lastMessage.content);
-    }
-
-    if (!responseText) {
-      responseText = "No response generated.";
-    }
+    const responseText = extractMessageText(lastMessage) || "No response generated.";
+    const toolsUsed = collectToolsUsed(messages);
 
     return {
       response: responseText,
-      toolsUsed: [],
+      toolsUsed,
+      messageCount: messages.length,
+      usedRagAgent: includeRagAgent,
     };
   } catch (error) {
     console.error("❌ Agent query execution failed:", error);
     throw error;
   }
+}
+
+function extractMessageText(message) {
+  if (!message || !message.content) {
+    return "";
+  }
+  if (typeof message.content === "string") {
+    return message.content;
+  }
+  if (Array.isArray(message.content)) {
+    return message.content
+      .map((part) => (typeof part === "string" ? part : part?.text || ""))
+      .filter(Boolean)
+      .join("\n");
+  }
+  return String(message.content);
+}
+
+function collectToolsUsed(messages) {
+  const set = new Set();
+  for (const message of messages) {
+    if (!message) continue;
+    const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+    for (const call of calls) {
+      if (call?.name) {
+        set.add(call.name);
+      }
+    }
+  }
+  return Array.from(set);
 }
 
 export async function checkAgentReadiness() {
@@ -144,7 +185,7 @@ export async function checkAgentReadiness() {
     }
 
     return {
-      ready: initialized && !!supervisorApp,
+      ready: initialized && !!supervisorWithRag && !!supervisorWithoutRag,
       model: config.llm.defaultModel,
       toolCount: agentTools.length,
     };
@@ -161,7 +202,7 @@ export async function checkAgentReadiness() {
 export async function getAgentTools() {
   await ensureAgentReady();
 
-  const toolInfo = agentTools.map(tool => ({
+  const toolInfo = agentTools.map((tool) => ({
     name: tool.name,
     description: tool.description,
     parameters: tool.schema || {},
@@ -174,21 +215,19 @@ export async function getAgentTools() {
 }
 
 export function getAgentInstance() {
-  return supervisorApp;
+  return supervisorWithRag;
 }
 
 export async function resetAgent() {
-  console.log("🔄 Resetting supervisor agent...");
-  
   initialized = false;
-  supervisorApp = null;
+  supervisorWithRag = null;
+  supervisorWithoutRag = null;
   agentTools = [];
-  
   await initializeAgent();
 }
 
 async function ensureAgentReady() {
-  if (!initialized || !supervisorApp) {
+  if (!initialized || !supervisorWithRag || !supervisorWithoutRag) {
     await initializeAgent();
   }
 }

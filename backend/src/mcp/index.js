@@ -5,6 +5,7 @@ let mcpTools = [];
 let jiraMcpTools = [];
 let notionMcpTools = [];
 let githubMcpTools = [];
+let googleMcpTools = [];
 let llm = null;
 let isInitialized = false;
 
@@ -23,14 +24,16 @@ export async function initializeMCP() {
     const jiraModule = await import("./jira.js").catch(() => null);
     const notionModule = await import("./notion.js").catch(() => null);
     const githubModule = await import("./github.js").catch(() => null);
+    const googleModule = await import("./google.js").catch(() => null);
 
     jiraMcpTools = jiraModule ? await jiraModule.getJiraTools().catch(() => []) : [];
     notionMcpTools = notionModule ? await notionModule.getNotionTools().catch(() => []) : [];
     githubMcpTools = githubModule ? await githubModule.getGithubTools().catch(() => []) : [];
-    mcpTools = [...jiraMcpTools, ...notionMcpTools, ...githubMcpTools];
+    googleMcpTools = googleModule ? await googleModule.getGoogleTools().catch(() => []) : [];
+    mcpTools = [...jiraMcpTools, ...notionMcpTools, ...githubMcpTools, ...googleMcpTools];
 
     console.log(
-      `📋 Loaded ${mcpTools.length} MCP tools (Jira: ${jiraMcpTools.length}, GitHub: ${githubMcpTools.length}, Notion: ${notionMcpTools.length})`,
+      `📋 Loaded ${mcpTools.length} MCP tools (Jira: ${jiraMcpTools.length}, GitHub: ${githubMcpTools.length}, Notion: ${notionMcpTools.length}, Calendar: ${googleMcpTools.length})`,
     );
 
     const llmConfig = config.llm;
@@ -86,9 +89,10 @@ export function getMCPToolGroups() {
     jiraTools: jiraMcpTools,
     githubTools: githubMcpTools,
     notionTools: notionMcpTools,
+    calendarTools: googleMcpTools,
     otherTools: allTools.filter(
       (tool) =>
-        ![...jiraMcpTools, ...githubMcpTools, ...notionMcpTools].some((t) => t.name === tool.name),
+        ![...jiraMcpTools, ...githubMcpTools, ...notionMcpTools, ...googleMcpTools].some((t) => t.name === tool.name),
     ),
   };
 }
@@ -101,6 +105,8 @@ export function getMCPToolsByServer(serverName) {
       return notionMcpTools;
     case "github":
       return githubMcpTools;
+    case "google":
+      return googleMcpTools;
     default:
       return [];
   }
@@ -112,7 +118,8 @@ export async function executeMCPTool(toolName, parameters) {
     const tool =
       jiraMcpTools.find((t) => t.name === toolName) ||
       notionMcpTools.find((t) => t.name === toolName) ||
-      githubMcpTools.find((t) => t.name === toolName);
+      githubMcpTools.find((t) => t.name === toolName) ||
+      googleMcpTools.find((t) => t.name === toolName);
     if (!tool) {
       throw new Error(`Tool '${toolName}' not found`);
     }
@@ -129,6 +136,10 @@ export function getMCPLLM() {
   return llm;
 }
 
+export function getGoogleMCPTools() {
+  return googleMcpTools;
+}
+
 export function isMCPReady() {
   return isInitialized && mcpTools.length > 0;
 }
@@ -138,6 +149,7 @@ export async function getMCPServerStatus() {
     notion: { connected: notionMcpTools.length > 0, toolCount: notionMcpTools.length },
     github: { connected: githubMcpTools.length > 0, toolCount: githubMcpTools.length },
     atlassian: { connected: jiraMcpTools.length > 0, toolCount: jiraMcpTools.length },
+    google: { connected: googleMcpTools.length > 0, toolCount: googleMcpTools.length },
   };
 }
 
@@ -166,11 +178,13 @@ export async function closeMCP() {
   const jiraModule = await import("./jira.js").catch(() => null);
   const notionModule = await import("./notion.js").catch(() => null);
   const githubModule = await import("./github.js").catch(() => null);
+  const googleModule = await import("./google.js").catch(() => null);
 
   const closers = [];
   if (jiraModule?.closeJiraMcp) closers.push(jiraModule.closeJiraMcp());
   if (notionModule?.closeNotionMcp) closers.push(notionModule.closeNotionMcp());
   if (githubModule?.closeGithubMcp) closers.push(githubModule.closeGithubMcp());
+  if (googleModule?.closeGoogleMcp) closers.push(googleModule.closeGoogleMcp());
   if (closers.length) {
     await Promise.all(closers);
   }
@@ -180,6 +194,7 @@ export async function closeMCP() {
   jiraMcpTools = [];
   notionMcpTools = [];
   githubMcpTools = [];
+  googleMcpTools = [];
   llm = null;
 }
 

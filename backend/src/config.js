@@ -147,6 +147,10 @@ const configSchema = z.object({
       apiToken: z.string().optional(),
       projectKey: z.string().optional(),
     }),
+    github: z.object({
+      enabled: z.boolean(),
+      token: z.string().optional(),
+    }),
     google: z.object({
       enabled: z.boolean(),
       oauthCredentials: z.string().optional(),

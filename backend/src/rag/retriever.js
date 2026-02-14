@@ -21,10 +21,11 @@ export async function baselineRetrieve(query, options = {}) {
   const ragConfig = getRagConfig();
   const {
     topK = ragConfig.topK || 6,
+    metadataFilter = null,
   } = options;
 
   try {
-    const docs = await baseRetrieve(query, topK, { strategy: 'similarity' });
+    const docs = await baseRetrieve(query, topK, { strategy: 'similarity', metadataFilter });
     const answer = await generateAnswer(query, docs);
     const executionTime = Date.now() - startTime;
 
@@ -62,6 +63,7 @@ export async function agenticRetrieve(query, options = {}) {
     retrievalStrategy = ragAdvanced.retrieval.strategy,
     mmrLambda = ragAdvanced.retrieval.mmrLambda,
     topK = ragConfig.topK || 6,
+    metadataFilter = null,
   } = options;
 
   try {
@@ -80,6 +82,7 @@ export async function agenticRetrieve(query, options = {}) {
       const docs = await baseRetrieve(q, initialK || MAX_RETRIEVAL_K, {
         strategy: retrievalStrategy,
         mmrLambda,
+        metadataFilter,
       });
       allDocuments.push(...docs);
     }
@@ -165,30 +168,43 @@ async function baseRetrieve(query, k, options = {}) {
     throw new Error('Vector store not initialized');
   }
 
-  const { strategy = 'similarity', mmrLambda = MMR_LAMBDA } = options;
+  const { strategy = 'similarity', mmrLambda = MMR_LAMBDA, metadataFilter = null } = options;
 
   try {
     if (strategy === 'mmr') {
       try {
+        if (typeof vectorStore.maxMarginalRelevanceSearch === 'function') {
+          return await vectorStore.maxMarginalRelevanceSearch(query, {
+            k,
+            fetchK: Math.max(k * 3, 20),
+            lambda: mmrLambda,
+            filter: metadataFilter || undefined,
+          });
+        }
         const retriever = vectorStore.asRetriever({
           k,
-          searchType: 'mmr', // Maximum Marginal Relevance for diversity
+          searchType: 'mmr',
           searchKwargs: {
-            lambda: mmrLambda, // Balance relevance vs diversity
+            lambda: mmrLambda,
+            filter: metadataFilter || undefined,
           }
         });
-
         return await retriever.getRelevantDocuments(query);
       } catch (mmrError) {
         console.warn('⚠️ MMR search failed, falling back to similarity search:', mmrError);
       }
     }
 
+    if (typeof vectorStore.similaritySearch === 'function') {
+      return await vectorStore.similaritySearch(query, k, metadataFilter || undefined);
+    }
     const retriever = vectorStore.asRetriever({
       k,
       searchType: 'similarity',
+      searchKwargs: {
+        filter: metadataFilter || undefined,
+      },
     });
-
     return await retriever.getRelevantDocuments(query);
   } catch (error) {
     console.error('❌ Base retrieval failed:', error);

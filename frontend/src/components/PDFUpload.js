@@ -60,7 +60,7 @@ function PDFUpload() {
         });
       }, 200);
 
-      const res = await fetch('/api/upload-pdf', {
+      const res = await fetch('/api/rag/ingest', {
         method: 'POST',
         body: formData,
       });

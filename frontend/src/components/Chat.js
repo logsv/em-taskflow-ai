@@ -7,6 +7,7 @@ function Chat() {
   const [loading, setLoading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
   const [useAdvancedMode, setUseAdvancedMode] = useState(false);
+  const [threadId, setThreadId] = useState(null);
   const fileInputRef = useRef(null);
   const [suggestions] = useState([
     'What should I focus on today?',
@@ -33,15 +34,19 @@ function Chat() {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/rag/query', {
+      const res = await fetch('/api/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: messageText,
+          threadId,
           mode: useAdvancedMode ? 'advanced' : 'baseline',
         }),
       });
       const data = await res.json();
+      if (data?.threadId && !threadId) {
+        setThreadId(data.threadId);
+      }
 
       if (!res.ok) {
         const errorText =
@@ -102,7 +107,7 @@ function Chat() {
     formData.append('pdf', file);
 
     try {
-      const res = await fetch('/api/upload-pdf', {
+      const res = await fetch('/api/rag/ingest', {
         method: 'POST',
         body: formData,
       });

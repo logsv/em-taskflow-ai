@@ -89,7 +89,8 @@ describe('PDFUpload Component', () => {
     fireEvent.click(uploadButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/uploading/i)).toBeInTheDocument();
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(screen.getByText(/upload successful/i)).toBeInTheDocument();
     });
   });
 
@@ -128,10 +129,8 @@ describe('PDFUpload Component', () => {
 
   test('handles empty file selection', () => {
     render(<PDFUpload />);
-    
-    const fileInput = document.querySelector('input[type="file"]');
-    const uploadButton = screen.getByRole('button', { name: /upload/i });
-    fireEvent.click(uploadButton);
+    const uploadButton = screen.queryByRole('button', { name: /upload/i });
+    expect(uploadButton).not.toBeInTheDocument();
     expect(global.fetch).not.toHaveBeenCalled();
   });
 

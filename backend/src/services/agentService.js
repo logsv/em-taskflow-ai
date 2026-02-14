@@ -1,6 +1,9 @@
-import { executeAgentQuery, checkAgentReadiness, getAgentTools } from "../agent/graph.js";
 import ragService from "../rag/index.js";
-import db from "../db/index.js";
+import { getChatModel } from "../llm/index.js";
+import { executeAgentQuery, checkAgentReadiness, getAgentTools } from "../agent/graph.js";
+import { getRuntimeConfig } from "../config.js";
+
+const POLICY_ORDER = ["combined", "rag", "mcp", "llm"];
 
 export class LangGraphAgentService {
   constructor() {
@@ -10,232 +13,203 @@ export class LangGraphAgentService {
   }
 
   async initialize() {
-    try {
-      console.log("🚀 Initializing LangGraph Agent Service...");
+    if (this.initialized) {
+      return;
+    }
 
-      try {
-        const ragStatus = await ragService.getStatus();
-        this.ragEnabled = ragStatus.ready;
-        console.log(`📚 RAG Service: ${this.ragEnabled ? "Available" : "Unavailable"}`);
-      } catch (error) {
-        console.warn("⚠️  RAG Service unavailable:", error);
-        this.ragEnabled = false;
-      }
+    const runtime = getRuntimeConfig();
+    const ragStatus = await ragService.getStatus().catch(() => ({ ready: false }));
+    this.ragEnabled = !!ragStatus.ready;
 
+    if (runtime.mode === "full") {
       const { tools } = await getAgentTools();
       this.tools = tools;
-
       const readiness = await checkAgentReadiness();
       if (!readiness.ready) {
-        throw new Error(`Agent not ready: ${readiness.error}`);
+        throw new Error(`Agent not ready: ${readiness.error || "unknown error"}`);
       }
-
-      this.initialized = true;
-      console.log(`✅ LangGraph Agent Service initialized with ${readiness.toolCount} MCP tools`);
-    } catch (error) {
-      console.error("❌ Failed to initialize LangGraph Agent Service:", error);
-      throw error;
+    } else {
+      this.tools = [];
     }
+
+    this.initialized = true;
   }
 
-  async processQuery(userQuery, options) {
+  async processQuery(userQuery, options = {}) {
     if (!this.initialized) {
       await this.initialize();
     }
-
-    console.log("🤔 Processing query with LangGraph agent:", userQuery.slice(0, 100));
 
     const startTime = Date.now();
-    const sources = [];
-    let enhancedQuery = userQuery;
-    let ragUsed = false;
+    const runtime = getRuntimeConfig();
+    const ragMode = options.ragMode === "advanced" ? "advanced" : "baseline";
+    const decision = {
+      policyOrder: runtime.mode === "rag_only" ? ["rag", "llm"] : POLICY_ORDER,
+      selectedPath: "llm",
+      ragHit: false,
+      mcpReady: runtime.mode === "full" && this.tools.length > 0,
+      ragMode,
+      toolsUsed: [],
+      reasons: [],
+    };
 
+    let ragResult = null;
+    if (this.ragEnabled && options.includeRag !== false) {
+      ragResult = await this.tryRag(userQuery, ragMode);
+      if (ragResult && Array.isArray(ragResult.sources) && ragResult.sources.length > 0) {
+        decision.ragHit = true;
+      } else {
+        decision.reasons.push("rag_no_hits");
+      }
+    } else {
+      decision.reasons.push("rag_disabled_or_skipped");
+    }
+
+    let result;
+    if (runtime.mode === "rag_only") {
+      if (decision.ragHit && ragResult) {
+        decision.selectedPath = "rag+llm";
+        result = this.formatResultFromRag(ragResult);
+      } else {
+        decision.selectedPath = "llm-only";
+        result = await this.runLlmExecutor(userQuery);
+      }
+    } else {
+      result = await this.runFullPolicy(userQuery, ragResult, decision);
+    }
+
+    const executionTime = Date.now() - startTime;
+    return {
+      threadId: options.threadId || null,
+      answer: result.answer,
+      sources: result.sources || [],
+      meta: {
+        executionTime,
+        decision,
+      },
+    };
+  }
+
+  async runFullPolicy(userQuery, ragResult, decision) {
+    const mcpReady = decision.mcpReady;
+    const ragHit = decision.ragHit;
+
+    if (ragHit && mcpReady) {
+      decision.selectedPath = "rag+mcp+llm";
+      const combined = await this.runCombinedExecutor(userQuery, ragResult);
+      decision.toolsUsed = combined.toolsUsed;
+      if (combined.answer) {
+        return combined;
+      }
+      decision.reasons.push("combined_failed");
+    }
+
+    if (ragHit) {
+      decision.selectedPath = "rag+llm";
+      return this.formatResultFromRag(ragResult);
+    }
+
+    if (mcpReady) {
+      decision.selectedPath = "mcp+llm";
+      const mcp = await this.runMcpExecutor(userQuery);
+      decision.toolsUsed = mcp.toolsUsed;
+      if (mcp.answer) {
+        return mcp;
+      }
+      decision.reasons.push("mcp_failed");
+    }
+
+    decision.selectedPath = "llm-only";
+    return this.runLlmExecutor(userQuery);
+  }
+
+  async runCombinedExecutor(query, ragResult) {
+    const ragContext = ragResult?.sources
+      ?.slice(0, 4)
+      .map((doc, idx) => `RAG Doc ${idx + 1}: ${doc.pageContent}`)
+      .join("\n\n");
+
+    const enriched = ragContext
+      ? `Use this retrieved document context when relevant:\n\n${ragContext}\n\nUser query:\n${query}`
+      : query;
+
+    const result = await executeAgentQuery(enriched, {
+      includeRagAgent: true,
+      maxIterations: 12,
+    });
+
+    return {
+      answer: result.response || "",
+      sources: ragResult?.sources || [],
+      toolsUsed: Array.isArray(result.toolsUsed) ? result.toolsUsed : [],
+    };
+  }
+
+  async runMcpExecutor(query) {
+    const result = await executeAgentQuery(query, {
+      includeRagAgent: false,
+      maxIterations: 10,
+    });
+
+    return {
+      answer: result.response || "",
+      sources: [],
+      toolsUsed: Array.isArray(result.toolsUsed) ? result.toolsUsed : [],
+    };
+  }
+
+  async runLlmExecutor(query) {
+    const llm = getChatModel();
+    const response = await llm.invoke(query);
+    const answer = typeof response.content === "string" ? response.content : String(response.content || "");
+    return {
+      answer: answer || "No response generated.",
+      sources: [],
+      toolsUsed: [],
+    };
+  }
+
+  async tryRag(query, ragMode) {
     try {
-      if (this.ragEnabled && (!options || options.includeRAG !== false)) {
-        try {
-          console.log("📚 Enhancing query with RAG context...");
-          const ragResults = await ragService.searchRelevantChunks(userQuery, 3);
-
-          if (ragResults.chunks.length > 0) {
-            ragUsed = true;
-            sources.push({
-              type: "rag",
-              data: {
-                chunks: ragResults.chunks,
-                sources: ragResults.sources,
-                context: ragResults.context,
-              },
-            });
-
-            enhancedQuery = await ragEnhancementTemplate.format({
-              context: ragResults.context,
-              question: userQuery
-            });
-
-            console.log(`✅ Added RAG context from ${ragResults.chunks.length} document chunks`);
-          }
-        } catch (ragError) {
-          console.warn("⚠️  RAG enhancement failed:", ragError);
-        }
+      if (ragMode === "advanced") {
+        return await ragService.agenticRetrieve(query);
       }
-
-      console.log("🤖 Executing LangGraph supervisor agent...");
-      const agentResult = await executeAgentQuery(enhancedQuery, {
-        maxIterations: (options && options.maxIterations) || 10,
-        stream: (options && options.stream) || false,
-      });
-
-      if (options && options.stream && agentResult && typeof agentResult === "object" && "next" in agentResult) {
-        return agentResult;
-      }
-
-      const result =
-        typeof agentResult === "string"
-          ? { response: agentResult, toolsUsed: [] }
-          : agentResult;
-
-      // Save chat history
-      await db.saveChatHistory(userQuery, result.response, options?.sessionId, JSON.stringify({ toolsUsed: result.toolsUsed }));
-
-      if (result.toolsUsed && result.toolsUsed.length > 0) {
-        sources.push({
-          type: "mcp_tools",
-          data: {
-            toolsUsed: result.toolsUsed,
-            toolCount: this.tools.length,
-          },
-        });
-      }
-
-      try {
-        console.log("💾 Would store conversation in database");
-        console.log("💾 Conversation stored in database");
-      } catch (dbError) {
-        console.warn("⚠️  Failed to store conversation:", dbError);
-      }
-
-      const totalTime = Date.now() - startTime;
-
-      console.log(`✅ Query processed successfully in ${totalTime}ms`);
-      console.log(`📊 Used ${result.toolsUsed?.length || 0} MCP tools, RAG: ${ragUsed}`);
-
-      return result.response || "No response generated.";
+      return await ragService.baselineRetrieve(query);
     } catch (error) {
-      const totalTime = Date.now() - startTime;
-      console.error("❌ Query processing failed:", error);
-
-      return `I encountered an error while processing your query: ${error.message}. Please try again or rephrase your question.`;
+      return {
+        answer: "",
+        sources: [],
+      };
     }
   }
 
-  async *streamQuery(userQuery, options) {
-    if (!this.initialized) {
-      await this.initialize();
-    }
-
-    console.log("🌊 Starting streaming query processing...");
-
-    let enhancedQuery = userQuery;
-    if (this.ragEnabled && (!options || options.includeRAG !== false)) {
-      try {
-        const ragResults = await ragService.searchRelevantChunks(userQuery, 3);
-        if (ragResults.chunks.length > 0) {
-          enhancedQuery = await ragStreamEnhancementTemplate.format({
-            context: ragResults.context,
-            question: userQuery
-          });
-          yield {
-            type: "thinking",
-            content: `Found ${ragResults.chunks.length} relevant documents to help answer your question.`,
-          };
-        }
-      } catch (ragError) {
-        console.warn("RAG enhancement failed during streaming:", ragError);
-      }
-    }
-
-    try {
-      const stream = await executeAgentQuery(enhancedQuery, {
-        maxIterations: (options && options.maxIterations) || 10,
-        stream: true,
-      });
-
-      for await (const chunk of stream) {
-        const nodeValues = Object.values(chunk || {});
-        for (const node of nodeValues) {
-          if (!node || !node.messages || !Array.isArray(node.messages)) {
-            continue;
-          }
-          const lastMessage = node.messages[node.messages.length - 1];
-          if (!lastMessage || !lastMessage.content) {
-            continue;
-          }
-          const content =
-            typeof lastMessage.content === "string"
-              ? lastMessage.content
-              : JSON.stringify(lastMessage.content);
-          if (!content) {
-            continue;
-          }
-          yield {
-            type: "thinking",
-            content,
-          };
-        }
-      }
-
-      yield {
-        type: "final",
-        content: "Query processing completed.",
-      };
-    } catch (error) {
-      yield {
-        type: "final",
-        content: `Error: ${error.message}`,
-      };
-    }
+  formatResultFromRag(ragResult) {
+    return {
+      answer: ragResult.answer || "No response generated.",
+      sources: ragResult.sources || [],
+      toolsUsed: [],
+    };
   }
 
   async getStatus() {
-    try {
-      const readiness = await checkAgentReadiness();
-      return {
-        ready: this.initialized && readiness.ready,
-        toolCount: this.tools.length,
-        ragEnabled: this.ragEnabled,
-        model: readiness.model,
-        error: readiness.error,
-      };
-    } catch (error) {
-      return {
-        ready: false,
-        toolCount: 0,
-        ragEnabled: false,
-        model: "gpt-oss:20b",
-        error: error.message,
-      };
-    }
+    const readiness = await checkAgentReadiness().catch(() => ({ ready: false, toolCount: 0 }));
+    return {
+      ready: this.initialized,
+      mcpReady: readiness.ready,
+      toolCount: this.tools.length,
+      ragEnabled: this.ragEnabled,
+      runtimeMode: getRuntimeConfig().mode,
+    };
   }
 
   async getAvailableTools() {
-    try {
-      const { toolInfo } = await getAgentTools();
-      return toolInfo;
-    } catch (error) {
-      console.error("Failed to get available tools:", error);
-      return [];
+    if (!this.initialized) {
+      await this.initialize();
     }
-  }
-
-  isReady() {
-    return this.initialized;
-  }
-
-  async restart() {
-    console.log("🔄 Restarting LangGraph Agent Service...");
-    this.initialized = false;
-    this.tools = [];
-    await this.initialize();
+    return (this.tools || []).map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+    }));
   }
 }
 
