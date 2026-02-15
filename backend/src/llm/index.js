@@ -1,4 +1,5 @@
 import { ChatOpenAI } from '@langchain/openai';
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { getLlmConfig } from '../config.js';
 import { bgeEmbeddingsClient } from './bgeEmbeddingsClient.js';
 
@@ -13,7 +14,7 @@ function createChatModelForProvider(providerKey, options = {}) {
     throw new Error(`LLM provider "${providerKey}" is not enabled or not configured`);
   }
 
-  const modelName = options.model || llmConfig.defaultModel || 'gpt-4o-mini';
+  const modelName = options.model || llmConfig.defaultModel;
   const temperature = options.temperature ?? 0.1;
 
   let model;
@@ -36,13 +37,9 @@ function createChatModelForProvider(providerKey, options = {}) {
       throw new Error('GOOGLE_API_KEY is required for Google Gemini provider');
     }
 
-    const baseURL = provider.baseUrl?.replace(/\/$/, '') || 'https://generativelanguage.googleapis.com/v1beta/openai';
-    model = new ChatOpenAI({
-      modelName: modelName || 'gemini-1.5-flash',
-      openAIApiKey: apiKey,
-      configuration: {
-        baseURL,
-      },
+    model = new ChatGoogleGenerativeAI({
+      model: modelName || 'gemini-2.5-flash',
+      apiKey,
       temperature,
     });
   } else {

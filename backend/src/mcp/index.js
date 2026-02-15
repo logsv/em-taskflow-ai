@@ -21,15 +21,27 @@ export async function initializeMCP() {
     console.log("  Jira:", mcpConfig.jira.enabled ? "✅ Enabled" : "❌ Disabled");
     console.log("  Google:", mcpConfig.google.enabled ? "✅ Enabled" : "❌ Disabled");
 
-    const jiraModule = await import("./jira.js").catch(() => null);
-    const notionModule = await import("./notion.js").catch(() => null);
-    const githubModule = await import("./github.js").catch(() => null);
-    const googleModule = await import("./google.js").catch(() => null);
+    const jiraModule = await import("./jira.js").catch((error) => {
+      console.warn("⚠️ Failed to load Jira MCP module:", error?.message || error);
+      return null;
+    });
+    const notionModule = await import("./notion.js").catch((error) => {
+      console.warn("⚠️ Failed to load Notion MCP module:", error?.message || error);
+      return null;
+    });
+    const githubModule = await import("./github.js").catch((error) => {
+      console.warn("⚠️ Failed to load GitHub MCP module:", error?.message || error);
+      return null;
+    });
+    const googleModule = await import("./google.js").catch((error) => {
+      console.warn("⚠️ Failed to load Google MCP module:", error?.message || error);
+      return null;
+    });
 
-    jiraMcpTools = jiraModule ? await jiraModule.getJiraTools().catch(() => []) : [];
-    notionMcpTools = notionModule ? await notionModule.getNotionTools().catch(() => []) : [];
-    githubMcpTools = githubModule ? await githubModule.getGithubTools().catch(() => []) : [];
-    googleMcpTools = googleModule ? await googleModule.getGoogleTools().catch(() => []) : [];
+    jiraMcpTools = jiraModule ? await loadTools("Jira", jiraModule.getJiraTools) : [];
+    notionMcpTools = notionModule ? await loadTools("Notion", notionModule.getNotionTools) : [];
+    githubMcpTools = githubModule ? await loadTools("GitHub", githubModule.getGithubTools) : [];
+    googleMcpTools = googleModule ? await loadTools("Google", googleModule.getGoogleTools) : [];
     mcpTools = [...jiraMcpTools, ...notionMcpTools, ...githubMcpTools, ...googleMcpTools];
 
     console.log(
@@ -201,5 +213,14 @@ export async function closeMCP() {
 export async function ensureMCPReady() {
   if (!isInitialized) {
     await initializeMCP();
+  }
+}
+
+async function loadTools(name, getToolsFn) {
+  try {
+    return await getToolsFn();
+  } catch (error) {
+    console.warn(`⚠️ ${name} MCP tools unavailable:`, error?.message || error);
+    return [];
   }
 }

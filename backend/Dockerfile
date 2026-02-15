@@ -7,11 +7,12 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
-ENV npm_config_build_from_source=true
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund || \
+    npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
 
 COPY . .
-
-RUN rm -rf node_modules && npm install --omit=dev --legacy-peer-deps
 
 EXPOSE 4000
 

@@ -3,11 +3,10 @@
  * Handles document ingestion with token-aware chunking and vector storage
  */
 
-import { RecursiveCharacterTextSplitter, TokenTextSplitter } from 'langchain/text_splitter';
+import { TokenTextSplitter } from 'langchain/text_splitter';
 import { Document } from 'langchain/document';
-import { Chroma } from '@langchain/community/vectorstores/chroma';
 import fs from 'fs/promises';
-import pdf from 'pdf-parse';
+import pdf from 'pdf-parse/lib/pdf-parse.js';
 import { ChromaClient } from 'chromadb';
 import { config, getRagConfig } from '../config.js';
 import { BGEEmbeddingsAdapter } from '../llm/bgeEmbeddingsAdapter.js';
@@ -93,16 +92,32 @@ export async function initializeIngest() {
       };
     }
 
-    vectorStore = new Chroma(embeddings, {
-      collectionName,
-      url: `http://${config.vectorDb?.chroma?.host || 'localhost'}:${config.vectorDb?.chroma?.port || 8000}`,
-      collectionMetadata: {
-        'hnsw:space': 'cosine',
-        'hnsw:construction_ef': 200,
-        'hnsw:M': 16,
-        'hnsw:search_ef': 100,
+    vectorStore = {
+      embeddings,
+      async addDocuments(documents) {
+        const collection = await chromaClient.getOrCreateCollection({
+          name: collectionName,
+          metadata: {
+            'hnsw:space': 'cosine',
+            'hnsw:construction_ef': 200,
+            'hnsw:M': 16,
+            'hnsw:search_ef': 100,
+          },
+        });
+        const texts = documents.map((doc) => String(doc.pageContent || ''));
+        const metadatas = documents.map((doc) => sanitizeMetadata(doc.metadata || {}));
+        const ids = documents.map((doc, index) =>
+          `${filenameSafeId(doc.metadata?.filename || 'doc')}-${doc.metadata?.chunkIndex ?? index}-${Date.now()}-${index}`,
+        );
+        const vectors = await embeddings.embedDocuments(texts);
+        await collection.upsert({
+          ids,
+          documents: texts,
+          metadatas,
+          embeddings: vectors,
+        });
       },
-    });
+    };
 
     initialized = true;
     console.log(`✅ RAG ingest pipeline initialized: ${collectionName}`);
@@ -253,6 +268,26 @@ function simpleHash(text) {
   return Math.abs(hash).toString(16);
 }
 
+function filenameSafeId(value) {
+  return String(value || 'doc')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '-')
+    .slice(0, 48);
+}
+
+function sanitizeMetadata(metadata) {
+  const output = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value == null) continue;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      output[key] = value;
+    } else {
+      output[key] = JSON.stringify(value);
+    }
+  }
+  return output;
+}
+
 /**
  * Get ingestion status
  */
@@ -333,6 +368,8 @@ export async function clearCollection() {
     console.log(`✅ Cleared collection: ${collectionName}`);
     
     // Reinitialize vector store
+    initialized = false;
+    vectorStore = null;
     await initializeIngest();
     
   } catch (error) {

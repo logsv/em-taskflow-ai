@@ -34,14 +34,18 @@ function Chat() {
     setLoading(true);
 
     try {
+      const payload = {
+        query: messageText,
+        mode: useAdvancedMode ? 'advanced' : 'baseline',
+      };
+      if (threadId) {
+        payload.threadId = threadId;
+      }
+
       const res = await fetch('/api/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: messageText,
-          threadId,
-          mode: useAdvancedMode ? 'advanced' : 'baseline',
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data?.threadId && !threadId) {
@@ -63,6 +67,8 @@ function Chat() {
           }
         ]);
       } else {
+        const notionOauthUrl = data?.meta?.notionOAuth?.authorizationUrl;
+        const githubOauthUrl = data?.meta?.githubOAuth?.authorizationUrl;
         setMessages(prev => [
           ...prev,
           {
@@ -72,7 +78,21 @@ function Chat() {
               : 'No response generated.',
             sources: Array.isArray(data?.sources) ? data.sources : [],
             timestamp: new Date()
-          }
+          },
+          ...(notionOauthUrl
+            ? [{
+                sender: 'system',
+                text: `Notion connection required. <a href="${notionOauthUrl}" target="_blank" rel="noreferrer">Connect Notion</a>`,
+                timestamp: new Date(),
+              }]
+            : []),
+          ...(githubOauthUrl
+            ? [{
+                sender: 'system',
+                text: `GitHub connection required. <a href="${githubOauthUrl}" target="_blank" rel="noreferrer">Connect GitHub</a>`,
+                timestamp: new Date(),
+              }]
+            : []),
         ]);
       }
     } catch (err) {

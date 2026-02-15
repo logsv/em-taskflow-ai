@@ -2,23 +2,23 @@ services:
   backend:
     build: ./backend
     container_name: em-taskflow-backend
+    env_file:
+      - ./backend/.env
     environment:
       NODE_ENV: production
-      RUNTIME_MODE: rag_only
+      RUNTIME_MODE: ${RUNTIME_MODE:-full}
       PORT: 4000
       HOST: 0.0.0.0
       DATABASE_URL: postgresql://taskflow:taskflow@postgres:5432/taskflow
       CHROMA_HOST: chroma
       CHROMA_PORT: 8000
       RAG_ENABLED: "true"
-      LLM_DEFAULT_PROVIDER: ollama
-      LLM_DEFAULT_MODEL: llama3.2:latest
-      OLLAMA_BASE_URL: http://ollama:11434
+      LLM_DEFAULT_PROVIDER: google
+      LLM_DEFAULT_MODEL: models/gemini-2.5-flash
+      LLM_GOOGLE_ENABLED: "true"
     depends_on:
       chroma:
         condition: service_healthy
-      ollama:
-        condition: service_started
       postgres:
         condition: service_healthy
     volumes:
@@ -26,7 +26,7 @@ services:
     ports:
       - "4000:4000"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:4000/api/health || exit 1"]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 15s
       timeout: 5s
       retries: 20
@@ -56,21 +56,11 @@ services:
     ports:
       - "8000:8000"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:8000/api/v2/heartbeat || exit 1"]
+      test: ["CMD-SHELL", "bash -lc '</dev/tcp/localhost/8000'"]
       interval: 10s
       timeout: 5s
       retries: 20
       start_period: 10s
-    networks:
-      - em-taskflow-net
-
-  ollama:
-    image: ollama/ollama
-    container_name: em-taskflow-ollama
-    volumes:
-      - ollama_data:/root/.ollama
-    ports:
-      - "11434:11434"
     networks:
       - em-taskflow-net
 
@@ -109,7 +99,7 @@ services:
     ports:
       - "8001:8000"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:8000/v1/models || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://localhost:8000/v1/models').status==200 else 1)\""]
       interval: 20s
       timeout: 10s
       retries: 30
@@ -125,6 +115,5 @@ networks:
 volumes:
   backend_data:
   chroma_data:
-  ollama_data:
   postgres_data:
   vllm_cache:

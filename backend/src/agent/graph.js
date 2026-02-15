@@ -7,6 +7,7 @@ import {
   getGithubMCPTools,
   getNotionMCPTools,
   getGoogleMCPTools,
+  getRAGMCPTools, // Assuming a similar function for RAG tools
 } from "../mcp/index.js";
 import { config } from "../config.js";
 import { createJiraAgent } from "./jiraAgent.js";
@@ -15,11 +16,30 @@ import { createNotionAgent } from "./notionAgent.js";
 import { createCalendarAgent } from "./calendarAgent.js";
 import { createRagAgent } from "./ragAgent.js";
 import { supervisorAgentPromptTemplate } from "./prompts.js";
+import { getRouterChain } from './llmRouter.js'; // Import the new LLM router
 
 let supervisorWithRag = null;
 let supervisorWithoutRag = null;
 let agentTools = [];
+let domainToolsMap = {};
 let initialized = false;
+
+// Helper function to create the domain-to-tool mapping
+async function getDomainToolsMapping() {
+  const jiraTools = await getJiraMCPTools();
+  const githubTools = await getGithubMCPTools();
+  const notionTools = await getNotionMCPTools();
+  const calendarTools = await getGoogleMCPTools();
+  const ragTools = await getRAGMCPTools(); // Assuming a similar function for RAG tools
+
+  const mapping = {};
+  jiraTools.forEach(tool => mapping[tool.name] = "jira");
+  githubTools.forEach(tool => mapping[tool.name] = "github");
+  notionTools.forEach(tool => mapping[tool.name] = "notion");
+  calendarTools.forEach(tool => mapping[tool.name] = "calendar");
+  ragTools.forEach(tool => mapping[tool.name] = "rag");
+  return mapping;
+}
 
 export async function initializeAgent() {
   if (initialized) return;
@@ -31,6 +51,9 @@ export async function initializeAgent() {
       console.log("🔧 Initializing MCP services...");
       await initializeMCP();
     }
+
+    // Populate the domainToolsMap during initialization
+    domainToolsMap = await getDomainToolsMapping();
 
     const jiraTools = getJiraMCPTools();
     const githubTools = getGithubMCPTools();
@@ -72,16 +95,16 @@ export async function initializeAgent() {
 
     const withRagWorkflow = createSupervisor({
       agents: [...baseAgents, ragAgent],
-      llm,
+      llm: llm.bind({ response_format: { type: "json_object" } }),
       prompt: systemMessage,
-      outputMode: "last_message",
+      outputMode: "json",
     });
 
     const withoutRagWorkflow = createSupervisor({
       agents: baseAgents,
-      llm,
+      llm: llm.bind({ response_format: { type: "json_object" } }),
       prompt: systemMessage,
-      outputMode: "last_message",
+      outputMode: "json",
     });
 
     supervisorWithRag = withRagWorkflow.compile();
@@ -98,8 +121,30 @@ export async function initializeAgent() {
 export async function executeAgentQuery(query, options = {}) {
   await ensureAgentReady();
 
-  const { maxIterations = 10, stream = false, includeRagAgent = true, threadId } = options;
-  const app = includeRagAgent ? supervisorWithRag : supervisorWithoutRag;
+  // Use the LLM router to determine the routing plan
+  const routerChain = getRouterChain();
+  const routingPlan = await routerChain.invoke({ query });
+
+  // Confidence-driven clarification
+  if (routingPlan.confidence < 0.7) {
+    const confirmation = await ask_user({
+        question: `I have low confidence in the plan to answer your query. I think the query is about ${routingPlan.reasoning_summary}. Do you want me to proceed?`,
+        type: 'yesno',
+        header: 'Low confidence'
+    });
+    if (confirmation.answer !== 'yes') {
+      return {
+        executiveSummary: "Query execution cancelled by user.",
+        keyRisksAndBlockers: [],
+        whatNeedsDecision: [],
+        actionItems: [],
+        evidenceBySource: {},
+      };
+    }
+  }
+
+  const { maxIterations = 10, stream = false, threadId } = options; // includeRagAgent is removed
+  const app = routingPlan.allow_rag ? supervisorWithRag : supervisorWithoutRag;
   if (!app) {
     throw new Error("Supervisor graph not initialized");
   }
@@ -112,16 +157,16 @@ export async function executeAgentQuery(query, options = {}) {
           content: query,
         },
       ],
+      // Pass routing plan details to the supervisor for policy enforcement and prompt adjustments
+      routing_plan: routingPlan,
     };
 
     const runId = threadId || `thread_${Date.now()}`;
     if (stream) {
-      return app.stream(input, {
-        configurable: {
-          thread_id: runId,
-        },
-        recursionLimit: maxIterations,
-      });
+      // Streaming is not supported with JSON output format yet.
+      // We would need to implement a custom parser for streaming JSON.
+      // For now, we will return an error.
+      throw new Error("Streaming is not supported with the current agent configuration.");
     }
 
     const result = await app.invoke(input, {
@@ -136,15 +181,68 @@ export async function executeAgentQuery(query, options = {}) {
     const responseText = extractMessageText(lastMessage) || "No response generated.";
     const toolsUsed = collectToolsUsed(messages);
 
-    return {
-      response: responseText,
-      toolsUsed,
-      messageCount: messages.length,
-      usedRagAgent: includeRagAgent,
-    };
+    // --- Policy Validation ---
+    const invokedDomains = new Set();
+    const RAG_TOOL_NAME = "rag_db_query_retriever"; // Defined in ragAgent.js
+
+    for (const toolName of toolsUsed) {
+      if (toolName === RAG_TOOL_NAME) {
+        invokedDomains.add("rag");
+      } else {
+        const domain = domainToolsMap[toolName];
+        if (domain) {
+          invokedDomains.add(domain);
+        }
+      }
+    }
+
+    // Check if at least one tool was used when required
+    if (routingPlan.must_use_tools && toolsUsed.length === 0) {
+      throw new Error("Policy Violation: The routing plan required tool usage, but no tools were used.");
+    }
+
+    // Check if expected domains were invoked
+    for (const expectedDomain of routingPlan.domains) {
+      if (!invokedDomains.has(expectedDomain)) {
+        throw new Error(`Policy Violation: Expected domain '${expectedDomain}' was not invoked by supervisor.`);
+      }
+    }
+
+    // Check for unexpected domain invocations
+    for (const invokedDomain of invokedDomains) {
+      if (invokedDomain === "rag") {
+        if (!routingPlan.allow_rag) {
+          throw new Error(`Policy Violation: RAG agent (tool: ${RAG_TOOL_NAME}) was invoked but 'allow_rag' was false in routing plan.`);
+        }
+      } else if (!routingPlan.domains.includes(invokedDomain)) {
+        throw new Error(`Policy Violation: Domain '${invokedDomain}' was invoked but not specified in routing plan.`);
+      }
+    }
+    // --- End Policy Validation ---
+
+    try {
+      return JSON.parse(responseText);
+    } catch (e) {
+      console.error("Failed to parse supervisor output as JSON:", e);
+      // If parsing fails, we can try to recover or return an error.
+      // For now, we will return a structured error.
+      return {
+        executiveSummary: "Failed to parse the output from the agent.",
+        keyRisksAndBlockers: [`The agent produced an invalid JSON output: ${responseText}`],
+        whatNeedsDecision: [],
+        actionItems: [],
+        evidenceBySource: {},
+      };
+    }
   } catch (error) {
     console.error("❌ Agent query execution failed:", error);
-    throw error;
+    return {
+      executiveSummary: "An error occurred during agent execution.",
+      keyRisksAndBlockers: [error.message],
+      whatNeedsDecision: [],
+      actionItems: [],
+      evidenceBySource: {},
+    };
   }
 }
 

@@ -15,7 +15,7 @@ echo "Working directory: $SCRIPT_DIR"
 if [[ "${#PROFILE_ARGS[@]}" -gt 0 ]]; then
   echo "Mode: GPU (includes vLLM)"
 else
-  echo "Mode: default (ollama + postgres + chroma + app)"
+  echo "Mode: default (gemini + postgres + chroma + app)"
 fi
 
 docker compose "${PROFILE_ARGS[@]}" up -d --build

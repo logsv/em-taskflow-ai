@@ -7,7 +7,6 @@ Default runtime:
 - `backend` (`RUNTIME_MODE=rag_only`)
 - `postgres`
 - `chroma`
-- `ollama`
 
 Optional runtime:
 - `vllm` (GPU profile)
@@ -43,7 +42,7 @@ Optional runtime:
 
 - Active local config: `backend/.env`
 - Template: `backend/.env.example`
-- Default provider is local Ollama.
+- Default provider is Google Gemini (OpenAI-compatible endpoint).
 - Default runtime mode is `rag_only`.
 
 ## Smoke Tests
@@ -55,20 +54,20 @@ curl -s http://localhost:4000/api/health
 
 2. Upload PDF:
 ```bash
-curl -X POST http://localhost:4000/api/upload-pdf \
+curl -X POST http://localhost:4000/api/rag/ingest \
   -F "pdf=@/absolute/path/to/file.pdf"
 ```
 
-3. Query baseline RAG:
+3. Query (single API):
 ```bash
-curl -X POST http://localhost:4000/api/rag/query \
+curl -X POST http://localhost:4000/api/query \
   -H "Content-Type: application/json" \
   -d '{"query":"Summarize the uploaded document","mode":"baseline"}'
 ```
 
-4. Query advanced RAG (if enabled):
+4. Query advanced mode:
 ```bash
-curl -X POST http://localhost:4000/api/rag/query \
+curl -X POST http://localhost:4000/api/query \
   -H "Content-Type: application/json" \
   -d '{"query":"Summarize key risks","mode":"advanced"}'
 ```
@@ -87,7 +86,7 @@ docker compose --profile gpu up -d --build
 
 Logs:
 ```bash
-docker compose logs -f backend frontend postgres chroma ollama
+docker compose logs -f backend frontend postgres chroma
 ```
 
 Stop:
@@ -123,7 +122,7 @@ docker compose up -d --build
 - `backend/.env` contains no real secrets committed to git.
 - `docker compose config` is valid.
 - Backend health endpoint returns healthy.
-- PDF upload and `POST /api/rag/query` both work.
+- PDF upload and `POST /api/query` both work.
 - Frontend loads and can submit chat query.
 - Logs are clean for backend start and DB migration/init.
 

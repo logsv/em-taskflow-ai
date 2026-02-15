@@ -5,13 +5,13 @@
 
 import { Document } from 'langchain/document';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
-import { getVectorStore } from './ingest.js';
-import { getChatModel } from '../llm/index.js';
+import { getVectorStore, getChromaClient } from './ingest.js';
+import { ensureLLMReady, getChatModel } from '../llm/index.js';
 import { getRagConfig, getRagAdvancedConfig } from '../config.js';
 
 // Retrieval configuration
 const MAX_RETRIEVAL_K = 30; // Initial retrieval
-const MMR_LAMBDA = 0.7; // Balance between relevance and diversity
+let loggedChromaEmbeddingBug = false;
 
 /**
  * Baseline retrieval: vector search + answer generation
@@ -25,6 +25,7 @@ export async function baselineRetrieve(query, options = {}) {
   } = options;
 
   try {
+    await ensureLLMReady();
     const docs = await baseRetrieve(query, topK, { strategy: 'similarity', metadataFilter });
     const answer = await generateAnswer(query, docs);
     const executionTime = Date.now() - startTime;
@@ -67,6 +68,7 @@ export async function agenticRetrieve(query, options = {}) {
   } = options;
 
   try {
+    await ensureLLMReady();
     console.log('🔍 Starting agentic retrieval for:', query.slice(0, 100) + '...');
 
     // Step 1: Query rewriting and expansion
@@ -168,48 +170,133 @@ async function baseRetrieve(query, k, options = {}) {
     throw new Error('Vector store not initialized');
   }
 
-  const { strategy = 'similarity', mmrLambda = MMR_LAMBDA, metadataFilter = null } = options;
+  const { metadataFilter = null } = options;
 
   try {
-    if (strategy === 'mmr') {
-      try {
-        if (typeof vectorStore.maxMarginalRelevanceSearch === 'function') {
-          return await vectorStore.maxMarginalRelevanceSearch(query, {
-            k,
-            fetchK: Math.max(k * 3, 20),
-            lambda: mmrLambda,
-            filter: metadataFilter || undefined,
-          });
-        }
-        const retriever = vectorStore.asRetriever({
-          k,
-          searchType: 'mmr',
-          searchKwargs: {
-            lambda: mmrLambda,
-            filter: metadataFilter || undefined,
-          }
-        });
-        return await retriever.getRelevantDocuments(query);
-      } catch (mmrError) {
-        console.warn('⚠️ MMR search failed, falling back to similarity search:', mmrError);
-      }
+    const chromaClient = getChromaClient();
+    if (!chromaClient) {
+      throw new Error('ChromaDB client not initialized');
     }
 
-    if (typeof vectorStore.similaritySearch === 'function') {
-      return await vectorStore.similaritySearch(query, k, metadataFilter || undefined);
+    const embeddingModel = vectorStore?.embeddings;
+    if (!embeddingModel || typeof embeddingModel.embedQuery !== 'function') {
+      throw new Error('Vector store embeddings not available for query');
     }
-    const retriever = vectorStore.asRetriever({
-      k,
-      searchType: 'similarity',
-      searchKwargs: {
-        filter: metadataFilter || undefined,
-      },
+
+    const queryEmbedding = await embeddingModel.embedQuery(query);
+    const normalizedEmbedding = normalizeEmbedding(queryEmbedding);
+    if (normalizedEmbedding.length === 0) {
+      throw new Error('Failed to generate valid query embedding');
+    }
+
+    const ragConfig = getRagConfig();
+    const collectionName = ragConfig.defaultCollection || 'pdf_chunks';
+    const collection = await chromaClient.getCollection({ name: collectionName });
+
+    const result = await collection.query({
+      queryEmbeddings: [normalizedEmbedding],
+      nResults: k,
+      where: metadataFilter && typeof metadataFilter === 'object' ? metadataFilter : undefined,
+      include: ['documents', 'metadatas', 'distances'],
     });
-    return await retriever.getRelevantDocuments(query);
+
+    const docs = Array.isArray(result?.documents?.[0]) ? result.documents[0] : [];
+    const metadatas = Array.isArray(result?.metadatas?.[0]) ? result.metadatas[0] : [];
+
+    return docs.map((content, idx) => new Document({
+      pageContent: String(content || ''),
+      metadata: metadatas[idx] || {},
+    }));
   } catch (error) {
-    console.error('❌ Base retrieval failed:', error);
+    const message = error?.message || '';
+    if (message.includes('e.every is not a function')) {
+      if (!loggedChromaEmbeddingBug) {
+        console.warn('⚠️ Chroma vector query failed (known embedding validation issue); using lexical fallback retrieval.');
+        loggedChromaEmbeddingBug = true;
+      }
+    } else {
+      console.error('❌ Base retrieval failed, using lexical fallback:', error);
+    }
+    return await lexicalFallbackRetrieve(query, k, metadataFilter);
+  }
+}
+
+function normalizeEmbedding(vector) {
+  if (ArrayBuffer.isView(vector)) {
+    return Array.from(vector).map(Number).filter((n) => Number.isFinite(n));
+  }
+  if (!Array.isArray(vector)) {
     return [];
   }
+
+  const base = Array.isArray(vector[0]) ? vector[0] : vector;
+  if (ArrayBuffer.isView(base)) {
+    return Array.from(base).map(Number).filter((n) => Number.isFinite(n));
+  }
+  if (!Array.isArray(base)) {
+    return [];
+  }
+
+  return base.map(Number).filter((n) => Number.isFinite(n));
+}
+
+async function lexicalFallbackRetrieve(query, k, metadataFilter = null) {
+  try {
+    const chromaClient = getChromaClient();
+    if (!chromaClient) {
+      return [];
+    }
+
+    const ragConfig = getRagConfig();
+    const collectionName = ragConfig.defaultCollection || 'pdf_chunks';
+    const collection = await chromaClient.getCollection({ name: collectionName });
+
+    const where = metadataFilter && typeof metadataFilter === 'object' ? metadataFilter : undefined;
+    const data = await collection.get({
+      where,
+      include: ['documents', 'metadatas'],
+    });
+
+    const docs = Array.isArray(data.documents) ? data.documents : [];
+    const metadatas = Array.isArray(data.metadatas) ? data.metadatas : [];
+    if (docs.length === 0) {
+      return [];
+    }
+
+    const queryTokens = new Set(tokenize(query));
+    const scored = docs
+      .map((content, idx) => {
+        const tokens = tokenize(content || '');
+        let overlap = 0;
+        for (const token of tokens) {
+          if (queryTokens.has(token)) overlap += 1;
+        }
+        const norm = queryTokens.size > 0 ? overlap / queryTokens.size : 0;
+        return {
+          score: norm,
+          doc: new Document({
+            pageContent: content || '',
+            metadata: metadatas[idx] || {},
+          }),
+        };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, k)
+      .map((item) => item.doc);
+
+    return scored;
+  } catch (error) {
+    console.error('❌ Lexical fallback retrieval failed:', error);
+    return [];
+  }
+}
+
+function tokenize(text) {
+  return String(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length > 1);
 }
 
 /**

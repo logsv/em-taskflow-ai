@@ -18,6 +18,16 @@ app.use(cors());
 app.use(attachRequestContext);
 app.use(createRateLimiter());
 app.use(express.json({ limit: '2mb' }));
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+  res.on('finish', () => {
+    const durationMs = Date.now() - startedAt;
+    console.log(
+      `[${req.requestId}] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${durationMs}ms)`,
+    );
+  });
+  next();
+});
 
 app.use('/api', apiRouter);
 
