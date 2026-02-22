@@ -9,6 +9,13 @@ const __dirname = path.dirname(__filename);
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   RUNTIME_MODE: z.enum(['rag_only', 'full']).default('full'),
+  ROUTER_ROLLOUT_MODE: z.enum(['off', 'shadow', 'enforced']).default('enforced'),
+  ROUTER_ROLLOUT_PERCENT: z.coerce.number().int().min(0).max(100).default(100),
+  ROUTER_LOW_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.45),
+  ROUTER_SUCCESS_DOMAIN_ACCURACY: z.coerce.number().min(0).max(1).default(0.9),
+  ROUTER_SUCCESS_UNWANTED_RAG_MAX: z.coerce.number().min(0).max(1).default(0.05),
+  ROUTER_SUCCESS_TOOL_GROUNDED_MIN: z.coerce.number().min(0).max(1).default(0.95),
+  ROUTER_SUCCESS_EM_USEFULNESS_MIN: z.coerce.number().min(0).max(1).default(0.8),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   HOST: z.string().ip().default('127.0.0.1'),
   DATABASE_URL: z.string().url().default('postgresql://taskflow:taskflow@localhost:5432/taskflow'),
@@ -87,6 +94,17 @@ const configSchema = z.object({
   env: z.enum(['development', 'test', 'production']),
   runtime: z.object({
     mode: z.enum(['rag_only', 'full']),
+    router: z.object({
+      rolloutMode: z.enum(['off', 'shadow', 'enforced']),
+      rolloutPercent: z.number().int().min(0).max(100),
+      lowConfidenceThreshold: z.number().min(0).max(1),
+      successGates: z.object({
+        domainSelectionAccuracyMin: z.number().min(0).max(1),
+        unwantedRagRateMax: z.number().min(0).max(1),
+        toolGroundedRateMin: z.number().min(0).max(1),
+        emUsefulnessMin: z.number().min(0).max(1),
+      }),
+    }),
   }),
   server: z.object({
     port: z.number().int().min(1).max(65535),
@@ -253,6 +271,17 @@ function loadConfig() {
     env: env.NODE_ENV,
     runtime: {
       mode: env.RUNTIME_MODE,
+      router: {
+        rolloutMode: env.ROUTER_ROLLOUT_MODE,
+        rolloutPercent: env.ROUTER_ROLLOUT_PERCENT,
+        lowConfidenceThreshold: env.ROUTER_LOW_CONFIDENCE_THRESHOLD,
+        successGates: {
+          domainSelectionAccuracyMin: env.ROUTER_SUCCESS_DOMAIN_ACCURACY,
+          unwantedRagRateMax: env.ROUTER_SUCCESS_UNWANTED_RAG_MAX,
+          toolGroundedRateMin: env.ROUTER_SUCCESS_TOOL_GROUNDED_MIN,
+          emUsefulnessMin: env.ROUTER_SUCCESS_EM_USEFULNESS_MIN,
+        },
+      },
     },
     server: {
       port: env.PORT,

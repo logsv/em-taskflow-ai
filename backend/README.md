@@ -3,19 +3,24 @@
 Node.js API service for local-first RAG deployment.
 
 Current production-style profile:
-- Runtime mode: `rag_only`
+- Runtime mode: `full` or `rag_only`
 - Storage: Postgres (`DATABASE_URL`)
 - Vector store: Chroma
-- Default LLM: Ollama
+- Default LLM: Ollama (or configured provider)
 
 ## Active API Surface
 
 - `GET /api/health`
-- `GET /api/llm-status`
-- `POST /api/upload-pdf`
-- `POST /api/rag/query`
-
-Legacy agent/storage endpoints are intentionally removed from the default runtime path.
+- `GET /api/router/metrics`
+- `POST /api/query`
+- `GET /api/threads`
+- `GET /api/threads/:threadId/messages`
+- `POST /api/rag/ingest`
+- `GET /api/rag/documents`
+- `POST /api/rag/documents/:documentId/query`
+- OAuth helpers:
+  - `GET /api/mcp/notion/oauth/start`
+  - `GET /api/mcp/github/oauth/start`
 
 ## Configuration
 
@@ -27,10 +32,19 @@ Template:
 
 Important variables:
 - `RUNTIME_MODE=rag_only|full`
+- `ROUTER_ROLLOUT_MODE=off|shadow|enforced`
+- `ROUTER_ROLLOUT_PERCENT=0..100`
+- `ROUTER_LOW_CONFIDENCE_THRESHOLD=0..1`
 - `DATABASE_URL=postgresql://...`
 - `LLM_DEFAULT_PROVIDER=ollama|google|openai|anthropic`
 - `OLLAMA_BASE_URL=...`
 - `RAG_ADVANCED_ENABLED=true|false`
+
+Success gate thresholds:
+- `ROUTER_SUCCESS_DOMAIN_ACCURACY`
+- `ROUTER_SUCCESS_UNWANTED_RAG_MAX`
+- `ROUTER_SUCCESS_TOOL_GROUNDED_MIN`
+- `ROUTER_SUCCESS_EM_USEFULNESS_MIN`
 
 ## Local Run
 
@@ -56,6 +70,11 @@ npm test
 If you only want route tests:
 ```bash
 npx jasmine test/routes/api.spec.js
+```
+
+Run routing evaluation:
+```bash
+npm run evaluate
 ```
 
 ## Notes

@@ -55,6 +55,24 @@ router.get('/health', async (req, res) => {
   }
 });
 
+router.get('/router/metrics', async (req, res) => {
+  try {
+    const status = await agentService.getStatus();
+    res.json({
+      runtimeMode: status.runtimeMode,
+      router: status.router || null,
+      requestId: req.requestId,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch router metrics',
+      details: error.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
 router.post('/query', async (req, res) => {
   try {
     const parsed = querySchema.safeParse(req.body || {});
@@ -122,9 +140,11 @@ router.post('/query', async (req, res) => {
       githubOAuth = null;
     }
 
-    const lowerQuery = query.toLowerCase();
-    const githubIntent = lowerQuery.includes('github') || lowerQuery.includes('repo') || lowerQuery.includes('pull request');
-    const notionIntent = lowerQuery.includes('notion') || lowerQuery.includes('workspace');
+    const routedDomains = Array.isArray(result?.meta?.decision?.routingPlan?.domains)
+      ? result.meta.decision.routingPlan.domains
+      : [];
+    const githubIntent = routedDomains.includes('github');
+    const notionIntent = routedDomains.includes('notion');
     if (githubIntent && githubOAuth?.required) {
       result.answer = githubOAuth.authorizationUrl
         ? 'GitHub connection is required before I can fetch your repositories/issues/PRs. Use the Connect GitHub link in chat, then retry your query.'
