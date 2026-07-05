@@ -26,6 +26,143 @@ const querySchema = z.object({
   mode: z.enum(['baseline', 'advanced']).optional(),
 });
 
+const chatSchema = z.object({
+  message: z.string().min(1).max(20_000),
+  threadId: z.string().min(1).max(128).nullable().optional(),
+});
+
+const feedbackSchema = z.object({
+  messageId: z.coerce.number().int().positive().optional(),
+  threadId: z.string().min(1).max(128).optional(),
+  traceId: z.string().min(1).max(256).optional(),
+  score: z.enum(['thumbs_up', 'thumbs_down']),
+  comment: z.string().trim().max(2_000).optional(),
+});
+
+async function handleChatRequest(req, res, payload) {
+  const { message, threadId } = payload;
+  const query = message;
+  const ensuredThread = await db.ensureThread(
+    threadId || req.sessionContext?.threadId || undefined,
+    query.slice(0, 80),
+    req.sessionContext?.sessionId || null,
+  );
+  const result = await agentService.processQuery(query, {
+    threadId: ensuredThread.id,
+    ragMode: 'baseline',
+  });
+  let notionOAuth = null;
+  let githubOAuth = null;
+  let notionOauthStartError = null;
+  try {
+    let oauthStatus = await getNotionOAuthStatus();
+    if (!oauthStatus?.authorized && !oauthStatus?.pendingAuthorizationUrl) {
+      await startNotionOAuthFlow().catch((error) => {
+        notionOauthStartError = error?.message || String(error);
+        return null;
+      });
+      oauthStatus = await getNotionOAuthStatus();
+    }
+    if (oauthStatus?.pendingAuthorizationUrl && !oauthStatus?.authorized) {
+      notionOAuth = {
+        required: true,
+        authorizationUrl: oauthStatus.pendingAuthorizationUrl,
+      };
+    }
+  } catch (error) {
+    notionOAuth = null;
+  }
+  let githubOauthStartError = null;
+  try {
+    let oauthStatus = await getGithubOAuthStatus();
+    if (!oauthStatus?.authorized && !oauthStatus?.pendingAuthorizationUrl) {
+      await startGithubOAuthFlow().catch((error) => {
+        githubOauthStartError = error?.message || String(error);
+        return null;
+      });
+      oauthStatus = await getGithubOAuthStatus();
+    }
+    if (oauthStatus?.pendingAuthorizationUrl && !oauthStatus?.authorized) {
+      githubOAuth = {
+        required: true,
+        authorizationUrl: oauthStatus.pendingAuthorizationUrl,
+      };
+    } else if (!oauthStatus?.authorized && githubOauthStartError) {
+      githubOAuth = {
+        required: true,
+        authorizationUrl: null,
+        error: githubOauthStartError,
+      };
+    }
+  } catch (error) {
+    githubOAuth = null;
+  }
+
+  const routedDomains = Array.isArray(result?.meta?.decision?.routingPlan?.domains)
+    ? result.meta.decision.routingPlan.domains
+    : [];
+  const githubIntent = routedDomains.includes('github');
+  const notionIntent = routedDomains.includes('notion');
+  if (githubIntent && githubOAuth?.required) {
+    result.answer = githubOAuth.authorizationUrl
+      ? 'GitHub connection is required before I can fetch your repositories/issues/PRs. Use the Connect GitHub link in chat, then retry your query.'
+      : `GitHub connection is required before I can fetch your repositories/issues/PRs. ${githubOAuth.error || 'Complete GitHub OAuth setup and retry.'}`;
+  } else if (notionIntent && notionOAuth?.required) {
+    result.answer = 'Notion connection is required before I can fetch workspace insights. Use the Connect Notion link in chat, then retry your query.';
+  } else if (notionIntent && notionOauthStartError && !notionOAuth?.required) {
+    result.answer = `Notion connection is required before I can fetch workspace insights. ${notionOauthStartError}`;
+  }
+
+  const decision = result.meta?.decision || {};
+  const userMessageRecord = await db.saveMessage({
+    threadId: ensuredThread.id,
+    role: 'user',
+    content: query,
+    strategy: decision.selectedPath || null,
+    executorPath: decision.selectedPath || null,
+    traceId: result.meta?.traceId || null,
+    metadata: decision,
+  });
+  const assistantMessageRecord = await db.saveMessage({
+    threadId: ensuredThread.id,
+    role: 'assistant',
+    content: result.answer,
+    strategy: decision.selectedPath || null,
+    executorPath: decision.selectedPath || null,
+    traceId: result.meta?.traceId || null,
+    citations: Array.isArray(result.sources)
+      ? result.sources.map((doc) => ({
+          content: doc.pageContent,
+          metadata: doc.metadata,
+        }))
+      : [],
+    metadata: {
+      ...decision,
+      userMessageId: userMessageRecord.id,
+      sourceCount: Array.isArray(result.sources) ? result.sources.length : 0,
+    },
+  });
+
+  res.json({
+    messageId: assistantMessageRecord.id,
+    threadId: ensuredThread.id,
+    sessionId: req.sessionContext?.sessionId || null,
+    answer: result.answer,
+    sources: result.sources.map((doc) => ({
+      content: doc.pageContent,
+      metadata: doc.metadata,
+    })),
+    traceId: result.meta?.traceId || null,
+    feedbackToken: assistantMessageRecord.id,
+    meta: {
+      ...(result.meta || {}),
+      ...(notionOAuth ? { notionOAuth } : {}),
+      ...(githubOAuth ? { githubOAuth } : {}),
+    },
+    requestId: req.requestId,
+  });
+}
+
 router.get('/health', async (req, res) => {
   try {
     const runtimeConfig = getRuntimeConfig();
@@ -91,6 +228,35 @@ router.get('/session', attachSessionContext, async (req, res) => {
   }
 });
 
+router.post('/chat', attachSessionContext, async (req, res) => {
+  try {
+    const parsed = chatSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: 'Invalid request body',
+        details: parsed.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        })),
+        requestId: req.requestId,
+      });
+    }
+
+    await handleChatRequest(req, res, parsed.data);
+  } catch (error) {
+    const message = error?.message || 'Failed to process query';
+    const status = message.includes('timed out')
+      ? 504
+      : message.includes('LLM unavailable')
+        ? 503
+        : 500;
+    res.status(status).json({
+      error: message,
+      requestId: req.requestId,
+    });
+  }
+});
+
 router.post('/query', attachSessionContext, async (req, res) => {
   try {
     const parsed = querySchema.safeParse(req.body || {});
@@ -105,112 +271,9 @@ router.post('/query', attachSessionContext, async (req, res) => {
       });
     }
 
-    const { query, threadId, mode } = parsed.data;
-    const ensuredThread = await db.ensureThread(
-      threadId || req.sessionContext?.threadId || undefined,
-      query.slice(0, 80),
-      req.sessionContext?.sessionId || null,
-    );
-    const result = await agentService.processQuery(query, {
-      threadId: ensuredThread.id,
-      ragMode: mode || 'baseline',
-    });
-    let notionOAuth = null;
-    let githubOAuth = null;
-    let notionOauthStartError = null;
-    try {
-      let oauthStatus = await getNotionOAuthStatus();
-      if (!oauthStatus?.authorized && !oauthStatus?.pendingAuthorizationUrl) {
-        await startNotionOAuthFlow().catch((error) => {
-          notionOauthStartError = error?.message || String(error);
-          return null;
-        });
-        oauthStatus = await getNotionOAuthStatus();
-      }
-      if (oauthStatus?.pendingAuthorizationUrl && !oauthStatus?.authorized) {
-        notionOAuth = {
-          required: true,
-          authorizationUrl: oauthStatus.pendingAuthorizationUrl,
-        };
-      }
-    } catch (error) {
-      notionOAuth = null;
-    }
-    let githubOauthStartError = null;
-    try {
-      let oauthStatus = await getGithubOAuthStatus();
-      if (!oauthStatus?.authorized && !oauthStatus?.pendingAuthorizationUrl) {
-        await startGithubOAuthFlow().catch((error) => {
-          githubOauthStartError = error?.message || String(error);
-          return null;
-        });
-        oauthStatus = await getGithubOAuthStatus();
-      }
-      if (oauthStatus?.pendingAuthorizationUrl && !oauthStatus?.authorized) {
-        githubOAuth = {
-          required: true,
-          authorizationUrl: oauthStatus.pendingAuthorizationUrl,
-        };
-      } else if (!oauthStatus?.authorized && githubOauthStartError) {
-        githubOAuth = {
-          required: true,
-          authorizationUrl: null,
-          error: githubOauthStartError,
-        };
-      }
-    } catch (error) {
-      githubOAuth = null;
-    }
-
-    const routedDomains = Array.isArray(result?.meta?.decision?.routingPlan?.domains)
-      ? result.meta.decision.routingPlan.domains
-      : [];
-    const githubIntent = routedDomains.includes('github');
-    const notionIntent = routedDomains.includes('notion');
-    if (githubIntent && githubOAuth?.required) {
-      result.answer = githubOAuth.authorizationUrl
-        ? 'GitHub connection is required before I can fetch your repositories/issues/PRs. Use the Connect GitHub link in chat, then retry your query.'
-        : `GitHub connection is required before I can fetch your repositories/issues/PRs. ${githubOAuth.error || 'Complete GitHub OAuth setup and retry.'}`;
-    } else if (notionIntent && notionOAuth?.required) {
-      result.answer = 'Notion connection is required before I can fetch workspace insights. Use the Connect Notion link in chat, then retry your query.';
-    } else if (notionIntent && notionOauthStartError && !notionOAuth?.required) {
-      result.answer = `Notion connection is required before I can fetch workspace insights. ${notionOauthStartError}`;
-    }
-
-    const decision = result.meta?.decision || {};
-    await db.saveMessage({
-      threadId: ensuredThread.id,
-      role: 'user',
-      content: query,
-      strategy: decision.selectedPath || null,
-      executorPath: decision.selectedPath || null,
-      metadata: decision,
-    });
-    await db.saveMessage({
-      threadId: ensuredThread.id,
-      role: 'assistant',
-      content: result.answer,
-      strategy: decision.selectedPath || null,
-      executorPath: decision.selectedPath || null,
-      metadata: {
-        ...decision,
-        sourceCount: Array.isArray(result.sources) ? result.sources.length : 0,
-      },
-    });
-
-    res.json({
-      threadId: ensuredThread.id,
-      answer: result.answer,
-      sources: result.sources.map((doc) => ({
-        content: doc.pageContent,
-        metadata: doc.metadata,
-      })),
-      meta: {
-        ...(result.meta || {}),
-        ...(notionOAuth ? { notionOAuth } : {}),
-        ...(githubOAuth ? { githubOAuth } : {}),
-      },
-      requestId: req.requestId,
+    await handleChatRequest(req, res, {
+      message: parsed.data.query,
+      threadId: parsed.data.threadId,
     });
   } catch (error) {
     const message = error?.message || 'Failed to process query';
@@ -221,6 +284,47 @@ router.post('/query', attachSessionContext, async (req, res) => {
         : 500;
     res.status(status).json({
       error: message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+router.post('/feedback', attachSessionContext, async (req, res) => {
+  try {
+    const parsed = feedbackSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: 'Invalid request body',
+        details: parsed.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        })),
+        requestId: req.requestId,
+      });
+    }
+
+    const { messageId, threadId, traceId, score, comment } = parsed.data;
+    const feedback = await db.createFeedback({
+      sessionId: req.sessionContext?.sessionId || null,
+      threadId: threadId || req.sessionContext?.threadId || null,
+      messageId: messageId || null,
+      traceId: traceId || null,
+      score,
+      comment: comment || null,
+      metadata: {
+        requestId: req.requestId,
+      },
+    });
+
+    res.status(201).json({
+      status: 'success',
+      feedbackId: feedback.id,
+      requestId: req.requestId,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to capture feedback',
+      details: error.message,
       requestId: req.requestId,
     });
   }

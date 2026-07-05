@@ -22,7 +22,7 @@ const documentQuerySchema = z.object({
   topK: z.coerce.number().int().min(1).max(20).optional(),
 });
 
-router.post('/ingest', upload.single('pdf'), async (req, res) => {
+async function handlePdfUpload(req, res) {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No PDF uploaded', requestId: req.requestId });
@@ -50,7 +50,10 @@ router.post('/ingest', upload.single('pdf'), async (req, res) => {
       requestId: req.requestId,
     });
   }
-});
+}
+
+router.post('/upload', upload.single('pdf'), handlePdfUpload);
+router.post('/ingest', upload.single('pdf'), handlePdfUpload);
 
 router.get('/documents', async (req, res) => {
   try {
