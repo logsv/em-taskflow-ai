@@ -1,5 +1,6 @@
-import db from '../../db/index.js';
 import agentService from '../../services/agentService.js';
+import threadRepository from '../../persistence/thread/ThreadRepository.js';
+import messageRepository from '../../persistence/message/MessageRepository.js';
 import {
   startNotionOAuthFlow,
   getNotionOAuthStatus,
@@ -11,7 +12,9 @@ import {
 
 export class ChatApplicationService {
   constructor({
-    dbService = db,
+    threadRepo = null,
+    messageRepo = null,
+    dbService = null,
     agent = agentService,
     notionOAuth = {
       start: startNotionOAuthFlow,
@@ -22,7 +25,8 @@ export class ChatApplicationService {
       status: getGithubOAuthStatus,
     },
   } = {}) {
-    this.db = dbService;
+    this.threadRepo = threadRepo || createThreadRepoAdapter(dbService);
+    this.messageRepo = messageRepo || createMessageRepoAdapter(dbService);
     this.agentService = agent;
     this.notionOAuth = notionOAuth;
     this.githubOAuth = githubOAuth;
@@ -30,7 +34,7 @@ export class ChatApplicationService {
 
   async processChat({ message, threadId = null, sessionContext = null, requestId = null, ragMode = 'baseline' }) {
     const query = String(message || '');
-    const ensuredThread = await this.db.ensureThread(
+    const ensuredThread = await this.threadRepo.ensureThread(
       threadId || sessionContext?.threadId || undefined,
       query.slice(0, 80),
       sessionContext?.sessionId || null,
@@ -66,7 +70,7 @@ export class ChatApplicationService {
         }))
       : [];
 
-    const userMessageRecord = await this.db.saveMessage({
+    const userMessageRecord = await this.messageRepo.saveMessage({
       threadId: ensuredThread.id,
       role: 'user',
       content: query,
@@ -75,7 +79,7 @@ export class ChatApplicationService {
       traceId: result.meta?.traceId || null,
       metadata: decision,
     });
-    const assistantMessageRecord = await this.db.saveMessage({
+    const assistantMessageRecord = await this.messageRepo.saveMessage({
       threadId: ensuredThread.id,
       role: 'assistant',
       content: result.answer,
@@ -181,3 +185,23 @@ export class ChatApplicationService {
 
 const chatApplicationService = new ChatApplicationService();
 export default chatApplicationService;
+
+function createThreadRepoAdapter(dbService) {
+  if (!dbService) {
+    return threadRepository;
+  }
+
+  return {
+    ensureThread: (...args) => dbService.ensureThread(...args),
+  };
+}
+
+function createMessageRepoAdapter(dbService) {
+  if (!dbService) {
+    return messageRepository;
+  }
+
+  return {
+    saveMessage: (...args) => dbService.saveMessage(...args),
+  };
+}

@@ -1,11 +1,11 @@
-import db from '../../db/index.js';
+import sessionRepository from '../../persistence/session/SessionRepository.js';
 
 const SESSION_COOKIE_NAME = 'sid';
 const SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
 export class SessionApplicationService {
-  constructor({ dbService = db } = {}) {
-    this.db = dbService;
+  constructor({ sessionRepo = null, dbService = null } = {}) {
+    this.sessionRepo = sessionRepo || createSessionRepoAdapter(dbService);
   }
 
   async resolveSession({ headers = {}, ip = null, protocol = 'http', secure = false, socket = null }) {
@@ -22,17 +22,17 @@ export class SessionApplicationService {
     let created = false;
 
     if (requestedSessionId) {
-      session = await this.db.getSession(requestedSessionId);
+      session = await this.sessionRepo.getSession(requestedSessionId);
     }
 
     if (!session) {
-      session = await this.db.createSession(clientInfo);
+      session = await this.sessionRepo.createSession(clientInfo);
       created = true;
     } else {
-      await this.db.touchSession(session.id);
+      await this.sessionRepo.touchSession(session.id);
     }
 
-    const thread = await this.db.getOrCreateActiveThread(session.id);
+    const thread = await this.sessionRepo.getOrCreateActiveThread(session.id);
     const cookieValue =
       cookieSessionId !== session.id
         ? buildSessionCookie(session.id, secure || protocol === 'https')
@@ -49,6 +49,19 @@ export class SessionApplicationService {
 
 const sessionApplicationService = new SessionApplicationService();
 export default sessionApplicationService;
+
+function createSessionRepoAdapter(dbService) {
+  if (!dbService) {
+    return sessionRepository;
+  }
+
+  return {
+    getSession: (...args) => dbService.getSession(...args),
+    createSession: (...args) => dbService.createSession(...args),
+    touchSession: (...args) => dbService.touchSession(...args),
+    getOrCreateActiveThread: (...args) => dbService.getOrCreateActiveThread(...args),
+  };
+}
 
 function getHeaderSessionId(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;

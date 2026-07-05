@@ -1,12 +1,14 @@
-import db from '../../db/index.js';
+import threadRepository from '../../persistence/thread/ThreadRepository.js';
+import messageRepository from '../../persistence/message/MessageRepository.js';
 
 export class ConversationApplicationService {
-  constructor({ dbService = db } = {}) {
-    this.db = dbService;
+  constructor({ threadRepo = null, messageRepo = null, dbService = null } = {}) {
+    this.threadRepo = threadRepo || createThreadRepoAdapter(dbService);
+    this.messageRepo = messageRepo || createMessageRepoAdapter(dbService);
   }
 
   async listThreads({ limit = 50, requestId = null }) {
-    const threads = await this.db.listThreads(limit);
+    const threads = await this.threadRepo.listThreads(limit);
     return {
       threads,
       requestId,
@@ -14,7 +16,7 @@ export class ConversationApplicationService {
   }
 
   async getThreadMessages({ threadId, limit = 100, requestId = null }) {
-    const messages = await this.db.getThreadMessages(threadId, limit);
+    const messages = await this.messageRepo.getThreadMessages(threadId, limit);
     return {
       threadId,
       messages,
@@ -25,3 +27,23 @@ export class ConversationApplicationService {
 
 const conversationApplicationService = new ConversationApplicationService();
 export default conversationApplicationService;
+
+function createThreadRepoAdapter(dbService) {
+  if (!dbService) {
+    return threadRepository;
+  }
+
+  return {
+    listThreads: (...args) => dbService.listThreads(...args),
+  };
+}
+
+function createMessageRepoAdapter(dbService) {
+  if (!dbService) {
+    return messageRepository;
+  }
+
+  return {
+    getThreadMessages: (...args) => dbService.getThreadMessages(...args),
+  };
+}
