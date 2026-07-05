@@ -5,16 +5,13 @@ import db from '../db/index.js';
 import agentService from '../services/agentService.js';
 import { getRuntimeConfig } from '../config.js';
 import { attachSessionContext } from '../middleware/sessionContext.js';
+import chatApplicationService from '../application/chat/ChatApplicationService.js';
 import {
-  startNotionOAuthFlow,
   completeNotionOAuthFlow,
-  getNotionOAuthStatus,
   resetNotionOAuthState,
 } from '../mcp/notionOAuth.js';
 import {
-  startGithubOAuthFlow,
   completeGithubOAuthFlow,
-  getGithubOAuthStatus,
   resetGithubOAuthState,
 } from '../mcp/githubOAuth.js';
 
@@ -38,130 +35,6 @@ const feedbackSchema = z.object({
   score: z.enum(['thumbs_up', 'thumbs_down']),
   comment: z.string().trim().max(2_000).optional(),
 });
-
-async function handleChatRequest(req, res, payload) {
-  const { message, threadId } = payload;
-  const query = message;
-  const ensuredThread = await db.ensureThread(
-    threadId || req.sessionContext?.threadId || undefined,
-    query.slice(0, 80),
-    req.sessionContext?.sessionId || null,
-  );
-  const result = await agentService.processQuery(query, {
-    threadId: ensuredThread.id,
-    ragMode: 'baseline',
-  });
-  let notionOAuth = null;
-  let githubOAuth = null;
-  let notionOauthStartError = null;
-  try {
-    let oauthStatus = await getNotionOAuthStatus();
-    if (!oauthStatus?.authorized && !oauthStatus?.pendingAuthorizationUrl) {
-      await startNotionOAuthFlow().catch((error) => {
-        notionOauthStartError = error?.message || String(error);
-        return null;
-      });
-      oauthStatus = await getNotionOAuthStatus();
-    }
-    if (oauthStatus?.pendingAuthorizationUrl && !oauthStatus?.authorized) {
-      notionOAuth = {
-        required: true,
-        authorizationUrl: oauthStatus.pendingAuthorizationUrl,
-      };
-    }
-  } catch (error) {
-    notionOAuth = null;
-  }
-  let githubOauthStartError = null;
-  try {
-    let oauthStatus = await getGithubOAuthStatus();
-    if (!oauthStatus?.authorized && !oauthStatus?.pendingAuthorizationUrl) {
-      await startGithubOAuthFlow().catch((error) => {
-        githubOauthStartError = error?.message || String(error);
-        return null;
-      });
-      oauthStatus = await getGithubOAuthStatus();
-    }
-    if (oauthStatus?.pendingAuthorizationUrl && !oauthStatus?.authorized) {
-      githubOAuth = {
-        required: true,
-        authorizationUrl: oauthStatus.pendingAuthorizationUrl,
-      };
-    } else if (!oauthStatus?.authorized && githubOauthStartError) {
-      githubOAuth = {
-        required: true,
-        authorizationUrl: null,
-        error: githubOauthStartError,
-      };
-    }
-  } catch (error) {
-    githubOAuth = null;
-  }
-
-  const routedDomains = Array.isArray(result?.meta?.decision?.routingPlan?.domains)
-    ? result.meta.decision.routingPlan.domains
-    : [];
-  const githubIntent = routedDomains.includes('github');
-  const notionIntent = routedDomains.includes('notion');
-  if (githubIntent && githubOAuth?.required) {
-    result.answer = githubOAuth.authorizationUrl
-      ? 'GitHub connection is required before I can fetch your repositories/issues/PRs. Use the Connect GitHub link in chat, then retry your query.'
-      : `GitHub connection is required before I can fetch your repositories/issues/PRs. ${githubOAuth.error || 'Complete GitHub OAuth setup and retry.'}`;
-  } else if (notionIntent && notionOAuth?.required) {
-    result.answer = 'Notion connection is required before I can fetch workspace insights. Use the Connect Notion link in chat, then retry your query.';
-  } else if (notionIntent && notionOauthStartError && !notionOAuth?.required) {
-    result.answer = `Notion connection is required before I can fetch workspace insights. ${notionOauthStartError}`;
-  }
-
-  const decision = result.meta?.decision || {};
-  const userMessageRecord = await db.saveMessage({
-    threadId: ensuredThread.id,
-    role: 'user',
-    content: query,
-    strategy: decision.selectedPath || null,
-    executorPath: decision.selectedPath || null,
-    traceId: result.meta?.traceId || null,
-    metadata: decision,
-  });
-  const assistantMessageRecord = await db.saveMessage({
-    threadId: ensuredThread.id,
-    role: 'assistant',
-    content: result.answer,
-    strategy: decision.selectedPath || null,
-    executorPath: decision.selectedPath || null,
-    traceId: result.meta?.traceId || null,
-    citations: Array.isArray(result.sources)
-      ? result.sources.map((doc) => ({
-          content: doc.pageContent,
-          metadata: doc.metadata,
-        }))
-      : [],
-    metadata: {
-      ...decision,
-      userMessageId: userMessageRecord.id,
-      sourceCount: Array.isArray(result.sources) ? result.sources.length : 0,
-    },
-  });
-
-  res.json({
-    messageId: assistantMessageRecord.id,
-    threadId: ensuredThread.id,
-    sessionId: req.sessionContext?.sessionId || null,
-    answer: result.answer,
-    sources: result.sources.map((doc) => ({
-      content: doc.pageContent,
-      metadata: doc.metadata,
-    })),
-    traceId: result.meta?.traceId || null,
-    feedbackToken: assistantMessageRecord.id,
-    meta: {
-      ...(result.meta || {}),
-      ...(notionOAuth ? { notionOAuth } : {}),
-      ...(githubOAuth ? { githubOAuth } : {}),
-    },
-    requestId: req.requestId,
-  });
-}
 
 router.get('/health', async (req, res) => {
   try {
@@ -242,7 +115,14 @@ router.post('/chat', attachSessionContext, async (req, res) => {
       });
     }
 
-    await handleChatRequest(req, res, parsed.data);
+    const responsePayload = await chatApplicationService.processChat({
+      message: parsed.data.message,
+      threadId: parsed.data.threadId,
+      sessionContext: req.sessionContext,
+      requestId: req.requestId,
+      ragMode: 'baseline',
+    });
+    res.json(responsePayload);
   } catch (error) {
     const message = error?.message || 'Failed to process query';
     const status = message.includes('timed out')
@@ -271,10 +151,14 @@ router.post('/query', attachSessionContext, async (req, res) => {
       });
     }
 
-    await handleChatRequest(req, res, {
+    const responsePayload = await chatApplicationService.processChat({
       message: parsed.data.query,
       threadId: parsed.data.threadId,
+      sessionContext: req.sessionContext,
+      requestId: req.requestId,
+      ragMode: 'baseline',
     });
+    res.json(responsePayload);
   } catch (error) {
     const message = error?.message || 'Failed to process query';
     const status = message.includes('timed out')
