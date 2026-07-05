@@ -448,6 +448,7 @@ class DatabaseService {
     };
   }
 
+  // Legacy compatibility only. Do not use for new chat flows.
   async saveChatHistory(userMessage, aiResponse, sessionId = null, metadata = null) {
     await this.ensureInitialized();
     const normalizedMetadata =
@@ -465,6 +466,7 @@ class DatabaseService {
     return { id: result.rows[0].id };
   }
 
+  // Legacy compatibility only. Do not use for new chat flows.
   async getChatHistory(limit = 50, sessionId = null) {
     await this.ensureInitialized();
     const safeLimit = Number.isFinite(limit) ? Math.max(1, Number(limit)) : 50;
@@ -493,6 +495,7 @@ class DatabaseService {
     return result.rows.reverse();
   }
 
+  // Legacy compatibility only. Avoid introducing new task cache consumers.
   async cacheTaskData(source, taskId, data) {
     await this.ensureInitialized();
     const result = await this.pool.query(
@@ -509,6 +512,7 @@ class DatabaseService {
     return { id: result.rows[0].id };
   }
 
+  // Legacy compatibility only. Avoid introducing new task cache consumers.
   async getCachedTaskData(source, maxAge = 3600) {
     await this.ensureInitialized();
     const safeMaxAge = Number.isFinite(maxAge) ? Math.max(1, Number(maxAge)) : 3600;
@@ -530,6 +534,7 @@ class DatabaseService {
     }));
   }
 
+  // Legacy compatibility only. OAuth providers are being isolated behind legacy repositories.
   async setUserPreference(key, value) {
     await this.ensureInitialized();
     const serializedValue = typeof value === 'string' ? value : JSON.stringify(value);
@@ -546,6 +551,7 @@ class DatabaseService {
     return { key, value };
   }
 
+  // Legacy compatibility only. OAuth providers are being isolated behind legacy repositories.
   async getUserPreference(key) {
     await this.ensureInitialized();
     const result = await this.pool.query(

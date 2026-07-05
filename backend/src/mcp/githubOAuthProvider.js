@@ -1,5 +1,5 @@
-import db from '../db/index.js';
 import { getMcpConfig } from '../config.js';
+import legacyPreferenceRepository from '../persistence/legacy/LegacyPreferenceRepository.js';
 
 const TOKENS_KEY = 'mcp.github.oauth.tokens';
 const CLIENT_INFO_KEY = 'mcp.github.oauth.clientInfo';
@@ -36,7 +36,7 @@ export class GithubOAuthProvider {
   }
 
   async clientInformation() {
-    const stored = await db.getUserPreference(CLIENT_INFO_KEY);
+    const stored = await legacyPreferenceRepository.get(CLIENT_INFO_KEY);
     if (stored?.client_id) {
       return stored;
     }
@@ -59,28 +59,28 @@ export class GithubOAuthProvider {
   }
 
   async saveClientInformation(clientInformation) {
-    await db.setUserPreference(CLIENT_INFO_KEY, clientInformation);
+    await legacyPreferenceRepository.set(CLIENT_INFO_KEY, clientInformation);
   }
 
   async tokens() {
-    return db.getUserPreference(TOKENS_KEY);
+    return legacyPreferenceRepository.get(TOKENS_KEY);
   }
 
   async saveTokens(tokens) {
-    await db.setUserPreference(TOKENS_KEY, tokens);
+    await legacyPreferenceRepository.set(TOKENS_KEY, tokens);
     if (tokens?.access_token) {
-      await db.setUserPreference(CODE_VERIFIER_KEY, null);
-      await db.setUserPreference(AUTH_URL_KEY, null);
+      await legacyPreferenceRepository.set(CODE_VERIFIER_KEY, null);
+      await legacyPreferenceRepository.set(AUTH_URL_KEY, null);
     }
   }
 
   async redirectToAuthorization(authorizationUrl) {
-    const existing = await db.getUserPreference(AUTH_URL_KEY);
+    const existing = await legacyPreferenceRepository.get(AUTH_URL_KEY);
     if (existing?.url) {
       return;
     }
     const url = authorizationUrl.toString();
-    await db.setUserPreference(AUTH_URL_KEY, {
+    await legacyPreferenceRepository.set(AUTH_URL_KEY, {
       url,
       createdAt: new Date().toISOString(),
     });
@@ -88,15 +88,15 @@ export class GithubOAuthProvider {
   }
 
   async saveCodeVerifier(codeVerifier) {
-    const existing = await db.getUserPreference(CODE_VERIFIER_KEY);
+    const existing = await legacyPreferenceRepository.get(CODE_VERIFIER_KEY);
     if (existing) {
       return;
     }
-    await db.setUserPreference(CODE_VERIFIER_KEY, codeVerifier);
+    await legacyPreferenceRepository.set(CODE_VERIFIER_KEY, codeVerifier);
   }
 
   async codeVerifier() {
-    const verifier = await db.getUserPreference(CODE_VERIFIER_KEY);
+    const verifier = await legacyPreferenceRepository.get(CODE_VERIFIER_KEY);
     if (!verifier) {
       throw new Error('No GitHub OAuth code verifier found. Start OAuth flow first.');
     }
@@ -105,25 +105,25 @@ export class GithubOAuthProvider {
 
   async invalidateCredentials(scope) {
     if (scope === 'all' || scope === 'tokens') {
-      await db.setUserPreference(TOKENS_KEY, null);
+      await legacyPreferenceRepository.set(TOKENS_KEY, null);
     }
     if (scope === 'all' || scope === 'client') {
-      await db.setUserPreference(CLIENT_INFO_KEY, null);
+      await legacyPreferenceRepository.set(CLIENT_INFO_KEY, null);
     }
     if (scope === 'all' || scope === 'verifier') {
-      await db.setUserPreference(CODE_VERIFIER_KEY, null);
+      await legacyPreferenceRepository.set(CODE_VERIFIER_KEY, null);
     }
     if (scope === 'all') {
-      await db.setUserPreference(AUTH_URL_KEY, null);
+      await legacyPreferenceRepository.set(AUTH_URL_KEY, null);
     }
   }
 
   async getPendingAuthorization() {
-    return db.getUserPreference(AUTH_URL_KEY);
+    return legacyPreferenceRepository.get(AUTH_URL_KEY);
   }
 
   async hasCodeVerifier() {
-    const verifier = await db.getUserPreference(CODE_VERIFIER_KEY);
+    const verifier = await legacyPreferenceRepository.get(CODE_VERIFIER_KEY);
     return !!verifier;
   }
 }
