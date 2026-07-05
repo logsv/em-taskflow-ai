@@ -4,6 +4,7 @@ import ragRouter from './rag.js';
 import db from '../db/index.js';
 import agentService from '../services/agentService.js';
 import { getRuntimeConfig } from '../config.js';
+import { attachSessionContext } from '../middleware/sessionContext.js';
 import {
   startNotionOAuthFlow,
   completeNotionOAuthFlow,
@@ -73,7 +74,24 @@ router.get('/router/metrics', async (req, res) => {
   }
 });
 
-router.post('/query', async (req, res) => {
+router.get('/session', attachSessionContext, async (req, res) => {
+  try {
+    res.json({
+      sessionId: req.sessionContext.sessionId,
+      threadId: req.sessionContext.threadId,
+      created: !!req.sessionContext.created,
+      requestId: req.requestId,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to resolve session',
+      details: error.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+router.post('/query', attachSessionContext, async (req, res) => {
   try {
     const parsed = querySchema.safeParse(req.body || {});
     if (!parsed.success) {
@@ -88,7 +106,11 @@ router.post('/query', async (req, res) => {
     }
 
     const { query, threadId, mode } = parsed.data;
-    const ensuredThread = await db.ensureThread(threadId || undefined, query.slice(0, 80));
+    const ensuredThread = await db.ensureThread(
+      threadId || req.sessionContext?.threadId || undefined,
+      query.slice(0, 80),
+      req.sessionContext?.sessionId || null,
+    );
     const result = await agentService.processQuery(query, {
       threadId: ensuredThread.id,
       ragMode: mode || 'baseline',
