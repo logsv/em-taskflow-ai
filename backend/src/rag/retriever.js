@@ -3,7 +3,7 @@
  * Implements agentic retrieval patterns with query rewriting and retrieval strategy controls
  */
 
-import { Document } from 'langchain/document';
+import { Document } from '@langchain/core/documents';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { getVectorStore, getChromaClient } from './ingest.js';
 import { ensureLLMReady, getChatModel } from '../llm/index.js';

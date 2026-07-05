@@ -3,8 +3,8 @@
  * Handles document ingestion with token-aware chunking and vector storage
  */
 
-import { TokenTextSplitter } from 'langchain/text_splitter';
-import { Document } from 'langchain/document';
+import { TokenTextSplitter } from '@langchain/textsplitters';
+import { Document } from '@langchain/core/documents';
 import fs from 'fs/promises';
 import pdf from 'pdf-parse/lib/pdf-parse.js';
 import { ChromaClient } from 'chromadb';
