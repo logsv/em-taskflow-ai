@@ -48,8 +48,19 @@ class DatabaseService {
     await this.ensurePool();
 
     await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        active_thread_id TEXT,
+        client_info TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS chat_threads (
         id TEXT PRIMARY KEY,
+        session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
         title TEXT NOT NULL,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -64,10 +75,53 @@ class DatabaseService {
         content TEXT NOT NULL,
         strategy TEXT,
         executor_path TEXT,
+        trace_id TEXT,
+        citations_json TEXT,
         metadata TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
     `);
+
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS feedback (
+        id TEXT PRIMARY KEY,
+        session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+        thread_id TEXT REFERENCES chat_threads(id) ON DELETE SET NULL,
+        message_id BIGINT REFERENCES chat_messages(id) ON DELETE SET NULL,
+        trace_id TEXT,
+        score TEXT NOT NULL,
+        comment TEXT,
+        metadata TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    await this.pool.query(`
+      ALTER TABLE chat_threads
+      ADD COLUMN IF NOT EXISTS session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL;
+    `);
+
+    await this.pool.query(`
+      ALTER TABLE chat_messages
+      ADD COLUMN IF NOT EXISTS trace_id TEXT;
+    `);
+
+    await this.pool.query(`
+      ALTER TABLE chat_messages
+      ADD COLUMN IF NOT EXISTS citations_json TEXT;
+    `);
+
+    await this.pool.query(`
+      ALTER TABLE sessions
+      ADD CONSTRAINT sessions_active_thread_fk
+      FOREIGN KEY (active_thread_id)
+      REFERENCES chat_threads(id)
+      ON DELETE SET NULL;
+    `).catch((error) => {
+      if (!String(error?.message || '').includes('already exists')) {
+        throw error;
+      }
+    });
 
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS chat_history (
@@ -101,28 +155,121 @@ class DatabaseService {
     `);
   }
 
-  async createThread(title = 'New Chat') {
+  async createSession(clientInfo = null) {
     await this.ensureInitialized();
-    const threadId = `th_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const sessionId = createOpaqueId('sess');
+    const normalizedClientInfo =
+      clientInfo == null ? null : typeof clientInfo === 'string' ? clientInfo : JSON.stringify(clientInfo);
+
     await this.pool.query(
       `
-        INSERT INTO chat_threads (id, title)
+        INSERT INTO sessions (id, client_info)
         VALUES ($1, $2)
       `,
-      [threadId, title],
+      [sessionId, normalizedClientInfo],
     );
-    return { id: threadId, title };
+
+    return {
+      id: sessionId,
+      active_thread_id: null,
+      client_info: normalizedClientInfo ? safeJsonParse(normalizedClientInfo) : null,
+    };
   }
 
-  async ensureThread(threadId, title = 'New Chat') {
+  async getSession(sessionId) {
+    await this.ensureInitialized();
+    if (!sessionId) {
+      return null;
+    }
+
+    const result = await this.pool.query(
+      `
+        SELECT id, active_thread_id, client_info, created_at, updated_at
+        FROM sessions
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [sessionId],
+    );
+
+    if (result.rowCount === 0) {
+      return null;
+    }
+
+    return normalizeSessionRow(result.rows[0]);
+  }
+
+  async ensureSession(sessionId, clientInfo = null) {
+    await this.ensureInitialized();
+    const existing = await this.getSession(sessionId);
+    if (existing) {
+      await this.touchSession(existing.id);
+      return existing;
+    }
+    return this.createSession(clientInfo);
+  }
+
+  async touchSession(sessionId) {
+    await this.ensureInitialized();
+    if (!sessionId) {
+      return;
+    }
+
+    await this.pool.query(
+      `
+        UPDATE sessions
+        SET updated_at = NOW()
+        WHERE id = $1
+      `,
+      [sessionId],
+    );
+  }
+
+  async setActiveThread(sessionId, threadId) {
+    await this.ensureInitialized();
+    if (!sessionId) {
+      throw new Error('sessionId is required to set active thread');
+    }
+
+    await this.pool.query(
+      `
+        UPDATE sessions
+        SET active_thread_id = $2, updated_at = NOW()
+        WHERE id = $1
+      `,
+      [sessionId, threadId || null],
+    );
+  }
+
+  async createThread(title = 'New Chat') {
+    return this.createThreadForSession(null, title);
+  }
+
+  async createThreadForSession(sessionId = null, title = 'New Chat') {
+    await this.ensureInitialized();
+    const threadId = createOpaqueId('th');
+    await this.pool.query(
+      `
+        INSERT INTO chat_threads (id, session_id, title)
+        VALUES ($1, $2, $3)
+      `,
+      [threadId, sessionId, title],
+    );
+    if (sessionId) {
+      await this.setActiveThread(sessionId, threadId);
+    }
+    return { id: threadId, session_id: sessionId, title };
+  }
+
+  async ensureThread(threadId, title = 'New Chat', sessionId = null) {
     await this.ensureInitialized();
     if (!threadId) {
-      return this.createThread(title);
+      return this.createThreadForSession(sessionId, title);
     }
 
     const existing = await this.pool.query(
       `
-        SELECT id, title
+        SELECT id, session_id, title
         FROM chat_threads
         WHERE id = $1
         LIMIT 1
@@ -131,20 +278,60 @@ class DatabaseService {
     );
 
     if (existing.rowCount > 0) {
+      if (sessionId && !existing.rows[0].session_id) {
+        await this.pool.query(
+          `
+            UPDATE chat_threads
+            SET session_id = $2, updated_at = NOW()
+            WHERE id = $1
+          `,
+          [threadId, sessionId],
+        );
+        await this.setActiveThread(sessionId, threadId);
+        return { ...existing.rows[0], session_id: sessionId };
+      }
       return existing.rows[0];
     }
 
     await this.pool.query(
       `
-        INSERT INTO chat_threads (id, title)
-        VALUES ($1, $2)
+        INSERT INTO chat_threads (id, session_id, title)
+        VALUES ($1, $2, $3)
       `,
-      [threadId, title],
+      [threadId, sessionId, title],
     );
-    return { id: threadId, title };
+    if (sessionId) {
+      await this.setActiveThread(sessionId, threadId);
+    }
+    return { id: threadId, session_id: sessionId, title };
   }
 
-  async saveMessage({ threadId, role, content, strategy = null, executorPath = null, metadata = null }) {
+  async getOrCreateActiveThread(sessionId, title = 'New Chat') {
+    await this.ensureInitialized();
+    if (!sessionId) {
+      return this.createThread(title);
+    }
+
+    const session = await this.ensureSession(sessionId);
+    if (session.active_thread_id) {
+      const existing = await this.ensureThread(session.active_thread_id, title, session.id);
+      await this.touchSession(session.id);
+      return existing;
+    }
+
+    return this.createThreadForSession(session.id, title);
+  }
+
+  async saveMessage({
+    threadId,
+    role,
+    content,
+    strategy = null,
+    executorPath = null,
+    traceId = null,
+    citations = null,
+    metadata = null,
+  }) {
     await this.ensureInitialized();
     if (!threadId) {
       throw new Error('threadId is required to save message');
@@ -152,14 +339,16 @@ class DatabaseService {
 
     const normalizedMetadata =
       metadata == null ? null : typeof metadata === 'string' ? metadata : JSON.stringify(metadata);
+    const normalizedCitations =
+      citations == null ? null : typeof citations === 'string' ? citations : JSON.stringify(citations);
 
     const result = await this.pool.query(
       `
-        INSERT INTO chat_messages (thread_id, role, content, strategy, executor_path, metadata)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO chat_messages (thread_id, role, content, strategy, executor_path, trace_id, citations_json, metadata)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id
       `,
-      [threadId, role, content, strategy, executorPath, normalizedMetadata],
+      [threadId, role, content, strategy, executorPath, traceId, normalizedCitations, normalizedMetadata],
     );
 
     await this.pool.query(
@@ -206,6 +395,7 @@ class DatabaseService {
     const result = await this.pool.query(
       `
         SELECT id, thread_id, role, content, strategy, executor_path, metadata, created_at
+             , trace_id, citations_json
         FROM chat_messages
         WHERE thread_id = $1
         ORDER BY created_at ASC
@@ -215,8 +405,47 @@ class DatabaseService {
     );
     return result.rows.map((row) => ({
       ...row,
+      citations: row.citations_json ? safeJsonParse(row.citations_json) : null,
       metadata: row.metadata ? safeJsonParse(row.metadata) : null,
     }));
+  }
+
+  async createFeedback({
+    sessionId = null,
+    threadId = null,
+    messageId = null,
+    traceId = null,
+    score,
+    comment = null,
+    metadata = null,
+  }) {
+    await this.ensureInitialized();
+    if (!score) {
+      throw new Error('score is required to create feedback');
+    }
+
+    const feedbackId = createOpaqueId('fb');
+    const normalizedMetadata =
+      metadata == null ? null : typeof metadata === 'string' ? metadata : JSON.stringify(metadata);
+
+    await this.pool.query(
+      `
+        INSERT INTO feedback (id, session_id, thread_id, message_id, trace_id, score, comment, metadata)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `,
+      [feedbackId, sessionId, threadId, messageId, traceId, score, comment, normalizedMetadata],
+    );
+
+    return {
+      id: feedbackId,
+      sessionId,
+      threadId,
+      messageId,
+      traceId,
+      score,
+      comment,
+      metadata: normalizedMetadata ? safeJsonParse(normalizedMetadata) : null,
+    };
   }
 
   async saveChatHistory(userMessage, aiResponse, sessionId = null, metadata = null) {
@@ -340,9 +569,11 @@ class DatabaseService {
     await this.ensureInitialized();
     const result = await this.pool.query(`
       SELECT
+        (SELECT COUNT(*) FROM sessions)::int AS "sessions",
         (SELECT COUNT(*) FROM chat_threads)::int AS "chatThreads",
         (SELECT COUNT(*) FROM chat_messages)::int AS "chatMessages",
         (SELECT COUNT(*) FROM chat_history)::int AS "chatHistory",
+        (SELECT COUNT(*) FROM feedback)::int AS "feedback",
         (SELECT COUNT(*) FROM task_cache)::int AS "cachedTasks",
         (SELECT COUNT(*) FROM user_preferences)::int AS "userPreferences"
     `);
@@ -379,4 +610,15 @@ function safeJsonParse(value) {
   } catch (error) {
     return value;
   }
+}
+
+function createOpaqueId(prefix) {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeSessionRow(row) {
+  return {
+    ...row,
+    client_info: row.client_info ? safeJsonParse(row.client_info) : null,
+  };
 }
