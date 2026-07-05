@@ -1,12 +1,12 @@
 import express from 'express';
 import { z } from 'zod';
 import ragRouter from './rag.js';
-import db from '../db/index.js';
 import agentService from '../services/agentService.js';
 import { getRuntimeConfig } from '../config.js';
 import { attachSessionContext } from '../middleware/sessionContext.js';
 import chatApplicationService from '../application/chat/ChatApplicationService.js';
 import feedbackApplicationService from '../application/feedback/FeedbackApplicationService.js';
+import conversationApplicationService from '../application/conversation/ConversationApplicationService.js';
 import {
   completeNotionOAuthFlow,
   resetNotionOAuthState,
@@ -206,11 +206,11 @@ router.post('/feedback', attachSessionContext, async (req, res) => {
 router.get('/threads', async (req, res) => {
   try {
     const limit = Number(req.query.limit || 50);
-    const threads = await db.listThreads(limit);
-    res.json({
-      threads,
+    const responsePayload = await conversationApplicationService.listThreads({
+      limit,
       requestId: req.requestId,
     });
+    res.json(responsePayload);
   } catch (error) {
     res.status(500).json({
       error: 'Failed to list threads',
@@ -224,12 +224,12 @@ router.get('/threads/:threadId/messages', async (req, res) => {
   try {
     const { threadId } = req.params;
     const limit = Number(req.query.limit || 100);
-    const messages = await db.getThreadMessages(threadId, limit);
-    res.json({
+    const responsePayload = await conversationApplicationService.getThreadMessages({
       threadId,
-      messages,
       requestId: req.requestId,
+      limit,
     });
+    res.json(responsePayload);
   } catch (error) {
     res.status(500).json({
       error: 'Failed to fetch thread messages',
