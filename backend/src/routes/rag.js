@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { z } from 'zod';
 import ragService from '../rag/index.js';
+import uploadPdfApplicationService from '../application/upload/UploadPdfApplicationService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,25 +25,11 @@ const documentQuerySchema = z.object({
 
 async function handlePdfUpload(req, res) {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No PDF uploaded', requestId: req.requestId });
-    }
-
-    const result = await ragService.processPDF(req.file.path, req.file.originalname || 'unknown.pdf');
-    if (!result.success) {
-      return res.status(500).json({
-        error: 'Failed to process PDF',
-        details: result.error,
-        requestId: req.requestId,
-      });
-    }
-
-    return res.json({
-      status: 'success',
-      documentId: req.file.originalname || 'unknown.pdf',
-      chunks: result.chunks,
+    const response = await uploadPdfApplicationService.processUpload({
+      file: req.file,
       requestId: req.requestId,
     });
+    return res.status(response.statusCode).json(response.body);
   } catch (error) {
     return res.status(500).json({
       error: 'Failed to ingest document',

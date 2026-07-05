@@ -6,6 +6,7 @@ import agentService from '../services/agentService.js';
 import { getRuntimeConfig } from '../config.js';
 import { attachSessionContext } from '../middleware/sessionContext.js';
 import chatApplicationService from '../application/chat/ChatApplicationService.js';
+import feedbackApplicationService from '../application/feedback/FeedbackApplicationService.js';
 import {
   completeNotionOAuthFlow,
   resetNotionOAuthState,
@@ -187,24 +188,12 @@ router.post('/feedback', attachSessionContext, async (req, res) => {
       });
     }
 
-    const { messageId, threadId, traceId, score, comment } = parsed.data;
-    const feedback = await db.createFeedback({
-      sessionId: req.sessionContext?.sessionId || null,
-      threadId: threadId || req.sessionContext?.threadId || null,
-      messageId: messageId || null,
-      traceId: traceId || null,
-      score,
-      comment: comment || null,
-      metadata: {
-        requestId: req.requestId,
-      },
-    });
-
-    res.status(201).json({
-      status: 'success',
-      feedbackId: feedback.id,
+    const responsePayload = await feedbackApplicationService.submitFeedback({
+      payload: parsed.data,
+      sessionContext: req.sessionContext,
       requestId: req.requestId,
     });
+    res.status(201).json(responsePayload);
   } catch (error) {
     res.status(500).json({
       error: 'Failed to capture feedback',
