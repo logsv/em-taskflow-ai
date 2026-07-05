@@ -1,12 +1,11 @@
 import express from 'express';
 import { z } from 'zod';
 import ragRouter from './rag.js';
-import agentService from '../services/agentService.js';
-import { getRuntimeConfig } from '../config.js';
 import { attachSessionContext } from '../middleware/sessionContext.js';
 import chatApplicationService from '../application/chat/ChatApplicationService.js';
 import feedbackApplicationService from '../application/feedback/FeedbackApplicationService.js';
 import conversationApplicationService from '../application/conversation/ConversationApplicationService.js';
+import healthApplicationService from '../application/health/HealthApplicationService.js';
 import {
   completeNotionOAuthFlow,
   resetNotionOAuthState,
@@ -39,25 +38,10 @@ const feedbackSchema = z.object({
 
 router.get('/health', async (req, res) => {
   try {
-    const runtimeConfig = getRuntimeConfig();
-    const agentStatus = await agentService.getStatus().catch(() => ({
-      ready: false,
-      mcpReady: false,
-      ragEnabled: false,
-    }));
-
-    res.json({
-      status: 'healthy',
-      runtimeMode: runtimeConfig.mode,
-      services: {
-        database: 'healthy',
-        agent: agentStatus.ready ? 'healthy' : 'degraded',
-        mcp: agentStatus.mcpReady ? 'healthy' : 'degraded',
-        rag: agentStatus.ragEnabled ? 'healthy' : 'degraded',
-      },
-      timestamp: new Date().toISOString(),
+    const responsePayload = await healthApplicationService.getHealth({
       requestId: req.requestId,
     });
+    res.json(responsePayload);
   } catch (error) {
     res.status(503).json({
       status: 'unhealthy',
@@ -69,13 +53,10 @@ router.get('/health', async (req, res) => {
 
 router.get('/router/metrics', async (req, res) => {
   try {
-    const status = await agentService.getStatus();
-    res.json({
-      runtimeMode: status.runtimeMode,
-      router: status.router || null,
+    const responsePayload = await healthApplicationService.getRouterMetrics({
       requestId: req.requestId,
-      timestamp: new Date().toISOString(),
     });
+    res.json(responsePayload);
   } catch (error) {
     res.status(500).json({
       error: 'Failed to fetch router metrics',
