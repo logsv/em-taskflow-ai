@@ -1,6 +1,8 @@
 import express from 'express';
 import { z } from 'zod';
 import ragRouter from './rag.js';
+import { getApiConfig } from '../config.js';
+import { createLegacyEndpointGate } from './legacyRouteGate.js';
 import { attachSessionContext } from '../middleware/sessionContext.js';
 import chatApplicationService from '../application/chat/ChatApplicationService.js';
 import feedbackApplicationService from '../application/feedback/FeedbackApplicationService.js';
@@ -16,6 +18,19 @@ import {
 } from '../mcp/githubOAuth.js';
 
 const router = express.Router();
+const legacyApiConfig = getApiConfig().legacy;
+const requireLegacyRouterMetricsApi = createLegacyEndpointGate({
+  enabled: legacyApiConfig.routerMetrics.enabled,
+  replacement: '/api/health',
+});
+const requireLegacyQueryApi = createLegacyEndpointGate({
+  enabled: legacyApiConfig.query.enabled,
+  replacement: '/api/chat',
+});
+const requireLegacyThreadsApi = createLegacyEndpointGate({
+  enabled: legacyApiConfig.threads.enabled,
+  replacement: '/api/session',
+});
 
 const querySchema = z.object({
   query: z.string().min(1).max(20_000),
@@ -51,7 +66,7 @@ router.get('/health', async (req, res) => {
   }
 });
 
-router.get('/router/metrics', async (req, res) => {
+router.get('/router/metrics', requireLegacyRouterMetricsApi, async (req, res) => {
   try {
     const responsePayload = await healthApplicationService.getRouterMetrics({
       requestId: req.requestId,
@@ -119,7 +134,7 @@ router.post('/chat', attachSessionContext, async (req, res) => {
   }
 });
 
-router.post('/query', attachSessionContext, async (req, res) => {
+router.post('/query', requireLegacyQueryApi, attachSessionContext, async (req, res) => {
   try {
     const parsed = querySchema.safeParse(req.body || {});
     if (!parsed.success) {
@@ -184,7 +199,7 @@ router.post('/feedback', attachSessionContext, async (req, res) => {
   }
 });
 
-router.get('/threads', async (req, res) => {
+router.get('/threads', requireLegacyThreadsApi, async (req, res) => {
   try {
     const limit = Number(req.query.limit || 50);
     const responsePayload = await conversationApplicationService.listThreads({
@@ -201,7 +216,7 @@ router.get('/threads', async (req, res) => {
   }
 });
 
-router.get('/threads/:threadId/messages', async (req, res) => {
+router.get('/threads/:threadId/messages', requireLegacyThreadsApi, async (req, res) => {
   try {
     const { threadId } = req.params;
     const limit = Number(req.query.limit || 100);

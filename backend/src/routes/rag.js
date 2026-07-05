@@ -4,12 +4,23 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { z } from 'zod';
+import { getApiConfig } from '../config.js';
 import ragService from '../rag/index.js';
 import uploadPdfApplicationService from '../application/upload/UploadPdfApplicationService.js';
+import { createLegacyEndpointGate } from './legacyRouteGate.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const router = express.Router();
+const legacyApiConfig = getApiConfig().legacy;
+const requireLegacyRagIngestApi = createLegacyEndpointGate({
+  enabled: legacyApiConfig.ragIngest.enabled,
+  replacement: '/api/rag/upload',
+});
+const requireLegacyRagDocumentsApi = createLegacyEndpointGate({
+  enabled: legacyApiConfig.ragDocuments.enabled,
+  replacement: '/api/chat',
+});
 
 const pdfDir = path.join(__dirname, '../../data/pdfs/');
 if (!fs.existsSync(pdfDir)) {
@@ -40,9 +51,9 @@ async function handlePdfUpload(req, res) {
 }
 
 router.post('/upload', upload.single('pdf'), handlePdfUpload);
-router.post('/ingest', upload.single('pdf'), handlePdfUpload);
+router.post('/ingest', requireLegacyRagIngestApi, upload.single('pdf'), handlePdfUpload);
 
-router.get('/documents', async (req, res) => {
+router.get('/documents', requireLegacyRagDocumentsApi, async (req, res) => {
   try {
     const documents = await ragService.listDocuments();
     res.json({
@@ -58,7 +69,7 @@ router.get('/documents', async (req, res) => {
   }
 });
 
-router.get('/documents/:documentId', async (req, res) => {
+router.get('/documents/:documentId', requireLegacyRagDocumentsApi, async (req, res) => {
   try {
     const { documentId } = req.params;
     const document = await ragService.getDocument(documentId);
@@ -82,7 +93,7 @@ router.get('/documents/:documentId', async (req, res) => {
   }
 });
 
-router.post('/documents/:documentId/query', async (req, res) => {
+router.post('/documents/:documentId/query', requireLegacyRagDocumentsApi, async (req, res) => {
   try {
     const parsed = documentQuerySchema.safeParse(req.body || {});
     if (!parsed.success) {

@@ -64,6 +64,11 @@ const envSchema = z.object({
   MCP_GOOGLE_ENABLED: z.coerce.boolean().default(false),
   GOOGLE_OAUTH_CREDENTIALS: z.string().optional(),
   GOOGLE_CALENDAR_ID: z.string().default('primary'),
+  LEGACY_QUERY_API_ENABLED: z.coerce.boolean().default(true),
+  LEGACY_RAG_INGEST_API_ENABLED: z.coerce.boolean().default(true),
+  LEGACY_THREAD_API_ENABLED: z.coerce.boolean().default(true),
+  LEGACY_RAG_DOCUMENT_API_ENABLED: z.coerce.boolean().default(true),
+  LEGACY_ROUTER_METRICS_API_ENABLED: z.coerce.boolean().default(true),
 });
 
 const circuitBreakerSchema = z.object({
@@ -173,6 +178,25 @@ const configSchema = z.object({
       enabled: z.boolean(),
       oauthCredentials: z.string().optional(),
       calendarId: z.string(),
+    }),
+  }),
+  api: z.object({
+    legacy: z.object({
+      query: z.object({
+        enabled: z.boolean(),
+      }),
+      ragIngest: z.object({
+        enabled: z.boolean(),
+      }),
+      threads: z.object({
+        enabled: z.boolean(),
+      }),
+      ragDocuments: z.object({
+        enabled: z.boolean(),
+      }),
+      routerMetrics: z.object({
+        enabled: z.boolean(),
+      }),
     }),
   }),
 });
@@ -387,6 +411,25 @@ function loadConfig() {
         calendarId: env.GOOGLE_CALENDAR_ID,
       },
     },
+    api: {
+      legacy: {
+        query: {
+          enabled: env.LEGACY_QUERY_API_ENABLED,
+        },
+        ragIngest: {
+          enabled: env.LEGACY_RAG_INGEST_API_ENABLED,
+        },
+        threads: {
+          enabled: env.LEGACY_THREAD_API_ENABLED,
+        },
+        ragDocuments: {
+          enabled: env.LEGACY_RAG_DOCUMENT_API_ENABLED,
+        },
+        routerMetrics: {
+          enabled: env.LEGACY_ROUTER_METRICS_API_ENABLED,
+        },
+      },
+    },
   };
 
   const mergedConfig = { ...config, ...fileConfig };
@@ -416,6 +459,7 @@ export const getRagConfig = () => config.rag;
 export const getRagAdvancedConfig = () => config.ragAdvanced;
 export const getLlmConfig = () => config.llm;
 export const getMcpConfig = () => config.mcp;
+export const getApiConfig = () => config.api;
 
 export const getLlmProviders = () => {
   const providers = [];
