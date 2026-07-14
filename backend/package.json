@@ -96,6 +96,7 @@
     "@types/pdf-parse": "1.1.5",
     "@types/sinon": "17.0.4",
     "@types/supertest": "6.0.3",
+    "chai": "^6.2.2",
     "jasmine": "5.9.0",
     "jasmine-ts-console-reporter": "3.1.1",
     "nodemon": "3.1.10",

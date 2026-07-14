@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import './Sidebar.css';
 
 function Sidebar({ view, setView, isOpen, setIsOpen }) {
-  const [chatHistory, setChatHistory] = useState([]);
+  const [sessionSummary, setSessionSummary] = useState(null);
 
   const toggleSidebar = () => {
     setIsOpen(!isOpen);
@@ -15,26 +15,23 @@ function Sidebar({ view, setView, isOpen, setIsOpen }) {
 
   useEffect(() => {
     let isMounted = true;
-    async function loadThreads() {
+    async function loadSessionSummary() {
       try {
-        const response = await fetch('/api/threads?limit=20');
+        const response = await fetch('/api/session');
         const data = await response.json();
         if (!isMounted) return;
-        const threads = Array.isArray(data?.threads) ? data.threads : [];
-        setChatHistory(
-          threads.map((thread) => ({
-            id: thread.id,
-            title: thread.title || (thread.last_user_message || 'New Chat'),
-            date: new Date(thread.updated_at || thread.created_at || Date.now()).toLocaleDateString(),
-          })),
-        );
+        setSessionSummary({
+          sessionId: data?.sessionId || null,
+          threadId: data?.threadId || null,
+          created: !!data?.created,
+        });
       } catch (error) {
         if (isMounted) {
-          setChatHistory([]);
+          setSessionSummary(null);
         }
       }
     }
-    loadThreads();
+    loadSessionSummary();
     return () => {
       isMounted = false;
     };
@@ -81,16 +78,28 @@ function Sidebar({ view, setView, isOpen, setIsOpen }) {
 
         <div className="chat-history">
           <div className="history-header">
-            <h3>Recent Chats</h3>
+            <h3>Session</h3>
           </div>
-          
-          <div className="history-list">
-            {chatHistory.map((chat) => (
-              <button key={chat.id} className="history-item">
-                <div className="history-title">{chat.title}</div>
-                <div className="history-date">{chat.date}</div>
-              </button>
-            ))}
+
+          <div className="session-card">
+            <div className="session-row">
+              <span className="session-label">Status</span>
+              <span className="session-value">
+                {sessionSummary?.created ? 'New session' : 'Active session'}
+              </span>
+            </div>
+            <div className="session-row">
+              <span className="session-label">Session ID</span>
+              <span className="session-value session-mono">
+                {sessionSummary?.sessionId || 'Loading...'}
+              </span>
+            </div>
+            <div className="session-row">
+              <span className="session-label">Thread ID</span>
+              <span className="session-value session-mono">
+                {sessionSummary?.threadId || 'Pending'}
+              </span>
+            </div>
           </div>
         </div>
 

@@ -4,6 +4,7 @@ import { executeAgentQuery, checkAgentReadiness, getAgentTools } from "../agent/
 import { getRuntimeConfig } from "../config.js";
 import { getRouterChain } from "../agent/llmRouter.js";
 import { getGithubMCPTools, getGoogleMCPTools, getJiraMCPTools, getNotionMCPTools } from "../mcp/index.js";
+import { buildEmResponse } from "../utils/responseFormatter.js";
 
 const VALID_DOMAINS = new Set(["jira", "github", "notion", "calendar", "rag"]);
 const TRANSFER_TOOL_PREFIX = "transfer_";
@@ -140,7 +141,7 @@ export class LangGraphAgentService {
       sources: result.sources || [],
       routingPlan: decision.routingPlan,
     });
-    const emResponse = await this.buildEmResponse(userQuery, result.answer || "", evidenceBySource, decision);
+    const emResponse = await buildEmResponse(userQuery, result.answer || "", evidenceBySource, decision);
     const executionTime = Date.now() - startTime;
     const successGates = this.computeSuccessGates(routerRuntime.successGates || {});
 
@@ -175,7 +176,13 @@ export class LangGraphAgentService {
     const includeRagAgent = this.ragEnabled && options.includeRag !== false;
     const legacyResult = await executeAgentQuery(query, {
       threadId: options.threadId,
-      includeRagAgent,
+      routingPlan: {
+        domains: ["jira", "github", "notion", "calendar"],
+        allow_rag: includeRagAgent,
+        must_use_tools: false,
+        confidence: 1,
+        reasoning_summary: "Legacy fallback run."
+      },
       maxIterations: 10,
     });
     decision.toolsUsed = toArray(legacyResult.toolsUsed);
@@ -190,7 +197,6 @@ export class LangGraphAgentService {
     const requiresWorkspaceDomains = this.requiresWorkspaceDomains(routingPlan);
     const forceToolUse = routingPlan.must_use_tools || requiresWorkspaceDomains;
     const allowRag = routingPlan.allow_rag && this.ragEnabled && options.includeRag !== false;
-    const includeRagAgent = allowRag;
     let ragResult = { answer: "", sources: [] };
 
     if (allowRag && routingPlan.domains.includes("rag")) {
@@ -208,10 +214,9 @@ export class LangGraphAgentService {
     }
 
     if (decision.mcpReady && (forceToolUse || !decision.ragHit)) {
-      const routedQuery = this.buildRoutedQuery(query, routingPlan);
-      const supervisorResult = await executeAgentQuery(routedQuery, {
+      const supervisorResult = await executeAgentQuery(query, {
         threadId: options.threadId,
-        includeRagAgent,
+        routingPlan,
         maxIterations: 12,
       });
       decision.toolsUsed = toArray(supervisorResult.toolsUsed);
@@ -222,7 +227,7 @@ export class LangGraphAgentService {
         if (forceToolUse) {
           this.runtimeMetrics.toolGroundedMet += 1;
         }
-        decision.selectedPath = includeRagAgent ? "router+supervisor(+rag)" : "router+supervisor";
+        decision.selectedPath = allowRag ? "router+supervisor(+rag)" : "router+supervisor";
         this.updateUnwantedRagMetric(routingPlan, policy.invokedDomains);
         return {
           answer: supervisorResult.response || "No response generated.",
@@ -303,24 +308,6 @@ export class LangGraphAgentService {
 
   requiresWorkspaceDomains(plan) {
     return toArray(plan?.domains).some((domain) => domain !== "rag");
-  }
-
-  buildRoutedQuery(query, plan) {
-    const domains = toArray(plan?.domains);
-    const workspaceDomains = domains.filter((domain) => domain !== "rag");
-    return [
-      "Routing policy (must follow):",
-      `Selected domains: ${domains.length > 0 ? domains.join(", ") : "none"}.`,
-      workspaceDomains.length > 0
-        ? `Use only these workspace domains: ${workspaceDomains.join(", ")}.`
-        : "No workspace domain selected.",
-      plan?.must_use_tools
-        ? "At least one relevant workspace tool call is required before finalizing facts."
-        : "Tool calls are optional for this request unless needed for factual verification.",
-      plan?.allow_rag ? "RAG is allowed only if directly relevant." : "RAG is disabled for this request.",
-      "No tool call, no factual claim for workspace data.",
-      `User query:\n${query}`,
-    ].join("\n\n");
   }
 
   hasMeaningfulToolCalls(toolsUsed = []) {
@@ -454,144 +441,6 @@ export class LangGraphAgentService {
     };
   }
 
-  async buildEmResponse(query, rawAnswer, evidenceBySource, decision) {
-    if (decision.needsClarification) {
-      return {
-        answer: rawAnswer,
-      };
-    }
-
-    const normalized = this.buildFallbackEmSections(rawAnswer, evidenceBySource);
-    try {
-      const llm = getChatModel();
-      const prompt = [
-        "Format the assistant output into JSON with keys:",
-        "executiveSummary (string), keyRisksAndBlockers (string[]), whatNeedsDecision (string[]),",
-        "actionItems ([{owner,dueDate,description}]), evidenceBySource (object of string[] keyed jira/github/notion/calendar/rag).",
-        "Do not invent facts. Keep entries concise. Return JSON only.",
-        `User query: ${query}`,
-        `Raw answer: ${rawAnswer}`,
-        `Evidence: ${JSON.stringify(evidenceBySource)}`,
-      ].join("\n");
-      const modelResponse = await llm.invoke(prompt);
-      const parsed = this.safeParseJson(modelResponse?.content);
-      if (parsed && typeof parsed === "object") {
-        const merged = {
-          executiveSummary: String(parsed.executiveSummary || normalized.executiveSummary),
-          keyRisksAndBlockers: toArray(parsed.keyRisksAndBlockers).map((item) => String(item)),
-          whatNeedsDecision: toArray(parsed.whatNeedsDecision).map((item) => String(item)),
-          actionItems: toArray(parsed.actionItems)
-            .map((item) => ({
-              owner: String(item?.owner || "Unassigned"),
-              dueDate: String(item?.dueDate || "TBD"),
-              description: String(item?.description || "").trim(),
-            }))
-            .filter((item) => item.description),
-          evidenceBySource: {
-            jira: toArray(parsed?.evidenceBySource?.jira).map((item) => String(item)),
-            github: toArray(parsed?.evidenceBySource?.github).map((item) => String(item)),
-            notion: toArray(parsed?.evidenceBySource?.notion).map((item) => String(item)),
-            calendar: toArray(parsed?.evidenceBySource?.calendar).map((item) => String(item)),
-            rag: toArray(parsed?.evidenceBySource?.rag).map((item) => String(item)),
-          },
-        };
-        return { answer: this.renderEmSections(merged) };
-      }
-    } catch (error) {
-    }
-
-    return { answer: this.renderEmSections(normalized) };
-  }
-
-  buildFallbackEmSections(rawAnswer, evidenceBySource) {
-    const clean = String(rawAnswer || "").trim();
-    const summary = clean || "No response generated.";
-    const risks = [];
-    const decisions = [];
-    const actionItems = [];
-    const lines = summary.split("\n").map((line) => line.trim()).filter(Boolean);
-    for (const line of lines) {
-      const lower = line.toLowerCase();
-      if (lower.includes("risk") || lower.includes("blocker") || lower.includes("delay")) {
-        risks.push(line.replace(/^[-*]\s*/, ""));
-      }
-      if (lower.includes("decide") || lower.includes("approval") || lower.includes("confirm")) {
-        decisions.push(line.replace(/^[-*]\s*/, ""));
-      }
-      if (line.startsWith("-") || line.startsWith("*")) {
-        actionItems.push({
-          owner: "Unassigned",
-          dueDate: "TBD",
-          description: line.replace(/^[-*]\s*/, ""),
-        });
-      }
-    }
-    return {
-      executiveSummary: summary,
-      keyRisksAndBlockers: risks,
-      whatNeedsDecision: decisions,
-      actionItems,
-      evidenceBySource,
-    };
-  }
-
-  renderEmSections(payload) {
-    const lines = [];
-    lines.push("Executive Summary");
-    lines.push(payload.executiveSummary || "No summary available.");
-    lines.push("");
-    lines.push("Key Risks/Blockers");
-    if (toArray(payload.keyRisksAndBlockers).length === 0) {
-      lines.push("- None identified.");
-    } else {
-      for (const item of payload.keyRisksAndBlockers) {
-        lines.push(`- ${item}`);
-      }
-    }
-    lines.push("");
-    lines.push("What Needs Decision");
-    if (toArray(payload.whatNeedsDecision).length === 0) {
-      lines.push("- No immediate decision required.");
-    } else {
-      for (const item of payload.whatNeedsDecision) {
-        lines.push(`- ${item}`);
-      }
-    }
-    lines.push("");
-    lines.push("Action Items (owner + due date)");
-    if (toArray(payload.actionItems).length === 0) {
-      lines.push("- Unassigned | TBD | No explicit action items detected.");
-    } else {
-      for (const item of payload.actionItems) {
-        lines.push(`- ${item.owner} | ${item.dueDate} | ${item.description}`);
-      }
-    }
-    lines.push("");
-    lines.push("Evidence by Source");
-    const evidence = payload.evidenceBySource || {};
-    for (const domain of ["jira", "github", "notion", "calendar", "rag"]) {
-      const entries = toArray(evidence[domain]);
-      if (entries.length === 0) {
-        lines.push(`- ${domain}: none`);
-      } else {
-        lines.push(`- ${domain}: ${entries.join("; ")}`);
-      }
-    }
-    return lines.join("\n");
-  }
-
-  safeParseJson(content) {
-    const text = typeof content === "string" ? content : String(content || "");
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start < 0 || end <= start) return null;
-    try {
-      return JSON.parse(text.slice(start, end + 1));
-    } catch (error) {
-      return null;
-    }
-  }
-
   updateUnwantedRagMetric(routingPlan, invokedDomains) {
     if (!routingPlan?.allow_rag && invokedDomains.has("rag")) {
       this.runtimeMetrics.unwantedRagInvocations += 1;
@@ -684,8 +533,8 @@ export class LangGraphAgentService {
     const llmStatus = await getLLMStatus().catch(() => ({ initialized: false }));
     const readiness =
       runtimeMode === "full"
-        ? await checkAgentReadiness().catch(() => ({ ready: false, toolCount: 0 }))
-        : { ready: false, toolCount: 0 };
+         ? await checkAgentReadiness().catch(() => ({ ready: false, toolCount: 0 }))
+         : { ready: false, toolCount: 0 };
     return {
       ready: this.initialized,
       mcpReady: readiness.ready,

@@ -26,7 +26,7 @@ describe('Agent Prompts', () => {
   it('should render Notion agent prompt correctly', async () => {
     const messages = await notionAgentPromptTemplate.invoke({});
     const systemMessage = messages.toChatMessages()[0];
-    expect(systemMessage.content).toContain('You are a Notion workspace expert');
+    expect(systemMessage.content).toContain('You are a Notion expert');
     expect(systemMessage.constructor.name).toBe('SystemMessage');
   });
 

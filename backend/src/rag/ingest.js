@@ -383,6 +383,8 @@ export const __test__ = {
   setFs: (mock) => { fsModule = mock; },
   setPdf: (mock) => { pdfModule = mock; },
   setChromaClientClass: (mock) => { ChromaClientClass = mock; },
+  setChromaClient: (mock) => { chromaClient = mock; },
+  setInitialized: (val) => { initialized = val; },
   setVectorStore: (mock) => { vectorStore = mock; },
   getVectorStore: () => vectorStore,
 };

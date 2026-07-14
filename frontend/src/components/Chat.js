@@ -35,14 +35,14 @@ function Chat() {
 
     try {
       const payload = {
-        query: messageText,
+        message: messageText,
         mode: useAdvancedMode ? 'advanced' : 'baseline',
       };
       if (threadId) {
         payload.threadId = threadId;
       }
 
-      const res = await fetch('/api/query', {
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -127,7 +127,7 @@ function Chat() {
     formData.append('pdf', file);
 
     try {
-      const res = await fetch('/api/rag/ingest', {
+      const res = await fetch('/api/rag/upload', {
         method: 'POST',
         body: formData,
       });

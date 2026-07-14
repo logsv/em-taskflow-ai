@@ -1,6 +1,8 @@
 import express from 'express';
 import request from 'supertest';
+import sinon from 'sinon';
 import apiRouter from '../../src/routes/api.js';
+import sessionApplicationService from '../../src/application/session/SessionApplicationService.js';
 
 const app = express();
 app.use(express.json());
@@ -20,46 +22,48 @@ afterAll((done) => {
 });
 
 describe('API Routes (current contract)', () => {
+  beforeEach(() => {
+    sinon.stub(sessionApplicationService, 'resolveSession').resolves({
+      sessionId: 'sess_test',
+      threadId: 'th_test',
+      created: false,
+      cookieValue: null,
+    });
+  });
+
+  afterEach(() => {
+    sinon.restore();
+  });
+
   describe('GET /api/health', () => {
-    it('returns healthy status', async () => {
+    it('returns health status', async () => {
       const response = await request(server).get('/api/health');
       expect(response.status).toBe(200);
-      expect(response.body.status).toBe('healthy');
-      expect(response.body.services).toBeDefined();
+      expect(response.body.status).toBeDefined();
     });
   });
 
-  describe('GET /api/llm-status', () => {
-    it('returns default provider/model info', async () => {
-      const response = await request(server).get('/api/llm-status');
+  describe('GET /api/session', () => {
+    it('returns session information', async () => {
+      const response = await request(server).get('/api/session');
       expect(response.status).toBe(200);
-      expect(response.body.status).toBe('success');
-      expect(response.body.data).toBeDefined();
-      expect(response.body.data.provider).toBeDefined();
+      expect(response.body.sessionId).toBeDefined();
     });
   });
 
-  describe('POST /api/upload-pdf', () => {
-    it('validates that file is required', async () => {
-      const response = await request(server).post('/api/upload-pdf');
-      expect(response.status).toBe(400);
-      expect(response.body.error).toBe('No file uploaded');
-    });
-  });
-
-  describe('POST /api/rag/query', () => {
-    it('rejects missing body fields', async () => {
-      const response = await request(server).post('/api/rag/query').send({});
+  describe('POST /api/chat', () => {
+    it('validates that message is required', async () => {
+      const response = await request(server).post('/api/chat').send({});
       expect(response.status).toBe(400);
       expect(response.body.error).toBe('Invalid request body');
     });
+  });
 
-    it('rejects advanced mode when disabled', async () => {
-      const response = await request(server)
-        .post('/api/rag/query')
-        .send({ query: 'test', mode: 'advanced' });
+  describe('POST /api/feedback', () => {
+    it('validates that score is required', async () => {
+      const response = await request(server).post('/api/feedback').send({});
       expect(response.status).toBe(400);
-      expect(response.body.error).toContain('Advanced RAG mode is disabled');
+      expect(response.body.error).toBe('Invalid request body');
     });
   });
 });

@@ -42,9 +42,9 @@ describe('Chat Component', () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
-    expect(global.fetch.mock.calls[0][0]).toBe('/api/query');
+    expect(global.fetch.mock.calls[0][0]).toBe('/api/chat');
     expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({
-      query: 'Hello, how are you?',
+      message: 'Hello, how are you?',
       mode: 'baseline',
     });
     expect(input.value).toBe('');
@@ -181,7 +181,7 @@ describe('Chat Component', () => {
     });
 
     expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({
-      query: 'Use advanced mode',
+      message: 'Use advanced mode',
       mode: 'advanced',
     });
   });

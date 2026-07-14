@@ -1,4 +1,6 @@
 import { createSupervisor } from "@langchain/langgraph-supervisor";
+import { Annotation, messagesStateReducer } from "@langchain/langgraph";
+import { AIMessage, SystemMessage } from "@langchain/core/messages";
 import { getChatModel } from "../llm/index.js";
 import {
   isMCPReady,
@@ -16,18 +18,88 @@ import { createCalendarAgent } from "./calendarAgent.js";
 import { createRagAgent } from "./ragAgent.js";
 import { supervisorAgentPromptTemplate } from "./prompts.js";
 
-let supervisorWithRag = null;
-let supervisorWithoutRag = null;
+// Define the custom state schema for the supervisor graph
+export const SupervisorState = Annotation.Root({
+  messages: Annotation({
+    reducer: messagesStateReducer,
+    default: () => [],
+  }),
+  routingPlan: Annotation({
+    reducer: (x, y) => y ?? x,
+    default: () => null,
+  }),
+  evidence: Annotation({
+    reducer: (x, y) => ({ ...x, ...y }),
+    default: () => ({}),
+  }),
+});
+
+let compiledGraph = null;
 let agentTools = [];
 let initialized = false;
 
-export async function initializeAgent() {
+// Pre-model hook: dynamically inject active routing constraints as a system instruction
+export function supervisorPreModelHook(state) {
+  const allowed = state.routingPlan?.domains || [];
+  const systemPrompt = `Active Routing Plan Policy:
+Authorized worker domains for this query: ${allowed.length > 0 ? allowed.join(", ") : "none"}.
+RAG allowed: ${state.routingPlan?.allow_rag ? "YES" : "NO"}.
+You MUST ONLY delegate to the authorized domains. Do not attempt to use transfer tools for unauthorized domains.`;
+
+  const systemMessage = new SystemMessage({ content: systemPrompt });
+  return {
+    llmInputMessages: [systemMessage, ...state.messages],
+  };
+}
+
+// Post-model hook: structural policy guardrail to block unauthorized handoffs in real-time
+export function supervisorPostModelHook(state) {
+  const messages = state.messages;
+  const lastMessage = messages[messages.length - 1];
+
+  if (lastMessage && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
+    const allowed = state.routingPlan?.domains || [];
+    // Ensure "rag" is treated as allowed if allow_rag is true
+    const fullAllowedDomains = [...allowed];
+    if (state.routingPlan?.allow_rag && !fullAllowedDomains.includes("rag")) {
+      fullAllowedDomains.push("rag");
+    }
+
+    const unauthorizedCall = lastMessage.tool_calls.find((toolCall) => {
+      if (toolCall.name.startsWith("transfer_to_")) {
+        const agentName = toolCall.name.replace("transfer_to_", "");
+        const domain = agentName.replace("_agent", "");
+        return !fullAllowedDomains.includes(domain);
+      }
+      return false;
+    });
+
+    if (unauthorizedCall) {
+      const targetDomain = unauthorizedCall.name.replace("transfer_to_", "").replace("_agent", "");
+      console.warn(`🛡️ Policy Guardrail Intercepted: Handoff to unauthorized domain '${targetDomain}' blocked.`);
+
+      // Replace the tool call message with a text explanation to force self-correction
+      const correctedAIMessage = new AIMessage({
+        id: lastMessage.id, // replaces the last message by reusing its ID
+        content: `Error: Handoff to the '${targetDomain}' domain is unauthorized under the active routing plan. Permitted domains are: ${fullAllowedDomains.join(", ")}. Please answer directly or select a permitted agent.`,
+      });
+
+      return {
+        messages: [correctedAIMessage],
+      };
+    }
+  }
+
+  return {};
+}
+
+export async function initializeAgent(options = {}) {
   if (initialized) return;
 
   console.log("🤖 Initializing LangGraph supervisor multi-agent system...");
 
   try {
-    if (!isMCPReady()) {
+    if (!options.skipMcpInit && !isMCPReady()) {
       console.log("🔧 Initializing MCP services...");
       await initializeMCP();
     }
@@ -37,56 +109,32 @@ export async function initializeAgent() {
     const notionTools = getNotionMCPTools();
     const calendarTools = getGoogleMCPTools();
     agentTools = [...jiraTools, ...githubTools, ...notionTools, ...calendarTools];
-    const llm = getChatModel();
 
-    if (typeof llm.bindTools === "function" && !llm.__langgraphPatched) {
-      const originalBindTools = llm.bindTools.bind(llm);
-      llm.bindTools = (tools, options) => {
-        const bound = originalBindTools(tools, options);
-        if (bound && typeof bound === "object" && !("bindTools" in bound)) {
-          Object.defineProperty(bound, "bindTools", {
-            value: originalBindTools,
-            writable: false,
-            enumerable: false,
-          });
-        }
-        return bound;
-      };
-      Object.defineProperty(llm, "__langgraphPatched", {
-        value: true,
-        writable: false,
-        enumerable: false,
-      });
-    }
+    const llm = options.llm || getChatModel();
 
-    const jiraAgent = await createJiraAgent();
-    const githubAgent = await createGithubAgent();
-    const notionAgent = await createNotionAgent();
-    const calendarAgent = await createCalendarAgent();
-    const ragAgent = await createRagAgent();
+    const jira = options.jiraAgent || await createJiraAgent();
+    const github = options.githubAgent || await createGithubAgent();
+    const notion = options.notionAgent || await createNotionAgent();
+    const calendar = options.calendarAgent || await createCalendarAgent();
+    const rag = options.ragAgent || await createRagAgent();
 
     const promptValue = await supervisorAgentPromptTemplate.invoke({});
     const systemMessage = promptValue.toChatMessages()[0];
 
-    const baseAgents = [jiraAgent, githubAgent, notionAgent, calendarAgent];
+    const baseAgents = [jira, github, notion, calendar];
+    const createSupervisorFn = options.createSupervisor || createSupervisor;
 
-    const withRagWorkflow = createSupervisor({
-      agents: [...baseAgents, ragAgent],
+    const workflow = createSupervisorFn({
+      agents: [...baseAgents, rag],
       llm,
       prompt: systemMessage,
+      stateSchema: SupervisorState,
       outputMode: "last_message",
+      preModelHook: supervisorPreModelHook,
+      postModelHook: supervisorPostModelHook,
     });
 
-    const withoutRagWorkflow = createSupervisor({
-      agents: baseAgents,
-      llm,
-      prompt: systemMessage,
-      outputMode: "last_message",
-    });
-
-    supervisorWithRag = withRagWorkflow.compile();
-    supervisorWithoutRag = withoutRagWorkflow.compile();
-
+    compiledGraph = workflow.compile ? workflow.compile() : workflow;
     initialized = true;
     console.log("✅ Supervisor multi-agent system initialized");
   } catch (error) {
@@ -95,11 +143,12 @@ export async function initializeAgent() {
   }
 }
 
+
 export async function executeAgentQuery(query, options = {}) {
   await ensureAgentReady();
 
-  const { maxIterations = 10, stream = false, includeRagAgent = true, threadId } = options;
-  const app = includeRagAgent ? supervisorWithRag : supervisorWithoutRag;
+  const { maxIterations = 10, stream = false, routingPlan, threadId } = options;
+  const app = compiledGraph;
   if (!app) {
     throw new Error("Supervisor graph not initialized");
   }
@@ -112,6 +161,8 @@ export async function executeAgentQuery(query, options = {}) {
           content: query,
         },
       ],
+      routingPlan: routingPlan || null,
+      evidence: {},
     };
 
     const runId = threadId || `thread_${Date.now()}`;
@@ -140,7 +191,7 @@ export async function executeAgentQuery(query, options = {}) {
       response: responseText,
       toolsUsed,
       messageCount: messages.length,
-      usedRagAgent: includeRagAgent,
+      evidence: result.evidence || {},
     };
   } catch (error) {
     console.error("❌ Agent query execution failed:", error);
@@ -185,7 +236,7 @@ export async function checkAgentReadiness() {
     }
 
     return {
-      ready: initialized && !!supervisorWithRag && !!supervisorWithoutRag,
+      ready: initialized && !!compiledGraph,
       model: config.llm.defaultModel,
       toolCount: agentTools.length,
     };
@@ -215,19 +266,18 @@ export async function getAgentTools() {
 }
 
 export function getAgentInstance() {
-  return supervisorWithRag;
+  return compiledGraph;
 }
 
 export async function resetAgent() {
   initialized = false;
-  supervisorWithRag = null;
-  supervisorWithoutRag = null;
+  compiledGraph = null;
   agentTools = [];
-  await initializeAgent();
 }
 
 async function ensureAgentReady() {
-  if (!initialized || !supervisorWithRag || !supervisorWithoutRag) {
+  if (!initialized || !compiledGraph) {
     await initializeAgent();
   }
 }
+

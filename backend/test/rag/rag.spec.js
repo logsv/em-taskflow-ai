@@ -22,7 +22,12 @@ describe('RAG Service', () => {
       count: sinon.stub().resolves(10),
       add: sinon.stub().resolves(),
       delete: sinon.stub().resolves(),
-      query: sinon.stub().resolves({ ids: [], distances: [], metadatas: [], documents: [] }),
+      query: sinon.stub().resolves({
+        ids: [['id1']],
+        distances: [[0.1]],
+        metadatas: [[{ filename: 'doc.pdf', chunkIndex: 0 }]],
+        documents: [['chunk1 text']]
+      }),
       modify: sinon.stub().resolves(),
       get: sinon.stub().resolves(),
       peek: sinon.stub().resolves(),
@@ -46,10 +51,15 @@ describe('RAG Service', () => {
     // Inject mocks
     __test__.setFs(fsMock);
     __test__.setChromaClientClass(ChromaClientClassMock);
+    __test__.setChromaClient(chromaClientMock);
+    __test__.setInitialized(true);
     __test__.setPdf(pdfParseMock);
     
     // Mock vectorStore to avoid initialization issues during tests
     const vectorStoreMock = {
+      embeddings: {
+        embedQuery: sinon.stub().resolves(new Array(768).fill(0.01)),
+      },
       addDocuments: sinon.stub().resolves(),
       asRetriever: sinon.stub().returns({
         getRelevantDocuments: sinon.stub().resolves([
@@ -113,8 +123,7 @@ describe('RAG Service', () => {
       expect(result.chunks.length).toBe(1);
       expect(result.chunks[0].content).toBe('chunk1 text');
       
-      const vectorStore = __test__.getVectorStore();
-      expect(vectorStore.asRetriever.called).toBe(true);
+      expect(collectionMock.query.called).toBe(true);
     });
   });
 

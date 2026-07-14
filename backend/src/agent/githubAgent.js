@@ -1,6 +1,7 @@
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { getChatModel } from "../llm/index.js";
 import { githubAgentPromptTemplate } from "./prompts.js";
+import { AgentOutputSchema } from "../types/agent.js";
 
 export async function createGithubAgent() {
   const llm = getChatModel();
@@ -21,5 +22,7 @@ export async function createGithubAgent() {
     tools: githubTools,
     name: "github_agent",
     prompt: systemMessage,
+    responseFormat: AgentOutputSchema,
   });
 }
+

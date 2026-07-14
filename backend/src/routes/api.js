@@ -41,6 +41,7 @@ const querySchema = z.object({
 const chatSchema = z.object({
   message: z.string().min(1).max(20_000),
   threadId: z.string().min(1).max(128).nullable().optional(),
+  mode: z.enum(['baseline', 'advanced']).optional(),
 });
 
 const feedbackSchema = z.object({
@@ -117,7 +118,7 @@ router.post('/chat', attachSessionContext, async (req, res) => {
       threadId: parsed.data.threadId,
       sessionContext: req.sessionContext,
       requestId: req.requestId,
-      ragMode: 'baseline',
+      ragMode: parsed.data.mode === 'advanced' ? 'advanced' : 'baseline',
     });
     res.json(responsePayload);
   } catch (error) {
