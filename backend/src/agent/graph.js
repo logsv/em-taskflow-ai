@@ -15,7 +15,7 @@ import { createJiraAgent } from "./jiraAgent.js";
 import { createGithubAgent } from "./githubAgent.js";
 import { createNotionAgent } from "./notionAgent.js";
 import { createCalendarAgent } from "./calendarAgent.js";
-import { createRagAgent } from "./ragAgent.js";
+import { getRagTool } from "./ragAgent.js";
 import { supervisorAgentPromptTemplate } from "./prompts.js";
 
 // Define the custom state schema for the supervisor graph
@@ -108,7 +108,7 @@ export async function initializeAgent(options = {}) {
     const githubTools = getGithubMCPTools();
     const notionTools = getNotionMCPTools();
     const calendarTools = getGoogleMCPTools();
-    agentTools = [...jiraTools, ...githubTools, ...notionTools, ...calendarTools];
+    agentTools = [...jiraTools, ...githubTools, ...notionTools, ...calendarTools, getRagTool()];
 
     const llm = options.llm || getChatModel();
 
@@ -116,7 +116,6 @@ export async function initializeAgent(options = {}) {
     const github = options.githubAgent || await createGithubAgent();
     const notion = options.notionAgent || await createNotionAgent();
     const calendar = options.calendarAgent || await createCalendarAgent();
-    const rag = options.ragAgent || await createRagAgent();
 
     const promptValue = await supervisorAgentPromptTemplate.invoke({});
     const systemMessage = promptValue.toChatMessages()[0];
@@ -125,7 +124,7 @@ export async function initializeAgent(options = {}) {
     const createSupervisorFn = options.createSupervisor || createSupervisor;
 
     const workflow = createSupervisorFn({
-      agents: [...baseAgents, rag],
+      agents: baseAgents,
       llm,
       prompt: systemMessage,
       stateSchema: SupervisorState,

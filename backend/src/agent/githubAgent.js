@@ -2,6 +2,7 @@ import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { getChatModel } from "../llm/index.js";
 import { githubAgentPromptTemplate } from "./prompts.js";
 import { AgentOutputSchema } from "../types/agent.js";
+import { getRagTool } from "./ragAgent.js";
 
 export async function createGithubAgent() {
   const llm = getChatModel();
@@ -19,7 +20,7 @@ export async function createGithubAgent() {
 
   return createReactAgent({
     llm,
-    tools: githubTools,
+    tools: [...githubTools, getRagTool()],
     name: "github_agent",
     prompt: systemMessage,
     responseFormat: AgentOutputSchema,

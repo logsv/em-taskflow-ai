@@ -1,6 +1,8 @@
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { getChatModel } from "../llm/index.js";
 import { notionAgentPromptTemplate } from "./prompts.js";
+import { AgentOutputSchema } from "../types/agent.js";
+import { getRagTool } from "./ragAgent.js";
 
 export async function createNotionAgent() {
   const llm = getChatModel();
@@ -18,8 +20,9 @@ export async function createNotionAgent() {
 
   return createReactAgent({
     llm,
-    tools: notionTools,
+    tools: [...notionTools, getRagTool()],
     name: "notion_agent",
     prompt: systemMessage,
+    responseFormat: AgentOutputSchema,
   });
 }

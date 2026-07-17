@@ -216,9 +216,38 @@ export async function ensureMCPReady() {
   }
 }
 
+export function wrapToolForResiliency(tool) {
+  if (!tool) return tool;
+  const originalCall = tool.call;
+  const originalInvoke = tool.invoke;
+
+  tool.invoke = async function (input, config) {
+    try {
+      return await originalInvoke.call(this, input, config);
+    } catch (error) {
+      console.error(`🛡️ Resiliency Wrap: Tool '${tool.name}' failed:`, error);
+      return `Error executing tool ${tool.name}: ${error?.message || error || "unknown error"}`;
+    }
+  };
+
+  if (originalCall) {
+    tool.call = async function (input, config) {
+      try {
+        return await originalCall.call(this, input, config);
+      } catch (error) {
+        console.error(`🛡️ Resiliency Wrap: Tool '${tool.name}' failed:`, error);
+        return `Error executing tool ${tool.name}: ${error?.message || error || "unknown error"}`;
+      }
+    };
+  }
+
+  return tool;
+}
+
 async function loadTools(name, getToolsFn) {
   try {
-    return await getToolsFn();
+    const tools = await getToolsFn();
+    return tools.map(wrapToolForResiliency);
   } catch (error) {
     console.warn(`⚠️ ${name} MCP tools unavailable:`, error?.message || error);
     return [];

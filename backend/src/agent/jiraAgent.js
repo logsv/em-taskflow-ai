@@ -1,6 +1,8 @@
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { getChatModel } from "../llm/index.js";
 import { jiraAgentPromptTemplate } from "./prompts.js";
+import { AgentOutputSchema } from "../types/agent.js";
+import { getRagTool } from "./ragAgent.js";
 
 export async function createJiraAgent() {
   const llm = getChatModel();
@@ -18,8 +20,9 @@ export async function createJiraAgent() {
 
   return createReactAgent({
     llm,
-    tools: jiraTools,
+    tools: [...jiraTools, getRagTool()],
     name: "jira_agent",
     prompt: systemMessage,
+    responseFormat: AgentOutputSchema,
   });
 }

@@ -28,7 +28,6 @@ describe('Agent Graph', () => {
       githubAgent: mockAgent,
       notionAgent: mockAgent,
       calendarAgent: mockAgent,
-      ragAgent: mockAgent,
       createSupervisor: () => ({ compile: mockCompile }),
       skipMcpInit: true,
     });
@@ -62,7 +61,6 @@ describe('Agent Graph', () => {
       githubAgent: mockAgent,
       notionAgent: mockAgent,
       calendarAgent: mockAgent,
-      ragAgent: mockAgent,
       createSupervisor: () => mockSupervisor,
       skipMcpInit: true,
     });
