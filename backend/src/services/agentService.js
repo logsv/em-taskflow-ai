@@ -103,6 +103,10 @@ export class LangGraphAgentService {
       needsClarification: false,
     };
 
+    let queryToRun = userQuery;
+    let bypassConfidenceCheck = false;
+    let routingPlan = null;
+
     let result;
     if (runtime.mode === "rag_only") {
       const plan = await this.routeQueryPlan(userQuery, runtime.mode);
@@ -116,23 +120,51 @@ export class LangGraphAgentService {
     } else if (rollout.mode === "shadow") {
       this.runtimeMetrics.shadowQueries += 1;
       this.runtimeMetrics.routerQueries += 1;
-      const routingPlan = await this.routeQueryPlan(userQuery, runtime.mode);
-      decision.routingPlan = routingPlan;
+      const plan = await this.routeQueryPlan(userQuery, runtime.mode);
+      decision.routingPlan = plan;
       decision.reasons.push("router_shadow_mode_not_enforced");
       result = await this.runLegacyPath(userQuery, decision, options);
     } else {
+      // Enforced mode
+      if (options.threadId) {
+        const isConfirmation = ["yes", "yeah", "sure", "ok", "yep", "confirm", "proceed", "go ahead", "y"].includes(userQuery.toLowerCase().trim());
+        if (isConfirmation) {
+          try {
+            const db = (await import("../db/index.js")).default;
+            const history = await db.getThreadMessages(options.threadId);
+            const lastMsg = history[history.length - 1];
+            if (lastMsg && lastMsg.role === "assistant" && (lastMsg.strategy === "clarification" || lastMsg.metadata?.selectedPath === "clarification")) {
+              const originalUserMsg = history[history.length - 2];
+              if (originalUserMsg && originalUserMsg.role === "user") {
+                queryToRun = originalUserMsg.content;
+                bypassConfidenceCheck = true;
+                const savedPlan = originalUserMsg.metadata?.routingPlan;
+                if (savedPlan && Array.isArray(savedPlan.domains)) {
+                  routingPlan = savedPlan;
+                }
+              }
+            }
+          } catch (dbError) {
+            console.warn("⚠️ Failed to check confirmation history:", dbError);
+          }
+        }
+      }
+
       this.runtimeMetrics.enforcedQueries += 1;
       this.runtimeMetrics.routerQueries += 1;
-      const routingPlan = await this.routeQueryPlan(userQuery, runtime.mode);
+      
+      if (!routingPlan) {
+        routingPlan = await this.routeQueryPlan(queryToRun, runtime.mode);
+      }
       decision.routingPlan = routingPlan;
 
-      if (routingPlan.confidence < (routerRuntime.lowConfidenceThreshold ?? 0.45)) {
+      if (!bypassConfidenceCheck && routingPlan.confidence < (routerRuntime.lowConfidenceThreshold ?? 0.45)) {
         this.runtimeMetrics.lowConfidenceClarifications += 1;
         decision.selectedPath = "clarification";
         decision.needsClarification = true;
-        result = this.buildClarificationResult(userQuery, routingPlan);
+        result = this.buildClarificationResult(queryToRun, routingPlan);
       } else {
-        result = await this.runEnforcedPolicy(userQuery, routingPlan, decision, options);
+        result = await this.runEnforcedPolicy(queryToRun, routingPlan, decision, options);
       }
     }
 
@@ -141,7 +173,7 @@ export class LangGraphAgentService {
       sources: result.sources || [],
       routingPlan: decision.routingPlan,
     });
-    const emResponse = await buildEmResponse(userQuery, result.answer || "", evidenceBySource, decision);
+    const emResponse = await buildEmResponse(queryToRun, result.answer || "", evidenceBySource, decision);
     const executionTime = Date.now() - startTime;
     const successGates = this.computeSuccessGates(routerRuntime.successGates || {});
 

@@ -1,19 +1,22 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
 .app {
   display: flex;
   min-height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  background: #ffffff;
-  color: #343541;
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  background: #0d0e12;
+  color: #e3e3e8;
+  overflow-x: hidden;
+  position: relative;
 }
 
 .main-content {
   flex: 1;
   display: flex;
   flex-direction: column;
-  transition: margin-left 0.3s ease;
+  transition: margin-left 0.3s ease, margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   min-height: 100vh;
+  background: #0d0e12;
 }
 
 .main-content.sidebar-open {
@@ -47,6 +50,7 @@ input, textarea {
 /* Global scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -54,31 +58,31 @@ input, textarea {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: #252630;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: #3c3d4e;
 }
 
 /* Focus styles */
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid #10a37f;
+  outline: 2px solid #ab68ff;
   outline-offset: 2px;
 }
 
 /* Selection styles */
 ::selection {
-  background: rgba(16, 163, 127, 0.2);
-  color: #343541;
+  background: rgba(171, 104, 255, 0.3);
+  color: #ffffff;
 }
 
 /* Smooth transitions */
 * {
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
 /* Mobile responsiveness */
@@ -97,20 +101,15 @@ textarea:focus-visible {
 }
 
 /* PDF Drawer Layout and Styles */
-.app {
-  overflow-x: hidden;
-  position: relative;
-}
-
 .pdf-drawer {
   position: fixed;
   top: 0;
   right: 0;
   width: 380px;
   height: 100vh;
-  background: #ffffff;
-  border-left: 1px solid #e5e7eb;
-  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.05);
+  background: #15161e;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: -4px 0 30px rgba(0, 0, 0, 0.3);
   z-index: 990;
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   transform: translateX(100%);
@@ -124,18 +123,18 @@ textarea:focus-visible {
 
 .pdf-drawer-header {
   padding: 16px 20px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #f9fafb;
+  background: #1c1d29;
 }
 
 .pdf-drawer-header h3 {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #374151;
+  color: #ffffff;
 }
 
 .close-drawer-btn {
@@ -143,7 +142,7 @@ textarea:focus-visible {
   border: none;
   font-size: 20px;
   cursor: pointer;
-  color: #9ca3af;
+  color: #8e8ea0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -154,8 +153,8 @@ textarea:focus-visible {
 }
 
 .close-drawer-btn:hover {
-  background: #e5e7eb;
-  color: #374151;
+  background: #252630;
+  color: #ffffff;
 }
 
 .pdf-drawer-content {

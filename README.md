@@ -21,7 +21,7 @@ Optional runtime:
 
 1. Start services:
 ```bash
-./start.sh
+docker compose up -d --build
 ```
 
 2. Open app:
@@ -29,13 +29,13 @@ Optional runtime:
 
 3. Stop services:
 ```bash
-./stop.sh
+docker compose down
 ```
 
 ## GPU Profile (Optional)
 
 ```bash
-./start.sh --gpu
+docker compose --profile gpu up -d --build
 ```
 
 ## Configuration
@@ -54,22 +54,29 @@ curl -s http://localhost:4000/api/health
 
 2. Upload PDF:
 ```bash
-curl -X POST http://localhost:4000/api/rag/ingest \
+curl -X POST http://localhost:4000/api/rag/upload \
   -F "pdf=@/absolute/path/to/file.pdf"
 ```
 
-3. Query (single API):
+3. Chat Query (core API):
 ```bash
-curl -X POST http://localhost:4000/api/query \
+curl -X POST http://localhost:4000/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"query":"Summarize the uploaded document","mode":"baseline"}'
+  -d '{"message":"Summarize the uploaded document","mode":"baseline"}'
 ```
 
-4. Query advanced mode:
+4. Chat Query advanced mode:
 ```bash
-curl -X POST http://localhost:4000/api/query \
+curl -X POST http://localhost:4000/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"query":"Summarize key risks","mode":"advanced"}'
+  -d '{"message":"Summarize key risks","mode":"advanced"}'
+```
+
+5. Telemetry Feedback:
+```bash
+curl -X POST http://localhost:4000/api/feedback \
+  -H "Content-Type: application/json" \
+  -d '{"score":"thumbs_up","threadId":"some-thread-uuid"}'
 ```
 
 ## Ops Commands
@@ -122,7 +129,7 @@ docker compose up -d --build
 - `backend/.env` contains no real secrets committed to git.
 - `docker compose config` is valid.
 - Backend health endpoint returns healthy.
-- PDF upload and `POST /api/query` both work.
+- PDF upload and `POST /api/chat` both work.
 - Frontend loads and can submit chat query.
 - Logs are clean for backend start and DB migration/init.
 

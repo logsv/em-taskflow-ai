@@ -94,7 +94,7 @@ async function startServer() {
       console.log(`🤖 LLM Provider: ${llmConfig.defaultProvider}`);
       console.log(`🔍 RAG Enabled: ${ragConfig.enabled}`);
       console.log(`🔗 Health check: http://${serverConfig.host}:${PORT}/api/health`);
-      console.log(`💬 Query API: POST http://${serverConfig.host}:${PORT}/api/query`);
+      console.log(`💬 Chat API: POST http://${serverConfig.host}:${PORT}/api/chat`);
     });
   } catch (error) {
     console.error('Failed to initialize services:', error);
