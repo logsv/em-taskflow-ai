@@ -1,6 +1,18 @@
+import sinon from 'sinon';
+import { Client } from 'langsmith';
 import { FeedbackApplicationService } from '../../src/application/feedback/FeedbackApplicationService.js';
 
 describe('FeedbackApplicationService', () => {
+  let sandbox;
+
+  beforeEach(() => {
+    sandbox = sinon.createSandbox();
+  });
+
+  afterEach(() => {
+    sandbox.restore();
+  });
+
   it('stores feedback with session-aware defaults and returns the normalized payload', async () => {
     const dbService = {
       createFeedback: jasmine.createSpy('createFeedback').and.resolveTo({
@@ -72,5 +84,33 @@ describe('FeedbackApplicationService', () => {
         requestId: 'req_feedback_2',
       },
     });
+  });
+
+  it('submits feedback to LangSmith when traceId and LANGCHAIN_API_KEY are present', async () => {
+    const originalApiKey = process.env.LANGCHAIN_API_KEY;
+    process.env.LANGCHAIN_API_KEY = 'test-key';
+
+    const createFeedbackSpy = sandbox.stub(Client.prototype, 'createFeedback').resolves({});
+    
+    const dbService = {
+      createFeedback: () => ({ id: 'fb_123' }),
+    };
+    const service = new FeedbackApplicationService({ dbService });
+
+    await service.submitFeedback({
+      payload: {
+        traceId: 'trace_abc',
+        score: 'thumbs_up',
+        comment: 'Nice!',
+      },
+    });
+
+    expect(createFeedbackSpy.calledOnceWith('trace_abc', 'user_score', {
+      score: 1.0,
+      value: 'thumbs_up',
+      comment: 'Nice!',
+    })).toBe(true);
+
+    process.env.LANGCHAIN_API_KEY = originalApiKey;
   });
 });

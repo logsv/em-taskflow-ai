@@ -1,3 +1,4 @@
+import { Client } from 'langsmith';
 import feedbackRepository from '../../persistence/feedback/FeedbackRepository.js';
 
 export class FeedbackApplicationService {
@@ -18,6 +19,20 @@ export class FeedbackApplicationService {
         requestId,
       },
     });
+
+    if (traceId && process.env.LANGCHAIN_API_KEY) {
+      try {
+        const client = new Client();
+        await client.createFeedback(traceId, 'user_score', {
+          score: score === 'thumbs_up' ? 1.0 : 0.0,
+          value: score,
+          comment: comment || undefined,
+        });
+        console.log(`✅ LangSmith feedback logged successfully for trace: ${traceId}`);
+      } catch (error) {
+        console.warn(`⚠️ Failed to submit feedback to LangSmith:`, error?.message || error);
+      }
+    }
 
     return {
       status: 'success',
