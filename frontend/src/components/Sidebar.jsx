@@ -1,9 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import './Sidebar.css';
 
-function Sidebar({ view, setView, isOpen, setIsOpen }) {
-  const [sessionSummary, setSessionSummary] = useState(null);
-
+function Sidebar({ sessionSummary, isDrawerOpen, setIsDrawerOpen, isOpen, setIsOpen }) {
   const toggleSidebar = () => {
     setIsOpen(!isOpen);
   };
@@ -11,31 +9,8 @@ function Sidebar({ view, setView, isOpen, setIsOpen }) {
   const startNewChat = () => {
     // In a real app, this would create a new chat session
     console.log('Starting new chat...');
+    window.location.reload();
   };
-
-  useEffect(() => {
-    let isMounted = true;
-    async function loadSessionSummary() {
-      try {
-        const response = await fetch('/api/session');
-        const data = await response.json();
-        if (!isMounted) return;
-        setSessionSummary({
-          sessionId: data?.sessionId || null,
-          threadId: data?.threadId || null,
-          created: !!data?.created,
-        });
-      } catch (error) {
-        if (isMounted) {
-          setSessionSummary(null);
-        }
-      }
-    }
-    loadSessionSummary();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   return (
     <>
@@ -59,19 +34,19 @@ function Sidebar({ view, setView, isOpen, setIsOpen }) {
         <nav className="sidebar-nav">
           <div className="nav-section">
             <button 
-              className={`nav-item ${view === 'chat' ? 'active' : ''}`}
-              onClick={() => setView('chat')}
+              className="nav-item active"
+              onClick={() => setIsDrawerOpen(false)}
             >
               <span className="nav-icon">💬</span>
               <span className="nav-text">Chat</span>
             </button>
             
             <button 
-              className={`nav-item ${view === 'pdf' ? 'active' : ''}`}
-              onClick={() => setView('pdf')}
+              className={`nav-item ${isDrawerOpen ? 'active' : ''}`}
+              onClick={() => setIsDrawerOpen(!isDrawerOpen)}
             >
               <span className="nav-icon">📄</span>
-              <span className="nav-text">Upload</span>
+              <span className="nav-text">PDF Docs</span>
             </button>
           </div>
         </nav>

@@ -392,3 +392,104 @@
 .chat-messages::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
 }
+
+/* Chat Header */
+.chat-header {
+  height: 60px;
+  border-bottom: 1px solid #e5e5e5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  background: #ffffff;
+  z-index: 10;
+}
+
+.chat-header h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0;
+  color: #343541;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pdf-drawer-toggle-btn {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  color: #374151;
+  padding: 6px 14px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.pdf-drawer-toggle-btn:hover {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.pdf-drawer-toggle-btn.active {
+  background: #10a37f;
+  color: white;
+  border-color: #10a37f;
+}
+
+/* Feedback Telemetry */
+.message-feedback {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.feedback-btn {
+  background: none;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  color: #9ca3af;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.feedback-btn:hover {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.feedback-btn.active-thumbs_up {
+  color: #10a37f;
+}
+
+.feedback-btn.active-thumbs_down {
+  color: #ef4444;
+}
+
+/* Think Tag Style */
+.think-content {
+  display: block;
+  font-style: italic;
+  color: #6b7280;
+  background: #f9fafb;
+  border-left: 3px solid #d1d5db;
+  padding: 10px 14px;
+  margin: 10px 0;
+  border-radius: 0 6px 6px 0;
+  font-size: 0.95rem;
+}
