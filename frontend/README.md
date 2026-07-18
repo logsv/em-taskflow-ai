@@ -1,27 +1,36 @@
 # EM TaskFlow Frontend
 
-React frontend for the simplified EM TaskFlow runtime.
+React application with state runtime integration powered by `@assistant-ui/react` and built with Vite.
 
 Current UI scope:
-- Chat view (queries `POST /api/rag/query`)
-- PDF upload view (uploads to `POST /api/upload-pdf`)
-- Sidebar-based navigation
+- Chat view cockpit with modern bubble styling (queries `POST /api/chat`)
+- Collapsible PDF Drawer view (uploads to `POST /api/rag/upload`)
+- Telemetry feedback buttons (thumbs up/down) bound to `POST /api/feedback`
+- Sidebar with active session and thread metadata display
 
-## Setup
+## How to Run
 
+### Via Docker (Recommended)
+From the project root directory, run:
+```bash
+docker compose up -d --build
+```
+The app will be available at `http://localhost:3000`.
+
+### Locally (Development Mode)
 ```bash
 cd frontend
 npm install
 npm start
 ```
-
-The frontend proxies API requests to backend on `http://localhost:4000` via `package.json`.
+Vite dev server will start on port `3000` and proxy API calls to the backend on `127.0.0.1:4000` as configured in `vite.config.js`.
 
 ## Build
 
 ```bash
 npm run build
 ```
+Production assets are generated in the `dist/` directory.
 
 ## Tests
 
@@ -29,12 +38,7 @@ npm run build
 npm test
 ```
 
-Useful targeted tests:
-```bash
-npm test -- --watchAll=false src/components/Chat.test.js src/App.test.js
-```
-
 ## Notes
 
 - PWA/service worker scaffolding is removed for simpler production behavior.
-- Unused legacy components were pruned to keep the UI aligned with the active backend API.
+- Style system uses a premium integrated space-dark theme with Outfit typography.

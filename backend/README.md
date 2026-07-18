@@ -10,17 +10,11 @@ Current production-style profile:
 
 ## Active API Surface
 
-- `GET /api/health`
-- `GET /api/router/metrics`
-- `POST /api/query`
-- `GET /api/threads`
-- `GET /api/threads/:threadId/messages`
-- `POST /api/rag/ingest`
-- `GET /api/rag/documents`
-- `POST /api/rag/documents/:documentId/query`
-- OAuth helpers:
-  - `GET /api/mcp/notion/oauth/start`
-  - `GET /api/mcp/github/oauth/start`
+- `GET /api/health` - Check health status of all systems (database, agent, mcp, rag)
+- `GET /api/session` - Retrieve or initialize cookies/headers session context
+- `POST /api/chat` - Process user chat queries using the multi-agent supervisor/router model
+- `POST /api/feedback` - Log telemetry feedback (thumbs up/down) to LangSmith
+- `POST /api/rag/upload` - Ingest PDF documents into the vector store
 
 ## Configuration
 
@@ -40,24 +34,20 @@ Important variables:
 - `OLLAMA_BASE_URL=...`
 - `RAG_ADVANCED_ENABLED=true|false`
 
-Success gate thresholds:
-- `ROUTER_SUCCESS_DOMAIN_ACCURACY`
-- `ROUTER_SUCCESS_UNWANTED_RAG_MAX`
-- `ROUTER_SUCCESS_TOOL_GROUNDED_MIN`
-- `ROUTER_SUCCESS_EM_USEFULNESS_MIN`
+## How to Run
 
-## Local Run
-
-Use the root-level orchestrator:
+### Via Docker (Recommended)
+From the project root directory, run:
 ```bash
-./start.sh
+docker compose up -d --build
 ```
 
-Or run backend directly:
+### Locally (Development Mode)
+Ensure Postgres, Chroma, and LLM services are running. Then:
 ```bash
 cd backend
 npm install
-npm start
+npm run dev
 ```
 
 ## Testing
@@ -67,9 +57,9 @@ cd backend
 npm test
 ```
 
-If you only want route tests:
+If you only want specific unit tests:
 ```bash
-npx jasmine test/routes/api.spec.js
+npx jasmine test/application/feedbackApplicationService.spec.js
 ```
 
 Run routing evaluation:
@@ -80,7 +70,7 @@ npm run evaluate
 ## Notes
 
 - The backend includes request hardening middleware:
-  - request ID header (`x-request-id`)
-  - in-memory rate limiting
+  - Request ID header (`x-request-id`)
+  - In-memory rate limiting
   - JSON body size limits
 - For full runtime, set `RUNTIME_MODE=full` and ensure MCP/agent dependencies are configured.
