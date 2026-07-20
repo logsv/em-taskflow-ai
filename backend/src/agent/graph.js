@@ -41,14 +41,27 @@ let initialized = false;
 // Pre-model hook: dynamically inject active routing constraints as a system instruction
 export function supervisorPreModelHook(state) {
   const allowed = state.routingPlan?.domains || [];
-  const systemPrompt = `Active Routing Plan Policy:
+  const routingPrompt = `Active Routing Plan Policy:
 Authorized worker domains for this query: ${allowed.length > 0 ? allowed.join(", ") : "none"}.
 RAG allowed: ${state.routingPlan?.allow_rag ? "YES" : "NO"}.
 You MUST ONLY delegate to the authorized domains. Do not attempt to use transfer tools for unauthorized domains.`;
 
-  const systemMessage = new SystemMessage({ content: systemPrompt });
+  // Separate system messages from non-system messages to satisfy Gemini's
+  // constraint that all system messages must precede user/assistant messages.
+  const existingSystemMessages = [];
+  const nonSystemMessages = [];
+  for (const msg of state.messages) {
+    if (msg._getType?.() === "system" || msg.constructor?.name === "SystemMessage") {
+      existingSystemMessages.push(msg);
+    } else {
+      nonSystemMessages.push(msg);
+    }
+  }
+
+  const routingSystemMessage = new SystemMessage({ content: routingPrompt });
+
   return {
-    llmInputMessages: [systemMessage, ...state.messages],
+    llmInputMessages: [...existingSystemMessages, routingSystemMessage, ...nonSystemMessages],
   };
 }
 

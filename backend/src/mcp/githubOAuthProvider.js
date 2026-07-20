@@ -14,7 +14,7 @@ export function getGithubMcpUrl() {
 export class GithubOAuthProvider {
   constructor() {
     const mcpConfig = getMcpConfig();
-    this.oauthConfig = mcpConfig.github.oauth;
+    this.oauthConfig = mcpConfig.github?.oauth || {};
   }
 
   get redirectUrl() {

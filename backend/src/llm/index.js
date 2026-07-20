@@ -37,7 +37,35 @@ function createChatModelForProvider(providerKey, options = {}) {
       throw new Error('GOOGLE_API_KEY is required for Google Gemini provider');
     }
 
-    model = new ChatGoogleGenerativeAI({
+    // Subclass ChatGoogleGenerativeAI to fix message ordering before every LLM call.
+    // Google Gemini allows EXACTLY ONE system message, and it must be at index 0.
+    // LangGraph's supervisor framework adds multiple system messages during
+    // multi-turn agent conversations. This subclass merges them into one.
+    class GeminiWithMessageReorder extends ChatGoogleGenerativeAI {
+      async _generate(messages, options, runManager) {
+        if (Array.isArray(messages) && messages.length > 0) {
+          const { SystemMessage: SM } = await import('@langchain/core/messages');
+          const systemParts = [];
+          const otherMsgs = [];
+          for (const msg of messages) {
+            const type = msg._getType?.() || '';
+            if (type === 'system') {
+              const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+              systemParts.push(content);
+            } else {
+              otherMsgs.push(msg);
+            }
+          }
+          if (systemParts.length > 0) {
+            const mergedSystem = new SM(systemParts.join('\n\n'));
+            messages = [mergedSystem, ...otherMsgs];
+          }
+        }
+        return super._generate(messages, options, runManager);
+      }
+    }
+
+    model = new GeminiWithMessageReorder({
       model: modelName || 'gemini-2.5-flash',
       apiKey,
       temperature,

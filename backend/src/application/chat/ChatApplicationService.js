@@ -178,7 +178,7 @@ export class ChatApplicationService {
         error: null,
       };
     } catch (error) {
-      return null;
+      return { required: false, authorizationUrl: null, error: null };
     }
   }
 }

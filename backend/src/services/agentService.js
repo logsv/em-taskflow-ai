@@ -308,6 +308,7 @@ export class LangGraphAgentService {
       const rawPlan = await routerChain.invoke({ query });
       return this.normalizeRoutingPlan(rawPlan);
     } catch (error) {
+      console.warn("⚠️ LLM router failed, using passthrough fallback:", error?.message || error);
       return this.getFallbackRoutingPlan("router_failed");
     }
   }
@@ -332,9 +333,10 @@ export class LangGraphAgentService {
     return {
       domains: [],
       must_use_tools: false,
-      allow_rag: false,
-      confidence: 0.2,
+      allow_rag: true,
+      confidence: 1.0,
       reasoning_summary: `Fallback routing plan: ${reason}.`,
+      _routerFailed: true,
     };
   }
 
@@ -529,8 +531,12 @@ export class LangGraphAgentService {
   }
 
   async runLlmExecutor(query) {
+    const { HumanMessage: HM, SystemMessage: SM } = await import("@langchain/core/messages");
     const llm = getChatModel();
-    const response = await llm.invoke(query);
+    const response = await llm.invoke([
+      new SM("You are a helpful AI assistant. Answer the user's question clearly and concisely."),
+      new HM(query),
+    ]);
     const answer = typeof response.content === "string" ? response.content : String(response.content || "");
     return {
       answer: answer || "No response generated.",
