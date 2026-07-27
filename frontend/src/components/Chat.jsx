@@ -172,6 +172,15 @@ function Chat({
           const textContent = msg.content.map(c => c.text || '').join('\n');
           const sources = sourcesMap[idx] || [];
           
+          const isLastMessage = idx === messages.length - 1;
+          const hasContent = textContent.trim().length > 0;
+          const isMessageComplete = !isRunning || !isLastMessage;
+
+          // Suppress empty assistant placeholder bubble while response is generating
+          if (role === 'assistant' && !hasContent && isRunning && isLastMessage) {
+            return null;
+          }
+          
           return (
             <div key={idx} className={`message-wrapper ${role}`}>
               <div className="message-content">
@@ -184,7 +193,7 @@ function Chat({
                     dangerouslySetInnerHTML={{ __html: formatMessage(textContent) }}
                   />
                   
-                  {role === 'assistant' && (
+                  {role === 'assistant' && hasContent && isMessageComplete && (
                     <>
                       {sources.length > 0 && (
                         <div className="message-sources">

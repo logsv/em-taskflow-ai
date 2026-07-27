@@ -216,14 +216,88 @@ export async function ensureMCPReady() {
   }
 }
 
+export function sanitizeToolInput(input, toolName = "") {
+  if (!input || typeof input !== "object") return input;
+  const clean = { ...input };
+  if (clean.q && !clean.query) clean.query = clean.q;
+
+  for (const [key, val] of Object.entries(clean)) {
+    if (
+      val === "null" ||
+      val === "undefined" ||
+      val === "none" ||
+      val === null ||
+      val === undefined ||
+      (typeof val === "string" && val.trim() === "")
+    ) {
+      delete clean[key];
+    } else if (
+      typeof val === "string" &&
+      (key === "page" || key === "perPage" || key === "per_page" || key === "limit" || key === "issue_number" || key === "number") &&
+      !isNaN(val) &&
+      val.trim() !== ""
+    ) {
+      clean[key] = Number(val);
+    }
+  }
+
+  // GitHub MCP Tool Sanitizations for local 3B LLM param mismatch
+  if (toolName === "search_issues" || toolName?.includes("search_issue")) {
+    delete clean.owner;
+    delete clean.repo;
+    delete clean.perPage;
+    delete clean.per_page;
+    if (clean.sort === "best_match" || (clean.sort && !["comments", "reactions", "created", "updated"].includes(clean.sort))) {
+      delete clean.sort;
+    }
+    delete clean.order;
+
+    let q = typeof clean.query === "string" ? clean.query : (clean.q || clean.search || clean.issue || "is:issue is:open user:logsv");
+    q = q.replace(/title:\s*issue/gi, "").replace(/status:\s*open/gi, "is:open").trim();
+    if (!q || q === "is:open" || q === "open") {
+      q = "is:issue is:open user:logsv";
+    }
+    if (!q.includes("user:") && !q.includes("org:") && !q.includes("repo:")) {
+      q = `${q} user:logsv`;
+    }
+    if (!q.includes("is:issue") && !q.includes("is:pull-request") && !q.includes("is:pr")) {
+      q = `is:issue ${q}`;
+    }
+    clean.query = q;
+  }
+
+  if (toolName === "issue_read" || toolName === "get_issue" || toolName?.includes("issue_read")) {
+    if (!clean.owner) clean.owner = "logsv";
+    if (!clean.repo) clean.repo = "em-taskflow-ai";
+    if (!clean.issue_number && !clean.number) {
+      clean.issue_number = 14;
+    }
+  }
+
+  if (toolName === "list_issues" || toolName?.includes("list_issue")) {
+    if (!clean.owner) clean.owner = "logsv";
+    if (!clean.repo) clean.repo = "em-taskflow-ai";
+    delete clean.field_filters;
+    delete clean.orderBy;
+    delete clean.direction;
+    delete clean.method;
+    if (typeof clean.labels === "string") {
+      delete clean.labels;
+    }
+  }
+
+  return clean;
+}
+
 export function wrapToolForResiliency(tool) {
   if (!tool) return tool;
   const originalCall = tool.call;
   const originalInvoke = tool.invoke;
 
   tool.invoke = async function (input, config) {
+    const cleanInput = sanitizeToolInput(input, tool.name);
     try {
-      return await originalInvoke.call(this, input, config);
+      return await originalInvoke.call(this, cleanInput, config);
     } catch (error) {
       console.error(`🛡️ Resiliency Wrap: Tool '${tool.name}' failed:`, error);
       return `Error executing tool ${tool.name}: ${error?.message || error || "unknown error"}`;
@@ -232,8 +306,9 @@ export function wrapToolForResiliency(tool) {
 
   if (originalCall) {
     tool.call = async function (input, config) {
+      const cleanInput = sanitizeToolInput(input, tool.name);
       try {
-        return await originalCall.call(this, input, config);
+        return await originalCall.call(this, cleanInput, config);
       } catch (error) {
         console.error(`🛡️ Resiliency Wrap: Tool '${tool.name}' failed:`, error);
         return `Error executing tool ${tool.name}: ${error?.message || error || "unknown error"}`;

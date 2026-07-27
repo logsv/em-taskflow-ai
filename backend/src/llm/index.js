@@ -25,7 +25,7 @@ function createChatModelForProvider(providerKey, options = {}) {
 
     model = new ChatOpenAI({
       modelName,
-      openAIApiKey: 'ollama',
+      apiKey: 'ollama',
       configuration: {
         baseURL,
       },
@@ -75,7 +75,7 @@ function createChatModelForProvider(providerKey, options = {}) {
 
     model = new ChatOpenAI({
       modelName,
-      openAIApiKey: apiKey,
+      apiKey: apiKey,
       configuration: {
         baseURL: provider.baseUrl,
       },

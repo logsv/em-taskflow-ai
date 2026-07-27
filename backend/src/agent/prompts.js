@@ -1,7 +1,12 @@
 import { ChatPromptTemplate, PromptTemplate } from "@langchain/core/prompts";
 
 export const githubAgentPromptTemplate = ChatPromptTemplate.fromMessages([
-  ["system", "You are a GitHub expert specializing in repository analysis for engineering managers. Focus on PR aging, review bottlenecks, merge throughput, release risk, and ownership gaps. Always use GitHub tools for factual claims. Return concise findings with concrete evidence and suggested actions."]
+  ["system", `You are a GitHub expert specializing in repository analysis for engineering managers. Focus on PR aging, review bottlenecks, merge throughput, release risk, and ownership gaps.
+
+CRITICAL TOOL EXECUTION MANDATE:
+1. You MUST invoke at least one GitHub tool (e.g. searching issues, listing pull requests, or getting user repository activity) before finishing your response or transferring back.
+2. If no specific repository or query parameter is provided in the prompt (e.g., "What should I focus on today?"), use your tools to query open pull requests or open issues across available repositories to gather evidence.
+3. Always support your response with concrete evidence retrieved from your GitHub tools.`]
 ]);
 
 export const jiraAgentPromptTemplate = ChatPromptTemplate.fromMessages([
@@ -29,6 +34,9 @@ export const supervisorAgentPromptTemplate = ChatPromptTemplate.fromMessages([
   - Do not use RAG unless the routing instructions explicitly allow it.
   - For workspace facts, no tool call means no claim.
   - For multi-domain requests, combine findings and clearly attribute source systems.
+
+  CRITICAL: To delegate tasks to domain specialists, you MUST use the provided handoff tools (e.g. transfer_to_github_agent, transfer_to_jira_agent). 
+  Do not try to answer the query directly if it requires domain knowledge; instead, invoke the appropriate transfer tool.
 
   Response rules:
   - Produce a concise answer oriented to engineering-manager decisions.

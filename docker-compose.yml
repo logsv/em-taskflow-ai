@@ -13,14 +13,24 @@ services:
       CHROMA_HOST: chroma
       CHROMA_PORT: 8000
       RAG_ENABLED: "true"
-      LLM_DEFAULT_PROVIDER: google
-      LLM_DEFAULT_MODEL: models/gemini-2.5-flash
-      LLM_GOOGLE_ENABLED: "true"
+      LLM_DEFAULT_PROVIDER: ${LLM_DEFAULT_PROVIDER:-ollama}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-llama3.2:latest}
+      LLM_OLLAMA_ENABLED: "true"
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      MCP_JIRA_ENABLED: "false"
+      MCP_NOTION_ENABLED: "false"
+      MCP_GOOGLE_ENABLED: "false"
+      MCP_GITHUB_ENABLED: "true"
+      LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-true}
+      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
+      LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-em-taskflow-ai}
     depends_on:
       chroma:
         condition: service_healthy
       postgres:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - backend_data:/app/data
     ports:

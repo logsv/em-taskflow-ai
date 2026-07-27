@@ -19,6 +19,7 @@ export async function buildEmResponse(query, rawAnswer, evidenceBySource, decisi
       "executiveSummary (string), keyRisksAndBlockers (string[]), whatNeedsDecision (string[]),",
       "actionItems ([{owner,dueDate,description}]), evidenceBySource (object of string[] keyed jira/github/notion/calendar/rag).",
       "Do not invent facts. Keep entries concise. Return JSON only.",
+      "IMPORTANT: Preserve all Markdown links (e.g. [#14 Title](https://github.com/owner/repo/issues/14)) intact in executiveSummary and evidenceBySource.",
       `User query: ${query}`,
       `Raw answer: ${rawAnswer}`,
       `Evidence: ${JSON.stringify(evidenceBySource)}`,

@@ -172,6 +172,7 @@ export class LangGraphAgentService {
       toolsUsed: decision.toolsUsed,
       sources: result.sources || [],
       routingPlan: decision.routingPlan,
+      rawAnswer: result.answer || "",
     });
     const emResponse = await buildEmResponse(queryToRun, result.answer || "", evidenceBySource, decision);
     const executionTime = Date.now() - startTime;
@@ -215,7 +216,7 @@ export class LangGraphAgentService {
         confidence: 1,
         reasoning_summary: "Legacy fallback run."
       },
-      maxIterations: 10,
+      maxIterations: 25,
     });
     decision.toolsUsed = toArray(legacyResult.toolsUsed);
     decision.selectedPath = includeRagAgent ? "legacy_supervisor_with_rag" : "legacy_supervisor_no_rag";
@@ -249,7 +250,7 @@ export class LangGraphAgentService {
       const supervisorResult = await executeAgentQuery(query, {
         threadId: options.threadId,
         routingPlan,
-        maxIterations: 12,
+        maxIterations: 25,
       });
       decision.toolsUsed = toArray(supervisorResult.toolsUsed);
 
@@ -309,7 +310,7 @@ export class LangGraphAgentService {
       return this.normalizeRoutingPlan(rawPlan);
     } catch (error) {
       console.warn("⚠️ LLM router failed, using passthrough fallback:", error?.message || error);
-      return this.getFallbackRoutingPlan("router_failed");
+      return this.getFallbackRoutingPlan("router_failed", query);
     }
   }
 
@@ -329,12 +330,17 @@ export class LangGraphAgentService {
     };
   }
 
-  getFallbackRoutingPlan(reason) {
+  getFallbackRoutingPlan(reason, query = "") {
+    const q = String(query).toLowerCase();
+    const domains = [];
+    if (q.includes("issue") || q.includes("repo") || q.includes("pr") || q.includes("pull request") || q.includes("github")) {
+      domains.push("github");
+    }
     return {
-      domains: [],
-      must_use_tools: false,
-      allow_rag: true,
-      confidence: 1.0,
+      domains,
+      must_use_tools: domains.length > 0,
+      allow_rag: false,
+      confidence: 0.9,
       reasoning_summary: `Fallback routing plan: ${reason}.`,
       _routerFailed: true,
     };
@@ -351,6 +357,7 @@ export class LangGraphAgentService {
   }
 
   mapInvokedDomains(toolsUsed = []) {
+    this.refreshDomainToolMap();
     const invoked = new Set();
     for (const toolName of toArray(toolsUsed)) {
       if (typeof toolName !== "string" || toolName.startsWith(TRANSFER_TOOL_PREFIX)) {
@@ -360,10 +367,21 @@ export class LangGraphAgentService {
         invoked.add("rag");
         continue;
       }
+      let mapped = false;
       for (const [domain, names] of Object.entries(this.domainToolNames)) {
         if (domain === "rag") continue;
         if (names.has(toolName)) {
           invoked.add(domain);
+          mapped = true;
+        }
+      }
+      if (!mapped) {
+        // If not explicitly mapped by Set name, fallback to heuristic matching or register under all active domains with tools
+        for (const [domain, names] of Object.entries(this.domainToolNames)) {
+          if (domain === "rag") continue;
+          if (names.size > 0 || toolName.includes(domain)) {
+            invoked.add(domain);
+          }
         }
       }
     }
@@ -420,7 +438,7 @@ export class LangGraphAgentService {
     };
   }
 
-  buildEvidenceBySource({ toolsUsed, sources, routingPlan }) {
+  buildEvidenceBySource({ toolsUsed, sources, routingPlan, rawAnswer }) {
     const evidence = {
       jira: [],
       github: [],
@@ -440,6 +458,13 @@ export class LangGraphAgentService {
         if (names.has(toolName)) {
           evidence[domain].push(`Tool: ${toolName}`);
         }
+      }
+    }
+
+    if (typeof rawAnswer === "string" && rawAnswer.length > 0) {
+      const githubLinks = rawAnswer.match(/\[[^\]]+\]\(https:\/\/github\.com\/[^\)]+\)|https:\/\/github\.com\/[^\s\)]+/g);
+      if (githubLinks && githubLinks.length > 0) {
+        evidence.github.push(...githubLinks);
       }
     }
 
@@ -476,7 +501,8 @@ export class LangGraphAgentService {
   }
 
   updateUnwantedRagMetric(routingPlan, invokedDomains) {
-    if (!routingPlan?.allow_rag && invokedDomains.has("rag")) {
+    const domainArray = toArray(invokedDomains);
+    if (!routingPlan?.allow_rag && domainArray.includes("rag")) {
       this.runtimeMetrics.unwantedRagInvocations += 1;
     }
   }

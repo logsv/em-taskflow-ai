@@ -6,6 +6,17 @@ import fs from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const boolSchema = (defaultVal = false) =>
+  z.preprocess((val) => {
+    if (typeof val === 'boolean') return val;
+    if (typeof val === 'string') {
+      const lower = val.toLowerCase().trim();
+      if (lower === 'true' || lower === '1') return true;
+      if (lower === 'false' || lower === '0') return false;
+    }
+    return defaultVal;
+  }, z.boolean());
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   RUNTIME_MODE: z.enum(['rag_only', 'full']).default('full'),
@@ -21,7 +32,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url().default('postgresql://taskflow:taskflow@localhost:5432/taskflow'),
   CHROMA_HOST: z.string().default('localhost'),
   CHROMA_PORT: z.coerce.number().int().min(1).max(65535).default(8000),
-  RAG_ENABLED: z.coerce.boolean().default(true),
+  RAG_ENABLED: boolSchema(true),
   RAG_EMBEDDING_MODEL: z.string().default('nomic-embed-text'),
   RAG_EMBEDDING_PROVIDER: z.string().default('qwen3-vl'),
   RAG_DEFAULT_COLLECTION: z.string().default('pdf_chunks'),
@@ -52,16 +63,16 @@ const envSchema = z.object({
   LLM_OLLAMA_ENABLED: z.coerce.boolean().default(true),
   OLLAMA_BASE_URL: z.string().url().default('http://localhost:11434'),
   LLM_OLLAMA_PRIORITY: z.coerce.number().int().min(0).default(4),
-  MCP_NOTION_ENABLED: z.coerce.boolean().default(true),
+  MCP_NOTION_ENABLED: boolSchema(true),
   NOTION_API_KEY: z.string().optional(),
-  MCP_JIRA_ENABLED: z.coerce.boolean().default(true),
+  MCP_JIRA_ENABLED: boolSchema(true),
   JIRA_URL: z.string().default('https://example.jira.com'),
   JIRA_USERNAME: z.string().default(''),
   JIRA_API_TOKEN: z.string().default(''),
   JIRA_PROJECT_KEY: z.string().default(''),
-  MCP_GITHUB_ENABLED: z.coerce.boolean().default(true),
+  MCP_GITHUB_ENABLED: boolSchema(true),
   GITHUB_TOKEN: z.string().optional(),
-  MCP_GOOGLE_ENABLED: z.coerce.boolean().default(false),
+  MCP_GOOGLE_ENABLED: boolSchema(false),
   GOOGLE_OAUTH_CREDENTIALS: z.string().optional(),
   GOOGLE_CALENDAR_ID: z.string().default('primary'),
   LEGACY_QUERY_API_ENABLED: z.coerce.boolean().default(true),

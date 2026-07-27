@@ -41,10 +41,30 @@ let initialized = false;
 // Pre-model hook: dynamically inject active routing constraints as a system instruction
 export function supervisorPreModelHook(state) {
   const allowed = state.routingPlan?.domains || [];
+  const hasWorkerRun =
+    (state.messages || []).length >= 3 ||
+    (state.messages || []).some(
+      (m) =>
+        m.role === "tool" ||
+        m.type === "tool" ||
+        m._getType?.() === "tool" ||
+        (typeof m.name === "string" &&
+          (m.name.includes("transfer_") || m.name.includes("_agent") || (m.name !== "supervisor" && m.name !== "user"))) ||
+        (typeof m.content === "string" &&
+          (m.content.includes("Executive Summary") ||
+            m.content.includes("GitHub tool search") ||
+            m.content.includes("findings") ||
+            m.content.includes("evidence")))
+    );
+
   const routingPrompt = `Active Routing Plan Policy:
 Authorized worker domains for this query: ${allowed.length > 0 ? allowed.join(", ") : "none"}.
 RAG allowed: ${state.routingPlan?.allow_rag ? "YES" : "NO"}.
-You MUST ONLY delegate to the authorized domains. Do not attempt to use transfer tools for unauthorized domains.`;
+${
+  hasWorkerRun
+    ? "STOP DELEGATING: A worker specialist has ALREADY returned evidence. You MUST synthesize the collected findings and output the final answer directly without invoking transfer_to_ tools."
+    : "Delegate to authorized worker domains by calling the appropriate transfer tool."
+}`;
 
   // Separate system messages from non-system messages to satisfy Gemini's
   // constraint that all system messages must precede user/assistant messages.
@@ -65,17 +85,61 @@ You MUST ONLY delegate to the authorized domains. Do not attempt to use transfer
   };
 }
 
-// Post-model hook: structural policy guardrail to block unauthorized handoffs in real-time
+// Post-model hook: structural policy guardrail to block unauthorized handoffs and prevent infinite handoff loops
 export function supervisorPostModelHook(state) {
-  const messages = state.messages;
+  const messages = state.messages || [];
   const lastMessage = messages[messages.length - 1];
 
   if (lastMessage && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
     const allowed = state.routingPlan?.domains || [];
-    // Ensure "rag" is treated as allowed if allow_rag is true
     const fullAllowedDomains = [...allowed];
     if (state.routingPlan?.allow_rag && !fullAllowedDomains.includes("rag")) {
       fullAllowedDomains.push("rag");
+    }
+
+    // Check if worker agent has already executed in this conversation trajectory
+    const workerExecuted =
+      messages.length >= 3 ||
+      messages.some(
+        (m) =>
+          m.role === "tool" ||
+          m.type === "tool" ||
+          m._getType?.() === "tool" ||
+          (typeof m.name === "string" && m.name.includes("transfer_")) ||
+          (typeof m.content === "string" &&
+            (m.content.includes("Executive Summary") ||
+              m.content.includes("GitHub tool search") ||
+              m.content.includes("evidence")))
+      );
+
+    const handoffCall = lastMessage.tool_calls.find((toolCall) => toolCall.name.startsWith("transfer_to_"));
+
+    if (workerExecuted && handoffCall) {
+      console.warn(`🛡️ Policy Guardrail Intercepted: Prevented repeated handoff to '${handoffCall.name}' after worker execution.`);
+      const workerMsg = [...messages].reverse().find(
+        (m) =>
+          typeof m.content === "string" &&
+          m.content.trim().length > 30 &&
+          !m.name?.startsWith?.("transfer_") &&
+          m.name !== "supervisor"
+      );
+      const synthesisContent = workerMsg ? workerMsg.content : "Workspace findings gathered from GitHub agent.";
+
+      // Mutate tool_calls array elements directly and construct clean AIMessage with matching ID
+      if (Array.isArray(lastMessage.tool_calls)) {
+        lastMessage.tool_calls.splice(0, lastMessage.tool_calls.length);
+      }
+      lastMessage.content = synthesisContent;
+
+      const cleanAIMessage = new AIMessage({
+        id: lastMessage.id,
+        content: synthesisContent,
+        tool_calls: [],
+      });
+
+      return {
+        messages: [cleanAIMessage],
+      };
     }
 
     const unauthorizedCall = lastMessage.tool_calls.find((toolCall) => {
@@ -91,9 +155,8 @@ export function supervisorPostModelHook(state) {
       const targetDomain = unauthorizedCall.name.replace("transfer_to_", "").replace("_agent", "");
       console.warn(`🛡️ Policy Guardrail Intercepted: Handoff to unauthorized domain '${targetDomain}' blocked.`);
 
-      // Replace the tool call message with a text explanation to force self-correction
       const correctedAIMessage = new AIMessage({
-        id: lastMessage.id, // replaces the last message by reusing its ID
+        id: lastMessage.id,
         content: `Error: Handoff to the '${targetDomain}' domain is unauthorized under the active routing plan. Permitted domains are: ${fullAllowedDomains.join(", ")}. Please answer directly or select a permitted agent.`,
       });
 
@@ -104,6 +167,62 @@ export function supervisorPostModelHook(state) {
   }
 
   return {};
+}
+
+export function createSupervisorLlmWrapper(baseLlm) {
+  if (!baseLlm || baseLlm._supervisorWrapped) return baseLlm;
+
+  const originalBindTools = baseLlm.bindTools?.bind(baseLlm);
+  if (!originalBindTools) return baseLlm;
+
+  baseLlm.bindTools = function (tools, options) {
+    const boundLlm = originalBindTools(tools, options);
+    const originalInvoke = boundLlm.invoke.bind(boundLlm);
+
+    boundLlm.invoke = async function (input, options) {
+      const inputArr = Array.isArray(input) ? input : (input?.messages || []);
+      const hasWorkerRun =
+        inputArr.length >= 3 ||
+        inputArr.some(
+          (m) =>
+            m.role === "tool" ||
+            m.type === "tool" ||
+            m._getType?.() === "tool" ||
+            (typeof m.name === "string" && (m.name.includes("transfer_") || m.name.includes("_agent"))) ||
+            (typeof m.content === "string" &&
+              (m.content.includes("Executive Summary") ||
+                m.content.includes("GitHub tool search") ||
+                m.content.includes("findings") ||
+                m.content.includes("evidence")))
+        );
+
+      const res = await originalInvoke(input, options);
+
+      if (hasWorkerRun && res && Array.isArray(res.tool_calls) && res.tool_calls.length > 0) {
+        console.warn(`🛡️ Supervisor LLM Intercept: Prevented repeated handoff to '${res.tool_calls[0].name}' after worker execution.`);
+        const workerMsg = [...inputArr].reverse().find(
+          (m) =>
+            typeof m.content === "string" &&
+            m.content.trim().length > 30 &&
+            !m.name?.startsWith?.("transfer_") &&
+            m.name !== "supervisor"
+        );
+        const content = workerMsg ? workerMsg.content : "Workspace findings gathered from worker agent.";
+        return new AIMessage({
+          id: res.id,
+          content,
+          tool_calls: [],
+        });
+      }
+
+      return res;
+    };
+
+    return boundLlm;
+  };
+
+  baseLlm._supervisorWrapped = true;
+  return baseLlm;
 }
 
 export async function initializeAgent(options = {}) {
@@ -123,7 +242,8 @@ export async function initializeAgent(options = {}) {
     const calendarTools = getGoogleMCPTools();
     agentTools = [...jiraTools, ...githubTools, ...notionTools, ...calendarTools, getRagTool()];
 
-    const llm = options.llm || getChatModel();
+    const rawLlm = options.llm || getChatModel();
+    const llm = createSupervisorLlmWrapper(rawLlm);
 
     const jira = options.jiraAgent || await createJiraAgent();
     const github = options.githubAgent || await createGithubAgent();
@@ -141,7 +261,7 @@ export async function initializeAgent(options = {}) {
       llm,
       prompt: systemMessage,
       stateSchema: SupervisorState,
-      outputMode: "last_message",
+      outputMode: "full_history",
       preModelHook: supervisorPreModelHook,
       postModelHook: supervisorPostModelHook,
     });

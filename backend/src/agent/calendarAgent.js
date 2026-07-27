@@ -7,13 +7,7 @@ import { getRagTool } from "./ragAgent.js";
 
 export async function createCalendarAgent() {
   const llm = getChatModel();
-  let calendarTools = [];
-  try {
-    calendarTools = getGoogleMCPTools();
-  } catch (e) {
-    console.warn("⚠️ Calendar MCP tools unavailable, continuing without Calendar tools");
-    calendarTools = [];
-  }
+  const calendarTools = getGoogleMCPTools();
 
   const promptValue = await calendarAgentPromptTemplate.invoke({});
   const systemMessage = promptValue.toChatMessages()[0];
@@ -23,6 +17,5 @@ export async function createCalendarAgent() {
     tools: [...calendarTools, getRagTool()],
     name: "calendar_agent",
     prompt: systemMessage,
-    responseFormat: AgentOutputSchema,
   });
 }

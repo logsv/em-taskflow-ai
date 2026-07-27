@@ -1,6 +1,7 @@
 import { auth } from '@modelcontextprotocol/sdk/client/auth.js';
 import { GithubOAuthProvider, getGithubMcpUrl } from './githubOAuthProvider.js';
 import { closeGithubMcp, getGithubTools } from './github.js';
+import { getMcpConfig } from '../config.js';
 
 export async function startGithubOAuthFlow() {
   const provider = new GithubOAuthProvider();
@@ -83,8 +84,11 @@ export async function getGithubOAuthStatus() {
   const provider = new GithubOAuthProvider();
   const pending = await provider.getPendingAuthorization();
   const tokens = await provider.tokens();
+  const githubConfig = getMcpConfig().github || {};
+  const hasStaticToken = !!(githubConfig.token || process.env.GITHUB_TOKEN);
+
   let githubToolCount = 0;
-  if (tokens?.access_token) {
+  if (tokens?.access_token || hasStaticToken) {
     try {
       const tools = await getGithubTools();
       githubToolCount = tools.length;
@@ -93,7 +97,7 @@ export async function getGithubOAuthStatus() {
     }
   }
   return {
-    authorized: !!tokens?.access_token,
+    authorized: !!(tokens?.access_token || hasStaticToken || githubToolCount > 0),
     hasRefreshToken: !!tokens?.refresh_token,
     githubToolCount,
     pendingAuthorizationUrl: pending?.url || null,

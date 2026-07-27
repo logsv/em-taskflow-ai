@@ -36,28 +36,33 @@ const routerOutputSchema = {
   required: ["domains", "must_use_tools", "allow_rag", "confidence", "reasoning_summary"],
 };
 
-const systemTemplate = `You are an expert routing assistant. Your task is to analyze user queries and determine the most relevant domains (Jira, GitHub, Notion, Calendar, RAG) and a routing plan.
+const systemTemplate = `You are an expert routing assistant. Your task is to analyze user queries and determine the most relevant domain (primarily 'github' or 'rag') and a routing plan.
 
-  Based on the user's query, identify which of the following domains are relevant:
-  - 'jira': for queries related to Jira issues, sprints, projects, or work management.
-  - 'github': for queries related to GitHub repositories, pull requests, issues, or code.
-  - 'notion': for queries related to Notion pages, databases, tasks, or workspace data.
-  - 'calendar': for queries related to Google Calendar events, schedules, or availability.
-  - 'rag': for queries that require retrieval of information from a knowledge base or documents (e.g., asking about internal documentation, PDFs, or general knowledge that might be in a document store).
+Currently, the primary active workspace domain is:
+- 'github': for queries related to GitHub repositories, pull requests, issues, code, and overall engineering work/tasks.
+- 'rag': for queries that require retrieval of information from local documents/PDFs.
 
-  You must decide if a tool call is mandatory ('must_use_tools') to fulfill the request. For example, if the user asks for "my Jira tickets," a tool call is mandatory. If the user asks for a definition, a tool call might not be mandatory.
-  You must also decide if allowing the RAG agent ('allow_rag') is appropriate. Only allow RAG if the query explicitly or implicitly asks for document-based knowledge, context from PDFs, or general knowledge retrieval. Do not enable RAG for direct tool-based queries unless additional context from documents might enhance the answer.
+CRITICAL ROUTING RULES:
+1. For specific GitHub queries (e.g. "my open PRs", "repo issues"): set domains: ["github"], must_use_tools: true, confidence: 0.9.
+2. For general productivity, daily focus, or open-ended work inquiries (e.g., "What should I focus on today?", "Daily overview", "What needs my attention?"): set domains: ["github"], must_use_tools: true, confidence: 0.55, and allow_rag: false.
+3. For document/PDF queries: set domains: ["rag"], allow_rag: true, confidence: 0.8.
 
-  Provide your output as a JSON object strictly following this schema:
-  ${JSON.stringify(routerOutputSchema, null, 2)}
+Output a flat JSON object with these exact keys: "domains", "must_use_tools", "allow_rag", "confidence", "reasoning_summary".
+Example response format:
+{
+  "domains": ["github"],
+  "must_use_tools": true,
+  "allow_rag": false,
+  "confidence": 0.55,
+  "reasoning_summary": "General focus query targeting active github tasks."
+}
 
-  Only output the JSON object. Do not include any other text.
-  `;
-
+Do not include wrappers like "properties" or "type". Only output raw JSON.
+`;
 
 // Initialize the LLM with the defined prompt and a JSON output parser
 const getRouterChain = () => {
-  const llm = getChatModel(); // Assuming getChatModel provides an LLM instance
+  const llm = getChatModel();
 
   const parser = new JsonOutputParser();
 
@@ -68,9 +73,24 @@ const getRouterChain = () => {
         new HumanMessage(input.query),
       ];
       const result = await llm.invoke(messages);
-      return parser.invoke(result);
+
+      // Clean up Markdown formatting if outputted by local LLMs
+      let content = typeof result.content === 'string' ? result.content : String(result.content || '');
+      content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      
+      try {
+        let parsed = JSON.parse(content);
+        // Handle models that output JSON Schema wrappers
+        if (parsed && parsed.properties && !parsed.domains) {
+          parsed = parsed.properties;
+        }
+        return parsed;
+      } catch (e) {
+        console.warn("⚠️ JSON.parse failed, falling back to JsonOutputParser:", e.message);
+        return parser.invoke(result);
+      }
     }
-  }
+  };
 };
 
 export { getRouterChain };
