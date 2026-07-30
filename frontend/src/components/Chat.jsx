@@ -117,6 +117,31 @@ function Chat({
     }
   };
 
+  const [isHeaderSyncing, setIsHeaderSyncing] = useState(false);
+
+  const triggerGithubSync = async () => {
+    if (isHeaderSyncing) return;
+    setIsHeaderSyncing(true);
+    try {
+      const res = await fetch('/api/github/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo: 'logsv/em-taskflow-ai' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        runtime.thread.append({
+          role: 'system',
+          content: [{ type: 'text', text: `🔄 GitHub Data Synced! Updated ${data.count} issue(s) into PostgreSQL and CSV.` }]
+        });
+      }
+    } catch (err) {
+      console.error('Sync failed:', err);
+    } finally {
+      setIsHeaderSyncing(false);
+    }
+  };
+
   const formatMessage = (text) => {
     const safeText = typeof text === 'string' ? text : text == null ? '' : String(text);
     return safeText.replace(
@@ -131,6 +156,14 @@ function Chat({
       <header className="chat-header">
         <h2>🤖 EM TaskFlow AI</h2>
         <div className="chat-header-actions">
+          <button
+            className={`github-header-sync-btn ${isHeaderSyncing ? 'syncing' : ''}`}
+            onClick={triggerGithubSync}
+            disabled={isHeaderSyncing}
+            title="Refresh GitHub DB / CSV"
+          >
+            {isHeaderSyncing ? '🔄 Syncing...' : '🔄 Refresh GitHub Data'}
+          </button>
           <button 
             className={`pdf-drawer-toggle-btn ${isDrawerOpen ? 'active' : ''}`}
             onClick={() => setIsDrawerOpen(!isDrawerOpen)}
@@ -192,6 +225,19 @@ function Chat({
                     className="message-text"
                     dangerouslySetInnerHTML={{ __html: formatMessage(textContent) }}
                   />
+
+                  {role === 'assistant' && (textContent.includes('⚠️ **Notice**: Live GitHub MCP') || textContent.includes('Local Cache')) && (
+                    <div className="stale-data-alert">
+                      <span className="stale-alert-text">⚠️ Live GitHub MCP was unreachable. This evidence came from local DB/CSV cache and may be stale.</span>
+                      <button 
+                        className="inline-refresh-btn" 
+                        onClick={triggerGithubSync}
+                        disabled={isHeaderSyncing}
+                      >
+                        {isHeaderSyncing ? 'Syncing...' : '🔄 Refresh Live Data Now'}
+                      </button>
+                    </div>
+                  )}
                   
                   {role === 'assistant' && hasContent && isMessageComplete && (
                     <>

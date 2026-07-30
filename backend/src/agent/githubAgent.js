@@ -3,7 +3,8 @@ import { HumanMessage, SystemMessage, AIMessage } from "@langchain/core/messages
 import { getChatModel } from "../llm/index.js";
 import { githubAgentPromptTemplate } from "./prompts.js";
 import { getRagTool } from "./ragAgent.js";
-import { getGithubMCPTools } from "../mcp/index.js";
+import { getGithubTools } from "../mcp/github.js";
+import githubSyncService from "../services/githubSyncService.js";
 
 export function githubPreModelHook(state) {
   const messages = state.messages || [];
@@ -21,6 +22,25 @@ export function githubPreModelHook(state) {
 
   // If a tool has executed (or returned error/data), force a pure text summary prompt and terminate tool calls
   if (hasToolMessage) {
+    let parsed = [];
+    try {
+      const rawContent = typeof lastMsg?.content === "string" ? lastMsg.content : JSON.stringify(lastMsg?.content || []);
+      parsed = JSON.parse(rawContent);
+    } catch {}
+
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const formattedLines = parsed.map(
+        (item) => `- [#${item.number} ${item.title}](${item.html_url}) | Status: ${item.state} | Repo: ${item.repo || "logsv/em-taskflow-ai"} | Author: @${item.user || "logsv"}`
+      );
+      const summaryText = `GitHub Evidence Summary:\nFound ${parsed.length} open issue(s) across repositories:\n\n${formattedLines.join("\n")}`;
+      return {
+        llmInputMessages: [
+          new SystemMessage({ content: "You are a GitHub issue reporting specialist." }),
+          new AIMessage({ content: summaryText, tool_calls: [] }),
+        ],
+      };
+    }
+
     const summaryDirective = new HumanMessage({
       content: `The GitHub tool search returned the following live issue data:\n${typeof lastMsg?.content === "string" ? lastMsg.content.slice(0, 4000) : JSON.stringify(lastMsg?.content || "")}\n\nTask: Provide a detailed summary of every GitHub issue listed above. You MUST include issue numbers, titles, status, and direct clickable Markdown links (format: [#<number> <title>](<html_url>)). DO NOT invoke any tool calls.`
     });
@@ -86,31 +106,88 @@ function createGithubLlmWrapper(baseLlm) {
     boundWrapper.invoke = async function (input, options) {
       const inputArr = Array.isArray(input) ? input : [];
       const res = await bound.invoke(input, options);
-      const hasGithubToolMsg =
-        inputArr.length >= 2 ||
-        inputArr.some(
+      const hasGithubToolMsg = inputArr.some(
+        (m) =>
+          m.role === "tool" ||
+          m.type === "tool" ||
+          m._getType?.() === "tool" ||
+          m.constructor?.name === "ToolMessage" ||
+          m.name === "search_issues" ||
+          m.name === "issue_read" ||
+          (typeof m.content === "string" &&
+            (m.content.includes("search_issues") ||
+              m.content.includes("The GitHub tool search returned")))
+      );
+
+      // If tool evidence was already supplied, return deterministic Markdown summary and strip tool calls
+      if (hasGithubToolMsg) {
+        const toolMsg = [...inputArr].reverse().find(
           (m) =>
             m.role === "tool" ||
             m.type === "tool" ||
             m._getType?.() === "tool" ||
-            m.constructor?.name === "ToolMessage" ||
-            (typeof m.name === "string" && !m.name.startsWith("transfer_")) ||
-            (typeof m.content === "string" &&
-              (m.content.includes("search_issues") ||
-                m.content.includes("evidence") ||
-                m.content.includes("Executive Summary")))
+            m.name === "search_issues" ||
+            m.name === "issue_read" ||
+            (typeof m.content === "string" && (m.content.includes("html_url") || m.content.includes("title")))
         );
 
-      // If tool evidence was already supplied, force pure text summary and strip any unexpected tool calls
-      if (hasGithubToolMsg) {
-        if (res.tool_calls && res.tool_calls.length > 0) {
-          console.log("🛡️ GitHub Agent: Stripping tool calls from summary turn response.");
+        let parsed = [];
+        try {
+          const raw = typeof toolMsg?.content === "string" ? toolMsg.content : JSON.stringify(toolMsg?.content || []);
+          const data = JSON.parse(raw);
+          if (Array.isArray(data)) {
+            parsed = data;
+          } else if (data && typeof data === "object") {
+            parsed = [data];
+          }
+        } catch {}
+
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const formattedLines = parsed.map((item) => {
+            const num = item.number || item.issue_number || item.id || "1";
+            const title = item.title || "Untitled Issue";
+            const url = item.html_url || item.url || `https://github.com/logsv/em-taskflow-ai/issues/${num}`;
+            const state = item.state || "open";
+            const repo = item.repo || (item.repository_url ? item.repository_url.replace("https://api.github.com/repos/", "") : "logsv/em-taskflow-ai");
+            const author = item.user?.login || (typeof item.user === "string" ? item.user : "logsv");
+            const assignee = item.assignee?.login || (typeof item.assignee === "string" ? item.assignee : "Unassigned");
+            return `- [#${num} ${title}](${url}) | Status: ${state} | Repo: ${repo} | Author: @${author} | Assignee: @${assignee}`;
+          });
+          const summaryText = `GitHub Evidence Summary:\nFound ${parsed.length} issue(s) across repositories (Live GitHub MCP):\n\n${formattedLines.join("\n")}`;
           return new AIMessage({
-            content: typeof res.content === "string" && res.content.trim().length > 0 ? res.content : "Fetched GitHub issues evidence summary.",
+            content: summaryText,
             tool_calls: [],
           });
         }
-        return res;
+
+        // Live MCP tool returned empty or error: query PostgreSQL DB cached fallback
+        console.log("⚠️ [GITHUB AGENT FALLBACK]: Live GitHub MCP tool returned empty/error. Fetching cached data from PostgreSQL DB...");
+        const cachedResult = await githubSyncService.fetchCachedGithubIssues();
+        const cachedIssues = cachedResult.issues || [];
+        const syncedAt = cachedResult.lastSyncedAt ? new Date(cachedResult.lastSyncedAt).toLocaleString() : "unknown";
+
+        if (cachedIssues.length > 0) {
+          const formattedLines = cachedIssues.map((item) => {
+            const num = item.number || item.id || "1";
+            const title = item.title || "Untitled Issue";
+            const url = item.html_url || `https://github.com/logsv/em-taskflow-ai/issues/${num}`;
+            const state = item.state || "open";
+            const repo = item.repo || "logsv/em-taskflow-ai";
+            const assignee = item.assignee || "Unassigned";
+            return `- [#${num} ${title}](${url}) | Status: ${state} | Repo: ${repo} | Assignee: @${assignee}`;
+          });
+
+          const summaryText = `⚠️ **Notice**: Live GitHub MCP server returned no response. Displaying cached issue data from PostgreSQL database (last synced: ${syncedAt}). Please click the **"Refresh GitHub Data"** button in the UI to update.\n\nGitHub Evidence Summary (PostgreSQL Cache):\nFound ${cachedIssues.length} issue(s):\n\n${formattedLines.join("\n")}`;
+          return new AIMessage({
+            content: summaryText,
+            tool_calls: [],
+          });
+        }
+
+        return new AIMessage({
+          content: typeof res.content === "string" && res.content.trim().length > 0 ? res.content : "No open issues found in live GitHub MCP or local cache.",
+          tool_calls: [],
+        });
       }
 
       // Only fallback on turn 1 if local LLM omitted a tool call
@@ -153,7 +230,7 @@ function createGithubLlmWrapper(baseLlm) {
 export async function createGithubAgent() {
   const baseLlm = getChatModel();
   const llm = createGithubLlmWrapper(baseLlm);
-  const allGithubTools = getGithubMCPTools();
+  const allGithubTools = await getGithubTools();
 
   const primaryToolNames = new Set(["search_issues", "issue_read"]);
   let githubTools = allGithubTools.filter((t) => primaryToolNames.has(t.name));

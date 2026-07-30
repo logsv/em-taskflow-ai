@@ -153,6 +153,22 @@ class DatabaseService {
         UNIQUE(source, task_id)
       );
     `);
+
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS github_issues (
+        id TEXT PRIMARY KEY,
+        issue_number INT NOT NULL,
+        repo TEXT NOT NULL,
+        title TEXT NOT NULL,
+        state TEXT NOT NULL,
+        assignee TEXT,
+        html_url TEXT,
+        labels_json JSONB,
+        data_json JSONB NOT NULL,
+        synced_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_github_issues_repo_state ON github_issues(repo, state);
+    `);
   }
 
   async createSession(clientInfo = null) {
@@ -569,6 +585,98 @@ class DatabaseService {
     } catch (error) {
       return raw;
     }
+  }
+
+  async upsertGithubIssues(issues) {
+    await this.ensureInitialized();
+    if (!Array.isArray(issues) || issues.length === 0) return 0;
+
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const issue of issues) {
+        const id = `${issue.repo || 'unknown'}#${issue.number}`;
+        const labelsJson = JSON.stringify(issue.labels || []);
+        const dataJson = JSON.stringify(issue);
+
+        await client.query(
+          `INSERT INTO github_issues (
+            id, issue_number, repo, title, state, assignee, html_url, labels_json, data_json, synced_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            issue_number = EXCLUDED.issue_number,
+            repo = EXCLUDED.repo,
+            title = EXCLUDED.title,
+            state = EXCLUDED.state,
+            assignee = EXCLUDED.assignee,
+            html_url = EXCLUDED.html_url,
+            labels_json = EXCLUDED.labels_json,
+            data_json = EXCLUDED.data_json,
+            synced_at = NOW()`,
+          [
+            id,
+            issue.number,
+            issue.repo || 'unknown',
+            issue.title || '',
+            issue.state || 'open',
+            issue.assignee || issue.user || '',
+            issue.html_url || '',
+            labelsJson,
+            dataJson,
+          ]
+        );
+      }
+      await client.query('COMMIT');
+      return issues.length;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getGithubIssues({ repo, state, search } = {}) {
+    await this.ensureInitialized();
+    let queryStr = `SELECT id, issue_number as number, repo, title, state, assignee, html_url, labels_json, data_json, synced_at FROM github_issues WHERE 1=1`;
+    const params = [];
+
+    if (repo) {
+      params.push(repo);
+      queryStr += ` AND repo = $${params.length}`;
+    }
+    if (state) {
+      params.push(state);
+      queryStr += ` AND state = $${params.length}`;
+    }
+    if (search) {
+      params.push(`%${search}%`);
+      queryStr += ` AND (title ILIKE $${params.length} OR repo ILIKE $${params.length})`;
+    }
+
+    queryStr += ` ORDER BY issue_number DESC LIMIT 100`;
+
+    const result = await this.pool.query(queryStr, params);
+    return result.rows.map((row) => ({
+      id: row.id,
+      number: row.number,
+      repo: row.repo,
+      title: row.title,
+      state: row.state,
+      assignee: row.assignee,
+      html_url: row.html_url,
+      labels: safeJsonParse(row.labels_json),
+      data: safeJsonParse(row.data_json),
+      synced_at: row.synced_at,
+    }));
+  }
+
+  async getGithubSyncMetadata() {
+    await this.ensureInitialized();
+    const result = await this.pool.query(`
+      SELECT COUNT(*)::int AS total, MAX(synced_at) AS last_synced_at FROM github_issues
+    `);
+    return result.rows[0] || { total: 0, last_synced_at: null };
   }
 
   async getStats() {

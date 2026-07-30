@@ -27,23 +27,51 @@ export async function buildEmResponse(query, rawAnswer, evidenceBySource, decisi
     const modelResponse = await llm.invoke(prompt);
     const parsed = safeParseJson(modelResponse?.content);
     if (parsed && typeof parsed === "object") {
+      const hasLinksInNormalized = normalized.executiveSummary.includes("[#") || normalized.executiveSummary.includes("http");
+      const hasLinksInParsed = typeof parsed.executiveSummary === "string" && (parsed.executiveSummary.includes("[#") || parsed.executiveSummary.includes("http"));
+
+      let execSummary = String(parsed.executiveSummary || normalized.executiveSummary);
+      if (hasLinksInNormalized && !hasLinksInParsed) {
+        execSummary = normalized.executiveSummary;
+      }
+
+      const parsedActionItems = toArray(parsed.actionItems)
+        .map((item) => ({
+          owner: String(item?.owner || "Unassigned"),
+          dueDate: String(item?.dueDate || "TBD"),
+          description: String(item?.description || "").trim(),
+        }))
+        .filter((item) => item.description);
+
+      const isGenericActionItem = (item) =>
+        !item ||
+        item.owner === "User" ||
+        item.owner === "Unassigned" ||
+        item.description.includes("more context") ||
+        item.description.includes("adjust focus") ||
+        item.description.includes("task list") ||
+        item.description.includes("no worker specialist") ||
+        item.description.includes("general response") ||
+        item.description.includes("Evidence by Source");
+
+      const actionItems =
+        normalized.actionItems.length > 0 && (parsedActionItems.length === 0 || parsedActionItems.every(isGenericActionItem))
+          ? normalized.actionItems
+          : parsedActionItems.length > 0
+          ? parsedActionItems
+          : normalized.actionItems;
+
       const merged = {
-        executiveSummary: String(parsed.executiveSummary || normalized.executiveSummary),
-        keyRisksAndBlockers: toArray(parsed.keyRisksAndBlockers).map((item) => String(item)),
-        whatNeedsDecision: toArray(parsed.whatNeedsDecision).map((item) => String(item)),
-        actionItems: toArray(parsed.actionItems)
-          .map((item) => ({
-            owner: String(item?.owner || "Unassigned"),
-            dueDate: String(item?.dueDate || "TBD"),
-            description: String(item?.description || "").trim(),
-          }))
-          .filter((item) => item.description),
+        executiveSummary: execSummary,
+        keyRisksAndBlockers: toArray(parsed.keyRisksAndBlockers).length > 0 ? toArray(parsed.keyRisksAndBlockers).map(String) : normalized.keyRisksAndBlockers,
+        whatNeedsDecision: toArray(parsed.whatNeedsDecision).length > 0 ? toArray(parsed.whatNeedsDecision).map(String) : normalized.whatNeedsDecision,
+        actionItems,
         evidenceBySource: {
-          jira: toArray(parsed?.evidenceBySource?.jira).map((item) => String(item)),
-          github: toArray(parsed?.evidenceBySource?.github).map((item) => String(item)),
-          notion: toArray(parsed?.evidenceBySource?.notion).map((item) => String(item)),
-          calendar: toArray(parsed?.evidenceBySource?.calendar).map((item) => String(item)),
-          rag: toArray(parsed?.evidenceBySource?.rag).map((item) => String(item)),
+          jira: toArray(parsed?.evidenceBySource?.jira).length > 0 ? toArray(parsed?.evidenceBySource?.jira).map(String) : normalized.evidenceBySource.jira,
+          github: toArray(parsed?.evidenceBySource?.github).length > 0 ? toArray(parsed?.evidenceBySource?.github).map(String) : normalized.evidenceBySource.github,
+          notion: toArray(parsed?.evidenceBySource?.notion).length > 0 ? toArray(parsed?.evidenceBySource?.notion).map(String) : normalized.evidenceBySource.notion,
+          calendar: toArray(parsed?.evidenceBySource?.calendar).length > 0 ? toArray(parsed?.evidenceBySource?.calendar).map(String) : normalized.evidenceBySource.calendar,
+          rag: toArray(parsed?.evidenceBySource?.rag).length > 0 ? toArray(parsed?.evidenceBySource?.rag).map(String) : normalized.evidenceBySource.rag,
         },
       };
       return { answer: renderEmSections(merged) };
@@ -62,22 +90,76 @@ export function buildFallbackEmSections(rawAnswer, evidenceBySource) {
   const decisions = [];
   const actionItems = [];
   const lines = summary.split("\n").map((line) => line.trim()).filter(Boolean);
+
+  let openCount = 0;
+  let closedCount = 0;
+
   for (const line of lines) {
     const lower = line.toLowerCase();
-    if (lower.includes("risk") || lower.includes("blocker") || lower.includes("delay")) {
-      risks.push(line.replace(/^[-*]\s*/, ""));
-    }
-    if (lower.includes("decide") || lower.includes("approval") || lower.includes("confirm")) {
-      decisions.push(line.replace(/^[-*]\s*/, ""));
-    }
-    if (line.startsWith("-") || line.startsWith("*")) {
-      actionItems.push({
-        owner: "Unassigned",
-        dueDate: "TBD",
-        description: line.replace(/^[-*]\s*/, ""),
-      });
+
+    // Match GitHub issue lines: - [#<num> <title>](<url>) | Status: <state> | Repo: <repo> | Author: @<author> | Assignee: @<assignee>
+    const issueMatch = line.match(/-?\s*\[#(\d+)\s+([^\]]+)\]\((https:\/\/github\.com\/[^\)]+)\)(?:\s*\|\s*Status:\s*(\w+))?(?:\s*\|\s*Repo:\s*([^\s\|]+))?(?:\s*\|\s*Author:\s*@?([^\s\|]+))?(?:\s*\|\s*Assignee:\s*@?([^\s\|]+))?/i);
+
+    if (issueMatch) {
+      const issueNum = issueMatch[1];
+      const issueTitle = issueMatch[2];
+      const issueUrl = issueMatch[3];
+      const issueState = issueMatch[4] || "open";
+      const issueAuthor = issueMatch[6] || "logsv";
+      const issueAssignee = issueMatch[7] || "Unassigned";
+
+      const linkMD = `[#${issueNum} ${issueTitle}](${issueUrl})`;
+
+      if (issueState.toLowerCase() === "open") {
+        openCount += 1;
+        const owner = issueAssignee !== "Unassigned" ? `@${issueAssignee}` : `@${issueAuthor}`;
+        actionItems.push({
+          owner,
+          dueDate: "High Priority",
+          description: `Triage & address open issue ${linkMD}`,
+        });
+
+        if (issueAssignee === "Unassigned") {
+          risks.push(`Unassigned open issue ${linkMD} needs owner allocation`);
+        } else {
+          risks.push(`Active open issue ${linkMD} currently assigned to @${issueAssignee}`);
+        }
+
+        decisions.push(`Confirm priority and milestone assignment for ${linkMD}`);
+      } else {
+        closedCount += 1;
+      }
+    } else {
+      if (lower.includes("risk") || lower.includes("blocker") || lower.includes("delay")) {
+        risks.push(line.replace(/^[-*]\s*/, ""));
+      }
+      if (lower.includes("decide") || lower.includes("approval") || lower.includes("confirm")) {
+        decisions.push(line.replace(/^[-*]\s*/, ""));
+      }
+      if ((line.startsWith("-") || line.startsWith("*")) && !issueMatch) {
+        actionItems.push({
+          owner: "Unassigned",
+          dueDate: "TBD",
+          description: line.replace(/^[-*]\s*/, ""),
+        });
+      }
     }
   }
+
+  if (closedCount > 0 && openCount === 0) {
+    actionItems.push({
+      owner: "@logsv",
+      dueDate: "Completed",
+      description: `All ${closedCount} retrieved issue(s) are closed. No open issue bottlenecks remaining.`,
+    });
+  } else if (openCount === 0 && closedCount === 0) {
+    actionItems.push({
+      owner: "@logsv",
+      dueDate: "Up to date",
+      description: "No open issue bottlenecks detected in user repositories.",
+    });
+  }
+
   return {
     executiveSummary: summary,
     keyRisksAndBlockers: risks,

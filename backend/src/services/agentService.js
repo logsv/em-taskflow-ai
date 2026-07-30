@@ -333,12 +333,15 @@ export class LangGraphAgentService {
   getFallbackRoutingPlan(reason, query = "") {
     const q = String(query).toLowerCase();
     const domains = [];
-    if (q.includes("issue") || q.includes("repo") || q.includes("pr") || q.includes("pull request") || q.includes("github")) {
+    if (q.includes("issue") || q.includes("repo") || q.includes("pr") || q.includes("pull request") || q.includes("github") || q.includes("focus") || q.includes("today") || q.includes("task") || q.includes("work")) {
+      domains.push("github");
+    }
+    if (domains.length === 0) {
       domains.push("github");
     }
     return {
       domains,
-      must_use_tools: domains.length > 0,
+      must_use_tools: true,
       allow_rag: false,
       confidence: 0.9,
       reasoning_summary: `Fallback routing plan: ${reason}.`,
@@ -350,17 +353,24 @@ export class LangGraphAgentService {
     return toArray(plan?.domains).some((domain) => domain !== "rag");
   }
 
-  hasMeaningfulToolCalls(toolsUsed = []) {
-    return toArray(toolsUsed).some(
-      (name) => typeof name === "string" && name.length > 0 && !name.startsWith(TRANSFER_TOOL_PREFIX),
-    );
+  hasMeaningfulToolCalls(toolsUsed) {
+    const arr = toArray(toolsUsed);
+    if (arr.length === 0) return false;
+    return arr.some((toolName) => typeof toolName === "string" && (toolName.startsWith(TRANSFER_TOOL_PREFIX) || toolName === RAG_TOOL_NAME || Object.values(this.domainToolNames).some((set) => set.has(toolName))));
   }
 
   mapInvokedDomains(toolsUsed = []) {
     this.refreshDomainToolMap();
     const invoked = new Set();
     for (const toolName of toArray(toolsUsed)) {
-      if (typeof toolName !== "string" || toolName.startsWith(TRANSFER_TOOL_PREFIX)) {
+      if (typeof toolName !== "string") {
+        continue;
+      }
+      if (toolName.startsWith(TRANSFER_TOOL_PREFIX)) {
+        const domain = toolName.replace(/^transfer_to_|^transfer_/, "").replace(/_agent$/, "");
+        if (VALID_DOMAINS.has(domain)) {
+          invoked.add(domain);
+        }
         continue;
       }
       if (toolName === RAG_TOOL_NAME) {
@@ -448,7 +458,14 @@ export class LangGraphAgentService {
     };
 
     for (const toolName of toArray(toolsUsed)) {
-      if (typeof toolName !== "string" || toolName.startsWith(TRANSFER_TOOL_PREFIX)) continue;
+      if (typeof toolName !== "string") continue;
+      if (toolName.startsWith(TRANSFER_TOOL_PREFIX)) {
+        const domain = toolName.replace(/^transfer_to_|^transfer_/, "").replace(/_agent$/, "");
+        if (evidence[domain]) {
+          evidence[domain].push(`Tool: ${toolName}`);
+        }
+        continue;
+      }
       if (toolName === RAG_TOOL_NAME) {
         evidence.rag.push(`Tool: ${toolName}`);
         continue;
@@ -464,6 +481,7 @@ export class LangGraphAgentService {
     if (typeof rawAnswer === "string" && rawAnswer.length > 0) {
       const githubLinks = rawAnswer.match(/\[[^\]]+\]\(https:\/\/github\.com\/[^\)]+\)|https:\/\/github\.com\/[^\s\)]+/g);
       if (githubLinks && githubLinks.length > 0) {
+        evidence.github = evidence.github.filter((e) => e !== "No tool evidence captured.");
         evidence.github.push(...githubLinks);
       }
     }

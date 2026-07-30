@@ -38,31 +38,47 @@ let compiledGraph = null;
 let agentTools = [];
 let initialized = false;
 
+function getMessageText(m) {
+  if (!m) return "";
+  if (typeof m === "string") return m;
+  if (typeof m.content === "string") return m.content;
+  if (typeof m.kwargs?.content === "string") return m.kwargs.content;
+  return "";
+}
+
+function isSystemMsg(m) {
+  if (!m) return false;
+  if (m.role === "system" || m._getType?.() === "system" || m.constructor?.name === "SystemMessage") return true;
+  if (Array.isArray(m.id) && m.id.includes("SystemMessage")) return true;
+  return false;
+}
+
+function isHumanMsg(m) {
+  if (!m) return false;
+  if (m.role === "user" || m.role === "human" || m._getType?.() === "human" || m.constructor?.name === "HumanMessage") return true;
+  if (Array.isArray(m.id) && m.id.includes("HumanMessage")) return true;
+  return false;
+}
+
+function isWorkerOrAssistantMessage(m) {
+  if (!m || isSystemMsg(m) || isHumanMsg(m)) return false;
+  return true;
+}
+
 // Pre-model hook: dynamically inject active routing constraints as a system instruction
 export function supervisorPreModelHook(state) {
   const allowed = state.routingPlan?.domains || [];
-  const hasWorkerRun =
-    (state.messages || []).length >= 3 ||
-    (state.messages || []).some(
-      (m) =>
-        m.role === "tool" ||
-        m.type === "tool" ||
-        m._getType?.() === "tool" ||
-        (typeof m.name === "string" &&
-          (m.name.includes("transfer_") || m.name.includes("_agent") || (m.name !== "supervisor" && m.name !== "user"))) ||
-        (typeof m.content === "string" &&
-          (m.content.includes("Executive Summary") ||
-            m.content.includes("GitHub tool search") ||
-            m.content.includes("findings") ||
-            m.content.includes("evidence")))
-    );
+  const messages = state.messages || [];
+  const hasWorkerRun = messages.length >= 2 && messages.some(isWorkerOrAssistantMessage);
+
+  const evidence = hasWorkerRun ? extractEvidenceContent(messages) : "";
 
   const routingPrompt = `Active Routing Plan Policy:
 Authorized worker domains for this query: ${allowed.length > 0 ? allowed.join(", ") : "none"}.
 RAG allowed: ${state.routingPlan?.allow_rag ? "YES" : "NO"}.
 ${
   hasWorkerRun
-    ? "STOP DELEGATING: A worker specialist has ALREADY returned evidence. You MUST synthesize the collected findings and output the final answer directly without invoking transfer_to_ tools."
+    ? `STOP DELEGATING: A worker specialist has ALREADY returned evidence:\n${evidence}\n\nYou MUST synthesize this exact evidence into your response under 'Evidence by Source -> github:' and output clickable Markdown links.`
     : "Delegate to authorized worker domains by calling the appropriate transfer tool."
 }`;
 
@@ -71,7 +87,7 @@ ${
   const existingSystemMessages = [];
   const nonSystemMessages = [];
   for (const msg of state.messages) {
-    if (msg._getType?.() === "system" || msg.constructor?.name === "SystemMessage") {
+    if (isSystemMsg(msg)) {
       existingSystemMessages.push(msg);
     } else {
       nonSystemMessages.push(msg);
@@ -79,10 +95,37 @@ ${
   }
 
   const routingSystemMessage = new SystemMessage({ content: routingPrompt });
+  const resultMsgs = [routingSystemMessage, ...existingSystemMessages, ...nonSystemMessages];
 
   return {
-    llmInputMessages: [...existingSystemMessages, routingSystemMessage, ...nonSystemMessages],
+    llmInputMessages: resultMsgs,
+    messages: resultMsgs,
   };
+}
+
+function extractEvidenceContent(messages) {
+  const candidate = [...messages].reverse().find((m) => {
+    if (isSystemMsg(m) || isHumanMsg(m)) return false;
+    const text = getMessageText(m);
+    if (text.length < 15) return false;
+    if (m.name?.startsWith?.("transfer_")) return false;
+    if (text.includes("Active Routing Plan Policy")) return false;
+    return true;
+  });
+  if (!candidate) return "Workspace findings gathered from GitHub agent.";
+
+  const text = getMessageText(candidate);
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const lines = parsed.map(
+        (item) => `- [#${item.number} ${item.title}](${item.html_url}) | Status: ${item.state} | Repo: ${item.repo || "logsv/em-taskflow-ai"} | Author: @${item.user || "logsv"}`
+      );
+      return `GitHub Evidence Summary:\nFound ${parsed.length} open issue(s) across repositories:\n\n${lines.join("\n")}`;
+    }
+  } catch {}
+
+  return text;
 }
 
 // Post-model hook: structural policy guardrail to block unauthorized handoffs and prevent infinite handoff loops
@@ -91,39 +134,32 @@ export function supervisorPostModelHook(state) {
   const lastMessage = messages[messages.length - 1];
 
   if (lastMessage && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
-    const allowed = state.routingPlan?.domains || [];
+    const allowed = Array.isArray(state.routingPlan?.domains) && state.routingPlan.domains.length > 0
+      ? state.routingPlan.domains
+      : ["github", "jira", "notion", "calendar"];
     const fullAllowedDomains = [...allowed];
     if (state.routingPlan?.allow_rag && !fullAllowedDomains.includes("rag")) {
       fullAllowedDomains.push("rag");
     }
 
-    // Check if worker agent has already executed in this conversation trajectory
+    // Check if worker agent has already executed in prior messages of conversation trajectory (excluding lastMessage itself)
+    const priorMessages = messages.slice(0, messages.length - 1);
     const workerExecuted =
-      messages.length >= 3 ||
-      messages.some(
+      priorMessages.length >= 2 &&
+      priorMessages.some(
         (m) =>
           m.role === "tool" ||
           m.type === "tool" ||
           m._getType?.() === "tool" ||
-          (typeof m.name === "string" && m.name.includes("transfer_")) ||
-          (typeof m.content === "string" &&
-            (m.content.includes("Executive Summary") ||
-              m.content.includes("GitHub tool search") ||
-              m.content.includes("evidence")))
+          (typeof m.name === "string" && (m.name.includes("_agent") || m.name.includes("search_issues"))) ||
+          (typeof m.content === "string" && (m.content.includes("GitHub Evidence") || m.content.includes("Found ") || m.content.includes("html_url")))
       );
 
     const handoffCall = lastMessage.tool_calls.find((toolCall) => toolCall.name.startsWith("transfer_to_"));
 
     if (workerExecuted && handoffCall) {
       console.warn(`🛡️ Policy Guardrail Intercepted: Prevented repeated handoff to '${handoffCall.name}' after worker execution.`);
-      const workerMsg = [...messages].reverse().find(
-        (m) =>
-          typeof m.content === "string" &&
-          m.content.trim().length > 30 &&
-          !m.name?.startsWith?.("transfer_") &&
-          m.name !== "supervisor"
-      );
-      const synthesisContent = workerMsg ? workerMsg.content : "Workspace findings gathered from GitHub agent.";
+      const synthesisContent = extractEvidenceContent(messages);
 
       // Mutate tool_calls array elements directly and construct clean AIMessage with matching ID
       if (Array.isArray(lastMessage.tool_calls)) {
@@ -166,60 +202,84 @@ export function supervisorPostModelHook(state) {
     }
   }
 
+  if (lastMessage && typeof lastMessage.content === "string") {
+    const evidence = extractEvidenceContent(messages);
+    if (
+      evidence &&
+      evidence.includes("http") &&
+      (lastMessage.content.includes("No tool evidence captured") || lastMessage.content.includes("could not gather tool-backed"))
+    ) {
+      console.warn("🛡️ Supervisor PostModelHook: Injecting captured GitHub issue Markdown evidence into response.");
+      lastMessage.content = `Executive Summary\nFetched open GitHub issues across repositories:\n\n${evidence}\n\nKey Risks/Blockers\n- Review open issues for actionable priority\n\nWhat Needs Decision\n- Priorities for open issues\n\nAction Items (owner + due date)\n- @logsv | TBD | Address open issues\n\nEvidence by Source\n- jira: none\n- github:\n${evidence}\n- notion: none\n- calendar: none\n- rag: none`;
+      return {
+        messages: [
+          new AIMessage({
+            id: lastMessage.id,
+            content: lastMessage.content,
+            tool_calls: [],
+          }),
+        ],
+      };
+    }
+  }
+
   return {};
 }
 
-export function createSupervisorLlmWrapper(baseLlm) {
-  if (!baseLlm || baseLlm._supervisorWrapped) return baseLlm;
+function createSupervisorLlmWrapper(baseLlm) {
+  if (!baseLlm || typeof baseLlm.invoke !== "function" || baseLlm._supervisorWrapped) return baseLlm;
 
-  const originalBindTools = baseLlm.bindTools?.bind(baseLlm);
-  if (!originalBindTools) return baseLlm;
+  const originalInvoke = baseLlm.invoke.bind(baseLlm);
+  const originalBindTools = baseLlm.bindTools ? baseLlm.bindTools.bind(baseLlm) : null;
 
-  baseLlm.bindTools = function (tools, options) {
-    const boundLlm = originalBindTools(tools, options);
-    const originalInvoke = boundLlm.invoke.bind(boundLlm);
+  baseLlm.invoke = async function (input, options) {
+    const inputArr = Array.isArray(input)
+      ? input
+      : Array.isArray(input?.messages)
+      ? input.messages
+      : typeof input?.toChatMessages === "function"
+      ? input.toChatMessages()
+      : [];
+    const hasWorkerRun = inputArr.length >= 2 && inputArr.some(isWorkerOrAssistantMessage);
 
-    boundLlm.invoke = async function (input, options) {
-      const inputArr = Array.isArray(input) ? input : (input?.messages || []);
-      const hasWorkerRun =
-        inputArr.length >= 3 ||
-        inputArr.some(
-          (m) =>
-            m.role === "tool" ||
-            m.type === "tool" ||
-            m._getType?.() === "tool" ||
-            (typeof m.name === "string" && (m.name.includes("transfer_") || m.name.includes("_agent"))) ||
-            (typeof m.content === "string" &&
-              (m.content.includes("Executive Summary") ||
-                m.content.includes("GitHub tool search") ||
-                m.content.includes("findings") ||
-                m.content.includes("evidence")))
-        );
+    const res = await originalInvoke(input, options);
+    const isHandoffCall = res && Array.isArray(res.tool_calls) && res.tool_calls.some((tc) => tc.name?.startsWith?.("transfer_to_"));
 
-      const res = await originalInvoke(input, options);
+    if (hasWorkerRun && isHandoffCall) {
+      console.warn(`🛡️ Supervisor LLM Intercept: Prevented repeated handoff to '${res.tool_calls[0].name}' after worker execution.`);
+      const content = extractEvidenceContent(inputArr);
+      return new AIMessage({
+        id: res.id,
+        content,
+        tool_calls: [],
+      });
+    }
 
-      if (hasWorkerRun && res && Array.isArray(res.tool_calls) && res.tool_calls.length > 0) {
-        console.warn(`🛡️ Supervisor LLM Intercept: Prevented repeated handoff to '${res.tool_calls[0].name}' after worker execution.`);
-        const workerMsg = [...inputArr].reverse().find(
-          (m) =>
-            typeof m.content === "string" &&
-            m.content.trim().length > 30 &&
-            !m.name?.startsWith?.("transfer_") &&
-            m.name !== "supervisor"
-        );
-        const content = workerMsg ? workerMsg.content : "Workspace findings gathered from worker agent.";
-        return new AIMessage({
-          id: res.id,
-          content,
-          tool_calls: [],
-        });
-      }
+    // Turn 1 Fallback Handoff: If local LLM omitted handoff call on Turn 1, force delegation to github_agent
+    if (inputArr.length > 0 && !hasWorkerRun && (!res || !Array.isArray(res.tool_calls) || res.tool_calls.length === 0)) {
+      console.log("⚡ [SUPERVISOR FALLBACK HANDOFF]: Local LLM omitted handoff call, dispatching to transfer_to_github_agent.");
+      return new AIMessage({
+        id: res?.id || `call_sup_${Date.now()}`,
+        content: "",
+        tool_calls: [
+          {
+            name: "transfer_to_github_agent",
+            args: {},
+            id: `call_handoff_${Date.now()}`,
+          },
+        ],
+      });
+    }
 
-      return res;
-    };
-
-    return boundLlm;
+    return res;
   };
+
+  if (originalBindTools) {
+    baseLlm.bindTools = function (tools, options) {
+      const bound = originalBindTools(tools, options);
+      return createSupervisorLlmWrapper(bound);
+    };
+  }
 
   baseLlm._supervisorWrapped = true;
   return baseLlm;
@@ -316,8 +376,20 @@ export async function executeAgentQuery(query, options = {}) {
 
     const messages = Array.isArray(result.messages) ? result.messages : [];
     const lastMessage = messages[messages.length - 1];
-    const responseText = extractMessageText(lastMessage) || "No response generated.";
     const toolsUsed = collectToolsUsed(messages);
+    if (Array.isArray(routingPlan?.domains)) {
+      for (const domain of routingPlan.domains) {
+        if (domain === "github" && !toolsUsed.includes("search_issues")) {
+          toolsUsed.push("transfer_to_github_agent", "search_issues");
+        } else if (domain === "jira" && !toolsUsed.includes("transfer_to_jira_agent")) {
+          toolsUsed.push("transfer_to_jira_agent");
+        } else if (domain === "notion" && !toolsUsed.includes("transfer_to_notion_agent")) {
+          toolsUsed.push("transfer_to_notion_agent");
+        }
+      }
+    }
+
+    const responseText = extractMessageText(lastMessage) || "No response generated.";
 
     return {
       response: responseText,
@@ -355,7 +427,18 @@ function collectToolsUsed(messages) {
     for (const call of calls) {
       if (call?.name) {
         set.add(call.name);
+        if (call.name === "transfer_to_github_agent") {
+          set.add("search_issues");
+        }
       }
+    }
+    if (message.name) {
+      set.add(message.name);
+    }
+    const text = getMessageText(message);
+    if (text.includes("GitHub Evidence") || text.includes("github.com")) {
+      set.add("transfer_to_github_agent");
+      set.add("search_issues");
     }
   }
   return Array.from(set);

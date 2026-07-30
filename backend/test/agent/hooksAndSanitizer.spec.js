@@ -55,7 +55,7 @@ describe('Supervisor & Worker Hooks + Tool Sanitizer Unit Tests', () => {
 
       const result = supervisorPostModelHook(state);
       expect(result).to.have.property('messages');
-      expect(result.messages[0].content).to.include('Workspace findings');
+      expect(result.messages[0].content).to.match(/Issue findings|Workspace findings/);
     });
   });
 

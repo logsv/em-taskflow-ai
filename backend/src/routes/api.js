@@ -5,6 +5,7 @@ import { attachSessionContext } from '../middleware/sessionContext.js';
 import chatApplicationService from '../application/chat/ChatApplicationService.js';
 import feedbackApplicationService from '../application/feedback/FeedbackApplicationService.js';
 import healthApplicationService from '../application/health/HealthApplicationService.js';
+import githubSyncService from '../services/githubSyncService.js';
 
 const router = express.Router();
 
@@ -115,6 +116,32 @@ router.post('/feedback', attachSessionContext, async (req, res) => {
       error: 'Failed to capture feedback',
       details: error.message,
       requestId: req.requestId,
+    });
+  }
+});
+
+router.post('/github/sync', async (req, res) => {
+  try {
+    const repo = req.body?.repo || 'logsv/em-taskflow-ai';
+    const result = await githubSyncService.syncGithubData(repo);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to sync GitHub data',
+      details: error.message,
+    });
+  }
+});
+
+router.get('/github/sync-status', async (req, res) => {
+  try {
+    const status = await githubSyncService.getSyncStatus();
+    res.json(status);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch GitHub sync status',
+      details: error.message,
     });
   }
 });
