@@ -227,18 +227,26 @@ export class LangGraphAgentService {
   }
 
   async runEnforcedPolicy(query, routingPlan, decision, options = {}) {
+    if (routingPlan?.intent_type === "DIRECT_LLM" || (Array.isArray(routingPlan?.domains) && routingPlan.domains.length === 0 && !routingPlan.must_use_tools && !routingPlan.allow_rag)) {
+      decision.selectedPath = "direct-llm-fastpath";
+      console.log(`⚡ [AGENT SERVICE FAST-PATH]: Direct LLM execution for query "${query.slice(0, 40)}..." (0 tools).`);
+      return this.runLlmExecutor(query);
+    }
+
     const requiresWorkspaceDomains = this.requiresWorkspaceDomains(routingPlan);
     const forceToolUse = routingPlan.must_use_tools || requiresWorkspaceDomains;
-    const allowRag = routingPlan.allow_rag && this.ragEnabled && options.includeRag !== false;
+    const allowRag = (routingPlan.allow_rag !== false || routingPlan.domains.includes("rag")) && this.ragEnabled && options.includeRag !== false;
     let ragResult = { answer: "", sources: [] };
 
-    if (allowRag && routingPlan.domains.includes("rag")) {
+    if (allowRag) {
       ragResult = await this.tryRag(query, decision.ragMode);
       decision.ragHit = Array.isArray(ragResult?.sources) && ragResult.sources.length > 0;
-      if (!decision.ragHit) {
-        decision.reasons.push("rag_no_hits");
+      if (decision.ragHit) {
+        decision.selectedPath = "rag+llm";
+        console.log(`✅ [AGENT SERVICE RAG HIT]: Returning ${ragResult.sources.length} document source(s) from RAG pipeline.`);
+        return this.formatRagResult(ragResult);
       }
-    } else if (!routingPlan.allow_rag) {
+    } else {
       decision.reasons.push("rag_disallowed_by_router");
     }
 
@@ -333,16 +341,26 @@ export class LangGraphAgentService {
   getFallbackRoutingPlan(reason, query = "") {
     const q = String(query).toLowerCase();
     const domains = [];
-    if (q.includes("issue") || q.includes("repo") || q.includes("pr") || q.includes("pull request") || q.includes("github") || q.includes("focus") || q.includes("today") || q.includes("task") || q.includes("work")) {
+    if (q.includes("issue") || q.includes("repo") || q.includes("pr") || q.includes("pull request") || q.includes("github")) {
       domains.push("github");
     }
-    if (domains.length === 0) {
-      domains.push("github");
+    if (q.includes("jira") || q.includes("sprint") || q.includes("blocker")) {
+      domains.push("jira");
     }
+    if (q.includes("notion") || q.includes("page")) {
+      domains.push("notion");
+    }
+    if (q.includes("calendar") || q.includes("meeting") || q.includes("schedule")) {
+      domains.push("calendar");
+    }
+    if (q.includes("pdf") || q.includes("doc") || q.includes("file") || q.includes("read") || q.includes("summary") || q.includes("what") || q.includes("how") || q.includes("explain") || q.includes("document") || domains.length === 0) {
+      domains.push("rag");
+    }
+
     return {
       domains,
-      must_use_tools: true,
-      allow_rag: false,
+      must_use_tools: false,
+      allow_rag: true,
       confidence: 0.9,
       reasoning_summary: `Fallback routing plan: ${reason}.`,
       _routerFailed: true,

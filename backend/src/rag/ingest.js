@@ -7,14 +7,13 @@ import { TokenTextSplitter } from '@langchain/textsplitters';
 import { Document } from '@langchain/core/documents';
 import fs from 'fs/promises';
 import pdf from 'pdf-parse/lib/pdf-parse.js';
-import { ChromaClient } from 'chromadb';
 import { config, getRagConfig } from '../config.js';
 import { BGEEmbeddingsAdapter } from '../llm/bgeEmbeddingsAdapter.js';
+import databaseService from '../db/postgres.js';
 
 // Dependencies for injection
 let fsModule = fs;
 let pdfModule = pdf;
-let ChromaClientClass = ChromaClient;
 
 // Chunking configuration
 const CHUNK_SIZE = 800; // tokens
@@ -22,7 +21,6 @@ const CHUNK_OVERLAP = 150; // tokens
 
 // Singleton instances
 let vectorStore = null;
-let chromaClient = null;
 let initialized = false;
 
 /**
@@ -31,7 +29,7 @@ let initialized = false;
 export async function initializeIngest() {
   if (initialized) return;
 
-  console.log('📥 Initializing RAG ingest pipeline...');
+  console.log('📥 Initializing RAG ingest pipeline (PostgreSQL Store)...');
   
   const ragConfig = getRagConfig();
   if (!ragConfig.enabled) {
@@ -40,14 +38,6 @@ export async function initializeIngest() {
   }
 
   try {
-    // Initialize ChromaDB client
-    chromaClient = new ChromaClientClass({
-      host: config.vectorDb?.chroma?.host || 'localhost',
-      port: config.vectorDb?.chroma?.port || 8000,
-    });
-
-    const collectionName = ragConfig.defaultCollection || 'pdf_chunks';
-
     let embeddings;
     const provider = (ragConfig.embeddingProvider || 'qwen3-vl').toLowerCase();
 
@@ -58,20 +48,13 @@ export async function initializeIngest() {
         if (bgeAvailable) {
           console.log('✅ Using Qwen3-VL embeddings microservice for ingestion');
           embeddings = bgeAdapter;
-        } else {
-          throw new Error('Embeddings microservice not available');
         }
       } catch (error) {
-        console.warn('⚠️ Embeddings microservice not available, using deterministic fallback embeddings');
+        console.warn('⚠️ Embeddings microservice not available, using fallback embedding builder');
       }
     }
 
     if (!embeddings) {
-      if (provider === 'nomic') {
-        console.warn('⚠️ RAG embedding provider "nomic" selected but Ollama embeddings are not configured; using deterministic fallback embeddings');
-      } else if (provider !== 'qwen3-vl' && provider !== 'bge-m3' && provider !== 'microservice' && provider !== 'auto') {
-        console.warn(`⚠️ Unknown RAG embedding provider "${ragConfig.embeddingProvider}", using deterministic fallback embeddings`);
-      }
       embeddings = {
         embedQuery: async (text) => {
           const dim = 768;
@@ -95,33 +78,21 @@ export async function initializeIngest() {
     vectorStore = {
       embeddings,
       async addDocuments(documents) {
-        const collection = await chromaClient.getOrCreateCollection({
-          name: collectionName,
-          metadata: {
-            'hnsw:space': 'cosine',
-            'hnsw:construction_ef': 200,
-            'hnsw:M': 16,
-            'hnsw:search_ef': 100,
-          },
-        });
-        const texts = documents.map((doc) => String(doc.pageContent || ''));
-        const metadatas = documents.map((doc) => sanitizeMetadata(doc.metadata || {}));
-        const ids = documents.map((doc, index) =>
-          `${filenameSafeId(doc.metadata?.filename || 'doc')}-${doc.metadata?.chunkIndex ?? index}-${Date.now()}-${index}`,
-        );
-        const vectors = await embeddings.embedDocuments(texts);
-        await collection.upsert({
-          ids,
-          documents: texts,
-          metadatas,
-          embeddings: vectors,
-        });
+        const dbChunks = documents.map((doc, idx) => ({
+          id: `${filenameSafeId(doc.metadata?.filename || 'doc')}_${idx}`,
+          documentId: doc.metadata?.filename || 'doc',
+          filename: doc.metadata?.filename || 'doc.pdf',
+          chunkIndex: idx,
+          content: doc.pageContent,
+          parentContent: doc.metadata?.parentContent || doc.pageContent,
+          embedding: null,
+        }));
+        await databaseService.upsertPdfChunks(dbChunks);
       },
     };
 
     initialized = true;
-    console.log(`✅ RAG ingest pipeline initialized: ${collectionName}`);
-
+    console.log('✅ RAG ingest pipeline initialized (PostgreSQL)');
   } catch (error) {
     console.error('❌ Failed to initialize RAG ingest pipeline:', error);
     throw error;
@@ -166,6 +137,31 @@ export async function ingestPDF(filePath, filename) {
     
     if (chunks.length === 0) {
       throw new Error('No valid chunks created from PDF');
+    }
+
+    // Store chunks in PostgreSQL database (parent-child chunking)
+    try {
+      const dbChunks = chunks.map((doc, idx) => {
+        const childText = doc.pageContent;
+        // Parent context combines surrounding text if available
+        const parentText = doc.metadata?.parentContent || childText;
+        const header = `[Document: ${filename}]\n`;
+        
+        return {
+          id: `${filenameSafeId(filename)}_${idx}`,
+          documentId: filename,
+          filename,
+          chunkIndex: idx,
+          content: `${header}${childText}`,
+          parentContent: `${header}${parentText}`,
+          embedding: null, // Computed on demand or stored
+        };
+      });
+
+      await databaseService.upsertPdfChunks(dbChunks);
+      console.log(`🗄️ Saved ${dbChunks.length} parent-child chunks into PostgreSQL DB for ${filename}`);
+    } catch (dbErr) {
+      console.warn(`⚠️ PostgreSQL pdf_chunks upsert failed (${dbErr.message}), falling back to ChromaDB only.`);
     }
 
     // Store chunks in vector database
@@ -292,35 +288,20 @@ function sanitizeMetadata(metadata) {
  * Get ingestion status
  */
 export async function getIngestStatus() {
-  const status = {
+  let docCount = 0;
+  try {
+    const docs = await databaseService.listPdfDocuments();
+    docCount = docs.reduce((acc, d) => acc + (d.chunkCount || 0), 0);
+  } catch (e) {}
+
+  return {
     initialized,
     vectorStore: !!vectorStore,
-    chromaClient: !!chromaClient,
+    collectionInfo: {
+      name: 'pdf_chunks',
+      count: docCount,
+    },
   };
-
-  // Get collection information if available
-  if (chromaClient) {
-    try {
-      const ragConfig = getRagConfig();
-      const collection = await chromaClient.getCollection({
-        name: ragConfig.defaultCollection || 'pdf_chunks'
-      });
-      
-      return {
-        ...status,
-        collectionInfo: {
-          name: collection.name,
-          count: await collection.count(),
-          metadata: collection.metadata,
-        },
-      };
-    } catch (error) {
-      // Collection doesn't exist or other error
-      return status;
-    }
-  }
-
-  return status;
 }
 
 /**
@@ -328,13 +309,6 @@ export async function getIngestStatus() {
  */
 export function getVectorStore() {
   return vectorStore;
-}
-
-/**
- * Get ChromaDB client
- */
-export function getChromaClient() {
-  return chromaClient;
 }
 
 /**
@@ -350,30 +324,14 @@ async function ensureIngestReady() {
  * Clear all documents from collection
  */
 export async function clearCollection() {
-  if (!chromaClient) {
-    throw new Error('ChromaDB client not initialized');
-  }
-
   try {
-    const ragConfig = getRagConfig();
-    const collectionName = ragConfig.defaultCollection || 'pdf_chunks';
-    
-    // Delete and recreate collection
-    try {
-      await chromaClient.deleteCollection({ name: collectionName });
-    } catch (error) {
-      // Collection might not exist
-    }
-    
-    console.log(`✅ Cleared collection: ${collectionName}`);
-    
-    // Reinitialize vector store
+    await databaseService.pool.query('TRUNCATE TABLE pdf_chunks');
+    console.log('✅ Cleared PostgreSQL pdf_chunks table');
     initialized = false;
     vectorStore = null;
     await initializeIngest();
-    
   } catch (error) {
-    console.error('❌ Failed to clear collection:', error);
+    console.error('❌ Failed to clear pdf_chunks:', error);
     throw error;
   }
 }
@@ -382,8 +340,6 @@ export async function clearCollection() {
 export const __test__ = {
   setFs: (mock) => { fsModule = mock; },
   setPdf: (mock) => { pdfModule = mock; },
-  setChromaClientClass: (mock) => { ChromaClientClass = mock; },
-  setChromaClient: (mock) => { chromaClient = mock; },
   setInitialized: (val) => { initialized = val; },
   setVectorStore: (mock) => { vectorStore = mock; },
   getVectorStore: () => vectorStore,

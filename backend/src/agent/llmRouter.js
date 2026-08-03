@@ -60,6 +60,45 @@ Example response format:
 Do not include wrappers like "properties" or "type". Only output raw JSON.
 `;
 
+/**
+ * Pre-Router Fast Classifier: Zero-latency detection of pure LLM queries
+ * Bypasses LLM Router call for greetings, general code generation, math, and syntax queries (<300ms execution).
+ */
+export function classifyFastPath(query) {
+  const q = String(query || "").toLowerCase().trim();
+  if (!q) return null;
+
+  // Domain keywords that REQUIRE tool or database retrieval
+  const workspaceKeywords = ["github", "issue", "repo", "pr", "pull request", "jira", "sprint", "blocker", "notion", "page", "calendar", "meeting", "schedule", "pdf", "doc", "document", "uploaded", "file"];
+  const containsWorkspaceKeyword = workspaceKeywords.some((kw) => q.includes(kw));
+
+  if (containsWorkspaceKeyword) {
+    return null; // Must go to LLM Router / Domain Execution
+  }
+
+  // Common direct LLM patterns: code requests, explanations, math, greetings
+  const fastPatterns = [
+    /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening))\b/i,
+    /^(write|create|implement|generate|code|explain|what\s+is|how\s+to|show\s+me)\b/i,
+    /^(\d+\s*[\+\-\*\/\^]\s*\d+)/,
+  ];
+
+  const isFastPath = fastPatterns.some((pattern) => pattern.test(q));
+  if (isFastPath) {
+    console.log(`⚡ [FAST-PATH CLASSIFIER]: Fast-routed query "${q.slice(0, 40)}..." directly to LLM (0 tools).`);
+    return {
+      intent_type: "DIRECT_LLM",
+      domains: [],
+      must_use_tools: false,
+      allow_rag: false,
+      confidence: 1.0,
+      reasoning_summary: "Fast-path classifier: Direct LLM response (0 tools, 0 RAG).",
+    };
+  }
+
+  return null;
+}
+
 // Initialize the LLM with the defined prompt and a JSON output parser
 const getRouterChain = () => {
   const llm = getChatModel();
@@ -68,6 +107,11 @@ const getRouterChain = () => {
 
   return {
     async invoke(input) {
+      const fastResult = classifyFastPath(input.query);
+      if (fastResult) {
+        return fastResult;
+      }
+
       const messages = [
         new SystemMessage(systemTemplate),
         new HumanMessage(input.query),

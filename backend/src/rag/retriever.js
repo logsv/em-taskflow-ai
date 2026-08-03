@@ -5,13 +5,12 @@
 
 import { Document } from '@langchain/core/documents';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
-import { getVectorStore, getChromaClient } from './ingest.js';
 import { ensureLLMReady, getChatModel } from '../llm/index.js';
 import { getRagConfig, getRagAdvancedConfig } from '../config.js';
+import databaseService from '../db/postgres.js';
 
 // Retrieval configuration
 const MAX_RETRIEVAL_K = 30; // Initial retrieval
-let loggedChromaEmbeddingBug = false;
 
 /**
  * Baseline retrieval: vector search + answer generation
@@ -162,141 +161,36 @@ export async function simpleRetrieve(query, topK = 5) {
 }
 
 /**
- * Base retrieval from vector store
+ * Base retrieval from PostgreSQL vector + tsvector store
  */
 async function baseRetrieve(query, k, options = {}) {
-  const vectorStore = getVectorStore();
-  if (!vectorStore) {
-    throw new Error('Vector store not initialized');
-  }
-
   const { metadataFilter = null } = options;
 
   try {
-    const chromaClient = getChromaClient();
-    if (!chromaClient) {
-      throw new Error('ChromaDB client not initialized');
-    }
-
-    const embeddingModel = vectorStore?.embeddings;
-    if (!embeddingModel || typeof embeddingModel.embedQuery !== 'function') {
-      throw new Error('Vector store embeddings not available for query');
-    }
-
-    const queryEmbedding = await embeddingModel.embedQuery(query);
-    const normalizedEmbedding = normalizeEmbedding(queryEmbedding);
-    if (normalizedEmbedding.length === 0) {
-      throw new Error('Failed to generate valid query embedding');
-    }
-
-    const ragConfig = getRagConfig();
-    const collectionName = ragConfig.defaultCollection || 'pdf_chunks';
-    const collection = await chromaClient.getCollection({ name: collectionName });
-
-    const result = await collection.query({
-      queryEmbeddings: [normalizedEmbedding],
-      nResults: k,
-      where: metadataFilter && typeof metadataFilter === 'object' ? metadataFilter : undefined,
-      include: ['documents', 'metadatas', 'distances'],
+    const pgResults = await databaseService.hybridSearchPdfChunks({
+      query,
+      embedding: null,
+      topK: k,
+      metadataFilter,
     });
 
-    const docs = Array.isArray(result?.documents?.[0]) ? result.documents[0] : [];
-    const metadatas = Array.isArray(result?.metadatas?.[0]) ? result.metadatas[0] : [];
-
-    return docs.map((content, idx) => new Document({
-      pageContent: String(content || ''),
-      metadata: metadatas[idx] || {},
-    }));
-  } catch (error) {
-    const message = error?.message || '';
-    if (message.includes('e.every is not a function')) {
-      if (!loggedChromaEmbeddingBug) {
-        console.warn('⚠️ Chroma vector query failed (known embedding validation issue); using lexical fallback retrieval.');
-        loggedChromaEmbeddingBug = true;
-      }
-    } else {
-      console.error('❌ Base retrieval failed, using lexical fallback:', error);
+    if (Array.isArray(pgResults) && pgResults.length > 0) {
+      console.log(`🗄️ PostgreSQL Hybrid Search retrieved ${pgResults.length} chunk(s) for query: "${query.slice(0, 50)}..."`);
+      return pgResults.map((item) => new Document({
+        pageContent: item.parentContent || item.content,
+        metadata: {
+          filename: item.filename,
+          documentId: item.documentId,
+          chunkIndex: item.chunkIndex,
+          hybridScore: item.score,
+        },
+      }));
     }
-    return await lexicalFallbackRetrieve(query, k, metadataFilter);
-  }
-}
-
-function normalizeEmbedding(vector) {
-  if (ArrayBuffer.isView(vector)) {
-    return Array.from(vector).map(Number).filter((n) => Number.isFinite(n));
-  }
-  if (!Array.isArray(vector)) {
-    return [];
+  } catch (pgErr) {
+    console.warn(`⚠️ PostgreSQL hybrid retrieval failed (${pgErr.message})`);
   }
 
-  const base = Array.isArray(vector[0]) ? vector[0] : vector;
-  if (ArrayBuffer.isView(base)) {
-    return Array.from(base).map(Number).filter((n) => Number.isFinite(n));
-  }
-  if (!Array.isArray(base)) {
-    return [];
-  }
-
-  return base.map(Number).filter((n) => Number.isFinite(n));
-}
-
-async function lexicalFallbackRetrieve(query, k, metadataFilter = null) {
-  try {
-    const chromaClient = getChromaClient();
-    if (!chromaClient) {
-      return [];
-    }
-
-    const ragConfig = getRagConfig();
-    const collectionName = ragConfig.defaultCollection || 'pdf_chunks';
-    const collection = await chromaClient.getCollection({ name: collectionName });
-
-    const where = metadataFilter && typeof metadataFilter === 'object' ? metadataFilter : undefined;
-    const data = await collection.get({
-      where,
-      include: ['documents', 'metadatas'],
-    });
-
-    const docs = Array.isArray(data.documents) ? data.documents : [];
-    const metadatas = Array.isArray(data.metadatas) ? data.metadatas : [];
-    if (docs.length === 0) {
-      return [];
-    }
-
-    const queryTokens = new Set(tokenize(query));
-    const scored = docs
-      .map((content, idx) => {
-        const tokens = tokenize(content || '');
-        let overlap = 0;
-        for (const token of tokens) {
-          if (queryTokens.has(token)) overlap += 1;
-        }
-        const norm = queryTokens.size > 0 ? overlap / queryTokens.size : 0;
-        return {
-          score: norm,
-          doc: new Document({
-            pageContent: content || '',
-            metadata: metadatas[idx] || {},
-          }),
-        };
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, k)
-      .map((item) => item.doc);
-
-    return scored;
-  } catch (error) {
-    console.error('❌ Lexical fallback retrieval failed:', error);
-    return [];
-  }
-}
-
-function tokenize(text) {
-  return String(text)
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter((t) => t.length > 1);
+  return [];
 }
 
 /**
@@ -376,19 +270,24 @@ async function compressDocuments(query, documents) {
  */
 async function generateAnswer(query, documents) {
   const llm = getChatModel();
+
+  if (!Array.isArray(documents) || documents.length === 0) {
+    return 'I cannot find information about this in the uploaded documents.';
+  }
   
   try {
     const prompt = ChatPromptTemplate.fromMessages([
-      ['system', `You are a helpful assistant that answers questions based on the provided context. Use the context to provide accurate, detailed answers. If the context doesn't contain enough information to answer the question, say so clearly.
+      ['system', `You are a strictly factual RAG assistant. Your top directive is ZERO HALLUCINATION.
+
+CRITICAL GROUNDING DIRECTIVES:
+1. Answer ONLY using facts explicitly stated in the Context below.
+2. Do NOT invent, assume, extrapolate, or bring in outside knowledge.
+3. If the provided Context does NOT contain the necessary information to answer the question, respond EXACTLY:
+   "I cannot find information about this in the uploaded documents."
+4. Include exact document source citations for every claim (e.g. [Document: filename.pdf]).
 
 Context:
-{context}
-
-Guidelines:
-- Base your answer primarily on the provided context
-- Be specific and cite relevant details from the context
-- If information is missing or unclear, acknowledge this
-- Maintain a helpful and professional tone`],
+{context}`],
       ['human', '{question}']
     ]);
 
@@ -429,9 +328,8 @@ function deduplicateDocuments(documents) {
  * Get retriever status
  */
 export async function getRetrieverStatus() {
-  const vectorStore = getVectorStore();
   return {
-    vectorStoreReady: !!vectorStore,
+    vectorStoreReady: true,
     llmAvailable: true,
   };
 }

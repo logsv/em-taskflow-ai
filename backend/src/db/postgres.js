@@ -169,6 +169,22 @@ class DatabaseService {
       );
       CREATE INDEX IF NOT EXISTS idx_github_issues_repo_state ON github_issues(repo, state);
     `);
+
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS pdf_chunks (
+        id TEXT PRIMARY KEY,
+        document_id TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        chunk_index INT NOT NULL,
+        content TEXT NOT NULL,
+        parent_content TEXT NOT NULL,
+        embedding_json TEXT,
+        tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content || ' ' || filename)) STORED,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_pdf_chunks_filename ON pdf_chunks(filename);
+      CREATE INDEX IF NOT EXISTS idx_pdf_chunks_tsv ON pdf_chunks USING GIN(tsv);
+    `);
   }
 
   async createSession(clientInfo = null) {
@@ -677,6 +693,135 @@ class DatabaseService {
       SELECT COUNT(*)::int AS total, MAX(synced_at) AS last_synced_at FROM github_issues
     `);
     return result.rows[0] || { total: 0, last_synced_at: null };
+  }
+
+  async upsertPdfChunks(chunks) {
+    await this.ensureInitialized();
+    if (!Array.isArray(chunks) || chunks.length === 0) return 0;
+
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const chunk of chunks) {
+        const id = chunk.id || `${chunk.filename}_${chunk.chunkIndex}`;
+        const embeddingJson = chunk.embedding ? JSON.stringify(chunk.embedding) : null;
+
+        await client.query(
+          `INSERT INTO pdf_chunks (
+            id, document_id, filename, chunk_index, content, parent_content, embedding_json, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            document_id = EXCLUDED.document_id,
+            filename = EXCLUDED.filename,
+            chunk_index = EXCLUDED.chunk_index,
+            content = EXCLUDED.content,
+            parent_content = EXCLUDED.parent_content,
+            embedding_json = EXCLUDED.embedding_json,
+            created_at = NOW()`,
+          [
+            id,
+            chunk.documentId || chunk.filename,
+            chunk.filename,
+            chunk.chunkIndex ?? 0,
+            chunk.content || '',
+            chunk.parentContent || chunk.content || '',
+            embeddingJson,
+          ]
+        );
+      }
+      await client.query('COMMIT');
+      return chunks.length;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async hybridSearchPdfChunks({ query, embedding = null, topK = 20, metadataFilter = null } = {}) {
+    await this.ensureInitialized();
+    if (!query && !embedding) return [];
+
+    let sql = `SELECT id, document_id, filename, chunk_index, content, parent_content, embedding_json, created_at FROM pdf_chunks WHERE 1=1`;
+    const params = [];
+
+    if (metadataFilter && metadataFilter.filename) {
+      params.push(metadataFilter.filename);
+      sql += ` AND filename = $${params.length}`;
+    }
+
+    if (query && query.trim()) {
+      params.push(query.trim());
+      const queryIdx = params.length;
+      sql += ` AND (tsv @@ plainto_tsquery('english', $${queryIdx}) OR content ILIKE '%' || $${queryIdx} || '%' OR filename ILIKE '%' || $${queryIdx} || '%')`;
+    }
+
+    sql += ` ORDER BY chunk_index ASC LIMIT $${params.length + 1}`;
+    params.push(topK * 2);
+
+    const result = await this.pool.query(sql, params);
+    const rows = result.rows.map((row) => {
+      const rowEmbedding = safeJsonParse(row.embedding_json);
+      let similarityScore = 0;
+
+      // Cosine similarity computation if vector provided
+      if (Array.isArray(embedding) && Array.isArray(rowEmbedding) && embedding.length === rowEmbedding.length) {
+        let dot = 0, normA = 0, normB = 0;
+        for (let i = 0; i < embedding.length; i++) {
+          dot += embedding[i] * rowEmbedding[i];
+          normA += embedding[i] * embedding[i];
+          normB += rowEmbedding[i] * rowEmbedding[i];
+        }
+        similarityScore = (normA && normB) ? (dot / (Math.sqrt(normA) * Math.sqrt(normB))) : 0;
+      }
+
+      return {
+        id: row.id,
+        documentId: row.document_id,
+        filename: row.filename,
+        chunkIndex: row.chunk_index,
+        content: row.content,
+        parentContent: row.parent_content,
+        score: similarityScore,
+        createdAt: row.created_at,
+      };
+    });
+
+    // Sort by vector similarity score if available, otherwise by index
+    if (Array.isArray(embedding)) {
+      rows.sort((a, b) => b.score - a.score);
+    }
+
+    return rows.slice(0, topK);
+  }
+
+  async deletePdfDocument(filename) {
+    await this.ensureInitialized();
+    const result = await this.pool.query(
+      `DELETE FROM pdf_chunks WHERE filename = $1`,
+      [filename]
+    );
+    return result.rowCount;
+  }
+
+  async listPdfDocuments() {
+    await this.ensureInitialized();
+    const result = await this.pool.query(`
+      SELECT 
+        filename,
+        COUNT(*)::int AS "chunkCount",
+        MAX(created_at) AS "lastUpdated"
+      FROM pdf_chunks
+      GROUP BY filename
+      ORDER BY "lastUpdated" DESC
+    `);
+    return result.rows.map((r) => ({
+      id: r.filename,
+      filename: r.filename,
+      chunkCount: r.chunkCount,
+      lastUpdated: r.lastUpdated,
+    }));
   }
 
   async getStats() {

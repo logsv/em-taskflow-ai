@@ -190,7 +190,7 @@ function createGithubLlmWrapper(baseLlm) {
         });
       }
 
-      // Only fallback on turn 1 if local LLM omitted a tool call
+      // Only fallback on turn 1 if local LLM omitted a tool call AND the prompt is about GitHub
       if (!hasGithubToolMsg && (!res || !Array.isArray(res.tool_calls) || res.tool_calls.length === 0)) {
         const lastHumanMsg = [...inputArr].reverse().find(
           (m) =>
@@ -198,26 +198,30 @@ function createGithubLlmWrapper(baseLlm) {
             m.constructor?.name === "HumanMessage" ||
             m.role === "user"
         );
-        const text = typeof lastHumanMsg?.content === "string" ? lastHumanMsg.content : "";
-        const issueUrlMatch = text.match(/github\.com\/([^\/]+)\/([^\/]+)\/issues\/(\d+)/i);
-        const issueNumMatch = text.match(/(?:issue|#)\s*(\d+)/i);
-        let queryParam = "is:issue is:open user:logsv";
-        if (issueUrlMatch) {
-          queryParam = `is:issue ${issueUrlMatch[3]} user:logsv`;
-        } else if (issueNumMatch) {
-          queryParam = `is:issue ${issueNumMatch[1]} user:logsv`;
+        const text = typeof lastHumanMsg?.content === "string" ? lastHumanMsg.content.toLowerCase() : "";
+        const isGithubQuery = text.includes("github") || text.includes("issue") || text.includes("repo") || text.includes("pr") || text.includes("bug");
+        
+        if (isGithubQuery) {
+          const issueUrlMatch = text.match(/github\.com\/([^\/]+)\/([^\/]+)\/issues\/(\d+)/i);
+          const issueNumMatch = text.match(/(?:issue|#)\s*(\d+)/i);
+          let queryParam = "is:issue is:open user:logsv";
+          if (issueUrlMatch) {
+            queryParam = `is:issue ${issueUrlMatch[3]} user:logsv`;
+          } else if (issueNumMatch) {
+            queryParam = `is:issue ${issueNumMatch[1]} user:logsv`;
+          }
+          console.log(`⚡ [GITHUB AGENT FALLBACK DISPATCH]: Injecting deterministic search_issues call with query "${queryParam}"`);
+          return new AIMessage({
+            content: "",
+            tool_calls: [
+              {
+                name: "search_issues",
+                args: { query: queryParam },
+                id: `call_fallback_${Date.now()}`
+              }
+            ]
+          });
         }
-        console.log(`⚡ [GITHUB AGENT FALLBACK DISPATCH]: Injecting deterministic search_issues call with query "${queryParam}"`);
-        return new AIMessage({
-          content: "",
-          tool_calls: [
-            {
-              name: "search_issues",
-              args: { query: queryParam },
-              id: `call_fallback_${Date.now()}`
-            }
-          ]
-        });
       }
 
       return res;

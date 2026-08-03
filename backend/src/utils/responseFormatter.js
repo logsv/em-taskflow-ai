@@ -4,8 +4,8 @@ function toArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-export async function buildEmResponse(query, rawAnswer, evidenceBySource, decision) {
-  if (decision.needsClarification) {
+export async function buildEmResponse(query, rawAnswer, evidenceBySource, decision = {}) {
+  if (decision.needsClarification || decision.selectedPath === "direct-llm-fastpath" || decision.routingPlan?.intent_type === "DIRECT_LLM") {
     return {
       answer: rawAnswer,
     };

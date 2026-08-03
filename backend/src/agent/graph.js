@@ -255,20 +255,35 @@ function createSupervisorLlmWrapper(baseLlm) {
       });
     }
 
-    // Turn 1 Fallback Handoff: If local LLM omitted handoff call on Turn 1, force delegation to github_agent
+    // Turn 1 Fallback Handoff: Only dispatch to workspace agent if prompt text specifically matches that domain
     if (inputArr.length > 0 && !hasWorkerRun && (!res || !Array.isArray(res.tool_calls) || res.tool_calls.length === 0)) {
-      console.log("⚡ [SUPERVISOR FALLBACK HANDOFF]: Local LLM omitted handoff call, dispatching to transfer_to_github_agent.");
-      return new AIMessage({
-        id: res?.id || `call_sup_${Date.now()}`,
-        content: "",
-        tool_calls: [
-          {
-            name: "transfer_to_github_agent",
-            args: {},
-            id: `call_handoff_${Date.now()}`,
-          },
-        ],
-      });
+      const lastHuman = [...inputArr].reverse().find(isHumanMsg);
+      const text = getMessageText(lastHuman).toLowerCase();
+      const isGithub = text.includes("github") || text.includes("issue") || text.includes("repo") || text.includes("pr") || text.includes("bug");
+      const isJira = text.includes("jira") || text.includes("sprint") || text.includes("blocker");
+      const isNotion = text.includes("notion") || text.includes("page");
+      const isCalendar = text.includes("calendar") || text.includes("meeting") || text.includes("schedule");
+
+      let targetAgent = null;
+      if (isGithub) targetAgent = "transfer_to_github_agent";
+      else if (isJira) targetAgent = "transfer_to_jira_agent";
+      else if (isNotion) targetAgent = "transfer_to_notion_agent";
+      else if (isCalendar) targetAgent = "transfer_to_calendar_agent";
+
+      if (targetAgent) {
+        console.log(`⚡ [SUPERVISOR FALLBACK HANDOFF]: Local LLM omitted handoff call, dispatching to ${targetAgent}.`);
+        return new AIMessage({
+          id: res?.id || `call_sup_${Date.now()}`,
+          content: "",
+          tool_calls: [
+            {
+              name: targetAgent,
+              args: {},
+              id: `call_handoff_${Date.now()}`,
+            },
+          ],
+        });
+      }
     }
 
     return res;

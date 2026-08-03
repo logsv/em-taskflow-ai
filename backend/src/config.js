@@ -30,8 +30,6 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   HOST: z.string().ip().default('127.0.0.1'),
   DATABASE_URL: z.string().url().default('postgresql://taskflow:taskflow@localhost:5432/taskflow'),
-  CHROMA_HOST: z.string().default('localhost'),
-  CHROMA_PORT: z.coerce.number().int().min(1).max(65535).default(8000),
   RAG_ENABLED: boolSchema(true),
   RAG_EMBEDDING_MODEL: z.string().default('nomic-embed-text'),
   RAG_EMBEDDING_PROVIDER: z.string().default('qwen3-vl'),
@@ -128,12 +126,6 @@ const configSchema = z.object({
   }),
   database: z.object({
     url: z.string().url(),
-  }),
-  vectorDb: z.object({
-    chroma: z.object({
-      host: z.string(),
-      port: z.number().int().min(1).max(65535),
-    }),
   }),
   rag: z.object({
     enabled: z.boolean(),
@@ -324,12 +316,6 @@ function loadConfig() {
     },
     database: {
       url: env.DATABASE_URL,
-    },
-    vectorDb: {
-      chroma: {
-        host: env.CHROMA_HOST,
-        port: env.CHROMA_PORT,
-      },
     },
     rag: {
       enabled: env.RAG_ENABLED,

@@ -1,53 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import { useGithubSync } from '../hooks/useGithubSync.js';
 import './Sidebar.css';
 
 function Sidebar({ sessionSummary, isDrawerOpen, setIsDrawerOpen, isOpen, setIsOpen }) {
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncStatus, setSyncStatus] = useState(null);
-  const [syncMessage, setSyncMessage] = useState('');
-
-  const fetchSyncStatus = async () => {
-    try {
-      const res = await fetch('/api/github/sync-status');
-      if (res.ok) {
-        const data = await res.json();
-        setSyncStatus(data);
-      }
-    } catch (err) {
-      console.warn('Failed to fetch GitHub sync status:', err);
-    }
-  };
-
-  useEffect(() => {
-    fetchSyncStatus();
-  }, []);
-
-  const handleGithubSync = async () => {
-    if (isSyncing) return;
-    setIsSyncing(true);
-    setSyncMessage('Syncing GitHub issues...');
-
-    try {
-      const res = await fetch('/api/github/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repo: 'logsv/em-taskflow-ai' }),
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        setSyncMessage(`Synced ${data.count} issue(s)!`);
-        await fetchSyncStatus();
-      } else {
-        setSyncMessage(`Sync failed: ${data.error || 'Unknown error'}`);
-      }
-    } catch (error) {
-      setSyncMessage(`Error syncing GitHub data`);
-    } finally {
-      setIsSyncing(false);
-      setTimeout(() => setSyncMessage(''), 4000);
-    }
-  };
+  const { isSyncing, syncStatus, syncMessage, handleGithubSync } = useGithubSync();
 
   const toggleSidebar = () => {
     setIsOpen(!isOpen);
