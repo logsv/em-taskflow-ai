@@ -1,3 +1,4 @@
+import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import ragService from "../rag/index.js";
 import { ensureLLMReady, getChatModel, getLLMStatus } from "../llm/index.js";
 import { executeAgentQuery, checkAgentReadiness, getAgentTools } from "../agent/graph.js";
@@ -9,6 +10,18 @@ import { buildEmResponse } from "../utils/responseFormatter.js";
 const VALID_DOMAINS = new Set(["jira", "github", "notion", "calendar", "rag"]);
 const TRANSFER_TOOL_PREFIX = "transfer_";
 const RAG_TOOL_NAME = "rag_db_query_retriever";
+
+function getTracerCallbacks() {
+  const apiKey = process.env.LANGCHAIN_API_KEY || process.env.LANGSMITH_API_KEY;
+  if (!apiKey) return undefined;
+
+  const projectName = process.env.LANGCHAIN_PROJECT || process.env.LANGSMITH_PROJECT || "em-taskflow-ai";
+  return [
+    new LangChainTracer({
+      projectName,
+    }),
+  ];
+}
 
 function toArray(value) {
   return Array.isArray(value) ? value : [];

@@ -50,10 +50,6 @@ function Sidebar({ sessionSummary, isOpen, setIsOpen }) {
 
         <nav className="sidebar-nav">
           <div className="nav-section">
-            <button className="nav-item active">
-              <span className="nav-icon">💬</span>
-              <span className="nav-text">Chat Workspace</span>
-            </button>
 
             {/* Refresh GitHub Data Action Button */}
             <button 

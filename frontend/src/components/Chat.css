@@ -651,3 +651,57 @@
   cursor: wait;
 }
 
+/* Markdown Rendering Typography */
+.message-text .md-h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #ab68ff;
+  margin: 1.2rem 0 0.6rem 0;
+  border-bottom: 1px solid rgba(171, 104, 255, 0.2);
+  padding-bottom: 4px;
+}
+
+.message-text .md-h2 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #ab68ff;
+  margin: 1rem 0 0.5rem 0;
+}
+
+.message-text .md-h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #d8b4fe;
+  margin: 0.9rem 0 0.4rem 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.message-text .md-p {
+  margin: 0.5rem 0;
+  line-height: 1.6;
+}
+
+.message-text .md-ul {
+  margin: 0.4rem 0 0.8rem 1.2rem;
+  padding-left: 0.8rem;
+  list-style-type: disc;
+}
+
+.message-text .md-li {
+  margin: 0.3rem 0;
+  line-height: 1.5;
+  color: #e2e8f0;
+}
+
+.message-text .md-link {
+  color: #38bdf8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.message-text .md-link:hover {
+  color: #7dd3fc;
+}
+

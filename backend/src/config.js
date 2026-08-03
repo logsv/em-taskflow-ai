@@ -1,7 +1,20 @@
+import dotenv from 'dotenv';
 import { z } from 'zod';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+
+dotenv.config();
+
+// Ensure LangSmith V2 Tracing environment variables are initialized before LangChain modules load
+const langsmithKey = process.env.LANGCHAIN_API_KEY || process.env.LANGSMITH_API_KEY;
+if (langsmithKey) {
+  process.env.LANGCHAIN_TRACING_V2 = "true";
+  process.env.LANGCHAIN_API_KEY = langsmithKey;
+  process.env.LANGSMITH_API_KEY = langsmithKey;
+  process.env.LANGCHAIN_ENDPOINT = process.env.LANGCHAIN_ENDPOINT || "https://api.smith.langchain.com";
+  process.env.LANGCHAIN_PROJECT = process.env.LANGCHAIN_PROJECT || process.env.LANGSMITH_PROJECT || "em-taskflow-ai";
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

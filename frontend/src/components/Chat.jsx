@@ -143,11 +143,48 @@ function Chat({
   };
 
   const formatMessage = (text) => {
-    const safeText = typeof text === 'string' ? text : text == null ? '' : String(text);
-    return safeText.replace(
+    let safeText = typeof text === 'string' ? text : text == null ? '' : String(text);
+
+    // Convert <think> tags
+    safeText = safeText.replace(
       /<think>([\s\S]*?)<\/think>/g,
       '<span class="think-content">$1</span>'
     );
+
+    // Convert Markdown headers (###, ##, #)
+    safeText = safeText
+      .replace(/^### (.*$)/gim, '<h3 class="md-h3">$1</h3>')
+      .replace(/^## (.*$)/gim, '<h2 class="md-h2">$1</h2>')
+      .replace(/^# (.*$)/gim, '<h1 class="md-h1">$1</h1>');
+
+    // Convert Bold (**text** or __text__)
+    safeText = safeText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    safeText = safeText.replace(/__(.*?)__/g, '<strong>$1</strong>');
+
+    // Convert Markdown links [text](url)
+    safeText = safeText.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-link">$1</a>');
+
+    // Convert bullet list items (+ , * , - )
+    safeText = safeText.replace(/^\s*[\+\*\-]\s+(.*$)/gim, '<li class="md-li">$1</li>');
+
+    // Wrap continuous <li> elements in <ul>
+    safeText = safeText.replace(/(<li class="md-li">[\s\S]*?<\/li>)/g, '<ul class="md-ul">$1</ul>');
+    safeText = safeText.replace(/<\/ul>\s*<ul class="md-ul">/g, '');
+
+    // Convert double newlines to paragraphs / line breaks
+    const paragraphs = safeText.split(/\n\n+/);
+    safeText = paragraphs
+      .map(p => p.trim())
+      .filter(Boolean)
+      .map(p => {
+        if (p.startsWith('<h') || p.startsWith('<ul') || p.startsWith('<div')) {
+          return p;
+        }
+        return `<p class="md-p">${p.replace(/\n/g, '<br/>')}</p>`;
+      })
+      .join('');
+
+    return safeText;
   };
 
   return (

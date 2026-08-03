@@ -1,3 +1,4 @@
+import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import { createSupervisor } from "@langchain/langgraph-supervisor";
 import { Annotation, messagesStateReducer } from "@langchain/langgraph";
 import { AIMessage, SystemMessage } from "@langchain/core/messages";
@@ -13,6 +14,18 @@ import {
 import { config } from "../config.js";
 import { createJiraAgent } from "./jiraAgent.js";
 import { createGithubAgent } from "./githubAgent.js";
+
+function getTracerCallbacks() {
+  const apiKey = process.env.LANGCHAIN_API_KEY || process.env.LANGSMITH_API_KEY;
+  if (!apiKey) return undefined;
+
+  const projectName = process.env.LANGCHAIN_PROJECT || process.env.LANGSMITH_PROJECT || "em-taskflow-ai";
+  return [
+    new LangChainTracer({
+      projectName,
+    }),
+  ];
+}
 import { createNotionAgent } from "./notionAgent.js";
 import { createCalendarAgent } from "./calendarAgent.js";
 import { getRagTool } from "./ragAgent.js";
@@ -378,12 +391,15 @@ export async function executeAgentQuery(query, options = {}) {
     };
 
     const runId = threadId || `thread_${Date.now()}`;
+    const callbacks = getTracerCallbacks();
+
     if (stream) {
       return app.stream(input, {
         configurable: {
           thread_id: runId,
         },
         recursionLimit: maxIterations,
+        callbacks,
       });
     }
 
@@ -392,6 +408,7 @@ export async function executeAgentQuery(query, options = {}) {
         thread_id: runId,
       },
       recursionLimit: maxIterations,
+      callbacks,
     });
 
     const messages = Array.isArray(result.messages) ? result.messages : [];
