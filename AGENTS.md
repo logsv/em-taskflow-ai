@@ -1,152 +1,79 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file provides system guidance, architectural rules, and development guidelines for Codex, Gemini CLI, Antigravity, and AI agents working in this repository.
 
-## Project Overview
+---
 
-EM TaskFlow is an AI-powered productivity platform that combines Retrieval-Augmented Generation (RAG), Model Context Protocol (MCP) integrations, and intelligent LLM routing. The system processes PDF documents, integrates with external services (Notion, Jira, Google Calendar), and uses sophisticated AI agents to provide contextual responses.
+## 🏗️ Project Overview
 
-## Architecture
+**EM TaskFlow AI** is a full-stack, local-first enterprise productivity platform powered by **100% Local LLM Inference (Ollama)**, Retrieval-Augmented Generation (RAG), Model Context Protocol (MCP) integrations, and a LangGraph Multi-Agent Supervisor.
 
-This is a full-stack TypeScript application with:
+---
 
-- **Backend**: Node.js with TypeScript using ES modules (`"type": "module"`)
-- **Frontend**: React application with service worker support
-- **Vector Database**: ChromaDB for document embeddings and semantic search
-- **LLM Provider**: Ollama for local LLM and embedding models (mistral:latest, nomic-embed-text)
-- **External Integrations**: MCP servers for Notion, Jira, Google Calendar via Model Context Protocol
+## 🏛️ Architecture Blueprint
 
-### Key Services
+### 1. Local LLM Infrastructure (100% Ollama)
+- **Primary LLM Provider**: **Ollama** running locally on `http://localhost:11434` (or `http://host.docker.internal:11434` in Docker).
+- **Default Models**: `llama3.2:latest` (or `mistral:latest`) for chat/reasoning and `nomic-embed-text` / `qwen3-vl` for embeddings.
+- **Zero Cloud Key Requirement**: External cloud APIs (Gemini, OpenAI, Anthropic) are disabled (`LLM_GOOGLE_ENABLED: false`, `LLM_OPENAI_ENABLED: false`).
 
-- **Agent Service**: Orchestrates intent analysis, data fetching, and response generation
-- **Enhanced LLM Router**: Production-ready router using the [llm-router](https://www.npmjs.com/package/llm-router) npm package with resilience patterns, metrics tracking, and multi-provider support
-- **RAG Service**: Processes PDFs and performs semantic search using vector embeddings
-- **MCP Service**: Connects to external tools via Model Context Protocol
-- **Database Service**: SQLite3 for chat history and metadata
+### 2. Database & Vector Storage (PostgreSQL 16)
+- **Single Source of Truth**: PostgreSQL 16 (user: `taskflow`, db: `taskflow`, password: `taskflow`).
+- **Hybrid Vector + Full-Text Search**:
+  - `pdf_chunks`: Parent-child document chunking with `pg_trgm` full-text search and vector similarity.
+  - `github_issues`: Cached GitHub issues with JSONB fields.
+  - `sessions`, `chat_threads`, `chat_messages`, `feedback`: Session state and message history.
+- **Fault-Tolerant In-Memory Fallbacks**: In-memory stores (`inMemoryPdfChunks`, `inMemoryGithubIssues`) ensure backend endpoints NEVER fail even if PostgreSQL is temporarily offline.
 
-## Development Commands
+### 3. Multi-Agent System (LangGraph Supervisor + Micro-Agents)
+- **Fast-Path Classifier**: `<300ms` pre-router classifier (`classifyFastPath`) for direct LLM queries (greetings, code generation, math), bypassing routing overhead.
+- **LangGraph Supervisor**: `@langchain/langgraph-supervisor` top-level orchestrator.
+- **Micro-Agent Tool Limit Rule**: Local 3B/7B SLMs degrade in accuracy when presented with >5 tools. Each ReAct sub-agent (e.g., `github_issue_agent`) is restricted to **max 1 tool definition** at a time (raising execution accuracy to 95%+).
 
-### Backend (from /backend directory)
+### 4. Single-Pass RAG Engine & Response Formatter
+- **Single-Pass Generation**: `generateAnswer()` in `backend/src/rag/retriever.js` generates structured markdown sections directly in ONE pass:
+  - `### 📄 Executive Summary`
+  - `### 🔍 Key Document Analysis & Rubric Guidelines`
+  - `### 📌 Source Citations`
+- **Formatter Bypass**: RAG hit queries (`decision.ragHit = true`) bypass secondary EM JSON re-formatting in `responseFormatter.js` to eliminate double-LLM latency and text degradation.
+
+### 5. Frontend UI & Cache Control
+- **Framework**: React 19 + Vite + `@assistant-ui/react`.
+- **Unified PDF Center**: Single collapsible `📄 PDF Documents (RAG)` section in `Sidebar.jsx` with inline file picker (`+ PDF`) and live document history (`GET /api/rag/documents`).
+- **NGINX Cache Control**: `Cache-Control: no-store, no-cache, must-revalidate` for `index.html` prevents stale browser disk caching.
+
+---
+
+## 🛠️ Development & Operational Commands
+
+### Backend Commands (from `/backend`)
 ```bash
-# Build TypeScript
-npm run build
-
-# Start production server
-npm start
-
-# Development with auto-reload
+# Start development server with auto-reload
 npm run dev
 
-# Run tests with coverage (requires building first)
-npm test
+# Build ESM JavaScript output
+npm run build
 
-# Start MCP servers
-npm run start:mcp
-npm run start:google
-npm run start:atlassian
-```
-
-### Frontend (from /frontend directory)
-```bash
-# Start development server (port 3000)
-npm start
-
-# Build for production
-npm build
-
-# Run tests
+# Run unit tests with Jasmine & coverage (88 specs)
 npm test
 ```
 
-### Full System Management (from project root)
+### Full Container Management (from project root)
 ```bash
-# Start all services (Chroma, Ollama, Backend, Frontend)
-./start.sh
+# Build and launch all containers in background (Postgres, Backend, Frontend)
+docker compose up -d --build
 
-# Or use the full management script
-./manage-services.sh start
-./manage-services.sh stop
-./manage-services.sh restart
-./manage-services.sh status
+# Force rebuild frontend container without cache
+docker compose build --no-cache frontend && docker compose up -d frontend
 
-# Individual services
-./manage-services.sh ollama
-./manage-services.sh chroma
-./manage-services.sh backend
-./manage-services.sh frontend
+# Check container health status
+docker compose ps
 ```
 
-## Service Dependencies
+---
 
-1. **ChromaDB** (port 8000): Vector database - must start first
-2. **Ollama** (port 11434): Local LLM service with models mistral:latest and nomic-embed-text
-3. **Backend** (port 4000): Main API server
-4. **Frontend** (port 3000): React UI with proxy to backend
+## 🧪 Testing & Verification Rules
 
-## Testing
-
-- **Test Framework**: Jasmine with Sinon for mocking
-- **Coverage**: NYC (Istanbul) with minimum thresholds: 42% statements, 29% branches, 36% functions
-- **Test Structure**: Located in `backend/test/` with service, route, and utility tests
-- **CI/CD**: GitHub Actions workflow for automated testing
-
-## Configuration Files
-
-- `backend/src/config/local.json`: Single unified configuration file (NOT committed to git)
-- `backend/src/config/local.example.json`: Example configuration file
-- `backend/src/config/schema.ts`: Complete configuration schema with validation
-- `backend/src/config/index.ts`: Configuration loader and helper functions
-- `backend/tsconfig.json`: TypeScript compilation for source
-- `backend/tsconfig.test.json`: TypeScript compilation for tests
-- `backend/jasmine.json`: Test runner configuration
-
-## Important Patterns
-
-- **ES Modules**: All backend code uses ES module imports/exports
-- **Type Safety**: Strict TypeScript configuration
-- **Error Handling**: Comprehensive error handling with graceful fallbacks
-- **Service Pattern**: Business logic separated into service classes
-- **Repository Pattern**: Data access abstraction
-- **Circuit Breaker Pattern**: Resilient external service integration
-
-## Working with the Codebase
-
-When making changes:
-
-1. **Backend changes**: Always run `npm run build` before starting
-2. **Testing**: Use `npm test` for comprehensive testing with coverage
-3. **Dependencies**: The project uses both npm and pnpm - check package.json scripts for the correct package manager
-4. **Service Integration**: When working with RAG/MCP services, ensure external dependencies (Chroma, Ollama) are running
-5. **Environment Variables**: Check for required API keys for external services (Notion, Jira, Google)
-6. **LLM Router Testing**: Use the API endpoints to test the enhanced router:
-   - `GET /api/llm-status` - Check provider status and metrics
-   - `POST /api/llm-test` - Test completions with different providers and parameters
-   - `GET /api/health` - Overall system health including LLM router status
-
-## Common Development Tasks
-
-- **Adding new LLM providers**: Add providers to `backend/src/config/schema.ts` and update `backend/src/config/local.json`
-- **LLM Router Configuration**: Modify provider settings, circuit breakers, and retry policies in `backend/src/config/local.json`
-- **New MCP servers**: Add to `backend/src/services/mcpService.ts` configuration and enable in `backend/src/config/local.json`
-- **RAG enhancements**: Work with `backend/src/services/ragService.ts` for document processing
-- **Frontend components**: Located in `frontend/src/components/`
-
-## Configuration Management
-
-The project now uses a unified convict-powered configuration system:
-
-1. **Copy the example config**: `cp backend/src/config/local.example.json backend/src/config/local.json`
-2. **Edit your local settings**: Update `backend/src/config/local.json` with your API keys
-3. **Environment variables**: Override any setting using environment variables (e.g., `OPENAI_API_KEY`)
-4. **Single source**: One JSON file replaces all previous YAML files
-5. **Type safety**: Configuration is validated at startup with helpful error messages
-
-## File Structure Notes
-
-- Backend source: `backend/src/`
-- Frontend source: `frontend/src/`
-- Compiled backend: `backend/dist/`
-- Test files: `backend/test/`
-- MCP servers: `mcp-servers/` (separate workspace packages)
-- Data storage: `backend/data/` for SQLite and PDFs
-- Vector database: `chroma/` directory
+- **Coverage Engine**: NYC (Istanbul) with Jasmine test runner (`backend/test/`).
+- **Rule of Verification**: Never declare success without executing `npm test`. All 88 specs must pass with **0 failures**.
+- **Observability**: Set `LANGSMITH_API_KEY` (or `LANGCHAIN_API_KEY`) to automatically log V2 agent execution traces to project `em-taskflow-ai`.

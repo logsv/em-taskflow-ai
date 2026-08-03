@@ -191,9 +191,14 @@ export function supervisorPostModelHook(state) {
       const targetDomain = unauthorizedCall.name.replace("transfer_to_", "").replace("_agent", "");
       console.warn(`🛡️ Policy Guardrail Intercepted: Handoff to unauthorized domain '${targetDomain}' blocked.`);
 
+      const isRagOnly = fullAllowedDomains.includes("rag") && !fullAllowedDomains.includes("github");
+      const cleanText = isRagOnly
+        ? "No matching document evidence was found in the uploaded PDF knowledge base for your request. Please ensure your PDF document has been uploaded or try rephrasing your search."
+        : `No tool evidence was found for the requested query in permitted domain(s): ${fullAllowedDomains.join(", ")}.`;
+
       const correctedAIMessage = new AIMessage({
         id: lastMessage.id,
-        content: `Error: Handoff to the '${targetDomain}' domain is unauthorized under the active routing plan. Permitted domains are: ${fullAllowedDomains.join(", ")}. Please answer directly or select a permitted agent.`,
+        content: cleanText,
       });
 
       return {

@@ -39,22 +39,22 @@ const routerOutputSchema = {
 const systemTemplate = `You are an expert routing assistant. Your task is to analyze user queries and determine the most relevant domain (primarily 'github' or 'rag') and a routing plan.
 
 Currently, the primary active workspace domain is:
-- 'github': for queries related to GitHub repositories, pull requests, issues, code, and overall engineering work/tasks.
-- 'rag': for queries that require retrieval of information from local documents/PDFs.
+- 'github': for queries explicitly mentioning GitHub repositories, pull requests, issues, commits, or code reviews.
+- 'rag': for queries regarding documents, uploaded files, PDFs, rubrics, guides, specifications, summaries, or content lookups.
 
 CRITICAL ROUTING RULES:
-1. For specific GitHub queries (e.g. "my open PRs", "repo issues"): set domains: ["github"], must_use_tools: true, confidence: 0.9.
-2. For general productivity, daily focus, or open-ended work inquiries (e.g., "What should I focus on today?", "Daily overview", "What needs my attention?"): set domains: ["github"], must_use_tools: true, confidence: 0.55, and allow_rag: false.
-3. For document/PDF queries: set domains: ["rag"], allow_rag: true, confidence: 0.8.
+1. For document/PDF/rubric/uploaded file queries (e.g. "what is in rubrics", "summarize uploaded document", "what does the guide say"): set domains: ["rag"], allow_rag: true, must_use_tools: false, confidence: 0.9.
+2. For specific GitHub queries (e.g. "my open PRs", "repo issues"): set domains: ["github"], must_use_tools: true, allow_rag: false, confidence: 0.9.
+3. For general productivity, daily focus, or open-ended work inquiries (e.g., "What should I focus on today?", "Daily overview"): set domains: ["github"], must_use_tools: true, confidence: 0.55, and allow_rag: true.
 
 Output a flat JSON object with these exact keys: "domains", "must_use_tools", "allow_rag", "confidence", "reasoning_summary".
 Example response format:
 {
-  "domains": ["github"],
-  "must_use_tools": true,
-  "allow_rag": false,
-  "confidence": 0.55,
-  "reasoning_summary": "General focus query targeting active github tasks."
+  "domains": ["rag"],
+  "must_use_tools": false,
+  "allow_rag": true,
+  "confidence": 0.9,
+  "reasoning_summary": "Document query targeting uploaded PDF/rubric content."
 }
 
 Do not include wrappers like "properties" or "type". Only output raw JSON.
@@ -69,7 +69,7 @@ export function classifyFastPath(query) {
   if (!q) return null;
 
   // Domain keywords that REQUIRE tool or database retrieval
-  const workspaceKeywords = ["github", "issue", "repo", "pr", "pull request", "jira", "sprint", "blocker", "notion", "page", "calendar", "meeting", "schedule", "pdf", "doc", "document", "uploaded", "file"];
+  const workspaceKeywords = ["github", "issue", "repo", "pr", "pull request", "jira", "sprint", "blocker", "notion", "page", "calendar", "meeting", "schedule", "pdf", "doc", "document", "uploaded", "file", "rubric", "rubrics", "what is in"];
   const containsWorkspaceKeyword = workspaceKeywords.some((kw) => q.includes(kw));
 
   if (containsWorkspaceKeyword) {

@@ -366,8 +366,126 @@
 }
 
 .github-refresh-btn.syncing {
-  opacity: 0.7;
+  opacity: 0.8;
   cursor: wait;
+}
+
+/* Collapsible RAG PDF Section */
+.rag-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+}
+
+.rag-header-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.collapse-arrow {
+  font-size: 10px;
+  color: #8e8e93;
+  width: 12px;
+}
+
+.sidebar-upload-btn {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.sidebar-upload-btn:hover {
+  background: #1d4ed8;
+}
+
+.rag-upload-toast {
+  font-size: 11px;
+  color: #34d399;
+  padding: 4px 8px;
+  background: rgba(52, 211, 153, 0.1);
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+
+.rag-doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.rag-doc-empty {
+  font-size: 12px;
+  color: #8e8e93;
+  padding: 8px;
+  background: #1e1e1e;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.upload-inline-link {
+  background: none;
+  border: none;
+  color: #60a5fa;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.rag-doc-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #1e1e1e;
+  border: 1px solid #2d2d2d;
+  border-radius: 6px;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.rag-doc-item:hover {
+  border-color: #3b82f6;
+  background: #252525;
+}
+
+.rag-doc-icon {
+  font-size: 14px;
+}
+
+.rag-doc-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rag-doc-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: #f3f4f6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rag-doc-meta {
+  font-size: 10px;
+  color: #9ca3af;
 }
 
 .sync-icon.spin {

@@ -1,12 +1,11 @@
 import React, { useState, useRef } from 'react';
 import { useAuiState } from '@assistant-ui/react';
+import { useGithubSync } from '../hooks/useGithubSync.js';
 import './Chat.css';
 
 function Chat({ 
   sessionSummary, 
   setSessionSummary, 
-  isDrawerOpen, 
-  setIsDrawerOpen,
   useAdvancedMode,
   setUseAdvancedMode,
   sourcesMap,
@@ -19,9 +18,10 @@ function Chat({
   
   const [feedbackSent, setFeedbackSent] = useState({}); // { messageIndex: 'thumbs_up' | 'thumbs_down' }
 
-  // Reactive state from assistant-ui thread store
-  const messages = useAuiState((s) => s.thread.messages);
-  const isRunning = useAuiState((s) => s.thread.isRunning);
+  // Reactive state from assistant-ui thread store with null-safety
+  const rawMessages = useAuiState((s) => s?.thread?.messages);
+  const isRunning = useAuiState((s) => s?.thread?.isRunning) || false;
+  const messages = Array.isArray(rawMessages) ? rawMessages : [];
 
   const [suggestions] = useState([
     'What should I focus on today?',
@@ -163,12 +163,6 @@ function Chat({
             title="Refresh GitHub DB / CSV"
           >
             {isHeaderSyncing ? '🔄 Syncing...' : '🔄 Refresh GitHub Data'}
-          </button>
-          <button 
-            className={`pdf-drawer-toggle-btn ${isDrawerOpen ? 'active' : ''}`}
-            onClick={() => setIsDrawerOpen(!isDrawerOpen)}
-          >
-            📄 PDF Drawer
           </button>
         </div>
       </header>

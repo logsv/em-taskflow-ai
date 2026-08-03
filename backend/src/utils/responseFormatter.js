@@ -5,7 +5,13 @@ function toArray(value) {
 }
 
 export async function buildEmResponse(query, rawAnswer, evidenceBySource, decision = {}) {
-  if (decision.needsClarification || decision.selectedPath === "direct-llm-fastpath" || decision.routingPlan?.intent_type === "DIRECT_LLM") {
+  if (
+    decision.needsClarification || 
+    decision.selectedPath === "direct-llm-fastpath" || 
+    decision.selectedPath === "rag+llm" || 
+    decision.ragHit || 
+    decision.routingPlan?.intent_type === "DIRECT_LLM"
+  ) {
     return {
       answer: rawAnswer,
     };

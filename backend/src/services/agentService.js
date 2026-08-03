@@ -235,7 +235,9 @@ export class LangGraphAgentService {
 
     const requiresWorkspaceDomains = this.requiresWorkspaceDomains(routingPlan);
     const forceToolUse = routingPlan.must_use_tools || requiresWorkspaceDomains;
-    const allowRag = (routingPlan.allow_rag !== false || routingPlan.domains.includes("rag")) && this.ragEnabled && options.includeRag !== false;
+    const qLower = String(query || "").toLowerCase();
+    const isDocQuery = ["rubric", "pdf", "doc", "document", "uploaded", "file", "what is in"].some((kw) => qLower.includes(kw));
+    const allowRag = (routingPlan.allow_rag !== false || routingPlan.domains.includes("rag") || isDocQuery) && this.ragEnabled && options.includeRag !== false;
     let ragResult = { answer: "", sources: [] };
 
     if (allowRag) {

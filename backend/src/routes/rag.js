@@ -53,7 +53,7 @@ async function handlePdfUpload(req, res) {
 router.post('/upload', upload.single('pdf'), handlePdfUpload);
 router.post('/ingest', requireLegacyRagIngestApi, upload.single('pdf'), handlePdfUpload);
 
-router.get('/documents', requireLegacyRagDocumentsApi, async (req, res) => {
+router.get('/documents', async (req, res) => {
   try {
     const documents = await ragService.listDocuments();
     res.json({

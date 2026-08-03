@@ -277,22 +277,24 @@ async function generateAnswer(query, documents) {
   
   try {
     const prompt = ChatPromptTemplate.fromMessages([
-      ['system', `You are a strictly factual RAG assistant. Your top directive is ZERO HALLUCINATION.
+      ['system', `You are an expert AI document assistant analyzing uploaded PDF files.
 
-CRITICAL GROUNDING DIRECTIVES:
-1. Answer ONLY using facts explicitly stated in the Context below.
-2. Do NOT invent, assume, extrapolate, or bring in outside knowledge.
-3. If the provided Context does NOT contain the necessary information to answer the question, respond EXACTLY:
-   "I cannot find information about this in the uploaded documents."
-4. Include exact document source citations for every claim (e.g. [Document: filename.pdf]).
+INSTRUCTIONS:
+1. Carefully read and synthesize all facts, guidelines, criteria, and details from the provided Context.
+2. Structure your answer clearly using the following section headers:
+   - ### 📄 Executive Summary
+   - ### 🔍 Key Document Analysis & Rubric Guidelines
+   - ### 📌 Source Citations
+3. Highlight key rules, rubric criteria, evaluation steps, or bullet points found in the document.
+4. Always cite the document source (e.g. [Document: filename.pdf]).
 
-Context:
+Retrieved Document Context:
 {context}`],
       ['human', '{question}']
     ]);
 
     const contextText = documents.map((doc, i) => 
-      `Document ${i + 1}:\n${doc.pageContent}`
+      `--- Document ${i + 1} (${doc.metadata?.filename || 'File'}): ---\n${doc.pageContent}`
     ).join('\n\n');
     
     const finalPrompt = await prompt.format({

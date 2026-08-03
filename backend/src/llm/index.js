@@ -92,18 +92,26 @@ function createChatModelForProvider(providerKey, options = {}) {
 export async function initializeLLM() {
   if (initialized) return;
 
-  console.log('🤖 Initializing LLM clients...');
+  console.log('🤖 Initializing local Ollama LLM client...');
   
   const llmConfig = getLlmConfig();
-  const providerKey = llmConfig.defaultProvider || 'openai';
+  const providerKey = llmConfig.defaultProvider || 'ollama';
 
-  chatModel = createChatModelForProvider(providerKey, {
-    model: llmConfig.defaultModel,
-    temperature: 0.1,
-  });
+  try {
+    chatModel = createChatModelForProvider(providerKey, {
+      model: llmConfig.defaultModel || 'llama3.2:latest',
+      temperature: 0.1,
+    });
+  } catch (err) {
+    console.warn(`⚠️ Primary LLM provider "${providerKey}" failed (${err.message}). Falling back to local Ollama...`);
+    chatModel = createChatModelForProvider('ollama', {
+      model: 'llama3.2:latest',
+      temperature: 0.1,
+    });
+  }
 
   initialized = true;
-  console.log('✅ LLM clients initialized successfully');
+  console.log('✅ Local Ollama LLM client initialized successfully');
 }
 
 /**

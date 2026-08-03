@@ -1,9 +1,24 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import { useGithubSync } from '../hooks/useGithubSync.js';
+import { useRagDocuments } from '../hooks/useRagDocuments.js';
 import './Sidebar.css';
 
-function Sidebar({ sessionSummary, isDrawerOpen, setIsDrawerOpen, isOpen, setIsOpen }) {
+function Sidebar({ sessionSummary, isOpen, setIsOpen }) {
   const { isSyncing, syncStatus, syncMessage, handleGithubSync } = useGithubSync();
+  const { documents, isLoading, isUploading, uploadStatus, uploadPdfFile, fetchDocuments } = useRagDocuments();
+  const [isRagSectionOpen, setIsRagSectionOpen] = useState(true);
+  const fileInputRef = useRef(null);
+
+  const handleSidebarFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      uploadPdfFile(file);
+    }
+  };
+
+  const triggerFileSelect = () => {
+    fileInputRef.current?.click();
+  };
 
   const toggleSidebar = () => {
     setIsOpen(!isOpen);
@@ -35,20 +50,9 @@ function Sidebar({ sessionSummary, isDrawerOpen, setIsDrawerOpen, isOpen, setIsO
 
         <nav className="sidebar-nav">
           <div className="nav-section">
-            <button 
-              className="nav-item active"
-              onClick={() => setIsDrawerOpen(false)}
-            >
+            <button className="nav-item active">
               <span className="nav-icon">💬</span>
-              <span className="nav-text">Chat</span>
-            </button>
-            
-            <button 
-              className={`nav-item ${isDrawerOpen ? 'active' : ''}`}
-              onClick={() => setIsDrawerOpen(!isDrawerOpen)}
-            >
-              <span className="nav-icon">📄</span>
-              <span className="nav-text">PDF Docs</span>
+              <span className="nav-text">Chat Workspace</span>
             </button>
 
             {/* Refresh GitHub Data Action Button */}
@@ -68,7 +72,61 @@ function Sidebar({ sessionSummary, isDrawerOpen, setIsDrawerOpen, isOpen, setIsO
         </nav>
 
         <div className="chat-history">
-          <div className="history-header">
+          {/* Collapsible RAG Uploaded PDF Files Section */}
+          <div className="history-header rag-history-header" onClick={() => setIsRagSectionOpen(!isRagSectionOpen)}>
+            <div className="rag-header-title">
+              <span className="collapse-arrow">{isRagSectionOpen ? '▼' : '►'}</span>
+              <h3>PDF Docs (RAG)</h3>
+            </div>
+            <button
+              className="sidebar-upload-btn"
+              onClick={(e) => { e.stopPropagation(); triggerFileSelect(); }}
+              title="Upload new PDF document"
+              disabled={isUploading}
+            >
+              {isUploading ? '⏳' : '+ PDF'}
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleSidebarFileUpload}
+              accept="application/pdf"
+              style={{ display: 'none' }}
+            />
+          </div>
+
+          {uploadStatus && (
+            <div className="sync-toast rag-upload-toast">{uploadStatus}</div>
+          )}
+
+          {isRagSectionOpen && (
+            <div className="rag-doc-list">
+              {isLoading ? (
+                <div className="rag-doc-empty">Loading documents...</div>
+              ) : documents.length === 0 ? (
+                <div className="rag-doc-empty">
+                  <span>No PDFs uploaded yet.</span>
+                  <button className="upload-inline-link" onClick={triggerFileSelect}>
+                    Upload a PDF
+                  </button>
+                </div>
+              ) : (
+                documents.map((doc, idx) => (
+                  <div key={doc.id || idx} className="rag-doc-item" title={doc.filename}>
+                    <span className="rag-doc-icon">📄</span>
+                    <div className="rag-doc-info">
+                      <span className="rag-doc-name">{doc.filename}</span>
+                      <span className="rag-doc-meta">
+                        {doc.chunkCount || 1} chunk(s)
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          <div className="history-header" style={{ marginTop: '16px' }}>
             <h3>Session</h3>
           </div>
 

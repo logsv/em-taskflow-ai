@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AssistantRuntimeProvider, useLocalRuntime } from '@assistant-ui/react';
 import Chat from './components/Chat';
-import PDFUpload from './components/PDFUpload';
 import Sidebar from './components/Sidebar';
 import './App.css';
 
@@ -12,8 +11,8 @@ function App() {
   const [useAdvancedMode, setUseAdvancedMode] = useState(false);
   const [sourcesMap, setSourcesMap] = useState({});
 
-  // Local runtime adapter definition
-  const adapter = {
+  // Local runtime adapter definition with stable reference
+  const adapter = useMemo(() => ({
     async *run({ messages, abortSignal }) {
       const userMsg = messages[messages.length - 1];
       const textContent = userMsg.content[0]?.text || '';
@@ -58,7 +57,7 @@ function App() {
         content: [{ type: 'text', text: data.answer || 'No response generated.' }]
       };
     }
-  };
+  }), [useAdvancedMode, sessionSummary?.threadId]);
 
   const runtime = useLocalRuntime(adapter);
 
@@ -86,11 +85,9 @@ function App() {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <div className={`app ${drawerOpen ? 'drawer-open' : ''}`}>
+      <div className="app">
         <Sidebar 
           sessionSummary={sessionSummary}
-          isDrawerOpen={drawerOpen}
-          setIsDrawerOpen={setDrawerOpen}
           isOpen={sidebarOpen} 
           setIsOpen={setSidebarOpen} 
         />
@@ -99,8 +96,6 @@ function App() {
             <Chat 
               sessionSummary={sessionSummary}
               setSessionSummary={setSessionSummary}
-              isDrawerOpen={drawerOpen}
-              setIsDrawerOpen={setDrawerOpen}
               useAdvancedMode={useAdvancedMode}
               setUseAdvancedMode={setUseAdvancedMode}
               sourcesMap={sourcesMap}
@@ -109,16 +104,6 @@ function App() {
             />
           </div>
         </main>
-
-        <div className={`pdf-drawer ${drawerOpen ? 'open' : ''}`}>
-          <div className="pdf-drawer-header">
-            <h3>📄 PDF Documents</h3>
-            <button className="close-drawer-btn" onClick={() => setDrawerOpen(false)}>✕</button>
-          </div>
-          <div className="pdf-drawer-content">
-            <PDFUpload runtime={runtime} />
-          </div>
-        </div>
       </div>
     </AssistantRuntimeProvider>
   );

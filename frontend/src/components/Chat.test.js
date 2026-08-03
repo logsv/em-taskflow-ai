@@ -26,8 +26,6 @@ const mockRuntime = {
 const defaultProps = {
   sessionSummary: { sessionId: 'sess_123', threadId: 'th_123' },
   setSessionSummary: jest.fn(),
-  isDrawerOpen: false,
-  setIsDrawerOpen: jest.fn(),
   useAdvancedMode: false,
   setUseAdvancedMode: jest.fn(),
   sourcesMap: {},

@@ -604,143 +604,207 @@ class DatabaseService {
   }
 
   async upsertGithubIssues(issues) {
-    await this.ensureInitialized();
     if (!Array.isArray(issues) || issues.length === 0) return 0;
 
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      for (const issue of issues) {
-        const id = `${issue.repo || 'unknown'}#${issue.number}`;
-        const labelsJson = JSON.stringify(issue.labels || []);
-        const dataJson = JSON.stringify(issue);
-
-        await client.query(
-          `INSERT INTO github_issues (
-            id, issue_number, repo, title, state, assignee, html_url, labels_json, data_json, synced_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-          ON CONFLICT (id) DO UPDATE SET
-            issue_number = EXCLUDED.issue_number,
-            repo = EXCLUDED.repo,
-            title = EXCLUDED.title,
-            state = EXCLUDED.state,
-            assignee = EXCLUDED.assignee,
-            html_url = EXCLUDED.html_url,
-            labels_json = EXCLUDED.labels_json,
-            data_json = EXCLUDED.data_json,
-            synced_at = NOW()`,
-          [
-            id,
-            issue.number,
-            issue.repo || 'unknown',
-            issue.title || '',
-            issue.state || 'open',
-            issue.assignee || issue.user || '',
-            issue.html_url || '',
-            labelsJson,
-            dataJson,
-          ]
-        );
+    if (!this.inMemoryGithubIssues) this.inMemoryGithubIssues = new Map();
+    for (const issue of issues) {
+      const num = issue.number || issue.id;
+      if (num) {
+        this.inMemoryGithubIssues.set(String(num), {
+          id: `gh_${num}`,
+          number: num,
+          repo: issue.repo || 'logsv/em-taskflow-ai',
+          title: issue.title || 'Untitled Issue',
+          state: issue.state || 'open',
+          assignee: issue.assignee || 'unassigned',
+          html_url: issue.html_url || `https://github.com/logsv/em-taskflow-ai/issues/${num}`,
+          labels: issue.labels || [],
+          data: issue,
+          synced_at: issue.synced_at || new Date().toISOString(),
+        });
       }
-      await client.query('COMMIT');
+    }
+
+    try {
+      await this.ensureInitialized();
+      const client = await this.pool.connect();
+      try {
+        await client.query('BEGIN');
+        for (const issue of issues) {
+          const id = `gh_${issue.repo || 'logsv/em-taskflow-ai'}_${issue.number}`;
+          const labelsJson = JSON.stringify(issue.labels || []);
+          const dataJson = JSON.stringify(issue);
+
+          await client.query(
+            `INSERT INTO github_issues (
+              id, issue_number, repo, title, state, assignee, html_url, labels_json, data_json, synced_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+            ON CONFLICT (id) DO UPDATE SET
+              issue_number = EXCLUDED.issue_number,
+              repo = EXCLUDED.repo,
+              title = EXCLUDED.title,
+              state = EXCLUDED.state,
+              assignee = EXCLUDED.assignee,
+              html_url = EXCLUDED.html_url,
+              labels_json = EXCLUDED.labels_json,
+              data_json = EXCLUDED.data_json,
+              synced_at = NOW()`,
+            [
+              id,
+              issue.number,
+              issue.repo || 'logsv/em-taskflow-ai',
+              issue.title || '',
+              issue.state || 'open',
+              issue.assignee || '',
+              issue.html_url || '',
+              labelsJson,
+              dataJson,
+            ]
+          );
+        }
+        await client.query('COMMIT');
+        return issues.length;
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (dbErr) {
+      console.warn(`⚠️ PostgreSQL github_issues upsert failed (${dbErr.message}), saved ${issues.length} issue(s) to in-memory GitHub cache.`);
       return issues.length;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
     }
   }
 
   async getGithubIssues({ repo, state, search } = {}) {
-    await this.ensureInitialized();
-    let queryStr = `SELECT id, issue_number as number, repo, title, state, assignee, html_url, labels_json, data_json, synced_at FROM github_issues WHERE 1=1`;
-    const params = [];
+    try {
+      await this.ensureInitialized();
+      let queryStr = `SELECT id, issue_number as number, repo, title, state, assignee, html_url, labels_json, data_json, synced_at FROM github_issues WHERE 1=1`;
+      const params = [];
 
-    if (repo) {
-      params.push(repo);
-      queryStr += ` AND repo = $${params.length}`;
-    }
-    if (state) {
-      params.push(state);
-      queryStr += ` AND state = $${params.length}`;
-    }
-    if (search) {
-      params.push(`%${search}%`);
-      queryStr += ` AND (title ILIKE $${params.length} OR repo ILIKE $${params.length})`;
-    }
+      if (repo) {
+        params.push(repo);
+        queryStr += ` AND repo = $${params.length}`;
+      }
+      if (state) {
+        params.push(state);
+        queryStr += ` AND state = $${params.length}`;
+      }
+      if (search) {
+        params.push(`%${search}%`);
+        queryStr += ` AND (title ILIKE $${params.length} OR repo ILIKE $${params.length})`;
+      }
 
-    queryStr += ` ORDER BY issue_number DESC LIMIT 100`;
+      queryStr += ` ORDER BY issue_number DESC LIMIT 100`;
 
-    const result = await this.pool.query(queryStr, params);
-    return result.rows.map((row) => ({
-      id: row.id,
-      number: row.number,
-      repo: row.repo,
-      title: row.title,
-      state: row.state,
-      assignee: row.assignee,
-      html_url: row.html_url,
-      labels: safeJsonParse(row.labels_json),
-      data: safeJsonParse(row.data_json),
-      synced_at: row.synced_at,
-    }));
+      const result = await this.pool.query(queryStr, params);
+      return result.rows.map((row) => ({
+        id: row.id,
+        number: row.number,
+        repo: row.repo,
+        title: row.title,
+        state: row.state,
+        assignee: row.assignee,
+        html_url: row.html_url,
+        labels: safeJsonParse(row.labels_json),
+        data: safeJsonParse(row.data_json),
+        synced_at: row.synced_at,
+      }));
+    } catch (err) {
+      console.warn("⚠️ PostgreSQL getGithubIssues failed, using in-memory store fallback:", err.message);
+      if (!this.inMemoryGithubIssues) return [];
+      let issues = Array.from(this.inMemoryGithubIssues.values());
+      if (state) {
+        issues = issues.filter((i) => i.state === state);
+      }
+      if (search) {
+        const sLower = search.toLowerCase();
+        issues = issues.filter((i) => i.title.toLowerCase().includes(sLower) || i.repo.toLowerCase().includes(sLower));
+      }
+      return issues;
+    }
   }
 
   async getGithubSyncMetadata() {
-    await this.ensureInitialized();
-    const result = await this.pool.query(`
-      SELECT COUNT(*)::int AS total, MAX(synced_at) AS last_synced_at FROM github_issues
-    `);
-    return result.rows[0] || { total: 0, last_synced_at: null };
+    try {
+      await this.ensureInitialized();
+      const result = await this.pool.query(`
+        SELECT COUNT(*)::int AS total, MAX(synced_at) AS last_synced_at FROM github_issues
+      `);
+      return result.rows[0] || { total: 0, last_synced_at: null };
+    } catch (err) {
+      console.warn("⚠️ PostgreSQL getGithubSyncMetadata failed, using in-memory fallback:", err.message);
+      if (!this.inMemoryGithubIssues) return { total: 0, last_synced_at: null };
+      const issues = Array.from(this.inMemoryGithubIssues.values());
+      const maxSync = issues.reduce((max, i) => (i.synced_at > max ? i.synced_at : max), null);
+      return { total: issues.length, last_synced_at: maxSync };
+    }
   }
 
   async upsertPdfChunks(chunks) {
-    await this.ensureInitialized();
     if (!Array.isArray(chunks) || chunks.length === 0) return 0;
 
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      for (const chunk of chunks) {
-        const id = chunk.id || `${chunk.filename}_${chunk.chunkIndex}`;
-        const embeddingJson = chunk.embedding ? JSON.stringify(chunk.embedding) : null;
+    if (!this.inMemoryPdfChunks) this.inMemoryPdfChunks = [];
+    const fn = chunks[0]?.filename;
+    if (fn) {
+      this.inMemoryPdfChunks = this.inMemoryPdfChunks.filter((c) => c.filename !== fn);
+    }
+    this.inMemoryPdfChunks.push(...chunks);
 
-        await client.query(
-          `INSERT INTO pdf_chunks (
-            id, document_id, filename, chunk_index, content, parent_content, embedding_json, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-          ON CONFLICT (id) DO UPDATE SET
-            document_id = EXCLUDED.document_id,
-            filename = EXCLUDED.filename,
-            chunk_index = EXCLUDED.chunk_index,
-            content = EXCLUDED.content,
-            parent_content = EXCLUDED.parent_content,
-            embedding_json = EXCLUDED.embedding_json,
-            created_at = NOW()`,
-          [
-            id,
-            chunk.documentId || chunk.filename,
-            chunk.filename,
-            chunk.chunkIndex ?? 0,
-            chunk.content || '',
-            chunk.parentContent || chunk.content || '',
-            embeddingJson,
-          ]
-        );
+    try {
+      await this.ensureInitialized();
+      const client = await this.pool.connect();
+      try {
+        await client.query('BEGIN');
+        for (const chunk of chunks) {
+          const id = chunk.id || `${chunk.filename}_${chunk.chunkIndex}`;
+          const embeddingJson = chunk.embedding ? JSON.stringify(chunk.embedding) : null;
+
+          await client.query(
+            `INSERT INTO pdf_chunks (
+              id, document_id, filename, chunk_index, content, parent_content, embedding_json, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            ON CONFLICT (id) DO UPDATE SET
+              document_id = EXCLUDED.document_id,
+              filename = EXCLUDED.filename,
+              chunk_index = EXCLUDED.chunk_index,
+              content = EXCLUDED.content,
+              parent_content = EXCLUDED.parent_content,
+              embedding_json = EXCLUDED.embedding_json,
+              created_at = NOW()`,
+            [
+              id,
+              chunk.documentId || chunk.filename,
+              chunk.filename,
+              chunk.chunkIndex ?? 0,
+              chunk.content || '',
+              chunk.parentContent || chunk.content || '',
+              embeddingJson,
+            ]
+          );
+        }
+        await client.query('COMMIT');
+        return chunks.length;
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
       }
-      await client.query('COMMIT');
+    } catch (dbErr) {
+      console.warn(`⚠️ PostgreSQL pdf_chunks upsert failed (${dbErr.message}), saved ${chunks.length} chunk(s) to in-memory PDF store.`);
       return chunks.length;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
     }
   }
 
   async hybridSearchPdfChunks({ query, embedding = null, topK = 20, metadataFilter = null } = {}) {
-    await this.ensureInitialized();
+    try {
+      await this.ensureInitialized();
+    } catch (dbErr) {
+      console.warn("⚠️ PostgreSQL unavailable for hybridSearchPdfChunks, using in-memory store fallback:", dbErr.message);
+      return this.searchInMemoryPdfChunks({ query, topK, metadataFilter });
+    }
+
     if (!query && !embedding) return [];
 
     let sql = `SELECT id, document_id, filename, chunk_index, content, parent_content, embedding_json, created_at FROM pdf_chunks WHERE 1=1`;
@@ -752,48 +816,61 @@ class DatabaseService {
     }
 
     if (query && query.trim()) {
-      params.push(query.trim());
-      const queryIdx = params.length;
-      sql += ` AND (tsv @@ plainto_tsquery('english', $${queryIdx}) OR content ILIKE '%' || $${queryIdx} || '%' OR filename ILIKE '%' || $${queryIdx} || '%')`;
+      const qClean = query.trim().toLowerCase();
+      // Extract significant terms by stripping common stop words
+      const stopWords = new Set(["what", "is", "in", "the", "for", "are", "about", "show", "me", "tell", "explain", "of", "and", "a", "to"]);
+      const keywords = qClean.split(/\s+/).filter((w) => w.length > 2 && !stopWords.has(w));
+      const searchTerms = keywords.length > 0 ? keywords : [qClean];
+
+      const termConditions = searchTerms.map((term) => {
+        params.push(term);
+        const idx = params.length;
+        return `(content ILIKE '%' || $${idx} || '%' OR filename ILIKE '%' || $${idx} || '%')`;
+      });
+
+      sql += ` AND (${termConditions.join(" OR ")})`;
     }
 
     sql += ` ORDER BY chunk_index ASC LIMIT $${params.length + 1}`;
     params.push(topK * 2);
 
-    const result = await this.pool.query(sql, params);
-    const rows = result.rows.map((row) => {
-      const rowEmbedding = safeJsonParse(row.embedding_json);
-      let similarityScore = 0;
+    try {
+      const result = await this.pool.query(sql, params);
+      const rows = result.rows.map((row) => {
+        const rowEmbedding = safeJsonParse(row.embedding_json);
+        let similarityScore = 0;
 
-      // Cosine similarity computation if vector provided
-      if (Array.isArray(embedding) && Array.isArray(rowEmbedding) && embedding.length === rowEmbedding.length) {
-        let dot = 0, normA = 0, normB = 0;
-        for (let i = 0; i < embedding.length; i++) {
-          dot += embedding[i] * rowEmbedding[i];
-          normA += embedding[i] * embedding[i];
-          normB += rowEmbedding[i] * rowEmbedding[i];
+        if (Array.isArray(embedding) && Array.isArray(rowEmbedding) && embedding.length === rowEmbedding.length) {
+          let dot = 0, normA = 0, normB = 0;
+          for (let i = 0; i < embedding.length; i++) {
+            dot += embedding[i] * rowEmbedding[i];
+            normA += embedding[i] * embedding[i];
+            normB += rowEmbedding[i] * rowEmbedding[i];
+          }
+          similarityScore = (normA && normB) ? (dot / (Math.sqrt(normA) * Math.sqrt(normB))) : 0;
         }
-        similarityScore = (normA && normB) ? (dot / (Math.sqrt(normA) * Math.sqrt(normB))) : 0;
+
+        return {
+          id: row.id,
+          documentId: row.document_id,
+          filename: row.filename,
+          chunkIndex: row.chunk_index,
+          content: row.content,
+          parentContent: row.parent_content,
+          score: similarityScore,
+          createdAt: row.created_at,
+        };
+      });
+
+      if (Array.isArray(embedding)) {
+        rows.sort((a, b) => b.score - a.score);
       }
 
-      return {
-        id: row.id,
-        documentId: row.document_id,
-        filename: row.filename,
-        chunkIndex: row.chunk_index,
-        content: row.content,
-        parentContent: row.parent_content,
-        score: similarityScore,
-        createdAt: row.created_at,
-      };
-    });
-
-    // Sort by vector similarity score if available, otherwise by index
-    if (Array.isArray(embedding)) {
-      rows.sort((a, b) => b.score - a.score);
+      return rows.slice(0, topK);
+    } catch (err) {
+      console.warn("⚠️ PostgreSQL query failed in hybridSearchPdfChunks:", err.message);
+      return this.searchInMemoryPdfChunks({ query, topK, metadataFilter });
     }
-
-    return rows.slice(0, topK);
   }
 
   async deletePdfDocument(filename) {
@@ -806,22 +883,62 @@ class DatabaseService {
   }
 
   async listPdfDocuments() {
-    await this.ensureInitialized();
-    const result = await this.pool.query(`
-      SELECT 
-        filename,
-        COUNT(*)::int AS "chunkCount",
-        MAX(created_at) AS "lastUpdated"
-      FROM pdf_chunks
-      GROUP BY filename
-      ORDER BY "lastUpdated" DESC
-    `);
-    return result.rows.map((r) => ({
-      id: r.filename,
-      filename: r.filename,
-      chunkCount: r.chunkCount,
-      lastUpdated: r.lastUpdated,
-    }));
+    try {
+      await this.ensureInitialized();
+      const result = await this.pool.query(`
+        SELECT 
+          filename,
+          COUNT(*)::int AS "chunkCount",
+          MAX(created_at) AS "lastUpdated"
+        FROM pdf_chunks
+        GROUP BY filename
+        ORDER BY "lastUpdated" DESC
+      `);
+      return result.rows.map((r) => ({
+        id: r.filename,
+        filename: r.filename,
+        chunkCount: r.chunkCount,
+        lastUpdated: r.lastUpdated,
+      }));
+    } catch (err) {
+      console.warn("⚠️ PostgreSQL listPdfDocuments failed, using in-memory fallback:", err.message);
+      return this.listInMemoryPdfDocuments();
+    }
+  }
+
+  searchInMemoryPdfChunks({ query, topK = 20, metadataFilter = null } = {}) {
+    if (!this.inMemoryPdfChunks) this.inMemoryPdfChunks = [];
+    let chunks = [...this.inMemoryPdfChunks];
+
+    if (metadataFilter && metadataFilter.filename) {
+      chunks = chunks.filter((c) => c.filename === metadataFilter.filename);
+    }
+
+    if (query && query.trim()) {
+      const qClean = query.trim().toLowerCase();
+      const stopWords = new Set(["what", "is", "in", "the", "for", "are", "about", "show", "me", "tell", "explain", "of", "and", "a", "to"]);
+      const keywords = qClean.split(/\s+/).filter((w) => w.length > 2 && !stopWords.has(w));
+      const searchTerms = keywords.length > 0 ? keywords : [qClean];
+
+      chunks = chunks.filter((c) => {
+        const text = `${c.content || ''} ${c.filename || ''}`.toLowerCase();
+        return searchTerms.some((term) => text.includes(term));
+      });
+    }
+
+    return chunks.slice(0, topK);
+  }
+
+  listInMemoryPdfDocuments() {
+    if (!this.inMemoryPdfChunks) this.inMemoryPdfChunks = [];
+    const docMap = new Map();
+    for (const chunk of this.inMemoryPdfChunks) {
+      const fn = chunk.filename || "unknown.pdf";
+      const existing = docMap.get(fn) || { id: fn, filename: fn, chunkCount: 0, lastUpdated: new Date().toISOString() };
+      existing.chunkCount += 1;
+      docMap.set(fn, existing);
+    }
+    return Array.from(docMap.values());
   }
 
   async getStats() {
