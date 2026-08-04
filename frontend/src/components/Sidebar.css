@@ -319,19 +319,24 @@
   }
 }
 
-/* When sidebar is closed, hide text elements */
+/* When sidebar is closed, hide all text elements and details */
 @media (min-width: 769px) {
   .sidebar.closed {
     width: 60px;
     transform: translateX(0);
+    overflow: hidden;
   }
   
   .sidebar.closed .new-chat-text,
   .sidebar.closed .nav-text,
   .sidebar.closed .history-header,
   .sidebar.closed .history-list,
+  .sidebar.closed .chat-history,
+  .sidebar.closed .session-card,
+  .sidebar.closed .rag-doc-list,
+  .sidebar.closed .sync-toast,
   .sidebar.closed .user-details {
-    display: none;
+    display: none !important;
   }
   
   .sidebar.closed .new-chat-btn {

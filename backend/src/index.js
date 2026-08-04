@@ -10,16 +10,6 @@ import { attachRequestContext, createRateLimiter } from './middleware/hardening.
 
 dotenv.config();
 
-// Automatically enable LangChain / LangSmith V2 Tracing across all agents, router, and supervisor
-const langsmithKey = process.env.LANGCHAIN_API_KEY || process.env.LANGSMITH_API_KEY;
-if (langsmithKey) {
-  process.env.LANGCHAIN_TRACING_V2 = "true";
-  process.env.LANGCHAIN_API_KEY = langsmithKey;
-  process.env.LANGCHAIN_ENDPOINT = process.env.LANGCHAIN_ENDPOINT || "https://api.smith.langchain.com";
-  process.env.LANGCHAIN_PROJECT = process.env.LANGCHAIN_PROJECT || process.env.LANGSMITH_PROJECT || "em-taskflow-ai";
-  console.log(`📡 [LANGSMITH TRACING]: Enabled automatic LangChain V2 tracing for project "${process.env.LANGCHAIN_PROJECT}"`);
-}
-
 const app = express();
 const serverConfig = getServerConfig();
 const PORT = serverConfig.port;

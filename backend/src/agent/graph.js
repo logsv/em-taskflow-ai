@@ -1,4 +1,3 @@
-import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import { createSupervisor } from "@langchain/langgraph-supervisor";
 import { Annotation, messagesStateReducer } from "@langchain/langgraph";
 import { AIMessage, SystemMessage } from "@langchain/core/messages";
@@ -14,22 +13,11 @@ import {
 import { config } from "../config.js";
 import { createJiraAgent } from "./jiraAgent.js";
 import { createGithubAgent } from "./githubAgent.js";
-
-function getTracerCallbacks() {
-  const apiKey = process.env.LANGCHAIN_API_KEY || process.env.LANGSMITH_API_KEY;
-  if (!apiKey) return undefined;
-
-  const projectName = process.env.LANGCHAIN_PROJECT || process.env.LANGSMITH_PROJECT || "em-taskflow-ai";
-  return [
-    new LangChainTracer({
-      projectName,
-    }),
-  ];
-}
 import { createNotionAgent } from "./notionAgent.js";
 import { createCalendarAgent } from "./calendarAgent.js";
 import { getRagTool } from "./ragAgent.js";
 import { supervisorAgentPromptTemplate } from "./prompts.js";
+import { getTracerCallbacks } from "../utils/tracer.js";
 
 // Define the custom state schema for the supervisor graph
 export const SupervisorState = Annotation.Root({
@@ -391,7 +379,7 @@ export async function executeAgentQuery(query, options = {}) {
     };
 
     const runId = threadId || `thread_${Date.now()}`;
-    const callbacks = getTracerCallbacks();
+    const callbacks = getTracerCallbacks({ threadId: runId, ...options });
 
     if (stream) {
       return app.stream(input, {

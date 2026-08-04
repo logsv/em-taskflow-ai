@@ -1,12 +1,35 @@
 # AGENTS.md
 
-This file provides system guidance, architectural rules, and development guidelines for Codex, Gemini CLI, Antigravity, and AI agents working in this repository.
+This file provides system guidance, architectural rules, anti-hallucination guidelines, and development rules for Codex, Gemini CLI, Antigravity, and AI agents working in this repository.
 
 ---
 
 ## 🏗️ Project Overview
 
 **EM TaskFlow AI** is a full-stack, local-first enterprise productivity platform powered by **100% Local LLM Inference (Ollama)**, Retrieval-Augmented Generation (RAG), Model Context Protocol (MCP) integrations, and a LangGraph Multi-Agent Supervisor.
+
+---
+
+## 🛡️ Anti-Hallucination & Coding Rules (STRICT ENFORCEMENT)
+
+1. **Rule of Empirical Log Inspection**:
+   - NEVER form a diagnostic hypothesis for a runtime failure or test breakage without reading the full, un-truncated error log.
+   - Base all debugging strictly on log evidence, stack traces, and actual empirical outputs.
+
+2. **Rule of Zero-Downtime Telemetry**:
+   - Telemetry, tracing (Langfuse/LangSmith), and observability callbacks MUST be non-blocking.
+   - An error in telemetry or trace logging must NEVER fail an API request or crash a server endpoint.
+
+3. **Rule of Database Separation**:
+   - **Primary App DB** (`taskflow` on port 5432): Application state, sessions, issue caches, PDF chunks.
+   - **Analytics DB** (`langfuse_db` on port 5433): Dedicated strictly to trace graphs, token counts, and latency telemetry.
+   - Agents must NEVER write analytics trace tables into the primary application schema.
+
+4. **Rule of Verification**:
+   - Never declare success without executing `npm test`. All 88 specs must pass with **0 failures**.
+
+5. **No Superficial Symptom Patches**:
+   - NEVER resolve errors by masking symptoms, swallowing exceptions silently, returning dummy fallbacks, or commenting out failing unit test assertions.
 
 ---
 
@@ -37,11 +60,6 @@ This file provides system guidance, architectural rules, and development guideli
   - `### 📌 Source Citations`
 - **Formatter Bypass**: RAG hit queries (`decision.ragHit = true`) bypass secondary EM JSON re-formatting in `responseFormatter.js` to eliminate double-LLM latency and text degradation.
 
-### 5. Frontend UI & Cache Control
-- **Framework**: React 19 + Vite + `@assistant-ui/react`.
-- **Unified PDF Center**: Single collapsible `📄 PDF Documents (RAG)` section in `Sidebar.jsx` with inline file picker (`+ PDF`) and live document history (`GET /api/rag/documents`).
-- **NGINX Cache Control**: `Cache-Control: no-store, no-cache, must-revalidate` for `index.html` prevents stale browser disk caching.
-
 ---
 
 ## 🛠️ Development & Operational Commands
@@ -60,7 +78,7 @@ npm test
 
 ### Full Container Management (from project root)
 ```bash
-# Build and launch all containers in background (Postgres, Backend, Frontend)
+# Build and launch all containers in background
 docker compose up -d --build
 
 # Force rebuild frontend container without cache
@@ -69,11 +87,3 @@ docker compose build --no-cache frontend && docker compose up -d frontend
 # Check container health status
 docker compose ps
 ```
-
----
-
-## 🧪 Testing & Verification Rules
-
-- **Coverage Engine**: NYC (Istanbul) with Jasmine test runner (`backend/test/`).
-- **Rule of Verification**: Never declare success without executing `npm test`. All 88 specs must pass with **0 failures**.
-- **Observability**: Set `LANGSMITH_API_KEY` (or `LANGCHAIN_API_KEY`) to automatically log V2 agent execution traces to project `em-taskflow-ai`.

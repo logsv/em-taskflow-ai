@@ -1,5 +1,5 @@
-import { Client } from 'langsmith';
 import feedbackRepository from '../../persistence/feedback/FeedbackRepository.js';
+import { resolveLangfuseBaseUrl } from '../../utils/tracer.js';
 
 export class FeedbackApplicationService {
   constructor({ feedbackRepo = null, dbService = null } = {}) {
@@ -20,17 +20,31 @@ export class FeedbackApplicationService {
       },
     });
 
-    if (traceId && process.env.LANGCHAIN_API_KEY) {
+    if (traceId && process.env.LANGFUSE_PUBLIC_KEY) {
       try {
-        const client = new Client();
-        await client.createFeedback(traceId, 'user_score', {
-          score: score === 'thumbs_up' ? 1.0 : 0.0,
-          value: score,
-          comment: comment || undefined,
+        const { Langfuse } = await import('langfuse');
+        const baseUrl = resolveLangfuseBaseUrl();
+
+        const langfuse = new Langfuse({
+          publicKey: process.env.LANGFUSE_PUBLIC_KEY,
+          secretKey: process.env.LANGFUSE_SECRET_KEY,
+          baseUrl,
         });
-        console.log(`✅ LangSmith feedback logged successfully for trace: ${traceId}`);
+
+        const numericScore = typeof score === 'number' 
+          ? score 
+          : (score === 'thumbs_up' || score === 'like' || score === 1 || score === '1' ? 1.0 : 0.0);
+
+        langfuse.score({
+          traceId,
+          name: 'user_feedback',
+          value: numericScore,
+          comment: comment || (numericScore === 1.0 ? 'Thumbs Up' : 'Thumbs Down'),
+        });
+        await langfuse.flushAsync();
+        console.log(`✅ Langfuse feedback score (${numericScore}) logged successfully for trace: ${traceId}`);
       } catch (error) {
-        console.warn(`⚠️ Failed to submit feedback to LangSmith:`, error?.message || error);
+        console.warn(`⚠️ Failed to submit feedback to Langfuse:`, error?.message || error);
       }
     }
 

@@ -52,6 +52,8 @@ describe('ChatApplicationService', () => {
     expect(dbService.ensureThread).toHaveBeenCalledWith('th_123', 'Hello', 'sess_123');
     expect(agent.processQuery).toHaveBeenCalledWith('Hello', {
       threadId: 'th_123',
+      sessionId: 'sess_123',
+      userId: 'user_logsv',
       ragMode: 'baseline',
     });
     expect(dbService.saveMessage.calls.count()).toBe(2);

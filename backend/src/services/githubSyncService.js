@@ -28,13 +28,27 @@ class GithubSyncService {
       rawIssues = await response.json();
     } catch (error) {
       console.warn(`⚠️ [GITHUB SYNC]: Direct API fetch failed (${error.message}). Checking search API fallback...`);
-      const searchUrl = `https://api.github.com/search/issues?q=repo:${repoName}+is:issue&per_page=100`;
-      const searchRes = await fetch(searchUrl, { headers });
-      if (searchRes.ok) {
-        const searchData = await searchRes.json();
-        rawIssues = searchData.items || [];
-      } else {
-        throw error;
+      try {
+        const searchUrl = `https://api.github.com/search/issues?q=repo:${repoName}+is:issue&per_page=100`;
+        const searchRes = await fetch(searchUrl, { headers });
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          rawIssues = searchData.items || [];
+        } else {
+          throw error;
+        }
+      } catch (fallbackError) {
+        console.warn(`⚠️ [GITHUB SYNC]: All live API attempts failed (${fallbackError.message}). Using PostgreSQL cache fallback...`);
+        const meta = await databaseService.getGithubSyncMetadata().catch(() => ({ total: 0, last_synced_at: null }));
+        return {
+          success: true,
+          count: meta.total || 0,
+          dbSavedCount: meta.total || 0,
+          repo: repoName,
+          syncedAt: meta.last_synced_at || new Date().toISOString(),
+          isCacheFallback: true,
+          message: `Loaded ${meta.total || 0} issue(s) from PostgreSQL cache. (Live API rate-limited).`
+        };
       }
     }
 

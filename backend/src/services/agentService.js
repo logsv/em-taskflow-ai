@@ -1,4 +1,3 @@
-import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import ragService from "../rag/index.js";
 import { ensureLLMReady, getChatModel, getLLMStatus } from "../llm/index.js";
 import { executeAgentQuery, checkAgentReadiness, getAgentTools } from "../agent/graph.js";
@@ -6,22 +5,11 @@ import { getRuntimeConfig } from "../config.js";
 import { getRouterChain } from "../agent/llmRouter.js";
 import { getGithubMCPTools, getGoogleMCPTools, getJiraMCPTools, getNotionMCPTools } from "../mcp/index.js";
 import { buildEmResponse } from "../utils/responseFormatter.js";
+import { getTracerCallbacks, createEndToEndTrace, createSpan } from "../utils/tracer.js";
 
 const VALID_DOMAINS = new Set(["jira", "github", "notion", "calendar", "rag"]);
 const TRANSFER_TOOL_PREFIX = "transfer_";
 const RAG_TOOL_NAME = "rag_db_query_retriever";
-
-function getTracerCallbacks() {
-  const apiKey = process.env.LANGCHAIN_API_KEY || process.env.LANGSMITH_API_KEY;
-  if (!apiKey) return undefined;
-
-  const projectName = process.env.LANGCHAIN_PROJECT || process.env.LANGSMITH_PROJECT || "em-taskflow-ai";
-  return [
-    new LangChainTracer({
-      projectName,
-    }),
-  ];
-}
 
 function toArray(value) {
   return Array.isArray(value) ? value : [];
@@ -92,6 +80,20 @@ export class LangGraphAgentService {
 
     this.runtimeMetrics.totalQueries += 1;
     const startTime = Date.now();
+
+    // Create Root Request Trace for End-to-End Langfuse Observability
+    const { trace, callbacks } = createEndToEndTrace({
+      name: `Chat Request: "${(userQuery || '').slice(0, 40)}"`,
+      query: userQuery,
+      sessionId: options.sessionId || options.threadId || "default_session",
+      userId: options.userId || "user_logsv",
+      tags: options.tags || ["em-taskflow", "chat-api"],
+    });
+    if (trace) {
+      options.trace = trace;
+      options.tracerCallbacks = callbacks;
+    }
+
     const runtime = getRuntimeConfig();
     const routerRuntime = runtime.router || {};
     const ragMode = options.ragMode === "advanced" ? "advanced" : "baseline";
@@ -122,10 +124,10 @@ export class LangGraphAgentService {
 
     let result;
     if (runtime.mode === "rag_only") {
-      const plan = await this.routeQueryPlan(userQuery, runtime.mode);
+      const plan = await this.routeQueryPlan(userQuery, runtime.mode, options);
       decision.routingPlan = plan;
       this.runtimeMetrics.routerQueries += 1;
-      result = await this.runRagOnlyPath(userQuery, ragMode, decision);
+      result = await this.runRagOnlyPath(userQuery, ragMode, decision, options);
     } else if (rollout.mode === "off") {
       this.runtimeMetrics.offQueries += 1;
       decision.reasons.push("router_rollout_off");
@@ -133,7 +135,7 @@ export class LangGraphAgentService {
     } else if (rollout.mode === "shadow") {
       this.runtimeMetrics.shadowQueries += 1;
       this.runtimeMetrics.routerQueries += 1;
-      const plan = await this.routeQueryPlan(userQuery, runtime.mode);
+      const plan = await this.routeQueryPlan(userQuery, runtime.mode, options);
       decision.routingPlan = plan;
       decision.reasons.push("router_shadow_mode_not_enforced");
       result = await this.runLegacyPath(userQuery, decision, options);
@@ -167,7 +169,7 @@ export class LangGraphAgentService {
       this.runtimeMetrics.routerQueries += 1;
       
       if (!routingPlan) {
-        routingPlan = await this.routeQueryPlan(queryToRun, runtime.mode);
+        routingPlan = await this.routeQueryPlan(queryToRun, runtime.mode, options);
       }
       decision.routingPlan = routingPlan;
 
@@ -190,6 +192,28 @@ export class LangGraphAgentService {
     const emResponse = await buildEmResponse(queryToRun, result.answer || "", evidenceBySource, decision);
     const executionTime = Date.now() - startTime;
     const successGates = this.computeSuccessGates(routerRuntime.successGates || {});
+
+    // Finalize Langfuse root trace output and flush asynchronously (non-blocking)
+    if (trace && typeof trace.update === "function") {
+      try {
+        trace.update({
+          output: emResponse.answer,
+          metadata: {
+            executionTime,
+            decision,
+          },
+        });
+      } catch (_err) {}
+    }
+
+    const tracerCallbacks = getTracerCallbacks(options);
+    if (Array.isArray(tracerCallbacks)) {
+      for (const cb of tracerCallbacks) {
+        if (typeof cb.flushAsync === "function") {
+          cb.flushAsync().catch(() => {});
+        }
+      }
+    }
 
     return {
       threadId: options.threadId || null,
@@ -243,7 +267,7 @@ export class LangGraphAgentService {
     if (routingPlan?.intent_type === "DIRECT_LLM" || (Array.isArray(routingPlan?.domains) && routingPlan.domains.length === 0 && !routingPlan.must_use_tools && !routingPlan.allow_rag)) {
       decision.selectedPath = "direct-llm-fastpath";
       console.log(`⚡ [AGENT SERVICE FAST-PATH]: Direct LLM execution for query "${query.slice(0, 40)}..." (0 tools).`);
-      return this.runLlmExecutor(query);
+      return this.runLlmExecutor(query, options);
     }
 
     const requiresWorkspaceDomains = this.requiresWorkspaceDomains(routingPlan);
@@ -254,7 +278,7 @@ export class LangGraphAgentService {
     let ragResult = { answer: "", sources: [] };
 
     if (allowRag) {
-      ragResult = await this.tryRag(query, decision.ragMode);
+      ragResult = await this.tryRag(query, decision.ragMode, options);
       decision.ragHit = Array.isArray(ragResult?.sources) && ragResult.sources.length > 0;
       if (decision.ragHit) {
         decision.selectedPath = "rag+llm";
@@ -271,6 +295,7 @@ export class LangGraphAgentService {
 
     if (decision.mcpReady && (forceToolUse || !decision.ragHit)) {
       const supervisorResult = await executeAgentQuery(query, {
+        ...options,
         threadId: options.threadId,
         routingPlan,
         maxIterations: 25,
@@ -316,7 +341,7 @@ export class LangGraphAgentService {
     return this.runLlmExecutor(query);
   }
 
-  async routeQueryPlan(query, runtimeMode) {
+  async routeQueryPlan(query, runtimeMode, options = {}) {
     if (runtimeMode === "rag_only") {
       return {
         domains: ["rag"],
@@ -329,7 +354,8 @@ export class LangGraphAgentService {
 
     try {
       const routerChain = getRouterChain();
-      const rawPlan = await routerChain.invoke({ query });
+      const callbacks = getTracerCallbacks(options);
+      const rawPlan = await routerChain.invoke({ query }, { callbacks });
       return this.normalizeRoutingPlan(rawPlan);
     } catch (error) {
       console.warn("⚠️ LLM router failed, using passthrough fallback:", error?.message || error);
@@ -607,13 +633,14 @@ export class LangGraphAgentService {
     return { mode, bucket, enabled: true };
   }
 
-  async runLlmExecutor(query) {
+  async runLlmExecutor(query, options = {}) {
     const { HumanMessage: HM, SystemMessage: SM } = await import("@langchain/core/messages");
     const llm = getChatModel();
+    const callbacks = getTracerCallbacks(options);
     const response = await llm.invoke([
       new SM("You are a helpful AI assistant. Answer the user's question clearly and concisely."),
       new HM(query),
-    ]);
+    ], { callbacks });
     const answer = typeof response.content === "string" ? response.content : String(response.content || "");
     return {
       answer: answer || "No response generated.",
@@ -621,12 +648,12 @@ export class LangGraphAgentService {
     };
   }
 
-  async tryRag(query, ragMode) {
+  async tryRag(query, ragMode, options = {}) {
     try {
       if (ragMode === "advanced") {
-        return await ragService.agenticRetrieve(query);
+        return await ragService.agenticRetrieve(query, options);
       }
-      return await ragService.baselineRetrieve(query);
+      return await ragService.baselineRetrieve(query, options);
     } catch (error) {
       return {
         answer: "",

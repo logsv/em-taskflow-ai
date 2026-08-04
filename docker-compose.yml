@@ -20,10 +20,11 @@ services:
       MCP_GOOGLE_ENABLED: "false"
       MCP_GITHUB_ENABLED: "true"
       GITHUB_TOKEN: ${GITHUB_TOKEN}
-      LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-true}
-      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-${LANGSMITH_API_KEY:-}}
-      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-${LANGCHAIN_API_KEY:-}}
+      LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-false}
       LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-em-taskflow-ai}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-a79a9fde-c84d-4539-8a84-d6192b2f3c0c}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-bcf0d4e3-cb79-44a5-bb85-98824bfcb6b7}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,6 +74,43 @@ services:
     networks:
       - em-taskflow-net
 
+  analytics-db:
+    image: postgres:16
+    container_name: em-taskflow-analytics-db
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse_db
+    volumes:
+      - analytics_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - em-taskflow-net
+
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: em-taskflow-langfuse
+    depends_on:
+      analytics-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://langfuse:langfuse@analytics-db:5432/langfuse_db"
+      NEXTAUTH_SECRET: "my-secret-key-for-local-langfuse"
+      SALT: "my-salt-for-local-langfuse"
+      NEXTAUTH_URL: "http://localhost:3001"
+      TELEMETRY_ENABLED: "false"
+    ports:
+      - "3001:3000"
+    networks:
+      - em-taskflow-net
+
   vllm:
     image: vllm/vllm-openai:latest
     container_name: em-taskflow-vllm
@@ -104,4 +142,5 @@ networks:
 volumes:
   backend_data:
   postgres_data:
+  analytics_postgres_data:
   vllm_cache:

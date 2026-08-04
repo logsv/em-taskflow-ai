@@ -41,6 +41,8 @@ export class ChatApplicationService {
     );
     const result = await this.agentService.processQuery(query, {
       threadId: ensuredThread.id,
+      sessionId: sessionContext?.sessionId || null,
+      userId: sessionContext?.userId || 'user_logsv',
       ragMode,
     });
 

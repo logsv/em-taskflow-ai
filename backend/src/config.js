@@ -6,16 +6,6 @@ import fs from 'fs';
 
 dotenv.config();
 
-// Ensure LangSmith V2 Tracing environment variables are initialized before LangChain modules load
-const langsmithKey = process.env.LANGCHAIN_API_KEY || process.env.LANGSMITH_API_KEY;
-if (langsmithKey) {
-  process.env.LANGCHAIN_TRACING_V2 = "true";
-  process.env.LANGCHAIN_API_KEY = langsmithKey;
-  process.env.LANGSMITH_API_KEY = langsmithKey;
-  process.env.LANGCHAIN_ENDPOINT = process.env.LANGCHAIN_ENDPOINT || "https://api.smith.langchain.com";
-  process.env.LANGCHAIN_PROJECT = process.env.LANGCHAIN_PROJECT || process.env.LANGSMITH_PROJECT || "em-taskflow-ai";
-}
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -43,11 +33,9 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   HOST: z.string().ip().default('127.0.0.1'),
   DATABASE_URL: z.string().url().default('postgresql://taskflow:taskflow@localhost:5432/taskflow'),
-  LANGSMITH_API_KEY: z.string().optional(),
-  LANGCHAIN_API_KEY: z.string().optional(),
-  LANGCHAIN_TRACING_V2: boolSchema(true),
-  LANGCHAIN_PROJECT: z.string().default('em-taskflow-ai'),
-  LANGCHAIN_ENDPOINT: z.string().default('https://api.smith.langchain.com'),
+  LANGFUSE_PUBLIC_KEY: z.string().optional(),
+  LANGFUSE_SECRET_KEY: z.string().optional(),
+  LANGFUSE_HOST: z.string().optional(),
   RAG_ENABLED: boolSchema(true),
   RAG_EMBEDDING_MODEL: z.string().default('nomic-embed-text'),
   RAG_EMBEDDING_PROVIDER: z.string().default('qwen3-vl'),

@@ -48,24 +48,9 @@ function Sidebar({ sessionSummary, isOpen, setIsOpen }) {
           </button>
         </div>
 
-        <nav className="sidebar-nav">
-          <div className="nav-section">
-
-            {/* Refresh GitHub Data Action Button */}
-            <button 
-              className={`nav-item github-refresh-btn ${isSyncing ? 'syncing' : ''}`}
-              onClick={handleGithubSync}
-              disabled={isSyncing}
-              title="Sync live GitHub issues into PostgreSQL / CSV cache"
-            >
-              <span className={`nav-icon sync-icon ${isSyncing ? 'spin' : ''}`}>🔄</span>
-              <span className="nav-text">{isSyncing ? 'Syncing...' : 'Refresh GitHub Data'}</span>
-            </button>
-          </div>
-          {syncMessage && (
-            <div className="sync-toast">{syncMessage}</div>
-          )}
-        </nav>
+        {syncMessage && (
+          <div className="sync-toast">{syncMessage}</div>
+        )}
 
         <div className="chat-history">
           {/* Collapsible RAG Uploaded PDF Files Section */}

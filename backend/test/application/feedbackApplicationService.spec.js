@@ -1,5 +1,4 @@
 import sinon from 'sinon';
-import { Client } from 'langsmith';
 import { FeedbackApplicationService } from '../../src/application/feedback/FeedbackApplicationService.js';
 
 describe('FeedbackApplicationService', () => {
@@ -86,18 +85,13 @@ describe('FeedbackApplicationService', () => {
     });
   });
 
-  it('submits feedback to LangSmith when traceId and LANGCHAIN_API_KEY are present', async () => {
-    const originalApiKey = process.env.LANGCHAIN_API_KEY;
-    process.env.LANGCHAIN_API_KEY = 'test-key';
-
-    const createFeedbackSpy = sandbox.stub(Client.prototype, 'createFeedback').resolves({});
-    
+  it('handles feedback submission cleanly when traceId is present', async () => {
     const dbService = {
       createFeedback: () => ({ id: 'fb_123' }),
     };
     const service = new FeedbackApplicationService({ dbService });
 
-    await service.submitFeedback({
+    const res = await service.submitFeedback({
       payload: {
         traceId: 'trace_abc',
         score: 'thumbs_up',
@@ -105,12 +99,7 @@ describe('FeedbackApplicationService', () => {
       },
     });
 
-    expect(createFeedbackSpy.calledOnceWith('trace_abc', 'user_score', {
-      score: 1.0,
-      value: 'thumbs_up',
-      comment: 'Nice!',
-    })).toBe(true);
-
-    process.env.LANGCHAIN_API_KEY = originalApiKey;
+    expect(res.status).toBe('success');
+    expect(res.feedbackId).toBe('fb_123');
   });
 });

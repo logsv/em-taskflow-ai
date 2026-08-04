@@ -8,9 +8,7 @@ import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { ensureLLMReady, getChatModel } from '../llm/index.js';
 import { getRagConfig, getRagAdvancedConfig } from '../config.js';
 import databaseService from '../db/postgres.js';
-
-// Retrieval configuration
-const MAX_RETRIEVAL_K = 30; // Initial retrieval
+import { getTracerCallbacks, createSpan } from '../utils/tracer.js';
 
 /**
  * Baseline retrieval: vector search + answer generation
@@ -26,7 +24,7 @@ export async function baselineRetrieve(query, options = {}) {
   try {
     await ensureLLMReady();
     const docs = await baseRetrieve(query, topK, { strategy: 'similarity', metadataFilter });
-    const answer = await generateAnswer(query, docs);
+    const answer = await generateAnswer(query, docs, options);
     const executionTime = Date.now() - startTime;
 
     return {
@@ -73,7 +71,7 @@ export async function agenticRetrieve(query, options = {}) {
     // Step 1: Query rewriting and expansion
     let queries = [query];
     if (enableQueryRewriting) {
-      queries = await rewriteQueries(query, maxQueries);
+      queries = await rewriteQueries(query, maxQueries, options);
       console.log(`📝 Generated ${queries.length} query variants`);
     }
 
@@ -98,12 +96,12 @@ export async function agenticRetrieve(query, options = {}) {
     // Step 4: Contextual compression
     let finalDocs = rankedDocs;
     if (enableCompression) {
-      finalDocs = await compressDocuments(query, rankedDocs);
+      finalDocs = await compressDocuments(query, rankedDocs, options);
       console.log(`🗜️ Applied contextual compression`);
     }
 
     // Step 5: Generate answer
-    const answer = await generateAnswer(query, finalDocs);
+    const answer = await generateAnswer(query, finalDocs, options);
 
     const executionTime = Date.now() - startTime;
     console.log(`✅ Agentic retrieval completed in ${executionTime}ms`);
@@ -165,6 +163,7 @@ export async function simpleRetrieve(query, topK = 5) {
  */
 async function baseRetrieve(query, k, options = {}) {
   const { metadataFilter = null } = options;
+  const span = createSpan(options.trace, 'PostgreSQL Hybrid Search', { query, topK: k });
 
   try {
     const pgResults = await databaseService.hybridSearchPdfChunks({
@@ -176,6 +175,12 @@ async function baseRetrieve(query, k, options = {}) {
 
     if (Array.isArray(pgResults) && pgResults.length > 0) {
       console.log(`🗄️ PostgreSQL Hybrid Search retrieved ${pgResults.length} chunk(s) for query: "${query.slice(0, 50)}..."`);
+      span.end({
+        output: {
+          chunkCount: pgResults.length,
+          chunks: pgResults.map((c) => ({ id: c.id, score: c.score, filename: c.filename })),
+        },
+      });
       return pgResults.map((item) => new Document({
         pageContent: item.parentContent || item.content,
         metadata: {
@@ -186,7 +191,9 @@ async function baseRetrieve(query, k, options = {}) {
         },
       }));
     }
+    span.end({ output: { chunkCount: 0 } });
   } catch (pgErr) {
+    span.end({ output: { error: pgErr.message } });
     console.warn(`⚠️ PostgreSQL hybrid retrieval failed (${pgErr.message})`);
   }
 
@@ -196,8 +203,9 @@ async function baseRetrieve(query, k, options = {}) {
 /**
  * Query rewriting using LLM
  */
-async function rewriteQueries(originalQuery, maxQueries) {
+async function rewriteQueries(originalQuery, maxQueries = 3, options = {}) {
   const llm = getChatModel();
+  const callbacks = getTracerCallbacks(options);
   
   try {
     const prompt = ChatPromptTemplate.fromMessages([
@@ -211,7 +219,7 @@ Return only the alternative questions, one per line, without numbering or bullet
       ['human', originalQuery]
     ]);
 
-    const response = await llm.invoke(await prompt.format({ input: originalQuery }));
+    const response = await llm.invoke(await prompt.format({ input: originalQuery }), { callbacks });
     const alternatives = response.content.toString()
       .split('\n')
       .map(q => q.trim())
@@ -228,7 +236,7 @@ Return only the alternative questions, one per line, without numbering or bullet
 /**
  * Contextual compression using relevance filtering
  */
-async function compressDocuments(query, documents) {
+async function compressDocuments(query, documents, options = {}) {
   try {
     const compressedDocs = [];
     const queryTokens = query.toLowerCase().split(/\s+/);
@@ -268,8 +276,9 @@ async function compressDocuments(query, documents) {
 /**
  * Generate final answer from retrieved context
  */
-async function generateAnswer(query, documents) {
+async function generateAnswer(query, documents, options = {}) {
   const llm = getChatModel();
+  const callbacks = getTracerCallbacks(options);
 
   if (!Array.isArray(documents) || documents.length === 0) {
     return 'I cannot find information about this in the uploaded documents.';
@@ -302,7 +311,7 @@ Retrieved Document Context:
       context: contextText,
     });
 
-    const result = await llm.invoke(finalPrompt);
+    const result = await llm.invoke(finalPrompt, { callbacks });
     return typeof result.content === 'string' ? result.content : String(result.content);
   } catch (error) {
     console.error('❌ Answer generation failed:', error);
