@@ -204,7 +204,7 @@ curl -X POST http://localhost:4000/api/chat \
 ```
 
 ### 5. Automated Backend Tests
-Run the Jasmine test suite (88 specs):
+Run the Jasmine test suite (93 specs):
 ```bash
 cd backend
 npm test

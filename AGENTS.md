@@ -26,7 +26,7 @@ This file provides system guidance, architectural rules, anti-hallucination guid
    - Agents must NEVER write analytics trace tables into the primary application schema.
 
 4. **Rule of Verification**:
-   - Never declare success without executing `npm test`. All 88 specs must pass with **0 failures**.
+   - Never declare success without executing `npm test`. All 93 specs must pass with **0 failures**.
 
 5. **No Superficial Symptom Patches**:
    - NEVER resolve errors by masking symptoms, swallowing exceptions silently, returning dummy fallbacks, or commenting out failing unit test assertions.
@@ -72,7 +72,7 @@ npm run dev
 # Build ESM JavaScript output
 npm run build
 
-# Run unit tests with Jasmine & coverage (88 specs)
+# Run unit tests with Jasmine & coverage (93 specs)
 npm test
 ```
 
