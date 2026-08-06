@@ -187,6 +187,9 @@ services:
     container_name: em-taskflow-open-webui
     environment:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - RAG_EMBEDDING_ENGINE=ollama
+      - RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - RAG_OLLAMA_MODEL=nomic-embed-text
     ports:
       - "3080:8080"
     networks:

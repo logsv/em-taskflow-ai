@@ -162,9 +162,11 @@ function Sidebar({ sessionSummary, isOpen, setIsOpen, onOpenAdmin }) {
               <div className="user-status">Free Plan</div>
             </div>
           </div>
-          <button
+          <a
+            href="/admin"
+            target="_blank"
+            rel="noopener noreferrer"
             className="admin-portal-link-btn"
-            onClick={onOpenAdmin}
             style={{
               marginTop: '10px',
               width: '100%',
@@ -180,10 +182,12 @@ function Sidebar({ sessionSummary, isOpen, setIsOpen, onOpenAdmin }) {
               alignItems: 'center',
               justify: 'center',
               gap: '6px',
+              textDecoration: 'none',
+              boxSizing: 'border-box',
             }}
           >
-            <span>⚙️</span> Admin Portal
-          </button>
+            <span>⚙️</span> Admin Portal ↗
+          </a>
         </div>
       </aside>
     </>

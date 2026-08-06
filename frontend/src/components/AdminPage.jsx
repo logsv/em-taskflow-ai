@@ -10,6 +10,11 @@ function AdminPage({ onBackToChat }) {
   const [syncMessage, setSyncMessage] = useState('');
   const [loadingDocs, setLoadingDocs] = useState(true);
 
+  // PDF Chunk Viewer Modal state
+  const [viewingFilename, setViewingFilename] = useState(null);
+  const [docChunks, setDocChunks] = useState([]);
+  const [loadingChunks, setLoadingChunks] = useState(false);
+
   useEffect(() => {
     fetchSystemStatus();
     fetchDocuments();
@@ -80,7 +85,8 @@ function AdminPage({ onBackToChat }) {
     }
   };
 
-  const handleDeleteDocument = async (filename) => {
+  const handleDeleteDocument = async (e, filename) => {
+    e.stopPropagation();
     if (!window.confirm(`Delete document "${filename}" and all its vector chunks?`)) return;
     try {
       const res = await fetch(`/api/admin/documents/${encodeURIComponent(filename)}`, {
@@ -88,12 +94,30 @@ function AdminPage({ onBackToChat }) {
       });
       const data = await res.json();
       if (data.success) {
+        if (viewingFilename === filename) {
+          setViewingFilename(null);
+        }
         fetchDocuments();
       } else {
         alert('Failed to delete document: ' + (data.error || 'Unknown error'));
       }
     } catch (err) {
       alert('Delete error: ' + err.message);
+    }
+  };
+
+  const handleViewChunks = async (filename) => {
+    setViewingFilename(filename);
+    setLoadingChunks(true);
+    try {
+      const res = await fetch(`/api/admin/documents/${encodeURIComponent(filename)}/chunks`);
+      const data = await res.json();
+      setDocChunks(data.chunks || []);
+    } catch (err) {
+      console.error('Failed to fetch document chunks:', err);
+      setDocChunks([]);
+    } finally {
+      setLoadingChunks(false);
     }
   };
 
@@ -123,12 +147,12 @@ function AdminPage({ onBackToChat }) {
                 <span className="status-dot status-online"></span>
               </div>
               <h3>Langfuse AI Telemetry</h3>
-              <p className="service-url">http://localhost:3001</p>
+              <p className="service-url">http://127.0.0.1:3001</p>
               <p className="service-desc">
                 Multi-agent LangGraph traces, prompt execution latency, token cost metrics, and user feedback logs.
               </p>
               <a
-                href="http://localhost:3001"
+                href="http://127.0.0.1:3001"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="launch-btn"
@@ -143,12 +167,12 @@ function AdminPage({ onBackToChat }) {
                 <span className="status-dot status-online"></span>
               </div>
               <h3>Open WebUI (Ollama GUI)</h3>
-              <p className="service-url">http://localhost:3080</p>
+              <p className="service-url">http://127.0.0.1:3080</p>
               <p className="service-desc">
                 Visual Ollama LLM downloader, model parameter fine-tuning, context window setup, and prompt testing.
               </p>
               <a
-                href="http://localhost:3080"
+                href="http://127.0.0.1:3080"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="launch-btn"
@@ -163,12 +187,12 @@ function AdminPage({ onBackToChat }) {
                 <span className="status-dot status-online"></span>
               </div>
               <h3>Adminer (Postgres Explorer)</h3>
-              <p className="service-url">http://localhost:8080</p>
+              <p className="service-url">http://127.0.0.1:8080</p>
               <p className="service-desc">
-                Browse PostgreSQL tables (`pdf_chunks`, `github_issues`, `chat_messages`) on port 5432 and `langfuse_db` on 5433.
+                Browse PostgreSQL tables (`pdf_chunks`, `github_issues`). Pre-selected with PostgreSQL & server `postgres`. Password: <strong>taskflow</strong>.
               </p>
               <a
-                href="http://localhost:8080"
+                href="http://127.0.0.1:8080/?pgsql=postgres&username=taskflow&db=taskflow"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="launch-btn"
@@ -183,12 +207,12 @@ function AdminPage({ onBackToChat }) {
                 <span className="status-dot status-online"></span>
               </div>
               <h3>Dozzle Log Viewer</h3>
-              <p className="service-url">http://localhost:8088</p>
+              <p className="service-url">http://127.0.0.1:8088</p>
               <p className="service-desc">
                 Real-time streaming log analyzer for all Docker services (`backend`, `python-ai`, `postgres`) with live regex search.
               </p>
               <a
-                href="http://localhost:8088"
+                href="http://127.0.0.1:8088"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="launch-btn"
@@ -220,18 +244,28 @@ function AdminPage({ onBackToChat }) {
                   <p className="empty-text">No PDFs uploaded in vector store.</p>
                 ) : (
                   documents.map((doc, idx) => (
-                    <div key={doc.id || idx} className="doc-list-item">
+                    <div
+                      key={doc.id || idx}
+                      className="doc-list-item clickable-doc-item"
+                      onClick={() => handleViewChunks(doc.filename)}
+                      title="Click to view extracted PDF text chunks"
+                    >
                       <div className="doc-meta">
-                        <span className="doc-name">{doc.filename}</span>
+                        <span className="doc-name">📄 {doc.filename}</span>
                         <span className="doc-chunks">{doc.chunkCount || 1} chunk(s)</span>
                       </div>
-                      <button
-                        className="delete-doc-btn"
-                        onClick={() => handleDeleteDocument(doc.filename)}
-                        title="Delete Document Vector Chunks"
-                      >
-                        🗑️ Delete
-                      </button>
+                      <div className="doc-actions">
+                        <button className="view-chunks-btn" title="View Extracted Chunks">
+                          🔍 View
+                        </button>
+                        <button
+                          className="delete-doc-btn"
+                          onClick={(e) => handleDeleteDocument(e, doc.filename)}
+                          title="Delete Document Vector Chunks"
+                        >
+                          🗑️ Delete
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}
@@ -320,6 +354,46 @@ function AdminPage({ onBackToChat }) {
           </div>
         </section>
       </div>
+
+      {/* PDF Chunks Modal Viewer */}
+      {viewingFilename && (
+        <div className="modal-overlay" onClick={() => setViewingFilename(null)}>
+          <div className="chunks-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="chunks-modal-header">
+              <div className="chunks-title-area">
+                <h3>📄 Extracted Text Chunks</h3>
+                <span className="chunks-filename">{viewingFilename}</span>
+              </div>
+              <button
+                className="close-modal-btn"
+                onClick={() => setViewingFilename(null)}
+              >
+                ✖
+              </button>
+            </div>
+
+            <div className="chunks-modal-body">
+              {loadingChunks ? (
+                <p className="loading-text">Loading document chunks from vector DB...</p>
+              ) : docChunks.length === 0 ? (
+                <p className="empty-text">No text chunks found for this document.</p>
+              ) : (
+                docChunks.map((chunk, index) => (
+                  <div key={chunk.id || index} className="chunk-card">
+                    <div className="chunk-card-header">
+                      <span className="chunk-badge">Chunk #{chunk.chunkIndex ?? (index + 1)}</span>
+                      {chunk.score && (
+                        <span className="chunk-score">Score: {(chunk.score * 100).toFixed(1)}%</span>
+                      )}
+                    </div>
+                    <pre className="chunk-text-content">{chunk.content || chunk.parentContent}</pre>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -6,7 +6,7 @@ Includes robust in-memory fallback if PostgreSQL DB is temporarily unreachable.
 
 import os
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from app.telemetry.tracer import trace_observation
 
 logger = logging.getLogger(__name__)
@@ -62,6 +62,7 @@ class RAGDatabaseService:
                     try:
                         cur.execute("ALTER TABLE pdf_chunks ADD COLUMN IF NOT EXISTS token_count INT DEFAULT 0;")
                         cur.execute("ALTER TABLE pdf_chunks ADD COLUMN IF NOT EXISTS parent_content TEXT;")
+                        cur.execute("ALTER TABLE pdf_chunks ADD COLUMN IF NOT EXISTS embedding_json TEXT;")
                         cur.execute("ALTER TABLE pdf_chunks ALTER COLUMN document_id DROP NOT NULL;")
                         cur.execute("ALTER TABLE pdf_chunks ALTER COLUMN parent_content DROP NOT NULL;")
                         cur.execute("CREATE INDEX IF NOT EXISTS idx_pdf_chunks_filename ON pdf_chunks(filename);")
@@ -72,6 +73,32 @@ class RAGDatabaseService:
                 logger.info("Successfully initialized PostgreSQL pdf_chunks table & indexes.")
         except Exception as e:
             logger.warning(f"PostgreSQL initialization warning ({str(e)}). Deferring to resilient in-memory store.")
+
+    def _fetch_ollama_embedding(self, text: str) -> Optional[str]:
+        """Optionally compute Ollama nomic-embed-text vector embedding for embedding_json column."""
+        import httpx
+        import json
+        ollama_urls = [
+            os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434"),
+            "http://localhost:11434",
+            "http://127.0.0.1:11434",
+            "http://host.docker.internal:11434"
+        ]
+        model_name = os.getenv("RAG_EMBEDDING_MODEL", "nomic-embed-text")
+        for url in ollama_urls:
+            try:
+                res = httpx.post(
+                    f"{url}/api/embeddings",
+                    json={"model": model_name, "prompt": text[:2000]},
+                    timeout=1.5
+                )
+                if res.status_code == 200:
+                    emb = res.json().get("embedding")
+                    if emb and isinstance(emb, list):
+                        return json.dumps(emb)
+            except Exception:
+                pass
+        return None
 
     def upsert_chunks(self, filename: str, chunks: List[Dict[str, Any]]) -> bool:
         """Upsert document chunks into PostgreSQL pdf_chunks table."""
@@ -104,10 +131,11 @@ class RAGDatabaseService:
                         chunk_id = f"{filename}-chunk-{c.get('chunk_index', 0)}"
                         content_val = c.get("content", "")
                         parent_val = c.get("parent_content") or content_val
+                        emb_json = self._fetch_ollama_embedding(content_val)
                         try:
                             cur.execute("""
-                                INSERT INTO pdf_chunks (id, document_id, filename, chunk_index, content, parent_content, token_count)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s);
+                                INSERT INTO pdf_chunks (id, document_id, filename, chunk_index, content, parent_content, token_count, embedding_json)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
                             """, (
                                 chunk_id,
                                 filename,
@@ -116,6 +144,7 @@ class RAGDatabaseService:
                                 content_val,
                                 parent_val,
                                 c.get("token_count", 0),
+                                emb_json,
                             ))
                         except Exception as e:
                             logger.warning(f"Fallback insert for chunk {chunk_id}: {str(e)}")
@@ -126,8 +155,8 @@ class RAGDatabaseService:
                                 citem_content = chunk_item.get("content", "")
                                 citem_parent = chunk_item.get("parent_content") or citem_content
                                 cur.execute("""
-                                    INSERT INTO pdf_chunks (id, document_id, filename, chunk_index, content, parent_content)
-                                    VALUES (%s, %s, %s, %s, %s, %s);
+                                    INSERT INTO pdf_chunks (id, document_id, filename, chunk_index, content, parent_content, embedding_json)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s);
                                 """, (
                                     cid,
                                     filename,
@@ -135,6 +164,7 @@ class RAGDatabaseService:
                                     chunk_item.get("chunk_index", 0),
                                     citem_content,
                                     citem_parent,
+                                    emb_json,
                                 ))
                             break
                 conn.commit()

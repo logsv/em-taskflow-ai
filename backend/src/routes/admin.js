@@ -81,6 +81,30 @@ router.delete('/documents/:filename', async (req, res) => {
   }
 });
 
+// Get Chunks for a specific Document
+router.get('/documents/:filename/chunks', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const chunks = await databaseService.hybridSearchPdfChunks({
+      query: '',
+      topK: 100,
+      metadataFilter: { filename },
+    });
+    res.json({
+      filename,
+      chunks,
+      count: chunks.length,
+      requestId: req.requestId,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch document chunks',
+      details: error.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
 // Telemetry & Feedback Summary
 router.get('/telemetry', async (req, res) => {
   try {
