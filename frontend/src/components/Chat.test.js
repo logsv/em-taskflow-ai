@@ -106,4 +106,16 @@ describe('Chat Component', () => {
     fireEvent.click(sendButton);
     expect(input).toBeInTheDocument();
   });
+
+  test('renders 5 predefined EM prompts and sends message on click', () => {
+    render(<Chat {...defaultProps} />);
+    const cards = document.querySelectorAll('.suggestion-card');
+    expect(cards.length).toBe(5);
+
+    fireEvent.click(cards[0]);
+    expect(mockRuntime.thread.append).toHaveBeenCalledWith({
+      role: 'user',
+      content: [{ type: 'text', text: 'Analyze team DORA metrics for deployment frequency, lead time, and failure rate' }]
+    });
+  });
 });

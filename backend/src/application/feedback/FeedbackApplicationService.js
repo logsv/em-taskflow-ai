@@ -8,6 +8,8 @@ export class FeedbackApplicationService {
 
   async submitFeedback({ payload, sessionContext = null, requestId = null }) {
     const { messageId, threadId, traceId, score, comment } = payload;
+    const targetTraceId = traceId || threadId || sessionContext?.threadId || null;
+
     const feedback = await this.feedbackRepo.createFeedback({
       sessionId: sessionContext?.sessionId || null,
       threadId: threadId || sessionContext?.threadId || null,
@@ -20,7 +22,7 @@ export class FeedbackApplicationService {
       },
     });
 
-    if (traceId && process.env.LANGFUSE_PUBLIC_KEY) {
+    if (targetTraceId && process.env.LANGFUSE_PUBLIC_KEY) {
       try {
         const { Langfuse } = await import('langfuse');
         const baseUrl = resolveLangfuseBaseUrl();
@@ -36,13 +38,13 @@ export class FeedbackApplicationService {
           : (score === 'thumbs_up' || score === 'like' || score === 1 || score === '1' ? 1.0 : 0.0);
 
         langfuse.score({
-          traceId,
+          traceId: targetTraceId,
           name: 'user_feedback',
           value: numericScore,
           comment: comment || (numericScore === 1.0 ? 'Thumbs Up' : 'Thumbs Down'),
         });
         await langfuse.flushAsync();
-        console.log(`✅ Langfuse feedback score (${numericScore}) logged successfully for trace: ${traceId}`);
+        console.log(`✅ Langfuse feedback score (${numericScore}) logged successfully for trace: ${targetTraceId}`);
       } catch (error) {
         console.warn(`⚠️ Failed to submit feedback to Langfuse:`, error?.message || error);
       }

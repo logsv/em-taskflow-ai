@@ -15,6 +15,16 @@ import { createJiraAgent } from "./jiraAgent.js";
 import { createGithubAgent } from "./githubAgent.js";
 import { createNotionAgent } from "./notionAgent.js";
 import { createCalendarAgent } from "./calendarAgent.js";
+import { createDoraAgent } from "./doraAgent.js";
+import { createSbiAgent } from "./sbiAgent.js";
+import { createPeopleAgent } from "./peopleAgent.js";
+import { createDeliveryAgent } from "./deliveryAgent.js";
+import { createRetroAgent } from "./retroAgent.js";
+import { createSprintAgent } from "./sprintAgent.js";
+import { createSopAgent } from "./sopAgent.js";
+import { createRoadmapAgent } from "./roadmapAgent.js";
+import { createOkrAgent } from "./okrAgent.js";
+import { createCriticAgent } from "./criticAgent.js";
 import { getRagTool } from "./ragAgent.js";
 import { supervisorAgentPromptTemplate } from "./prompts.js";
 import { getTracerCallbacks } from "../utils/tracer.js";
@@ -325,16 +335,27 @@ export async function initializeAgent(options = {}) {
 
     const rawLlm = options.llm || getChatModel();
     const llm = createSupervisorLlmWrapper(rawLlm);
+    const agentOptions = { llm: rawLlm };
 
-    const jira = options.jiraAgent || await createJiraAgent();
-    const github = options.githubAgent || await createGithubAgent();
-    const notion = options.notionAgent || await createNotionAgent();
-    const calendar = options.calendarAgent || await createCalendarAgent();
+    const jira = options.jiraAgent || await createJiraAgent(agentOptions);
+    const github = options.githubAgent || await createGithubAgent(agentOptions);
+    const notion = options.notionAgent || await createNotionAgent(agentOptions);
+    const calendar = options.calendarAgent || await createCalendarAgent(agentOptions);
+    const dora = options.doraAgent || await createDoraAgent(null, agentOptions);
+    const sbi = options.sbiAgent || await createSbiAgent(null, agentOptions);
+    const people = options.peopleAgent || await createPeopleAgent(null, agentOptions);
+    const delivery = options.deliveryAgent || await createDeliveryAgent(null, agentOptions);
+    const retro = options.retroAgent || await createRetroAgent(null, agentOptions);
+    const sprint = options.sprintAgent || await createSprintAgent(null, agentOptions);
+    const sop = options.sopAgent || await createSopAgent(null, agentOptions);
+    const roadmap = options.roadmapAgent || await createRoadmapAgent(null, agentOptions);
+    const okr = options.okrAgent || await createOkrAgent(null, agentOptions);
+    const critic = options.criticAgent || await createCriticAgent(null, agentOptions);
 
     const promptValue = await supervisorAgentPromptTemplate.invoke({});
     const systemMessage = promptValue.toChatMessages()[0];
 
-    const baseAgents = [jira, github, notion, calendar];
+    const baseAgents = [jira, github, notion, calendar, dora, sbi, people, delivery, retro, sprint, sop, roadmap, okr, critic];
     const createSupervisorFn = options.createSupervisor || createSupervisor;
 
     const workflow = createSupervisorFn({

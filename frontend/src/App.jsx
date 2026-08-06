@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { AssistantRuntimeProvider, useLocalRuntime } from '@assistant-ui/react';
 import Chat from './components/Chat';
 import Sidebar from './components/Sidebar';
+import AdminPage from './components/AdminPage';
 import './App.css';
 
 function App() {
@@ -10,6 +11,28 @@ function App() {
   const [sessionSummary, setSessionSummary] = useState(null);
   const [useAdvancedMode, setUseAdvancedMode] = useState(false);
   const [sourcesMap, setSourcesMap] = useState({});
+  const [traceMap, setTraceMap] = useState({});
+  const [currentView, setCurrentView] = useState(
+    window.location.pathname === '/admin' ? 'admin' : 'chat'
+  );
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentView(window.location.pathname === '/admin' ? 'admin' : 'chat');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigateToAdmin = () => {
+    window.history.pushState({}, '', '/admin');
+    setCurrentView('admin');
+  };
+
+  const navigateToChat = () => {
+    window.history.pushState({}, '', '/');
+    setCurrentView('chat');
+  };
 
   // Local runtime adapter definition with stable reference
   const adapter = useMemo(() => ({
@@ -44,12 +67,21 @@ function App() {
         throw new Error(data?.error || 'Failed to get response');
       }
 
-      // Map sources to assistant message index (messages.length)
+      // Map sources & telemetry trace to assistant message index
       const assistantMessageIndex = messages.length;
       if (data?.sources) {
         setSourcesMap(prev => ({
           ...prev,
           [assistantMessageIndex]: data.sources,
+        }));
+      }
+      if (data?.traceId || data?.messageId) {
+        setTraceMap(prev => ({
+          ...prev,
+          [assistantMessageIndex]: {
+            traceId: data.traceId || null,
+            messageId: data.messageId || null,
+          },
         }));
       }
 
@@ -83,6 +115,10 @@ function App() {
     };
   }, []);
 
+  if (currentView === 'admin') {
+    return <AdminPage onBackToChat={navigateToChat} />;
+  }
+
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <div className="app">
@@ -90,6 +126,7 @@ function App() {
           sessionSummary={sessionSummary}
           isOpen={sidebarOpen} 
           setIsOpen={setSidebarOpen} 
+          onOpenAdmin={navigateToAdmin}
         />
         <main className={`main-content ${sidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
           <div className="content-wrapper">
@@ -100,6 +137,7 @@ function App() {
               setUseAdvancedMode={setUseAdvancedMode}
               sourcesMap={sourcesMap}
               setSourcesMap={setSourcesMap}
+              traceMap={traceMap}
               runtime={runtime}
             />
           </div>

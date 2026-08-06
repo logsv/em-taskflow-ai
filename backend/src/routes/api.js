@@ -1,6 +1,7 @@
 import express from 'express';
 import { z } from 'zod';
 import ragRouter from './rag.js';
+import uploadRouter from './upload.js';
 import { attachSessionContext } from '../middleware/sessionContext.js';
 import chatApplicationService from '../application/chat/ChatApplicationService.js';
 import feedbackApplicationService from '../application/feedback/FeedbackApplicationService.js';
@@ -146,6 +147,64 @@ router.get('/github/sync-status', async (req, res) => {
   }
 });
 
+router.get('/em/dora', async (req, res) => {
+  try {
+    res.json({
+      rating: "HIGH",
+      deployment_frequency: "3.5 deploys/week",
+      lead_time_hours: 18.5,
+      change_failure_rate_pct: 4.2,
+      mttr_hours: 1.5,
+      period: "Last 30 Days"
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/em/sbi', async (req, res) => {
+  try {
+    res.json({
+      framework: "Situation-Behavior-Impact",
+      records: [
+        { engineer_id: "eng_01", situation: "Q3 Release Sprint", behavior: "Proactive code reviews", impact: "Accelerated velocity" }
+      ]
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/em/sprints', async (req, res) => {
+  try {
+    res.json({
+      active_sprint: "Sprint 24",
+      committed_points: 35,
+      completed_points: 28,
+      wip_violations: 1,
+      health: "ON_TRACK"
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/em/okrs', async (req, res) => {
+  try {
+    res.json({
+      quarter: "Q3",
+      overall_completion_pct: 72,
+      status: "ON_TRACK"
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+import adminRouter from './admin.js';
+
 router.use('/rag', ragRouter);
+router.use('/chat/upload', uploadRouter);
+router.use('/admin', adminRouter);
 
 export default router;
