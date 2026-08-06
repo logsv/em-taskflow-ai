@@ -220,6 +220,26 @@ function AdminPage({ onBackToChat }) {
                 Launch Dozzle Log Viewer ↗
               </a>
             </div>
+
+            <div className="service-card card-temporal">
+              <div className="card-top">
+                <span className="service-icon">⏳</span>
+                <span className="status-dot status-online"></span>
+              </div>
+              <h3>Temporal Web UI</h3>
+              <p className="service-url">http://127.0.0.1:8233</p>
+              <p className="service-desc">
+                Durable workflow execution dashboard for tracking RAG document ingestion activities, retries, and execution DAGs.
+              </p>
+              <a
+                href="http://127.0.0.1:8233"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="launch-btn"
+              >
+                Launch Temporal UI ↗
+              </a>
+            </div>
           </div>
         </section>
 

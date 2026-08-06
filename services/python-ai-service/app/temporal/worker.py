@@ -1,0 +1,57 @@
+"""
+Temporal Worker for Python AI Microservice
+Listens on task queue 'rag-ingest-queue' to process RAG ingestion workflows.
+"""
+
+import os
+import asyncio
+import logging
+from temporalio.client import Client
+from temporalio.worker import Worker
+
+from app.temporal.workflow import RAGIngestWorkflow
+from app.temporal.activities import (
+    extract_text_activity,
+    chunk_text_activity,
+    persist_and_embed_activity,
+)
+
+logger = logging.getLogger(__name__)
+
+TASK_QUEUE = "rag-ingest-queue"
+
+
+async def start_temporal_worker():
+    """Connect to Temporal Server and start background worker loop."""
+    temporal_host = os.getenv("TEMPORAL_HOST", "temporal:7233")
+    logger.info(f"⏳ Connecting Temporal Worker to host: {temporal_host}...")
+
+    retry_count = 0
+    client = None
+    while retry_count < 30:
+        try:
+            client = await Client.connect(temporal_host)
+            logger.info(f"✅ Connected to Temporal Server at {temporal_host}")
+            break
+        except Exception as e:
+            retry_count += 1
+            logger.warning(f"⚠️ Temporal connection attempt {retry_count}/30 failed ({str(e)}). Retrying in 3s...")
+            await asyncio.sleep(3)
+
+    if not client:
+        logger.warning(f"⚠️ Could not connect to Temporal Server at {temporal_host}. Temporal Worker disabled.")
+        return
+
+    worker = Worker(
+        client,
+        task_queue=TASK_QUEUE,
+        workflows=[RAGIngestWorkflow],
+        activities=[
+            extract_text_activity,
+            chunk_text_activity,
+            persist_and_embed_activity,
+        ],
+    )
+
+    logger.info(f"🚀 Temporal Worker listening on Task Queue: '{TASK_QUEUE}'")
+    await worker.run()

@@ -110,19 +110,26 @@ export async function ingestPDF(filePath, filename) {
   try {
     console.log(`📄 Ingesting PDF: ${filename}`);
 
-    // Read PDF buffer
+    // Read file buffer
     const dataBuffer = await fsModule.readFile(filePath);
     
-    // Try Python AI Microservice extraction (PyMuPDF / fitz)
+    // Try Python AI Microservice extraction (PDF, CSV, Word, Images, Text)
     let text = '';
-    const pyExtract = await pythonAIServiceClient.extractDocument(dataBuffer, filename, 'application/pdf');
+    const pyExtract = await pythonAIServiceClient.extractDocument(dataBuffer, filename, '');
     if (pyExtract && pyExtract.success && pyExtract.extracted_text && pyExtract.extraction_method !== 'node_fallback') {
       text = pyExtract.extracted_text;
-      console.log(`🐍 Python AI Microservice extracted ${text.length} chars (${pyExtract.page_count} pages) using ${pyExtract.extraction_method}`);
+      console.log(`🐍 Python AI Microservice extracted ${text.length} chars using ${pyExtract.extraction_method}`);
+    } else if (filename.toLowerCase().endsWith('.pdf')) {
+      // Fallback to JS pdf-parse module for PDFs only
+      try {
+        const pdfData = await pdfModule(dataBuffer);
+        text = pdfData ? pdfData.text : '';
+      } catch (err) {
+        text = '';
+      }
     } else {
-      // Fallback to JS pdf-parse module
-      const pdfData = await pdfModule(dataBuffer);
-      text = pdfData ? pdfData.text : '';
+      // Plain text fallback
+      text = dataBuffer.toString('utf-8');
     }
 
     if (!text || text.trim().length === 0) {

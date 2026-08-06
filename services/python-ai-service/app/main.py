@@ -11,8 +11,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 import asyncio
+import logging
 from concurrent import futures
 from fastapi import FastAPI
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 import uvicorn
 from app.api.rest_router import router as api_router
 from app.grpc_server.ai_service_grpc import AIServiceServicer
@@ -24,6 +27,12 @@ app = FastAPI(
 )
 
 app.include_router(api_router)
+
+
+@app.on_event("startup")
+async def startup_event():
+    from app.temporal.worker import start_temporal_worker
+    asyncio.create_task(start_temporal_worker())
 
 
 def start_grpc_server(port: int = 50051):

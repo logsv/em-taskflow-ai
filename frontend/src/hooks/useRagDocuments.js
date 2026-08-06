@@ -49,6 +49,43 @@ export function useRagDocuments() {
       });
       const data = await res.json();
 
+      if (res.status === 202 && data.mode === 'temporal' && data.workflowId) {
+        setUploadStatus('⏳ Temporal Workflow Running...');
+        const workflowId = data.workflowId;
+        let attempts = 0;
+        const interval = setInterval(async () => {
+          attempts += 1;
+          try {
+            const pollRes = await fetch(`/api/rag/workflows/${workflowId}`);
+            if (pollRes.ok) {
+              const pollData = await pollRes.json();
+              if (pollData.status === 'COMPLETED') {
+                clearInterval(interval);
+                setUploadStatus('✅ Temporal Workflow Completed!');
+                await fetchDocuments();
+                setIsUploading(false);
+                setTimeout(() => setUploadStatus(''), 4000);
+              } else if (pollData.status === 'FAILED') {
+                clearInterval(interval);
+                setUploadStatus('❌ Temporal Workflow Failed');
+                setIsUploading(false);
+                setTimeout(() => setUploadStatus(''), 4000);
+              }
+            }
+          } catch (e) {
+            console.warn('Workflow polling warning:', e);
+          }
+          if (attempts > 30) {
+            clearInterval(interval);
+            setUploadStatus('⚠️ Ingestion processing in background...');
+            await fetchDocuments();
+            setIsUploading(false);
+            setTimeout(() => setUploadStatus(''), 4000);
+          }
+        }, 2000);
+        return;
+      }
+
       if (res.ok && (data.status === 'success' || data.chunks > 0)) {
         setUploadStatus(`Uploaded! Ingested ${data.chunks || 1} chunks.`);
         await fetchDocuments();

@@ -58,6 +58,7 @@
     "@langchain/openai": "^1.2.7",
     "@notionhq/client": "2.2.13",
     "@notionhq/notion-mcp-server": "1.8.1",
+    "@temporalio/client": "^1.11.0",
     "axios": "1.6.0",
     "bottleneck": "2.19.5",
     "chalk": "4.1.2",
