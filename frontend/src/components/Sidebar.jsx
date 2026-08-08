@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useGithubSync } from '../hooks/useGithubSync.js';
 import { useRagDocuments } from '../hooks/useRagDocuments.js';
+import logger from '../utils/logger.js';
 import './Sidebar.css';
 
 function Sidebar({ sessionSummary, isOpen, setIsOpen, onOpenAdmin }) {
@@ -25,7 +26,7 @@ function Sidebar({ sessionSummary, isOpen, setIsOpen, onOpenAdmin }) {
   };
 
   const startNewChat = () => {
-    console.log('Starting new chat...');
+    logger.info('Starting new chat...');
     window.location.reload();
   };
 

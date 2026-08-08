@@ -74,31 +74,33 @@ class RAGDatabaseService:
         except Exception as e:
             logger.warning(f"PostgreSQL initialization warning ({str(e)}). Deferring to resilient in-memory store.")
 
-    def _fetch_ollama_embedding(self, text: str) -> Optional[str]:
+    def _fetch_ollama_embedding(self, text: str, cached_url: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
         """Optionally compute Ollama nomic-embed-text vector embedding for embedding_json column."""
         import httpx
         import json
-        ollama_urls = [
+        urls_to_try = [cached_url] if (cached_url and cached_url.startswith("http")) else [
             os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434"),
+            "http://host.docker.internal:11434",
             "http://localhost:11434",
             "http://127.0.0.1:11434",
-            "http://host.docker.internal:11434"
         ]
         model_name = os.getenv("RAG_EMBEDDING_MODEL", "nomic-embed-text")
-        for url in ollama_urls:
+        for url in urls_to_try:
+            if not url or not url.startswith("http"):
+                continue
             try:
                 res = httpx.post(
                     f"{url}/api/embeddings",
                     json={"model": model_name, "prompt": text[:2000]},
-                    timeout=1.5
+                    timeout=5.0
                 )
                 if res.status_code == 200:
                     emb = res.json().get("embedding")
                     if emb and isinstance(emb, list):
-                        return json.dumps(emb)
+                        return json.dumps(emb), url
             except Exception:
                 pass
-        return None
+        return None, cached_url
 
     def upsert_chunks(self, filename: str, chunks: List[Dict[str, Any]]) -> bool:
         """Upsert document chunks into PostgreSQL pdf_chunks table."""
@@ -121,6 +123,7 @@ class RAGDatabaseService:
             })
 
         try:
+            working_ollama_url = None
             with self._get_connection() as conn:
                 with conn.cursor() as cur:
                     # Delete existing chunks for this filename
@@ -131,7 +134,7 @@ class RAGDatabaseService:
                         chunk_id = f"{filename}-chunk-{c.get('chunk_index', 0)}"
                         content_val = c.get("content", "")
                         parent_val = c.get("parent_content") or content_val
-                        emb_json = self._fetch_ollama_embedding(content_val)
+                        emb_json, working_ollama_url = self._fetch_ollama_embedding(content_val, working_ollama_url)
                         try:
                             cur.execute("""
                                 INSERT INTO pdf_chunks (id, document_id, filename, chunk_index, content, parent_content, token_count, embedding_json)

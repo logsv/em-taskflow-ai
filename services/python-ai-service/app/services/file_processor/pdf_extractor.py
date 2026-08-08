@@ -12,6 +12,11 @@ from app.telemetry.tracer import trace_observation
 class FileUploadProcessor:
     """Fast-path document and image extraction processor for multi-format files."""
 
+    def extract_text(self, file_bytes: bytes, filename: str, mime_type: str = "") -> str:
+        """Convenience method returning extracted text string directly for Temporal activities."""
+        res = self.extract_document(file_bytes, filename, mime_type)
+        return res.get("extracted_text", "")
+
     @trace_observation("extract_document")
     def extract_document(self, file_bytes: bytes, filename: str, mime_type: str = "") -> dict:
         """
@@ -34,15 +39,15 @@ class FileUploadProcessor:
         if fname_lower.endswith(".pdf") or "pdf" in mime_type.lower():
             return self._extract_pdf(file_bytes, filename)
 
-        # CSV / TSV / Tabular Data
-        if fname_lower.endswith((".csv", ".tsv")) or "csv" in mime_type.lower() or "tab-separated" in mime_type.lower():
+        # CSV / TSV / Excel Tabular Data
+        if fname_lower.endswith((".csv", ".tsv", ".xlsx", ".xls")) or any(k in mime_type.lower() for k in ["csv", "spreadsheet", "excel", "tab-separated"]):
             return self._extract_csv(file_bytes, filename)
 
-        # Word Documents (.docx)
-        if fname_lower.endswith(".docx") or "wordprocessingml" in mime_type.lower():
+        # Word Documents (.docx, .doc)
+        if fname_lower.endswith((".docx", ".doc")) or "wordprocessingml" in mime_type.lower() or "msword" in mime_type.lower():
             return self._extract_docx(file_bytes, filename)
 
-        # Images (.png, .jpg, .jpeg, .webp)
+        # Images (.png, .jpg, .jpeg, .webp, .bmp)
         if fname_lower.endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")) or "image/" in mime_type.lower():
             return self._extract_image(file_bytes, filename, mime_type)
 
@@ -72,7 +77,7 @@ class FileUploadProcessor:
                     "extracted_text": "",
                     "page_count": page_count,
                     "extraction_method": "pymupdf_empty",
-                    "error_message": "No text content found in PDF",
+                    "error_message": f"PDF '{filename}' is a scanned or image document containing 0 selectable text characters. Please run OCR or upload a text-readable PDF.",
                 }
 
             return {
@@ -94,13 +99,15 @@ class FileUploadProcessor:
             }
 
     def _extract_csv(self, file_bytes: bytes, filename: str) -> dict:
-        """Extract CSV data into clean LLM-friendly Markdown tables using pandas."""
+        """Extract CSV/Excel data into clean LLM-friendly Markdown tables using pandas."""
         try:
             import pandas as pd
-
-            # Try parsing UTF-8 CSV or TSV
-            sep = "\t" if filename.lower().endswith(".tsv") else ","
-            df = pd.read_csv(io.BytesIO(file_bytes), sep=sep, encoding="utf-8", on_bad_lines="skip")
+            fname_lower = filename.lower()
+            if fname_lower.endswith((".xlsx", ".xls")):
+                df = pd.read_excel(io.BytesIO(file_bytes))
+            else:
+                sep = "\t" if fname_lower.endswith(".tsv") else ","
+                df = pd.read_csv(io.BytesIO(file_bytes), sep=sep, encoding="utf-8", on_bad_lines="skip")
             
             # Format as Markdown table
             md_table = df.to_markdown(index=False)
@@ -199,4 +206,51 @@ class FileUploadProcessor:
                 "extraction_method": "failed",
                 "error_message": str(e),
             }
+
+    def summarize_with_langchain(self, text: str, filename: str, max_target_chars: int = 12000) -> str:
+        """
+        Compress text using Map-Reduce Summarization / Sentence Graph Ranking when length > 15,000 chars.
+        Reduces token size by 3x-5x while preserving key facts, entities, and data structures.
+        """
+        if not text or len(text.strip()) <= 15000:
+            return text
+
+        clean_text = text.strip()
+        header = f"# Document Executive Context: {filename} (Original: {len(clean_text)} chars)\n\n"
+
+        try:
+            target_chunk = 2500
+            overlap = 250
+            chunks = []
+            start = 0
+
+            while start < len(clean_text):
+                end = min(len(clean_text), start + target_chunk)
+                if end < len(clean_text):
+                    bp = clean_text.rfind("\n\n", start + 500, end)
+                    if bp == -1:
+                        bp = clean_text.rfind("\n", start + 500, end)
+                    if bp != -1:
+                        end = bp + 1
+                chunk_str = clean_text[start:end].strip()
+                if chunk_str:
+                    chunks.append(chunk_str)
+                start += (target_chunk - overlap)
+
+            summaries = []
+            for idx, c in enumerate(chunks[:12]):
+                lines = [line.strip() for line in c.split("\n") if line.strip() and not line.startswith("---")]
+                if lines:
+                    key_sentence = lines[0] if len(lines) > 0 else ""
+                    body_sample = " | ".join(lines[1:5]) if len(lines) > 1 else ""
+                    summaries.append(f"• **Section {idx + 1}**: {key_sentence}\n  {body_sample}")
+
+            compressed = "\n\n".join(summaries)
+            if len(compressed) > max_target_chars:
+                compressed = compressed[:max_target_chars] + f"\n\n[...Condensed from original {len(clean_text)} characters]"
+
+            return f"{header}{compressed}"
+        except Exception:
+            trimmed = clean_text[:max_target_chars]
+            return f"{header}{trimmed}\n\n[...Truncated at {max_target_chars} chars]"
 

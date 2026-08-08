@@ -1,14 +1,46 @@
-function log(message) {
-  console.log(`[INFO] ${message}`);
+import pino from 'pino';
+
+const pinoLogger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+  timestamp: pino.stdTimeFunctions.isoTime,
+  base: { service: 'em-taskflow-backend' },
+});
+
+function info(message, meta = {}) {
+  if (typeof message === 'object' && message !== null) {
+    pinoLogger.info(message);
+  } else {
+    pinoLogger.info(meta, message ?? '');
+  }
 }
 
-function error(message) {
-  console.error(`[ERROR] ${message}`);
+function log(message, meta = {}) {
+  info(message, meta);
 }
 
-function warn(message) {
-  console.warn(`[WARN] ${message}`);
+function error(message, meta = {}) {
+  if (typeof message === 'object' && message !== null) {
+    pinoLogger.error(message);
+  } else {
+    pinoLogger.error(meta, message ?? '');
+  }
 }
 
-export { log, error, warn };
+function warn(message, meta = {}) {
+  if (typeof message === 'object' && message !== null) {
+    pinoLogger.warn(message);
+  } else {
+    pinoLogger.warn(meta, message ?? '');
+  }
+}
 
+function debug(message, meta = {}) {
+  if (typeof message === 'object' && message !== null) {
+    pinoLogger.debug(message);
+  } else {
+    pinoLogger.debug(meta, message ?? '');
+  }
+}
+
+export { log, info, error, warn, debug, pinoLogger as logger };
+export default pinoLogger;

@@ -6,6 +6,7 @@ import { getRouterChain } from "../agent/llmRouter.js";
 import { getGithubMCPTools, getGoogleMCPTools, getJiraMCPTools, getNotionMCPTools } from "../mcp/index.js";
 import { buildEmResponse } from "../utils/responseFormatter.js";
 import { getTracerCallbacks, createEndToEndTrace, createSpan } from "../utils/tracer.js";
+import { info, warn, error } from "../utils/logger.js";
 
 const VALID_DOMAINS = new Set(["jira", "github", "notion", "calendar", "rag"]);
 const TRANSFER_TOOL_PREFIX = "transfer_";
@@ -122,6 +123,12 @@ export class LangGraphAgentService {
     let bypassConfidenceCheck = false;
     let routingPlan = null;
 
+    info("Agent query execution started", {
+      threadId: options.threadId || null,
+      mode: options.mode || "advanced",
+      querySnippet: userQuery.slice(0, 50),
+    });
+
     let result;
     if (runtime.mode === "rag_only") {
       const plan = await this.routeQueryPlan(userQuery, runtime.mode, options);
@@ -215,6 +222,14 @@ export class LangGraphAgentService {
       }
     }
 
+    info("Agent query execution completed", {
+      threadId: options.threadId || null,
+      executionTimeMs: executionTime,
+      ragHit: !!decision.ragHit,
+      selectedPath: decision.selectedPath,
+      toolsUsedCount: Array.isArray(decision.toolsUsed) ? decision.toolsUsed.length : 0,
+    });
+
     return {
       threadId: options.threadId || null,
       answer: emResponse.answer,
@@ -264,7 +279,7 @@ export class LangGraphAgentService {
   }
 
   async runEnforcedPolicy(query, routingPlan, decision, options = {}) {
-    if (routingPlan?.intent_type === "DIRECT_LLM" || (Array.isArray(routingPlan?.domains) && routingPlan.domains.length === 0 && !routingPlan.must_use_tools && !routingPlan.allow_rag)) {
+    if (routingPlan?.intent_type === "DIRECT_LLM" || routingPlan?.intent_type === "ATTACHMENT_DIRECT" || (Array.isArray(routingPlan?.domains) && routingPlan.domains.length === 0 && !routingPlan.must_use_tools && !routingPlan.allow_rag)) {
       decision.selectedPath = "direct-llm-fastpath";
       console.log(`⚡ [AGENT SERVICE FAST-PATH]: Direct LLM execution for query "${query.slice(0, 40)}..." (0 tools).`);
       return this.runLlmExecutor(query, options);
@@ -355,11 +370,11 @@ export class LangGraphAgentService {
     try {
       const routerChain = getRouterChain();
       const callbacks = getTracerCallbacks(options);
-      const rawPlan = await routerChain.invoke({ query }, { callbacks });
+      const rawPlan = await routerChain.invoke({ query, options }, { callbacks });
       return this.normalizeRoutingPlan(rawPlan);
     } catch (error) {
       console.warn("⚠️ LLM router failed, using passthrough fallback:", error?.message || error);
-      return this.getFallbackRoutingPlan("router_failed", query);
+      return this.getFallbackRoutingPlan("router_failed", query, options);
     }
   }
 
@@ -371,6 +386,7 @@ export class LangGraphAgentService {
     const hasWorkspaceDomains = domains.some((domain) => domain !== "rag");
 
     return {
+      intent_type: rawPlan?.intent_type || null,
       domains,
       must_use_tools: hasWorkspaceDomains ? true : !!rawPlan?.must_use_tools,
       allow_rag: !!rawPlan?.allow_rag,
@@ -379,8 +395,19 @@ export class LangGraphAgentService {
     };
   }
 
-  getFallbackRoutingPlan(reason, query = "") {
+  getFallbackRoutingPlan(reason, query = "", options = {}) {
     const q = String(query).toLowerCase();
+    const attachments = Array.isArray(options?.attachments) ? options.attachments : [];
+    if (attachments.length > 0 || q.includes("[attachment:") || q.includes("[image attachment:") || q.includes("# document executive context:")) {
+      return {
+        intent_type: "ATTACHMENT_DIRECT",
+        domains: [],
+        must_use_tools: false,
+        allow_rag: false,
+        confidence: 1.0,
+        reasoning_summary: "Attachment fallback: Direct document context present in prompt.",
+      };
+    }
     const domains = [];
     if (q.includes("issue") || q.includes("repo") || q.includes("pr") || q.includes("pull request") || q.includes("github")) {
       domains.push("github");

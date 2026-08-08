@@ -7,6 +7,7 @@ import { initializeLLM } from './llm/index.js';
 import { initializeIngest } from './rag/index.js';
 import db from './db/index.js';
 import { attachRequestContext, createRateLimiter } from './middleware/hardening.js';
+import { info, warn, error } from './utils/logger.js';
 
 dotenv.config();
 
@@ -22,9 +23,13 @@ app.use((req, res, next) => {
   const startedAt = Date.now();
   res.on('finish', () => {
     const durationMs = Date.now() - startedAt;
-    console.log(
-      `[${req.requestId}] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${durationMs}ms)`,
-    );
+    info('HTTP request completed', {
+      requestId: req.requestId,
+      method: req.method,
+      url: req.originalUrl,
+      statusCode: res.statusCode,
+      durationMs,
+    });
   });
   next();
 });
@@ -37,28 +42,28 @@ app.get('/', (req, res) => {
 
 async function startServer() {
   try {
-    console.log('🔍 Validating configuration...');
+    info('Validating configuration...');
     validateConfig();
 
     try {
       await db.initialize();
-      console.log('✅ Database service initialized at startup');
+      info('Database service initialized at startup');
     } catch (e) {
-      console.warn('⚠️ Database initialization failed:', e);
+      warn('Database initialization failed', { err: e.message });
     }
 
     try {
       await initializeLLM();
-      console.log('✅ LLM clients initialized at startup');
+      info('LLM clients initialized at startup');
     } catch (e) {
-      console.warn('⚠️ LLM client initialization failed:', e);
+      warn('LLM client initialization failed', { err: e.message });
     }
 
     try {
       await initializeIngest();
-      console.log('✅ RAG ingest pipeline initialized at startup');
+      info('RAG ingest pipeline initialized at startup');
     } catch (e) {
-      console.warn('⚠️ RAG ingest initialization failed:', e);
+      warn('RAG ingest initialization failed', { err: e.message });
     }
 
     const runtimeConfig = getRuntimeConfig();
@@ -66,20 +71,20 @@ async function startServer() {
       try {
         const { initializeMCP } = await import('./mcp/index.js');
         await initializeMCP();
-        console.log('✅ MCP Service initialized at startup');
+        info('MCP Service initialized at startup');
       } catch (e) {
-        console.warn('⚠️ MCP Service init at startup failed:', e);
+        warn('MCP Service init at startup failed', { err: e.message });
       }
 
       try {
         const { default: langGraphAgentService } = await import('./agent/index.js');
         await langGraphAgentService.initialize();
-        console.log('✅ LangGraph Agent Service initialized successfully');
+        info('LangGraph Agent Service initialized successfully');
       } catch (agentError) {
-        console.warn('⚠️ LangGraph Agent Service initialization failed, will retry on first use:', agentError);
+        warn('LangGraph Agent Service initialization failed, will retry on first use', { err: agentError.message });
       }
     } else {
-      console.log('ℹ️ Runtime mode is rag_only, skipping MCP and agent initialization');
+      info('Runtime mode is rag_only, skipping MCP and agent initialization');
     }
 
     const databaseConfig = getDatabaseConfig();
@@ -87,25 +92,26 @@ async function startServer() {
     const ragConfig = getRagConfig();
 
     app.listen(PORT, serverConfig.host, () => {
-      console.log(`🚀 EM TaskFlow AI server listening on ${serverConfig.host}:${PORT}`);
-      console.log(`📊 Environment: ${config.env}`);
-      console.log(`🧭 Runtime mode: ${runtimeConfig.mode}`);
-      console.log(`💾 Database: ${databaseConfig.url}`);
-      console.log(`🤖 LLM Provider: ${llmConfig.defaultProvider}`);
-      console.log(`🔍 RAG Enabled: ${ragConfig.enabled}`);
-      console.log(`🔗 Health check: http://${serverConfig.host}:${PORT}/api/health`);
-      console.log(`💬 Chat API: POST http://${serverConfig.host}:${PORT}/api/chat`);
+      info(`EM TaskFlow AI server listening on ${serverConfig.host}:${PORT}`, {
+        env: config.env,
+        runtimeMode: runtimeConfig.mode,
+        database: databaseConfig.url,
+        llmProvider: llmConfig.defaultProvider,
+        ragEnabled: ragConfig.enabled,
+        healthCheckUrl: `http://${serverConfig.host}:${PORT}/api/health`,
+        chatApiUrl: `http://${serverConfig.host}:${PORT}/api/chat`,
+      });
     });
-  } catch (error) {
-    console.error('Failed to initialize services:', error);
+  } catch (err) {
+    error('Failed to initialize services', { err: err.message, stack: err.stack });
     process.exit(1);
   }
 }
 
 process.on('SIGINT', () => {
-  console.log('\nShutting down gracefully...');
+  info('Shutting down gracefully...');
   db.close();
-  console.log('✅ Services shut down successfully');
+  info('Services shut down successfully');
   process.exit(0);
 });
 

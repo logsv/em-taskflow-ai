@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import logger from '../utils/logger.js';
 import './AdminPage.css';
 
 function AdminPage({ onBackToChat }) {
@@ -28,7 +29,7 @@ function AdminPage({ onBackToChat }) {
       const data = await res.json();
       setSystemStatus(data);
     } catch (err) {
-      console.error('Failed to fetch system status:', err);
+      logger.error('Failed to fetch system status', { err: err.message });
     }
   };
 
@@ -39,7 +40,7 @@ function AdminPage({ onBackToChat }) {
       const data = await res.json();
       setDocuments(data.documents || []);
     } catch (err) {
-      console.error('Failed to fetch documents:', err);
+      logger.error('Failed to fetch documents', { err: err.message });
     } finally {
       setLoadingDocs(false);
     }
@@ -51,7 +52,7 @@ function AdminPage({ onBackToChat }) {
       const data = await res.json();
       setSyncStatus(data);
     } catch (err) {
-      console.error('Failed to fetch GitHub sync status:', err);
+      logger.error('Failed to fetch GitHub sync status', { err: err.message });
     }
   };
 
@@ -61,7 +62,7 @@ function AdminPage({ onBackToChat }) {
       const data = await res.json();
       setDoraMetrics(data);
     } catch (err) {
-      console.error('Failed to fetch DORA metrics:', err);
+      logger.error('Failed to fetch DORA metrics', { err: err.message });
     }
   };
 
@@ -114,7 +115,7 @@ function AdminPage({ onBackToChat }) {
       const data = await res.json();
       setDocChunks(data.chunks || []);
     } catch (err) {
-      console.error('Failed to fetch document chunks:', err);
+      logger.error('Failed to fetch document chunks', { err: err.message });
       setDocChunks([]);
     } finally {
       setLoadingChunks(false);
@@ -218,6 +219,26 @@ function AdminPage({ onBackToChat }) {
                 className="launch-btn"
               >
                 Launch Dozzle Log Viewer ↗
+              </a>
+            </div>
+
+            <div className="service-card card-temporal">
+              <div className="card-top">
+                <span className="service-icon">⏳</span>
+                <span className="status-dot status-online"></span>
+              </div>
+              <h3>Temporal Web UI</h3>
+              <p className="service-url">http://127.0.0.1:8233</p>
+              <p className="service-desc">
+                Durable workflow execution dashboard for tracking RAG document ingestion activities, retries, and execution DAGs.
+              </p>
+              <a
+                href="http://127.0.0.1:8233"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="launch-btn"
+              >
+                Launch Temporal UI ↗
               </a>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import ragService from '../../rag/index.js';
+import { startRAGIngestWorkflow } from '../../temporal/client.js';
 
 export class UploadPdfApplicationService {
   constructor({ rag = ragService } = {}) {
@@ -16,7 +17,30 @@ export class UploadPdfApplicationService {
       };
     }
 
-    const result = await this.ragService.processPDF(file.path, file.originalname || 'unknown.pdf');
+    const filename = file.originalname || 'unknown.pdf';
+
+    // Try Temporal Durable Workflow first
+    try {
+      const temporalRes = await startRAGIngestWorkflow(file.path, filename);
+      if (temporalRes && temporalRes.workflowId) {
+        return {
+          statusCode: 202,
+          body: {
+            status: 'processing',
+            mode: 'temporal',
+            workflowId: temporalRes.workflowId,
+            documentId: filename,
+            filename,
+            requestId,
+          },
+        };
+      }
+    } catch (err) {
+      console.warn(`⚠️ Temporal workflow trigger fallback (${err.message})`);
+    }
+
+    // Direct synchronous fallback
+    const result = await this.ragService.processPDF(file.path, filename);
     if (!result.success) {
       return {
         statusCode: 500,
@@ -32,8 +56,9 @@ export class UploadPdfApplicationService {
       statusCode: 200,
       body: {
         status: 'success',
-        documentId: file.originalname || 'unknown.pdf',
-        filename: file.originalname || 'unknown.pdf',
+        mode: 'direct',
+        documentId: filename,
+        filename,
         chunks: result.chunks,
         requestId,
       },

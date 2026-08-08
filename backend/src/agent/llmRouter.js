@@ -1,6 +1,7 @@
 import { getChatModel } from "../llm/index.js";
 import { JsonOutputParser } from "@langchain/core/output_parsers";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import { info, warn } from "../utils/logger.js";
 
 // Define the schema for the router's output
 const routerOutputSchema = {
@@ -71,9 +72,27 @@ Output a flat JSON object with these exact keys: "domains", "must_use_tools", "a
  * Pre-Router Fast Classifier: Zero-latency detection of pure LLM queries
  * Bypasses LLM Router call for greetings, general code generation, math, and syntax queries (<300ms execution).
  */
-export function classifyFastPath(query) {
+export function classifyFastPath(query, options = {}) {
   const q = String(query || "").toLowerCase().trim();
   if (!q) return null;
+
+  const attachments = Array.isArray(options?.attachments) ? options.attachments : [];
+  const hasAttachmentContext = attachments.length > 0 || q.includes('[attachment:') || q.includes('[image attachment:') || q.includes('# document executive context:');
+
+  if (hasAttachmentContext) {
+    const isExplicitExternalTool = ['jira', 'github', 'notion', 'calendar'].some((tool) => q.includes(tool));
+    if (!isExplicitExternalTool) {
+      info(`Attachment query detected, routing directly to LLM document analysis (0 RAG search, 0 external MCP tools)`, { querySnippet: q.slice(0, 60) });
+      return {
+        intent_type: "ATTACHMENT_DIRECT",
+        domains: [],
+        must_use_tools: false,
+        allow_rag: false,
+        confidence: 1.0,
+        reasoning_summary: "Attachment pre-router: Attached document context present in prompt. Zero RAG search and zero external MCP tools required.",
+      };
+    }
+  }
 
   // Domain keywords that REQUIRE tool or database retrieval
   const workspaceKeywords = [
@@ -97,7 +116,7 @@ export function classifyFastPath(query) {
 
   const isFastPath = fastPatterns.some((pattern) => pattern.test(q));
   if (isFastPath) {
-    console.log(`⚡ [FAST-PATH CLASSIFIER]: Fast-routed query "${q.slice(0, 40)}..." directly to LLM (0 tools).`);
+    info(`Fast-routed query directly to LLM (0 tools)`, { querySnippet: q.slice(0, 40) });
     return {
       intent_type: "DIRECT_LLM",
       domains: [],
@@ -118,8 +137,8 @@ const getRouterChain = () => {
   const parser = new JsonOutputParser();
 
   return {
-    async invoke(input) {
-      const fastResult = classifyFastPath(input.query);
+    async invoke(input, config = {}) {
+      const fastResult = classifyFastPath(input.query, input.options || input);
       if (fastResult) {
         return fastResult;
       }
@@ -142,7 +161,7 @@ const getRouterChain = () => {
         }
         return parsed;
       } catch (e) {
-        console.warn("⚠️ JSON.parse failed, falling back to JsonOutputParser:", e.message);
+        warn("JSON parse failed in router, falling back to JsonOutputParser", { err: e.message });
         return parser.invoke(result);
       }
     }

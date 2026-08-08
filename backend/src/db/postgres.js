@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { getDatabaseConfig } from '../config.js';
 import pythonAIServiceClient from '../grpc/client.js';
+import { info, warn, error } from '../utils/logger.js';
 
 class DatabaseService {
   constructor() {
@@ -729,7 +730,7 @@ class DatabaseService {
         client.release();
       }
     } catch (dbErr) {
-      console.warn(`⚠️ PostgreSQL github_issues upsert failed (${dbErr.message}), saved ${issues.length} issue(s) to in-memory GitHub cache.`);
+      warn("PostgreSQL github_issues upsert failed, using in-memory GitHub cache", { count: issues.length, err: dbErr.message });
       return issues.length;
     }
   }
@@ -769,7 +770,7 @@ class DatabaseService {
         synced_at: row.synced_at,
       }));
     } catch (err) {
-      console.warn("⚠️ PostgreSQL getGithubIssues failed, using in-memory store fallback:", err.message);
+      warn("PostgreSQL getGithubIssues failed, using in-memory store fallback", { err: err.message });
       if (!this.inMemoryGithubIssues) return [];
       let issues = Array.from(this.inMemoryGithubIssues.values());
       if (state) {
@@ -791,7 +792,7 @@ class DatabaseService {
       `);
       return result.rows[0] || { total: 0, last_synced_at: null };
     } catch (err) {
-      console.warn("⚠️ PostgreSQL getGithubSyncMetadata failed, using in-memory fallback:", err.message);
+      warn("PostgreSQL getGithubSyncMetadata failed, using in-memory fallback", { err: err.message });
       if (!this.inMemoryGithubIssues) return { total: 0, last_synced_at: null };
       const issues = Array.from(this.inMemoryGithubIssues.values());
       const maxSync = issues.reduce((max, i) => (i.synced_at > max ? i.synced_at : max), null);

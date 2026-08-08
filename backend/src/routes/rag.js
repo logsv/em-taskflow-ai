@@ -8,6 +8,7 @@ import { getApiConfig } from '../config.js';
 import ragService from '../rag/index.js';
 import uploadPdfApplicationService from '../application/upload/UploadPdfApplicationService.js';
 import { createLegacyEndpointGate } from './legacyRouteGate.js';
+import { getWorkflowStatus } from '../temporal/client.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,10 +35,13 @@ const documentQuerySchema = z.object({
   topK: z.coerce.number().int().min(1).max(20).optional(),
 });
 
-async function handlePdfUpload(req, res) {
+const uploadAny = upload.any();
+
+async function handleFileUpload(req, res) {
   try {
+    const uploadedFile = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
     const response = await uploadPdfApplicationService.processUpload({
-      file: req.file,
+      file: uploadedFile,
       requestId: req.requestId,
     });
     return res.status(response.statusCode).json(response.body);
@@ -50,8 +54,31 @@ async function handlePdfUpload(req, res) {
   }
 }
 
-router.post('/upload', upload.single('pdf'), handlePdfUpload);
-router.post('/ingest', requireLegacyRagIngestApi, upload.single('pdf'), handlePdfUpload);
+router.post('/upload', uploadAny, handleFileUpload);
+router.post('/ingest', requireLegacyRagIngestApi, uploadAny, handleFileUpload);
+
+router.get('/workflows/:workflowId', async (req, res) => {
+  try {
+    const { workflowId } = req.params;
+    const status = await getWorkflowStatus(workflowId);
+    if (!status) {
+      return res.status(404).json({
+        error: 'Workflow status unavailable',
+        requestId: req.requestId,
+      });
+    }
+    return res.json({
+      ...status,
+      requestId: req.requestId,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Failed to query workflow status',
+      details: error.message,
+      requestId: req.requestId,
+    });
+  }
+});
 
 router.get('/documents', async (req, res) => {
   try {

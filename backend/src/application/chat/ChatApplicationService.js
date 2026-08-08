@@ -32,8 +32,26 @@ export class ChatApplicationService {
     this.githubOAuth = githubOAuth;
   }
 
-  async processChat({ message, threadId = null, sessionContext = null, requestId = null, ragMode = 'baseline' }) {
+  normalizeAttachments(message = '', attachments = []) {
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      return attachments;
+    }
+    const q = String(message);
+    const parsed = [];
+    const match = q.match(/\[Attachment:\s*([^\]]+)\]/i) || q.match(/# Document Executive Context:\s*([^\n]+)/i);
+    if (match) {
+      parsed.push({
+        filename: match[1].trim(),
+        content: q,
+      });
+    }
+    return parsed;
+  }
+
+  async processChat({ message, attachments = [], threadId = null, sessionContext = null, requestId = null, ragMode = 'baseline' }) {
     const query = String(message || '');
+    const normalizedAttachments = this.normalizeAttachments(query, attachments);
+
     const ensuredThread = await this.threadRepo.ensureThread(
       threadId || sessionContext?.threadId || undefined,
       query.slice(0, 80),
@@ -44,27 +62,32 @@ export class ChatApplicationService {
       sessionId: sessionContext?.sessionId || null,
       userId: sessionContext?.userId || 'user_logsv',
       ragMode,
+      attachments: normalizedAttachments,
     });
 
-    const notionOAuth = await this.resolveNotionOAuth();
-    const githubOAuth = await this.resolveGithubOAuth();
+    const decision = result.meta?.decision || {};
+    const routingPlan = decision.routingPlan || {};
+    const routedDomains = Array.isArray(routingPlan.domains) ? routingPlan.domains : [];
 
-    const routedDomains = Array.isArray(result?.meta?.decision?.routingPlan?.domains)
-      ? result.meta.decision.routingPlan.domains
-      : [];
-    const githubIntent = routedDomains.includes('github');
-    const notionIntent = routedDomains.includes('notion');
-    if (githubIntent && githubOAuth?.required) {
-      result.answer = githubOAuth.authorizationUrl
-        ? 'GitHub connection is required before I can fetch your repositories/issues/PRs. Use the Connect GitHub link in chat, then retry your query.'
-        : `GitHub connection is required before I can fetch your repositories/issues/PRs. ${githubOAuth.error || 'Complete GitHub OAuth setup and retry.'}`;
-    } else if (notionIntent && notionOAuth?.required) {
-      result.answer = 'Notion connection is required before I can fetch workspace insights. Use the Connect Notion link in chat, then retry your query.';
-    } else if (notionIntent && notionOAuth?.startError && !notionOAuth?.required) {
-      result.answer = `Notion connection is required before I can fetch workspace insights. ${notionOAuth.startError}`;
+    // OAuth checks trigger ONLY when an explicit external workspace tool execution is required
+    const requiresToolAuth = routingPlan.must_use_tools === true && (routedDomains.includes('github') || routedDomains.includes('notion'));
+    if (requiresToolAuth) {
+      const notionOAuth = await this.resolveNotionOAuth();
+      const githubOAuth = await this.resolveGithubOAuth();
+
+      const githubIntent = routedDomains.includes('github');
+      const notionIntent = routedDomains.includes('notion');
+      if (githubIntent && githubOAuth?.required) {
+        result.answer = githubOAuth.authorizationUrl
+          ? 'GitHub connection is required before I can fetch your repositories/issues/PRs. Use the Connect GitHub link in chat, then retry your query.'
+          : `GitHub connection is required before I can fetch your repositories/issues/PRs. ${githubOAuth.error || 'Complete GitHub OAuth setup and retry.'}`;
+      } else if (notionIntent && notionOAuth?.required) {
+        result.answer = 'Notion connection is required before I can fetch workspace insights. Use the Connect Notion link in chat, then retry your query.';
+      } else if (notionIntent && notionOAuth?.startError && !notionOAuth?.required) {
+        result.answer = `Notion connection is required before I can fetch workspace insights. ${notionOAuth.startError}`;
+      }
     }
 
-    const decision = result.meta?.decision || {};
     const sources = Array.isArray(result.sources)
       ? result.sources.map((doc) => ({
           content: doc.pageContent,
@@ -206,4 +229,30 @@ function createMessageRepoAdapter(dbService) {
   return {
     saveMessage: (...args) => dbService.saveMessage(...args),
   };
+}
+
+/**
+ * Sliding Window + State Anchoring for Chat History
+ * Keeps the latest N turns active, compressing older turns into a state summary anchor.
+ */
+export function optimizeChatHistory(messages = [], maxActiveTurns = 8) {
+  if (!Array.isArray(messages) || messages.length <= maxActiveTurns + 2) {
+    return messages;
+  }
+
+  const activeMessages = messages.slice(-maxActiveTurns);
+  const olderMessages = messages.slice(0, -maxActiveTurns);
+
+  const keyTopics = olderMessages
+    .filter((m) => m.role === 'user')
+    .map((m) => String(m.content || '').slice(0, 40))
+    .filter(Boolean)
+    .slice(-4);
+
+  const summaryAnchor = {
+    role: 'system',
+    content: `[System Memory: Conversation Summary Anchor]\nPrior topics discussed in this session: ${keyTopics.join(' | ')}. (${olderMessages.length} earlier turns archived)`,
+  };
+
+  return [summaryAnchor, ...activeMessages];
 }

@@ -11,9 +11,16 @@ import githubSyncService from '../services/githubSyncService.js';
 const router = express.Router();
 
 const chatSchema = z.object({
-  message: z.string().min(1).max(20_000),
+  message: z.string().min(1).max(100_000),
   threadId: z.string().min(1).max(128).nullable().optional(),
   mode: z.enum(['baseline', 'advanced']).optional(),
+  attachments: z.array(
+    z.object({
+      filename: z.string(),
+      content: z.string(),
+      mimeType: z.string().optional(),
+    })
+  ).optional(),
 });
 
 const feedbackSchema = z.object({
@@ -72,6 +79,7 @@ router.post('/chat', attachSessionContext, async (req, res) => {
 
     const responsePayload = await chatApplicationService.processChat({
       message: parsed.data.message,
+      attachments: parsed.data.attachments || [],
       threadId: parsed.data.threadId,
       sessionContext: req.sessionContext,
       requestId: req.requestId,
