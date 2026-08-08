@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuiState } from '@assistant-ui/react';
 import { useGithubSync } from '../hooks/useGithubSync.js';
 import './Chat.css';
@@ -10,11 +10,13 @@ function Chat({
   setUseAdvancedMode,
   sourcesMap,
   setSourcesMap,
+  traceMap,
   runtime
 }) {
   const [input, setInput] = useState('');
   const [uploadStatus, setUploadStatus] = useState('');
   const fileInputRef = useRef(null);
+  const messagesEndRef = useRef(null);
   
   const [feedbackSent, setFeedbackSent] = useState({}); // { messageIndex: 'thumbs_up' | 'thumbs_down' }
 
@@ -23,12 +25,49 @@ function Chat({
   const isRunning = useAuiState((s) => s?.thread?.isRunning) || false;
   const messages = Array.isArray(rawMessages) ? rawMessages : [];
 
-  const [suggestions] = useState([
-    'What should I focus on today?',
-    'Do I have any scheduling conflicts?',
-    'Show me my pending tasks',
-    'What meetings do I have today?'
-  ]);
+  // 5 Predefined Engineering Manager Prompts
+  const predefinedPrompts = [
+    {
+      id: 'dora',
+      icon: '📊',
+      title: 'DORA Metrics Audit',
+      domain: 'DORA',
+      text: 'Analyze team DORA metrics for deployment frequency, lead time, and failure rate'
+    },
+    {
+      id: 'sbi',
+      icon: '💬',
+      title: 'SBI Feedback Generator',
+      domain: 'SBI Coaching',
+      text: 'Draft an SBI coaching feedback for an engineer unblocking code reviews'
+    },
+    {
+      id: 'delivery',
+      icon: '🚀',
+      title: 'Delivery & WIP Bottlenecks',
+      domain: 'Delivery',
+      text: 'Check current sprint delivery bottlenecks, WIP limit violations, and blocked PRs'
+    },
+    {
+      id: 'sprint',
+      icon: '⚡',
+      title: 'Sprint Capacity Planning',
+      domain: 'Sprint',
+      text: 'Calculate team sprint velocity and capacity forecast for next sprint planning'
+    },
+    {
+      id: 'okr',
+      icon: '🎯',
+      title: 'OKR & KPI Tracker',
+      domain: 'OKR / KPI',
+      text: 'Evaluate quarterly engineering Objectives & Key Results (OKRs) and team KPI scorecards'
+    }
+  ];
+
+  // Auto-scroll to bottom of messages container
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isRunning]);
 
   const sendMessage = (customMessage = null) => {
     const messageText = customMessage || input;
@@ -94,10 +133,13 @@ function Chat({
   const handleFeedback = async (msgIndex, score) => {
     if (feedbackSent[msgIndex] === score) return;
 
+    const traceMeta = traceMap?.[msgIndex] || {};
     try {
       const payload = {
         score,
         threadId: sessionSummary?.threadId || undefined,
+        traceId: traceMeta.traceId || undefined,
+        messageId: traceMeta.messageId || undefined,
       };
       
       const res = await fetch('/api/feedback', {
@@ -191,7 +233,10 @@ function Chat({
     <div className="chat-container">
       {/* Top Header Section */}
       <header className="chat-header">
-        <h2>🤖 EM TaskFlow AI</h2>
+        <div className="chat-header-title">
+          <h2>🤖 EM TaskFlow AI</h2>
+          <span className="agent-status-badge">🟢 10 Local Agents Active</span>
+        </div>
         <div className="chat-header-actions">
           <button
             className={`github-header-sync-btn ${isHeaderSyncing ? 'syncing' : ''}`}
@@ -208,21 +253,25 @@ function Chat({
         <div className="welcome-screen">
           <div className="welcome-content">
             <div className="logo">
-              <div className="logo-icon">🤖</div>
-              <h1>EM TaskFlow AI</h1>
+              <div className="logo-icon">👔</div>
+              <h1>Engineering Management Copilot</h1>
             </div>
-            <p className="welcome-subtitle">How can I help you today?</p>
+            <p className="welcome-subtitle">Select an executive workflow or type your custom query below</p>
             
             <div className="suggestion-grid">
-              {suggestions.map((suggestion, idx) => (
+              {predefinedPrompts.map((prompt) => (
                 <button
-                  key={idx}
+                  key={prompt.id}
                   className="suggestion-card"
-                  onClick={() => sendMessage(suggestion)}
+                  onClick={() => sendMessage(prompt.text)}
                   disabled={isRunning}
                 >
-                  <span className="suggestion-icon">💡</span>
-                  <span className="suggestion-text">{suggestion}</span>
+                  <div className="suggestion-header">
+                    <span className="suggestion-icon">{prompt.icon}</span>
+                    <span className="suggestion-domain">{prompt.domain}</span>
+                  </div>
+                  <div className="suggestion-title">{prompt.title}</div>
+                  <div className="suggestion-text">{prompt.text}</div>
                 </button>
               ))}
             </div>
@@ -325,6 +374,7 @@ function Chat({
             </div>
           </div>
         )}
+        <div ref={messagesEndRef} />
       </div>
 
       <div className="chat-input-container">
@@ -334,6 +384,23 @@ function Chat({
           </div>
         )}
         
+        {/* Quick Predefined Prompt Chips during active chat */}
+        {messages.length > 0 && (
+          <div className="quick-prompt-chips">
+            {predefinedPrompts.map((p) => (
+              <button
+                key={p.id}
+                className="chip-btn"
+                onClick={() => sendMessage(p.text)}
+                disabled={isRunning}
+              >
+                <span>{p.icon}</span>
+                <span>{p.title}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="chat-input-wrapper">
           <label className="mode-toggle" htmlFor="advanced-mode-toggle">
             <input
@@ -379,7 +446,7 @@ function Chat({
         </div>
         
         <div className="input-footer">
-          <p>EM TaskFlow AI can make mistakes. Consider checking important information.</p>
+          <p>EM TaskFlow AI Powered by Local Ollama SLM Inference & LangGraph Supervisor.</p>
         </div>
       </div>
     </div>

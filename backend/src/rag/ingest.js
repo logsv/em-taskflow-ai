@@ -11,13 +11,15 @@ import { config, getRagConfig } from '../config.js';
 import { BGEEmbeddingsAdapter } from '../llm/bgeEmbeddingsAdapter.js';
 import databaseService from '../db/postgres.js';
 
+import pythonAIServiceClient from '../grpc/client.js';
+
 // Dependencies for injection
 let fsModule = fs;
 let pdfModule = pdf;
 
-// Chunking configuration
-const CHUNK_SIZE = 800; // tokens
-const CHUNK_OVERLAP = 150; // tokens
+// Chunking configuration (Industry standard 512 tokens with 64 token overlap)
+const CHUNK_SIZE = 512; // tokens
+const CHUNK_OVERLAP = 64; // tokens
 
 // Singleton instances
 let vectorStore = null;
@@ -108,31 +110,49 @@ export async function ingestPDF(filePath, filename) {
   try {
     console.log(`📄 Ingesting PDF: ${filename}`);
 
-    // Read and parse PDF
+    // Read PDF buffer
     const dataBuffer = await fsModule.readFile(filePath);
-    const pdfData = await pdfModule(dataBuffer);
-    const text = pdfData.text;
+    
+    // Try Python AI Microservice extraction (PyMuPDF / fitz)
+    let text = '';
+    const pyExtract = await pythonAIServiceClient.extractDocument(dataBuffer, filename, 'application/pdf');
+    if (pyExtract && pyExtract.success && pyExtract.extracted_text && pyExtract.extraction_method !== 'node_fallback') {
+      text = pyExtract.extracted_text;
+      console.log(`🐍 Python AI Microservice extracted ${text.length} chars (${pyExtract.page_count} pages) using ${pyExtract.extraction_method}`);
+    } else {
+      // Fallback to JS pdf-parse module
+      const pdfData = await pdfModule(dataBuffer);
+      text = pdfData ? pdfData.text : '';
+    }
 
     if (!text || text.trim().length === 0) {
       throw new Error('No text content found in PDF');
     }
 
-    // Create chunks with token-aware splitting, with fallback if tokenization fails
-    let chunks;
-    try {
-      chunks = await createChunks(text, filename, filePath);
-    } catch (chunkError) {
-      console.warn('⚠️ Chunking failed, using fallback document chunk:', chunkError);
-      chunks = [
-        new Document({
-          pageContent: text,
-          metadata: {
-            filename,
-            source: filePath,
-            chunkIndex: 0,
-          },
-        }),
-      ];
+    // Create chunks with token-aware splitting
+    let chunks = [];
+    
+    // Try Python AI Microservice 512-token chunking
+    const pyChunksRes = await pythonAIServiceClient.processRAGIngestion(text, filename);
+    if (pyChunksRes && pyChunksRes.success && Array.isArray(pyChunksRes.chunks) && pyChunksRes.chunks.length > 0) {
+      chunks = pyChunksRes.chunks.map((item, idx) => new Document({
+        pageContent: item.content,
+        metadata: {
+          filename,
+          source: filePath,
+          chunkIndex: idx,
+          parentContent: item.parent_content,
+          tokenCount: item.token_count,
+        },
+      }));
+      console.log(`🐍 Python AI Microservice created ${chunks.length} 512-token chunks`);
+    } else {
+      try {
+        chunks = await createChunks(text, filename, filePath);
+      } catch (chunkError) {
+        console.warn('⚠️ Token-aware chunking failed, using standard character-split fallback chunks:', chunkError);
+        chunks = createFallbackChunks(text, filename, filePath);
+      }
     }
     
     if (chunks.length === 0) {
@@ -143,8 +163,11 @@ export async function ingestPDF(filePath, filename) {
     try {
       const dbChunks = chunks.map((doc, idx) => {
         const childText = doc.pageContent;
-        // Parent context combines surrounding text if available
-        const parentText = doc.metadata?.parentContent || childText;
+        // Windowed parent context combines adjacent chunks (~1000 tokens max) instead of whole document
+        const prevText = chunks[idx - 1] ? chunks[idx - 1].pageContent : '';
+        const nextText = chunks[idx + 1] ? chunks[idx + 1].pageContent : '';
+        const windowedParent = [prevText, childText, nextText].filter(Boolean).join('\n---\n');
+        const parentText = doc.metadata?.parentContent || windowedParent;
         const header = `[Document: ${filename}]\n`;
         
         return {
@@ -183,6 +206,47 @@ export async function ingestPDF(filePath, filename) {
       error: error.message,
     };
   }
+}
+
+/**
+ * Character-split fallback for creating standard 512-token (~2000 char) chunks
+ */
+function createFallbackChunks(text, filename, filePath) {
+  const targetLength = 2000; // ~500 tokens
+  const overlap = 250;
+  const rawChunks = [];
+  let startIndex = 0;
+
+  while (startIndex < text.length) {
+    let endIndex = startIndex + targetLength;
+    if (endIndex < text.length) {
+      const breakPoint = text.lastIndexOf('\n', endIndex);
+      if (breakPoint > startIndex + 500) {
+        endIndex = breakPoint;
+      }
+    }
+    const chunkText = text.slice(startIndex, endIndex).trim();
+    if (chunkText.length > 0) {
+      rawChunks.push(chunkText);
+    }
+    startIndex += (targetLength - overlap);
+  }
+
+  return rawChunks.map((chunk, index) => new Document({
+    pageContent: chunk,
+    metadata: {
+      filename,
+      source: filePath,
+      chunkIndex: index,
+      chunkSize: chunk.length,
+      tokenCount: estimateTokens(chunk),
+      processingMethod: 'character_fallback',
+      timestamp: new Date().toISOString(),
+      documentType: 'pdf',
+      chunkType: classifyChunkType(chunk),
+      contentHash: simpleHash(chunk),
+    },
+  }));
 }
 
 /**

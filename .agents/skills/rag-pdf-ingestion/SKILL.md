@@ -1,11 +1,11 @@
 ---
 name: rag-pdf-ingestion
-description: Procedures for testing PDF ingestion, PostgreSQL hybrid search, in-memory fallbacks, and single-pass RAG synthesis in EM TaskFlow AI.
+description: Procedures for testing PDF ingestion, PostgreSQL hybrid search, in-memory fallbacks, document chunk inspection, and single-pass RAG synthesis in EM TaskFlow AI.
 ---
 
 # RAG PDF Ingestion & Retrieval Skill
 
-Use this skill when developing, testing, or troubleshooting PDF document uploads, hybrid keyword search, or RAG answer generation.
+Use this skill when developing, testing, or troubleshooting PDF document uploads, vector chunk inspection, hybrid keyword search, or RAG answer generation.
 
 ## 📌 Architecture Overview
 
@@ -14,9 +14,10 @@ Use this skill when developing, testing, or troubleshooting PDF document uploads
    - Splits PDFs into token-aware parent-child chunks (`TokenTextSplitter`).
    - Stores chunks in PostgreSQL table `pdf_chunks` (with `inMemoryPdfChunks` fallback if DB is unavailable).
 
-2. **Document History & Listing**:
-   - Endpoint: `GET /api/rag/documents`
-   - Un-gated endpoint returning document IDs, filenames, chunk counts, and upload timestamps.
+2. **Document Inventory & Chunk Inspection**:
+   - Endpoint: `GET /api/admin/documents` (lists ingested documents and total chunks)
+   - Endpoint: `GET /api/admin/documents/:filename/chunks` (retrieves exact text chunks for a document)
+   - Endpoint: `DELETE /api/admin/documents/:filename` (purges document chunks from vector store)
 
 3. **Hybrid Keyword Search**:
    - Tokenizes queries (e.g. `"5 analysis from rubrics pdf"`) and removes stop words (`"what"`, `"is"`, `"in"`).
@@ -26,6 +27,11 @@ Use this skill when developing, testing, or troubleshooting PDF document uploads
    - `generateAnswer()` in `backend/src/rag/retriever.js` generates structured markdown sections (`### 📄 Executive Summary`, `### 🔍 Key Document Analysis`, `### 📌 Source Citations`) directly in 1 LLM pass.
 
 ## 🧪 Verification Commands
+
+### Test Document Chunk Inspection via Admin API
+```bash
+curl -s http://localhost:4000/api/admin/documents/01-valid.pdf/chunks
+```
 
 ### Test PDF Search & Ingestion via Node CLI
 ```bash

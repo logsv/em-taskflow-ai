@@ -1,12 +1,13 @@
-# 🎨 EM TaskFlow AI - Frontend Cockpit
+# 🎨 EM TaskFlow AI - Frontend Cockpit & Admin Portal
 
-> **Modern React SPA Cockpit built with Vite, `@assistant-ui/react`, space-dark glassmorphism styling, and custom Outfit typography.**
+> **Modern React SPA Cockpit and Standalone Admin Portal built with Vite, `@assistant-ui/react`, space-dark glassmorphism styling, and custom Outfit typography.**
 
 ---
 
 ## 📑 Table of Contents
 - [🎯 Overview & UI Capabilities](#-overview--ui-capabilities)
 - [🧩 Key UI Features](#-key-ui-features)
+- [⚙️ Standalone Admin Portal (`/admin`)](#️-standalone-admin-portal-admin)
 - [🛠️ Development & Build Commands](#️-development--build-commands)
 - [🔌 Backend API Integration & Proxying](#-backend-api-integration--proxying)
 - [📁 Directory Structure](#-directory-structure)
@@ -15,12 +16,12 @@
 
 ## 🎯 Overview & UI Capabilities
 
-The **EM TaskFlow AI Frontend** provides an interactive, space-dark cockpit for multi-agent chat interactions, PDF document ingestion, session management, and telemetry feedback.
+The **EM TaskFlow AI Frontend** provides an interactive, space-dark cockpit for multi-agent chat interactions, PDF document ingestion, session management, and a dedicated **Standalone Admin Portal (`/admin`)**.
 
 - **Framework**: React 18 + Vite
 - **Chat Runtime**: `@assistant-ui/react` state management runtime
 - **Design System**: Vanilla CSS tokens with glassmorphism, Outfit typography, and custom micro-animations
-- **Tooling**: Lucide icons, Vite proxy configuration for local development
+- **Routing**: Dual view navigation (`/` for Chat Cockpit, `/admin` for Standalone Admin Portal)
 
 ---
 
@@ -32,16 +33,34 @@ The **EM TaskFlow AI Frontend** provides an interactive, space-dark cockpit for 
 - Built-in `mode` switcher (`baseline` vs `advanced` multi-agent routing).
 
 ### 2. Collapsible PDF Upload Drawer
-- Sliding drawer interface for uploading PDF documents to `/api/rag/upload`.
+- Sidebar collapsible interface for uploading PDF documents to `/api/rag/upload`.
 - Displays real-time ingestion status, chunk metrics, and document processing feedback.
 
 ### 3. Session & Thread Management
 - Sidebar displaying active session metadata and chat thread history.
-- Cookie/header session initialization synced with `/api/session`.
+- Prominent **⚙️ Admin Portal ↗** footer link opening the standalone management hub in a new browser tab (`target="_blank"`).
 
-### 4. Telemetry Feedback Buttons
+### 4. Telemetry Feedback Controls
 - Interactive thumbs up / thumbs down controls bound to `/api/feedback`.
 - Non-blocking telemetry submission allowing continuous user interaction.
+
+---
+
+## ⚙️ Standalone Admin Portal (`/admin`)
+
+The Standalone Admin Portal (`components/AdminPage.jsx`) provides a unified operational dashboard:
+
+### 1. 🚀 Readymade External Service Hub
+- **📊 Langfuse AI Telemetry** (`http://127.0.0.1:3001`): One-click launch to multi-agent execution traces, prompt cost metrics, and user feedback logs.
+- **🦙 Open WebUI (Ollama GUI)** (`http://127.0.0.1:3080`): Model parameter tuning, context window configuration, and prompt testing.
+- **🗄️ Adminer Postgres Explorer** (`http://127.0.0.1:8080/?pgsql=postgres&username=taskflow&db=taskflow`): Pre-configured database explorer for `taskflow` (port 5432) and `langfuse_db` (port 5433).
+- **🪵 Dozzle Log Viewer** (`http://127.0.0.1:8088`): Real-time container log streaming and regex filtering.
+
+### 2. 🛠️ Native System Control Panels
+- **📄 RAG Vector Store Management**: Document inventory table with single-click PDF chunk deletion and **PDF Chunk Inspector Modal** (`🔍 View`).
+- **🔄 GitHub Sync & Cache**: Trigger manual GitHub repository issue synchronization and monitor cache freshness.
+- **⚡ System Health & Ollama Status**: Real-time status indicators for local Ollama (`llama3.2`), Primary DB (5432), and Analytics DB (5433).
+- **📈 EM DORA & Sprint Metrics**: Visual snapshot of Deployment Frequency, Lead Time, Failure Rate, MTTR, and Sprint Health.
 
 ---
 
@@ -54,7 +73,7 @@ Ensure Node.js 20+ is installed on your local machine.
 ```bash
 cd frontend
 npm install
-npm dev # or npm start
+npm run dev
 ```
 Vite will launch the dev server at `http://localhost:3000`.
 
@@ -63,11 +82,6 @@ Vite will launch the dev server at `http://localhost:3000`.
 npm run build
 ```
 Generates optimized production assets in the `dist/` folder.
-
-### Run Frontend Tests
-```bash
-npm test
-```
 
 ---
 
@@ -96,11 +110,11 @@ server: {
 ```
 frontend/
 ├── src/
-│   ├── components/       # Chat cockpit, PDF drawer, sidebar, feedback buttons
+│   ├── components/       # Chat cockpit, PDF drawer, Sidebar, AdminPage (Standalone Portal)
 │   ├── hooks/            # Custom React hooks & assistant-ui runtime integration
-│   ├── styles/           # Theme tokens, Outfit font imports, glassmorphism utilities
-│   ├── App.jsx           # Root UI layout & sidebar drawer state
-│   └── main.jsx          # React entrypoint
+│   ├── App.jsx           # Root layout & view router (/ and /admin)
+│   ├── App.css           # Glassmorphism cockpit styling
+│   └── index.jsx         # React entrypoint
 ├── public/               # Static assets & favicon
 ├── index.html            # Entry HTML document with SEO title & meta tags
 ├── vite.config.js        # Vite bundler & API proxy configuration

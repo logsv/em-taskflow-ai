@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+package ai_service;
+
+// AI Service definition with fast-path document extraction, RAG chunking, Cross-Encoder reranking, and Database RAG Persistence
+service AIService {
+  // Extract text, tables, or OCR content from uploaded document or image
+  rpc ExtractDocument (FilePayload) returns (DocumentExtractionResponse);
+
+  // Process text into 512-token chunks, compute embeddings, and save to PostgreSQL pdf_chunks
+  rpc ProcessRAGIngestion (IngestionRequest) returns (IngestionResponse);
+
+  // Hybrid search (tsvector + vector similarity) & Cross-Encoder reranking
+  rpc SearchRAG (SearchRAGRequest) returns (SearchRAGResponse);
+
+  // Cross-Encoder reranking to filter top candidates and eliminate hallucinations
+  rpc RerankChunks (RerankRequest) returns (RerankResponse);
+
+  // List distinct ingested documents from PostgreSQL
+  rpc ListDocuments (EmptyRequest) returns (ListDocumentsResponse);
+
+  // Delete document and all its chunks from PostgreSQL
+  rpc DeleteDocument (DeleteDocumentRequest) returns (DeleteDocumentResponse);
+}
+
+message EmptyRequest {}
+
+message FilePayload {
+  string filename = 1;
+  string mime_type = 2;
+  bytes file_bytes = 3;
+}
+
+message DocumentExtractionResponse {
+  bool success = 1;
+  string filename = 2;
+  string extracted_text = 3;
+  int32 page_count = 4;
+  string extraction_method = 5;
+  string error_message = 6;
+}
+
+message IngestionRequest {
+  string filename = 1;
+  string text_content = 2;
+  int32 chunk_size = 3;
+  int32 chunk_overlap = 4;
+  bytes file_bytes = 5;
+}
+
+message ChunkItem {
+  int32 chunk_index = 1;
+  string content = 2;
+  string parent_content = 3;
+  int32 token_count = 4;
+}
+
+message IngestionResponse {
+  bool success = 1;
+  string filename = 2;
+  repeated ChunkItem chunks = 3;
+  int32 total_chunks = 4;
+  string error_message = 5;
+}
+
+message SearchRAGRequest {
+  string query = 1;
+  int32 top_k = 2;
+  string filter_filename = 3;
+}
+
+message SearchResultChunk {
+  string id = 1;
+  string content = 2;
+  string filename = 3;
+  int32 chunk_index = 4;
+  float score = 5;
+  string parent_content = 6;
+}
+
+message SearchRAGResponse {
+  bool success = 1;
+  repeated SearchResultChunk results = 2;
+  string error_message = 3;
+}
+
+message CandidateChunk {
+  string id = 1;
+  string content = 2;
+  string filename = 3;
+  int32 chunk_index = 4;
+  float initial_score = 5;
+}
+
+message RerankRequest {
+  string query = 1;
+  repeated CandidateChunk candidate_chunks = 2;
+  int32 top_n = 3;
+}
+
+message RerankedChunk {
+  string id = 1;
+  string content = 2;
+  string filename = 3;
+  int32 chunk_index = 4;
+  float rerank_score = 5;
+}
+
+message RerankResponse {
+  bool success = 1;
+  repeated RerankedChunk reranked_chunks = 2;
+  string error_message = 3;
+}
+
+message DocumentSummary {
+  string filename = 1;
+  int32 total_chunks = 2;
+  string created_at = 3;
+}
+
+message ListDocumentsResponse {
+  bool success = 1;
+  repeated DocumentSummary documents = 2;
+  string error_message = 3;
+}
+
+message DeleteDocumentRequest {
+  string filename = 1;
+}
+
+message DeleteDocumentResponse {
+  bool success = 1;
+  string filename = 2;
+  int32 deleted_chunks = 3;
+  string error_message = 4;
+}

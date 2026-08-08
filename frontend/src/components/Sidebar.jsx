@@ -3,7 +3,7 @@ import { useGithubSync } from '../hooks/useGithubSync.js';
 import { useRagDocuments } from '../hooks/useRagDocuments.js';
 import './Sidebar.css';
 
-function Sidebar({ sessionSummary, isOpen, setIsOpen }) {
+function Sidebar({ sessionSummary, isOpen, setIsOpen, onOpenAdmin }) {
   const { isSyncing, syncStatus, syncMessage, handleGithubSync } = useGithubSync();
   const { documents, isLoading, isUploading, uploadStatus, uploadPdfFile, fetchDocuments } = useRagDocuments();
   const [isRagSectionOpen, setIsRagSectionOpen] = useState(true);
@@ -162,6 +162,32 @@ function Sidebar({ sessionSummary, isOpen, setIsOpen }) {
               <div className="user-status">Free Plan</div>
             </div>
           </div>
+          <a
+            href="/admin"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="admin-portal-link-btn"
+            style={{
+              marginTop: '10px',
+              width: '100%',
+              padding: '8px 12px',
+              backgroundColor: '#1e293b',
+              color: '#38bdf8',
+              border: '1px solid #334155',
+              borderRadius: '6px',
+              fontSize: '13px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justify: 'center',
+              gap: '6px',
+              textDecoration: 'none',
+              boxSizing: 'border-box',
+            }}
+          >
+            <span>⚙️</span> Admin Portal ↗
+          </a>
         </div>
       </aside>
     </>

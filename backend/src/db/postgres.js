@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import { getDatabaseConfig } from '../config.js';
+import pythonAIServiceClient from '../grpc/client.js';
 
 class DatabaseService {
   constructor() {
@@ -184,6 +185,49 @@ class DatabaseService {
       );
       CREATE INDEX IF NOT EXISTS idx_pdf_chunks_filename ON pdf_chunks(filename);
       CREATE INDEX IF NOT EXISTS idx_pdf_chunks_tsv ON pdf_chunks USING GIN(tsv);
+
+      CREATE TABLE IF NOT EXISTS dora_snapshots (
+        id SERIAL PRIMARY KEY,
+        team_id VARCHAR(64) NOT NULL,
+        deployment_frequency NUMERIC(5,2),
+        lead_time_hours NUMERIC(8,2),
+        change_failure_rate NUMERIC(5,2),
+        mttr_hours NUMERIC(8,2),
+        period_start TIMESTAMPTZ NOT NULL,
+        period_end TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS sbi_feedback_records (
+        id SERIAL PRIMARY KEY,
+        engineer_id VARCHAR(64) NOT NULL,
+        situation TEXT NOT NULL,
+        behavior TEXT NOT NULL,
+        impact TEXT NOT NULL,
+        action_plan TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS sprint_analytics (
+        id SERIAL PRIMARY KEY,
+        sprint_id VARCHAR(64) UNIQUE NOT NULL,
+        total_points INT DEFAULT 0,
+        completed_points INT DEFAULT 0,
+        wip_violations INT DEFAULT 0,
+        retro_action_items JSONB DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS okr_tracker (
+        id SERIAL PRIMARY KEY,
+        objective TEXT NOT NULL,
+        key_result TEXT NOT NULL,
+        target_value NUMERIC(10,2) NOT NULL,
+        current_value NUMERIC(10,2) DEFAULT 0,
+        status VARCHAR(32) DEFAULT 'ON_TRACK',
+        quarter VARCHAR(16) NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
     `);
   }
 
@@ -460,13 +504,27 @@ class DatabaseService {
     const normalizedMetadata =
       metadata == null ? null : typeof metadata === 'string' ? metadata : JSON.stringify(metadata);
 
-    await this.pool.query(
-      `
-        INSERT INTO feedback (id, session_id, thread_id, message_id, trace_id, score, comment, metadata)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      `,
-      [feedbackId, sessionId, threadId, messageId, traceId, score, comment, normalizedMetadata],
-    );
+    try {
+      await this.pool.query(
+        `
+          INSERT INTO feedback (id, session_id, thread_id, message_id, trace_id, score, comment, metadata)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `,
+        [feedbackId, sessionId, threadId, messageId, traceId, score, comment, normalizedMetadata],
+      );
+    } catch (dbErr) {
+      if (dbErr.code === '23503') {
+        await this.pool.query(
+          `
+            INSERT INTO feedback (id, session_id, thread_id, message_id, trace_id, score, comment, metadata)
+            VALUES ($1, NULL, NULL, NULL, $2, $3, $4, $5)
+          `,
+          [feedbackId, traceId, score, comment, normalizedMetadata],
+        );
+      } else {
+        throw dbErr;
+      }
+    }
 
     return {
       id: feedbackId,
@@ -743,202 +801,39 @@ class DatabaseService {
 
   async upsertPdfChunks(chunks) {
     if (!Array.isArray(chunks) || chunks.length === 0) return 0;
-
-    if (!this.inMemoryPdfChunks) this.inMemoryPdfChunks = [];
-    const fn = chunks[0]?.filename;
-    if (fn) {
-      this.inMemoryPdfChunks = this.inMemoryPdfChunks.filter((c) => c.filename !== fn);
-    }
-    this.inMemoryPdfChunks.push(...chunks);
-
-    try {
-      await this.ensureInitialized();
-      const client = await this.pool.connect();
-      try {
-        await client.query('BEGIN');
-        for (const chunk of chunks) {
-          const id = chunk.id || `${chunk.filename}_${chunk.chunkIndex}`;
-          const embeddingJson = chunk.embedding ? JSON.stringify(chunk.embedding) : null;
-
-          await client.query(
-            `INSERT INTO pdf_chunks (
-              id, document_id, filename, chunk_index, content, parent_content, embedding_json, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-            ON CONFLICT (id) DO UPDATE SET
-              document_id = EXCLUDED.document_id,
-              filename = EXCLUDED.filename,
-              chunk_index = EXCLUDED.chunk_index,
-              content = EXCLUDED.content,
-              parent_content = EXCLUDED.parent_content,
-              embedding_json = EXCLUDED.embedding_json,
-              created_at = NOW()`,
-            [
-              id,
-              chunk.documentId || chunk.filename,
-              chunk.filename,
-              chunk.chunkIndex ?? 0,
-              chunk.content || '',
-              chunk.parentContent || chunk.content || '',
-              embeddingJson,
-            ]
-          );
-        }
-        await client.query('COMMIT');
-        return chunks.length;
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
-      }
-    } catch (dbErr) {
-      console.warn(`⚠️ PostgreSQL pdf_chunks upsert failed (${dbErr.message}), saved ${chunks.length} chunk(s) to in-memory PDF store.`);
-      return chunks.length;
-    }
+    const filename = chunks[0]?.filename || 'doc.pdf';
+    const textContent = chunks.map((c) => c.content).join('\n\n');
+    const res = await pythonAIServiceClient.processRAGIngestion(textContent, filename);
+    return res?.chunks?.length || chunks.length;
   }
 
   async hybridSearchPdfChunks({ query, embedding = null, topK = 20, metadataFilter = null } = {}) {
-    try {
-      await this.ensureInitialized();
-    } catch (dbErr) {
-      console.warn("⚠️ PostgreSQL unavailable for hybridSearchPdfChunks, using in-memory store fallback:", dbErr.message);
-      return this.searchInMemoryPdfChunks({ query, topK, metadataFilter });
-    }
-
-    if (!query && !embedding) return [];
-
-    let sql = `SELECT id, document_id, filename, chunk_index, content, parent_content, embedding_json, created_at FROM pdf_chunks WHERE 1=1`;
-    const params = [];
-
-    if (metadataFilter && metadataFilter.filename) {
-      params.push(metadataFilter.filename);
-      sql += ` AND filename = $${params.length}`;
-    }
-
-    if (query && query.trim()) {
-      const qClean = query.trim().toLowerCase();
-      // Extract significant terms by stripping common stop words
-      const stopWords = new Set(["what", "is", "in", "the", "for", "are", "about", "show", "me", "tell", "explain", "of", "and", "a", "to"]);
-      const keywords = qClean.split(/\s+/).filter((w) => w.length > 2 && !stopWords.has(w));
-      const searchTerms = keywords.length > 0 ? keywords : [qClean];
-
-      const termConditions = searchTerms.map((term) => {
-        params.push(term);
-        const idx = params.length;
-        return `(content ILIKE '%' || $${idx} || '%' OR filename ILIKE '%' || $${idx} || '%')`;
-      });
-
-      sql += ` AND (${termConditions.join(" OR ")})`;
-    }
-
-    sql += ` ORDER BY chunk_index ASC LIMIT $${params.length + 1}`;
-    params.push(topK * 2);
-
-    try {
-      const result = await this.pool.query(sql, params);
-      const rows = result.rows.map((row) => {
-        const rowEmbedding = safeJsonParse(row.embedding_json);
-        let similarityScore = 0;
-
-        if (Array.isArray(embedding) && Array.isArray(rowEmbedding) && embedding.length === rowEmbedding.length) {
-          let dot = 0, normA = 0, normB = 0;
-          for (let i = 0; i < embedding.length; i++) {
-            dot += embedding[i] * rowEmbedding[i];
-            normA += embedding[i] * embedding[i];
-            normB += rowEmbedding[i] * rowEmbedding[i];
-          }
-          similarityScore = (normA && normB) ? (dot / (Math.sqrt(normA) * Math.sqrt(normB))) : 0;
-        }
-
-        return {
-          id: row.id,
-          documentId: row.document_id,
-          filename: row.filename,
-          chunkIndex: row.chunk_index,
-          content: row.content,
-          parentContent: row.parent_content,
-          score: similarityScore,
-          createdAt: row.created_at,
-        };
-      });
-
-      if (Array.isArray(embedding)) {
-        rows.sort((a, b) => b.score - a.score);
-      }
-
-      return rows.slice(0, topK);
-    } catch (err) {
-      console.warn("⚠️ PostgreSQL query failed in hybridSearchPdfChunks:", err.message);
-      return this.searchInMemoryPdfChunks({ query, topK, metadataFilter });
-    }
+    const filterFilename = metadataFilter?.filename || '';
+    const results = await pythonAIServiceClient.searchRAG(query, topK, filterFilename);
+    return results.map((r) => ({
+      id: r.metadata.id,
+      documentId: r.metadata.filename,
+      filename: r.metadata.filename,
+      chunkIndex: r.metadata.chunkIndex,
+      content: r.pageContent,
+      parentContent: r.metadata.parentContent,
+      score: r.metadata.score,
+    }));
   }
 
   async deletePdfDocument(filename) {
-    await this.ensureInitialized();
-    const result = await this.pool.query(
-      `DELETE FROM pdf_chunks WHERE filename = $1`,
-      [filename]
-    );
-    return result.rowCount;
+    const res = await pythonAIServiceClient.deleteDocument(filename);
+    return res?.deleted_chunks || 0;
   }
 
   async listPdfDocuments() {
-    try {
-      await this.ensureInitialized();
-      const result = await this.pool.query(`
-        SELECT 
-          filename,
-          COUNT(*)::int AS "chunkCount",
-          MAX(created_at) AS "lastUpdated"
-        FROM pdf_chunks
-        GROUP BY filename
-        ORDER BY "lastUpdated" DESC
-      `);
-      return result.rows.map((r) => ({
-        id: r.filename,
-        filename: r.filename,
-        chunkCount: r.chunkCount,
-        lastUpdated: r.lastUpdated,
-      }));
-    } catch (err) {
-      console.warn("⚠️ PostgreSQL listPdfDocuments failed, using in-memory fallback:", err.message);
-      return this.listInMemoryPdfDocuments();
-    }
-  }
-
-  searchInMemoryPdfChunks({ query, topK = 20, metadataFilter = null } = {}) {
-    if (!this.inMemoryPdfChunks) this.inMemoryPdfChunks = [];
-    let chunks = [...this.inMemoryPdfChunks];
-
-    if (metadataFilter && metadataFilter.filename) {
-      chunks = chunks.filter((c) => c.filename === metadataFilter.filename);
-    }
-
-    if (query && query.trim()) {
-      const qClean = query.trim().toLowerCase();
-      const stopWords = new Set(["what", "is", "in", "the", "for", "are", "about", "show", "me", "tell", "explain", "of", "and", "a", "to"]);
-      const keywords = qClean.split(/\s+/).filter((w) => w.length > 2 && !stopWords.has(w));
-      const searchTerms = keywords.length > 0 ? keywords : [qClean];
-
-      chunks = chunks.filter((c) => {
-        const text = `${c.content || ''} ${c.filename || ''}`.toLowerCase();
-        return searchTerms.some((term) => text.includes(term));
-      });
-    }
-
-    return chunks.slice(0, topK);
-  }
-
-  listInMemoryPdfDocuments() {
-    if (!this.inMemoryPdfChunks) this.inMemoryPdfChunks = [];
-    const docMap = new Map();
-    for (const chunk of this.inMemoryPdfChunks) {
-      const fn = chunk.filename || "unknown.pdf";
-      const existing = docMap.get(fn) || { id: fn, filename: fn, chunkCount: 0, lastUpdated: new Date().toISOString() };
-      existing.chunkCount += 1;
-      docMap.set(fn, existing);
-    }
-    return Array.from(docMap.values());
+    const docs = await pythonAIServiceClient.listDocuments();
+    return docs.map((d) => ({
+      id: d.filename,
+      filename: d.filename,
+      chunkCount: d.total_chunks,
+      lastUpdated: d.created_at,
+    }));
   }
 
   async getStats() {

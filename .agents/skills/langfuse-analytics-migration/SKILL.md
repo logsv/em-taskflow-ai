@@ -18,7 +18,7 @@ Use this skill when implementing, testing, or auditing observability, self-hoste
    - Dedicated Analytics DB: `postgresql://langfuse:langfuse@analytics-db:5433/langfuse_db`
 
 3. **Validation Requirements**:
-   - All migration steps must pass `npm test` with **93 specs, 0 failures**.
+   - All migration steps must pass `npm test` with **104 specs, 0 failures**.
 
 ## 🧪 Verification Commands
 

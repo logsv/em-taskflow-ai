@@ -10,6 +10,8 @@ import { getRagConfig, getRagAdvancedConfig } from '../config.js';
 import databaseService from '../db/postgres.js';
 import { getTracerCallbacks, createSpan } from '../utils/tracer.js';
 
+import pythonAIServiceClient from '../grpc/client.js';
+
 /**
  * Baseline retrieval: vector search + answer generation
  */
@@ -23,13 +25,15 @@ export async function baselineRetrieve(query, options = {}) {
 
   try {
     await ensureLLMReady();
-    const docs = await baseRetrieve(query, topK, { strategy: 'similarity', metadataFilter });
-    const answer = await generateAnswer(query, docs, options);
+    const docs = await baseRetrieve(query, topK * 2, { strategy: 'similarity', metadataFilter });
+    // Apply Cross-Encoder Reranking
+    const rerankedDocs = await pythonAIServiceClient.rerankChunks(query, docs, topK);
+    const answer = await generateAnswer(query, rerankedDocs, options);
     const executionTime = Date.now() - startTime;
 
     return {
       answer,
-      sources: docs,
+      sources: rerankedDocs,
       originalQuery: query,
       executionTime,
     };
@@ -90,8 +94,8 @@ export async function agenticRetrieve(query, options = {}) {
     const uniqueDocs = deduplicateDocuments(allDocuments);
     console.log(`📋 Retrieved ${uniqueDocs.length} unique documents from ${allDocuments.length} total`);
 
-    // Step 3: Select top K after retrieval
-    let rankedDocs = uniqueDocs.slice(0, topK);
+    // Step 3: Cross-Encoder Reranking to eliminate hallucinations
+    let rankedDocs = await pythonAIServiceClient.rerankChunks(query, uniqueDocs, topK);
 
     // Step 4: Contextual compression
     let finalDocs = rankedDocs;
@@ -162,7 +166,7 @@ export async function simpleRetrieve(query, topK = 5) {
  * Base retrieval from PostgreSQL vector + tsvector store
  */
 async function baseRetrieve(query, k, options = {}) {
-  const { metadataFilter = null } = options;
+  const { metadataFilter = null, preferChildChunk = false } = options;
   const span = createSpan(options.trace, 'PostgreSQL Hybrid Search', { query, topK: k });
 
   try {
@@ -182,7 +186,7 @@ async function baseRetrieve(query, k, options = {}) {
         },
       });
       return pgResults.map((item) => new Document({
-        pageContent: item.parentContent || item.content,
+        pageContent: preferChildChunk ? item.content : (item.parentContent || item.content),
         metadata: {
           filename: item.filename,
           documentId: item.documentId,

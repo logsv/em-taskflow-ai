@@ -10,7 +10,7 @@ const routerOutputSchema = {
       type: "array",
       items: {
         type: "string",
-        enum: ["jira", "github", "notion", "calendar", "rag"],
+        enum: ["jira", "github", "notion", "calendar", "rag", "dora", "sbi", "people", "delivery", "retro", "sprint", "sop", "roadmap", "okr"],
       },
       description: "List of required source domains for the query. Can be empty if no specific domain is needed.",
     },
@@ -36,28 +36,35 @@ const routerOutputSchema = {
   required: ["domains", "must_use_tools", "allow_rag", "confidence", "reasoning_summary"],
 };
 
-const systemTemplate = `You are an expert routing assistant. Your task is to analyze user queries and determine the most relevant domain (primarily 'github' or 'rag') and a routing plan.
+const systemTemplate = `You are an expert routing assistant for an Engineering Management (EM) AI platform. Your task is to analyze user queries and determine the most relevant domain and routing plan.
 
-Currently, the primary active workspace domain is:
+Active workspace domains:
 - 'github': for queries explicitly mentioning GitHub repositories, pull requests, issues, commits, or code reviews.
 - 'rag': for queries regarding documents, uploaded files, PDFs, rubrics, guides, specifications, summaries, or content lookups.
+- 'dora': for DORA metrics (deployment frequency, lead time, change failure rate, MTTR).
+- 'sbi': for Situation-Behavior-Impact performance feedback and coaching.
+- 'people': for 1-on-1 tracking, engineer career growth, skill matrix, and burnout indicators.
+- 'delivery': for team throughput, WIP limits, review bottlenecks, and cycle time.
+- 'retro': for sprint or project retrospective generation and action item tracking.
+- 'sprint': for sprint capacity estimation, story point velocity, and backlog grooming.
+- 'sop': for standard operating procedures, compliance, and ADR validation.
+- 'roadmap': for feature milestone timelines and initiative alignment.
+- 'okr': for Objectives & Key Results and team KPI tracking.
 
 CRITICAL ROUTING RULES:
 1. For document/PDF/rubric/uploaded file queries (e.g. "what is in rubrics", "summarize uploaded document", "what does the guide say"): set domains: ["rag"], allow_rag: true, must_use_tools: false, confidence: 0.9.
 2. For specific GitHub queries (e.g. "my open PRs", "repo issues"): set domains: ["github"], must_use_tools: true, allow_rag: false, confidence: 0.9.
-3. For general productivity, daily focus, or open-ended work inquiries (e.g., "What should I focus on today?", "Daily overview"): set domains: ["github"], must_use_tools: true, confidence: 0.55, and allow_rag: true.
+3. For DORA metric queries: set domains: ["dora"], must_use_tools: true, confidence: 0.9.
+4. For SBI feedback queries: set domains: ["sbi"], must_use_tools: true, confidence: 0.9.
+5. For People / 1-on-1 queries: set domains: ["people"], must_use_tools: true, confidence: 0.9.
+6. For Delivery / WIP / Bottleneck queries: set domains: ["delivery"], must_use_tools: true, confidence: 0.9.
+7. For Retro queries: set domains: ["retro"], must_use_tools: true, confidence: 0.9.
+8. For Sprint planning queries: set domains: ["sprint"], must_use_tools: true, confidence: 0.9.
+9. For SOP / Compliance queries: set domains: ["sop"], allow_rag: true, must_use_tools: true, confidence: 0.9.
+10. For Roadmap queries: set domains: ["roadmap"], must_use_tools: true, confidence: 0.9.
+11. For OKR / KPI queries: set domains: ["okr"], must_use_tools: true, confidence: 0.9.
 
 Output a flat JSON object with these exact keys: "domains", "must_use_tools", "allow_rag", "confidence", "reasoning_summary".
-Example response format:
-{
-  "domains": ["rag"],
-  "must_use_tools": false,
-  "allow_rag": true,
-  "confidence": 0.9,
-  "reasoning_summary": "Document query targeting uploaded PDF/rubric content."
-}
-
-Do not include wrappers like "properties" or "type". Only output raw JSON.
 `;
 
 /**
@@ -69,7 +76,12 @@ export function classifyFastPath(query) {
   if (!q) return null;
 
   // Domain keywords that REQUIRE tool or database retrieval
-  const workspaceKeywords = ["github", "issue", "repo", "pr", "pull request", "jira", "sprint", "blocker", "notion", "page", "calendar", "meeting", "schedule", "pdf", "doc", "document", "uploaded", "file", "rubric", "rubrics", "what is in"];
+  const workspaceKeywords = [
+    "github", "issue", "repo", "pr", "pull request", "jira", "sprint", "blocker", "notion", "page",
+    "calendar", "meeting", "schedule", "pdf", "doc", "document", "uploaded", "file", "rubric", "rubrics",
+    "what is in", "dora", "metric", "sbi", "feedback", "1-on-1", "one on one", "burnout", "retro",
+    "retrospective", "wip", "sop", "adr", "roadmap", "okr", "kpi", "lead time", "mttr"
+  ];
   const containsWorkspaceKeyword = workspaceKeywords.some((kw) => q.includes(kw));
 
   if (containsWorkspaceKeyword) {

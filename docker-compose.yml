@@ -1,4 +1,30 @@
 services:
+  python-ai-service:
+    build: ./services/python-ai-service
+    container_name: em-taskflow-python-ai
+    environment:
+      REST_PORT: 8000
+      GRPC_PORT: 50051
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: taskflow
+      POSTGRES_USER: taskflow
+      POSTGRES_PASSWORD: taskflow
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-a4eeeb19-4a09-440b-a80e-4cc2d2b89c66}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-11d33cb9-7d44-42d0-8087-deb3d7b81aac}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
+    ports:
+      - "8000:8000"
+      - "50051:50051"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - em-taskflow-net
+
   backend:
     build: ./backend
     container_name: em-taskflow-backend
@@ -10,6 +36,8 @@ services:
       PORT: 4000
       HOST: 0.0.0.0
       DATABASE_URL: postgresql://taskflow:taskflow@postgres:5432/taskflow
+      PYTHON_AI_SERVICE_URL: http://python-ai-service:8000
+      PYTHON_AI_GRPC_HOST: python-ai-service:50051
       RAG_ENABLED: "true"
       LLM_DEFAULT_PROVIDER: ${LLM_DEFAULT_PROVIDER:-ollama}
       LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-llama3.2:latest}
@@ -22,11 +50,13 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN}
       LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-false}
       LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-em-taskflow-ai}
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-a79a9fde-c84d-4539-8a84-d6192b2f3c0c}
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-bcf0d4e3-cb79-44a5-bb85-98824bfcb6b7}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-a4eeeb19-4a09-440b-a80e-4cc2d2b89c66}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-11d33cb9-7d44-42d0-8087-deb3d7b81aac}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
     depends_on:
       postgres:
+        condition: service_healthy
+      python-ai-service:
         condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -133,6 +163,38 @@ services:
       start_period: 60s
     networks:
       - em-taskflow-net
+
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: em-taskflow-dozzle
+    ports:
+      - "8088:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - em-taskflow-net
+
+  adminer:
+    image: adminer:latest
+    container_name: em-taskflow-adminer
+    ports:
+      - "8080:8080"
+    networks:
+      - em-taskflow-net
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: em-taskflow-open-webui
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - RAG_EMBEDDING_ENGINE=ollama
+      - RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - RAG_OLLAMA_MODEL=nomic-embed-text
+    ports:
+      - "3080:8080"
+    networks:
+      - em-taskflow-net
+
 
 
 networks:
