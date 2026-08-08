@@ -1,23 +1,37 @@
-/**
- * Fast-Path Chat File & Image Attachment Upload Route
- * Extracts document text/images in <1.5s for direct interactive chat prompt injection.
- */
-
 import express from 'express';
 import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import pythonAIServiceClient from '../grpc/client.js';
 import { attachSessionContext } from '../middleware/sessionContext.js';
+import { startChatFileExtractWorkflow, getWorkflowStatus } from '../temporal/client.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = express.Router();
-const storage = multer.memoryStorage();
+const tempDir = path.join(__dirname, '../../data/pdfs/');
+if (!fs.existsSync(tempDir)) {
+  fs.mkdirSync(tempDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, tempDir),
+  filename: (req, file, cb) => {
+    const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    cb(null, `${uniqueSuffix}_${file.originalname}`);
+  },
+});
+
 const upload = multer({
   storage,
-  limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB max limit
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB max limit
 });
 
 /**
  * POST /api/chat/upload
- * Fast-path upload route returning extracted text/image context in <1.5s
+ * Triggers Temporal ChatFileExtractWorkflow with synchronous fallback
  */
 router.post('/', attachSessionContext, upload.single('file'), async (req, res) => {
   try {
@@ -25,34 +39,106 @@ router.post('/', attachSessionContext, upload.single('file'), async (req, res) =
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const { originalname, mimetype, buffer } = req.file;
-    console.log(`📎 Fast-path chat upload received: ${originalname} (${mimetype}, ${buffer.length} bytes)`);
+    const { originalname, mimetype, path: filePath, size } = req.file;
+    console.log(`📎 Chat file upload received: ${originalname} (${mimetype}, ${size} bytes)`);
 
-    // Call Python AI Microservice FileUploadProcessor
+    // Try Temporal Durable Workflow first
+    try {
+      const temporalRes = await startChatFileExtractWorkflow(filePath, originalname, mimetype);
+      if (temporalRes && temporalRes.workflowId) {
+        return res.status(202).json({
+          status: 'processing',
+          mode: 'temporal',
+          workflowId: temporalRes.workflowId,
+          filename: originalname,
+          requestId: req.requestId,
+        });
+      }
+    } catch (err) {
+      console.warn(`⚠️ Temporal Chat File Extract workflow fallback (${err.message})`);
+    }
+
+    // Direct synchronous fallback via Python AI Service
+    const buffer = fs.readFileSync(filePath);
     const extractionResult = await pythonAIServiceClient.extractDocument(buffer, originalname, mimetype);
 
     const attachmentPayload = {
       id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       filename: originalname,
       mimeType: mimetype,
-      sizeBytes: buffer.length,
+      sizeBytes: size,
       extractedText: extractionResult.extracted_text || '',
       pageCount: extractionResult.page_count || 1,
       extractionMethod: extractionResult.extraction_method || 'none',
       timestamp: new Date().toISOString(),
     };
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
+      mode: 'direct',
       attachment: attachmentPayload,
       message: 'Attachment extracted successfully for chat prompt injection',
+      requestId: req.requestId,
     });
   } catch (error) {
     console.error('❌ Chat upload failed:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'File attachment extraction failed',
       details: error.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+/**
+ * GET /api/chat/upload/workflows/:workflowId
+ * Poll workflow completion status for Chat File Extraction
+ */
+router.get('/workflows/:workflowId', async (req, res) => {
+  try {
+    const { workflowId } = req.params;
+    const wfStatus = await getWorkflowStatus(workflowId);
+    if (!wfStatus) {
+      return res.status(404).json({
+        error: 'Workflow status unavailable',
+        requestId: req.requestId,
+      });
+    }
+
+    if (wfStatus.status === 'COMPLETED' && wfStatus.result) {
+      const result = wfStatus.result;
+      const attachmentPayload = {
+        id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        filename: result.filename || 'file',
+        mimeType: 'application/octet-stream',
+        extractedText: result.extracted_text || '',
+        pageCount: result.page_count || 1,
+        extractionMethod: result.extraction_method || 'temporal_activity',
+        timestamp: new Date().toISOString(),
+      };
+
+      return res.json({
+        status: 'COMPLETED',
+        mode: 'temporal',
+        workflowId,
+        attachment: attachmentPayload,
+        requestId: req.requestId,
+      });
+    }
+
+    return res.json({
+      status: wfStatus.status,
+      mode: 'temporal',
+      workflowId,
+      error: wfStatus.error || undefined,
+      requestId: req.requestId,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Failed to query chat workflow status',
+      details: error.message,
+      requestId: req.requestId,
     });
   }
 });

@@ -4,7 +4,11 @@ Filters and orders candidate retrieved chunks to eliminate hallucinations and se
 Uses FlashRank (lightweight Cross-Encoder) with fallback term overlap scoring.
 """
 
+import time
+import logging
 from app.telemetry.tracer import trace_observation
+
+logger = logging.getLogger("app.reranker")
 
 
 class CrossEncoderReranker:
@@ -19,6 +23,7 @@ class CrossEncoderReranker:
                 from flashrank import Ranker
                 self._ranker = Ranker(model_name="ms-marco-TinyBERT-L-2-v2", cache_dir="/tmp/flashrank")
             except Exception as e:
+                logger.warning(f"FlashRank init failed, using term-overlap fallback: {e}")
                 self._ranker = False
         return self._ranker
 
@@ -31,6 +36,7 @@ class CrossEncoderReranker:
         if not candidate_chunks:
             return []
 
+        start_time = time.time()
         ranker = self._get_ranker()
         if ranker:
             try:
@@ -56,9 +62,15 @@ class CrossEncoderReranker:
                         "chunk_index": meta.get("chunk_index", 0),
                         "rerank_score": float(item.get("score", 0.0)),
                     })
+                
+                duration_ms = int((time.time() - start_time) * 1000)
+                logger.info(
+                    f"FlashRank reranked {len(candidate_chunks)} candidates -> top {len(ranked)} ({duration_ms}ms)",
+                    extra={"details": {"candidates": len(candidate_chunks), "top_n": len(ranked), "duration_ms": duration_ms}}
+                )
                 return ranked
-            except Exception:
-                pass
+            except Exception as err:
+                logger.warning(f"FlashRank execution warning, falling back: {err}")
 
         # Fallback scoring: term frequency + exact match overlap
         q_tokens = [w.lower() for w in query.split() if len(w) > 2]
@@ -75,4 +87,8 @@ class CrossEncoderReranker:
             })
 
         scored.sort(key=lambda x: x["rerank_score"], reverse=True)
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.info(
+            f"Fallback term-overlap reranked {len(candidate_chunks)} candidates -> top {len(scored[:top_n])} ({duration_ms}ms)"
+        )
         return scored[:top_n]

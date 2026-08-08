@@ -52,6 +52,31 @@ export async function startRAGIngestWorkflow(filePath, filename) {
   }
 }
 
+export async function startChatFileExtractWorkflow(filePath, filename, mimeType = '') {
+  const client = await getTemporalClient();
+  if (!client) {
+    return null;
+  }
+
+  const workflowId = `chat-extract-${filename.replace(/[^a-zA-Z0-9]/g, '_')}-${Date.now()}`;
+  try {
+    const handle = await client.workflow.start('ChatFileExtractWorkflow', {
+      taskQueue: 'rag-ingest-queue',
+      args: [{ file_path: filePath, filename, mime_type: mimeType }],
+      workflowId,
+    });
+    console.log(`🚀 Started Temporal Chat File Extraction Workflow: ${handle.workflowId}`);
+    return {
+      workflowId: handle.workflowId,
+      runId: handle.firstExecutionRunId,
+      status: 'RUNNING',
+    };
+  } catch (err) {
+    console.warn(`⚠️ Failed to start Temporal Chat File Extraction Workflow (${err.message})`);
+    return null;
+  }
+}
+
 export async function getWorkflowStatus(workflowId) {
   const client = await getTemporalClient();
   if (!client) return null;
@@ -59,11 +84,31 @@ export async function getWorkflowStatus(workflowId) {
   try {
     const handle = client.workflow.getHandle(workflowId);
     const description = await handle.describe();
+    const statusName = description.status.name;
+    
+    let resultPayload = null;
+    let failureError = null;
+    if (statusName === 'COMPLETED') {
+      try {
+        resultPayload = await handle.result();
+      } catch (e) {
+        console.warn(`⚠️ Could not retrieve result for completed workflow ${workflowId}: ${e.message}`);
+      }
+    } else if (statusName === 'FAILED') {
+      try {
+        await handle.result();
+      } catch (e) {
+        failureError = e.message || 'Workflow execution failed';
+      }
+    }
+
     return {
       workflowId,
-      status: description.status.name,
+      status: statusName,
       startTime: description.startTime,
       closeTime: description.closeTime || null,
+      result: resultPayload,
+      error: failureError,
     };
   } catch (err) {
     return { workflowId, status: 'UNKNOWN', error: err.message };

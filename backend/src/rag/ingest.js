@@ -10,8 +10,8 @@ import pdf from 'pdf-parse/lib/pdf-parse.js';
 import { config, getRagConfig } from '../config.js';
 import { BGEEmbeddingsAdapter } from '../llm/bgeEmbeddingsAdapter.js';
 import databaseService from '../db/postgres.js';
-
 import pythonAIServiceClient from '../grpc/client.js';
+import { info, warn, error } from '../utils/logger.js';
 
 // Dependencies for injection
 let fsModule = fs;
@@ -107,8 +107,9 @@ export async function initializeIngest() {
 export async function ingestPDF(filePath, filename) {
   await ensureIngestReady();
 
+  const startTime = Date.now();
   try {
-    console.log(`📄 Ingesting PDF: ${filename}`);
+    info(`PDF ingestion started`, { filename });
 
     // Read file buffer
     const dataBuffer = await fsModule.readFile(filePath);
@@ -118,7 +119,7 @@ export async function ingestPDF(filePath, filename) {
     const pyExtract = await pythonAIServiceClient.extractDocument(dataBuffer, filename, '');
     if (pyExtract && pyExtract.success && pyExtract.extracted_text && pyExtract.extraction_method !== 'node_fallback') {
       text = pyExtract.extracted_text;
-      console.log(`🐍 Python AI Microservice extracted ${text.length} chars using ${pyExtract.extraction_method}`);
+      info(`Document extracted via Python AI service`, { filename, charCount: text.length, method: pyExtract.extraction_method });
     } else if (filename.toLowerCase().endsWith('.pdf')) {
       // Fallback to JS pdf-parse module for PDFs only
       try {
@@ -152,12 +153,12 @@ export async function ingestPDF(filePath, filename) {
           tokenCount: item.token_count,
         },
       }));
-      console.log(`🐍 Python AI Microservice created ${chunks.length} 512-token chunks`);
+      info(`Chunks created via Python AI service`, { filename, chunksCount: chunks.length });
     } else {
       try {
         chunks = await createChunks(text, filename, filePath);
       } catch (chunkError) {
-        console.warn('⚠️ Token-aware chunking failed, using standard character-split fallback chunks:', chunkError);
+        warn('Token-aware chunking failed, using character-split fallback chunks', { filename, err: chunkError.message });
         chunks = createFallbackChunks(text, filename, filePath);
       }
     }
@@ -189,15 +190,15 @@ export async function ingestPDF(filePath, filename) {
       });
 
       await databaseService.upsertPdfChunks(dbChunks);
-      console.log(`🗄️ Saved ${dbChunks.length} parent-child chunks into PostgreSQL DB for ${filename}`);
+      info(`Parent-child chunks saved to PostgreSQL DB`, { filename, chunksCount: dbChunks.length });
     } catch (dbErr) {
-      console.warn(`⚠️ PostgreSQL pdf_chunks upsert failed (${dbErr.message}), falling back to ChromaDB only.`);
+      warn(`PostgreSQL pdf_chunks upsert failed, falling back to ChromaDB only`, { filename, err: dbErr.message });
     }
 
     // Store chunks in vector database
     if (vectorStore) {
       await vectorStore.addDocuments(chunks);
-      console.log(`✅ Ingested ${chunks.length} chunks from ${filename}`);
+      info(`PDF ingestion completed successfully`, { filename, chunksCount: chunks.length, durationMs: Date.now() - startTime });
     }
 
     return {
@@ -205,12 +206,12 @@ export async function ingestPDF(filePath, filename) {
       chunks: chunks.length,
     };
 
-  } catch (error) {
-    console.error('❌ PDF ingestion failed:', error);
+  } catch (err) {
+    error('PDF ingestion failed', { filename, err: err.message });
     return {
       success: false,
       chunks: 0,
-      error: error.message,
+      error: err.message,
     };
   }
 }

@@ -69,10 +69,22 @@ def chunk_text(req: ExtractRequest):
 
 @router.post("/api/v1/rag/search")
 def search_rag(req: SearchApiRequest):
-    """Hybrid Search (tsvector + vector similarity) & Cross-Encoder Reranking in Python."""
-    candidates = db_service.hybrid_search(req.query, top_k=req.top_k * 2, filter_filename=req.filter_filename or "")
-    results = reranker.rerank(req.query, candidates, top_n=req.top_k)
-    return {"query": req.query, "results": results}
+    """Hybrid Search (tsvector + vector similarity), Cross-Encoder Reranking, and MMR Deduplication."""
+    candidates = db_service.hybrid_search(req.query, top_k=req.top_k * 3, filter_filename=req.filter_filename or "")
+    results = reranker.rerank(req.query, candidates, top_n=req.top_k * 2)
+
+    # Maximal Marginal Relevance (MMR) deduplication to prune redundant chunks
+    deduped = []
+    seen_texts = set()
+    for item in results:
+        content_snippet = item.get("content", "")[:120].strip().lower()
+        if content_snippet not in seen_texts:
+            seen_texts.add(content_snippet)
+            deduped.append(item)
+        if len(deduped) >= req.top_k:
+            break
+
+    return {"query": req.query, "results": deduped if deduped else results[:req.top_k]}
 
 
 @router.get("/api/v1/rag/documents")

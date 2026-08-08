@@ -11,7 +11,7 @@ import githubSyncService from '../services/githubSyncService.js';
 const router = express.Router();
 
 const chatSchema = z.object({
-  message: z.string().min(1).max(20_000),
+  message: z.string().min(1).max(100_000),
   threadId: z.string().min(1).max(128).nullable().optional(),
   mode: z.enum(['baseline', 'advanced']).optional(),
 });

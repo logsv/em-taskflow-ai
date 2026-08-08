@@ -9,8 +9,8 @@ import { ensureLLMReady, getChatModel } from '../llm/index.js';
 import { getRagConfig, getRagAdvancedConfig } from '../config.js';
 import databaseService from '../db/postgres.js';
 import { getTracerCallbacks, createSpan } from '../utils/tracer.js';
-
 import pythonAIServiceClient from '../grpc/client.js';
+import { info, warn, error } from '../utils/logger.js';
 
 /**
  * Baseline retrieval: vector search + answer generation
@@ -70,13 +70,13 @@ export async function agenticRetrieve(query, options = {}) {
 
   try {
     await ensureLLMReady();
-    console.log('🔍 Starting agentic retrieval for:', query.slice(0, 100) + '...');
+    info('Agentic retrieval started', { querySnippet: query.slice(0, 50) });
 
     // Step 1: Query rewriting and expansion
     let queries = [query];
     if (enableQueryRewriting) {
       queries = await rewriteQueries(query, maxQueries, options);
-      console.log(`📝 Generated ${queries.length} query variants`);
+      info('Generated query variants', { queryCount: queries.length });
     }
 
     // Step 2: Multi-query retrieval
@@ -92,7 +92,7 @@ export async function agenticRetrieve(query, options = {}) {
 
     // Remove duplicates
     const uniqueDocs = deduplicateDocuments(allDocuments);
-    console.log(`📋 Retrieved ${uniqueDocs.length} unique documents from ${allDocuments.length} total`);
+    info('Deduplicated documents retrieved', { totalDocs: allDocuments.length, uniqueDocsCount: uniqueDocs.length });
 
     // Step 3: Cross-Encoder Reranking to eliminate hallucinations
     let rankedDocs = await pythonAIServiceClient.rerankChunks(query, uniqueDocs, topK);
@@ -101,14 +101,14 @@ export async function agenticRetrieve(query, options = {}) {
     let finalDocs = rankedDocs;
     if (enableCompression) {
       finalDocs = await compressDocuments(query, rankedDocs, options);
-      console.log(`🗜️ Applied contextual compression`);
+      info('Applied contextual compression to retrieved documents');
     }
 
     // Step 5: Generate answer
     const answer = await generateAnswer(query, finalDocs, options);
 
     const executionTime = Date.now() - startTime;
-    console.log(`✅ Agentic retrieval completed in ${executionTime}ms`);
+    info('Agentic retrieval completed', { docsRetrieved: finalDocs.length, executionTimeMs: executionTime });
 
     return {
       answer,
@@ -120,8 +120,8 @@ export async function agenticRetrieve(query, options = {}) {
       executionTime,
     };
 
-  } catch (error) {
-    console.error('❌ Agentic retrieval failed:', error);
+  } catch (err) {
+    error('Agentic retrieval failed', { querySnippet: query.slice(0, 50), err: err.message });
     const executionTime = Date.now() - startTime;
     
     return {

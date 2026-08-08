@@ -28,6 +28,7 @@ import { createCriticAgent } from "./criticAgent.js";
 import { getRagTool } from "./ragAgent.js";
 import { supervisorAgentPromptTemplate } from "./prompts.js";
 import { getTracerCallbacks } from "../utils/tracer.js";
+import { info, warn, error } from "../utils/logger.js";
 
 // Define the custom state schema for the supervisor graph
 export const SupervisorState = Annotation.Root({
@@ -169,7 +170,7 @@ export function supervisorPostModelHook(state) {
     const handoffCall = lastMessage.tool_calls.find((toolCall) => toolCall.name.startsWith("transfer_to_"));
 
     if (workerExecuted && handoffCall) {
-      console.warn(`🛡️ Policy Guardrail Intercepted: Prevented repeated handoff to '${handoffCall.name}' after worker execution.`);
+      warn(`Policy Guardrail Intercepted: Prevented repeated handoff to '${handoffCall.name}' after worker execution.`);
       const synthesisContent = extractEvidenceContent(messages);
 
       // Mutate tool_calls array elements directly and construct clean AIMessage with matching ID
@@ -200,7 +201,7 @@ export function supervisorPostModelHook(state) {
 
     if (unauthorizedCall) {
       const targetDomain = unauthorizedCall.name.replace("transfer_to_", "").replace("_agent", "");
-      console.warn(`🛡️ Policy Guardrail Intercepted: Handoff to unauthorized domain '${targetDomain}' blocked.`);
+      warn(`Policy Guardrail Intercepted: Handoff to unauthorized domain '${targetDomain}' blocked.`);
 
       const isRagOnly = fullAllowedDomains.includes("rag") && !fullAllowedDomains.includes("github");
       const cleanText = isRagOnly
@@ -225,7 +226,7 @@ export function supervisorPostModelHook(state) {
       evidence.includes("http") &&
       (lastMessage.content.includes("No tool evidence captured") || lastMessage.content.includes("could not gather tool-backed"))
     ) {
-      console.warn("🛡️ Supervisor PostModelHook: Injecting captured GitHub issue Markdown evidence into response.");
+      warn("Supervisor PostModelHook: Injecting captured GitHub issue Markdown evidence into response.");
       lastMessage.content = `Executive Summary\nFetched open GitHub issues across repositories:\n\n${evidence}\n\nKey Risks/Blockers\n- Review open issues for actionable priority\n\nWhat Needs Decision\n- Priorities for open issues\n\nAction Items (owner + due date)\n- @logsv | TBD | Address open issues\n\nEvidence by Source\n- jira: none\n- github:\n${evidence}\n- notion: none\n- calendar: none\n- rag: none`;
       return {
         messages: [
@@ -262,7 +263,7 @@ function createSupervisorLlmWrapper(baseLlm) {
     const isHandoffCall = res && Array.isArray(res.tool_calls) && res.tool_calls.some((tc) => tc.name?.startsWith?.("transfer_to_"));
 
     if (hasWorkerRun && isHandoffCall) {
-      console.warn(`🛡️ Supervisor LLM Intercept: Prevented repeated handoff to '${res.tool_calls[0].name}' after worker execution.`);
+      warn(`Supervisor LLM Intercept: Prevented repeated handoff to '${res.tool_calls[0].name}' after worker execution.`);
       const content = extractEvidenceContent(inputArr);
       return new AIMessage({
         id: res.id,
@@ -287,7 +288,7 @@ function createSupervisorLlmWrapper(baseLlm) {
       else if (isCalendar) targetAgent = "transfer_to_calendar_agent";
 
       if (targetAgent) {
-        console.log(`⚡ [SUPERVISOR FALLBACK HANDOFF]: Local LLM omitted handoff call, dispatching to ${targetAgent}.`);
+        info(`Supervisor fallback handoff: Local LLM omitted handoff call, dispatching to ${targetAgent}.`);
         return new AIMessage({
           id: res?.id || `call_sup_${Date.now()}`,
           content: "",
@@ -319,11 +320,11 @@ function createSupervisorLlmWrapper(baseLlm) {
 export async function initializeAgent(options = {}) {
   if (initialized) return;
 
-  console.log("🤖 Initializing LangGraph supervisor multi-agent system...");
+  info("Initializing LangGraph supervisor multi-agent system...");
 
   try {
     if (!options.skipMcpInit && !isMCPReady()) {
-      console.log("🔧 Initializing MCP services...");
+      info("Initializing MCP services...");
       await initializeMCP();
     }
 
@@ -370,10 +371,10 @@ export async function initializeAgent(options = {}) {
 
     compiledGraph = workflow.compile ? workflow.compile() : workflow;
     initialized = true;
-    console.log("✅ Supervisor multi-agent system initialized");
-  } catch (error) {
-    console.error("❌ Failed to initialize supervisor agent system:", error);
-    throw error;
+    info("Supervisor multi-agent system initialized");
+  } catch (err) {
+    error("Failed to initialize supervisor agent system", { err: err.message });
+    throw err;
   }
 }
 
@@ -444,7 +445,7 @@ export async function executeAgentQuery(query, options = {}) {
       evidence: result.evidence || {},
     };
   } catch (error) {
-    console.error("❌ Agent query execution failed:", error);
+    error("Agent query execution failed", { err: err.message });
     throw error;
   }
 }

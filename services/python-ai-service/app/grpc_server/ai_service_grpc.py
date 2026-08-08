@@ -4,10 +4,14 @@ Provides high-performance sub-2ms binary RPC calls for Node.js backend integrati
 Implements 100% of RAG extraction, chunking, database vector persistence, hybrid search, and CRUD.
 """
 
+import time
+import logging
 from app.services.file_processor.pdf_extractor import FileUploadProcessor
 from app.services.rag_processor.chunker import RAGChunker
 from app.services.rag_processor.reranker import CrossEncoderReranker
 from app.services.rag_processor.database import RAGDatabaseService
+
+logger = logging.getLogger("app.grpc_server")
 
 
 class AIServiceServicer:
@@ -21,11 +25,18 @@ class AIServiceServicer:
 
     def ExtractDocument(self, request, context):
         """gRPC handler for ExtractDocument RPC."""
+        start_time = time.time()
         filename = getattr(request, "filename", "doc")
         mime_type = getattr(request, "mime_type", "")
         file_bytes = getattr(request, "file_bytes", b"")
 
         res = self.file_processor.extract_document(file_bytes, filename, mime_type)
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        logger.info(
+            f"gRPC ExtractDocument completed for {filename} ({res.get('page_count', 0)} pages, {duration_ms}ms)",
+            extra={"details": {"filename": filename, "method": res.get("extraction_method"), "duration_ms": duration_ms}}
+        )
 
         class DictResponse:
             def __init__(self, d):
@@ -40,13 +51,13 @@ class AIServiceServicer:
 
     def ProcessRAGIngestion(self, request, context):
         """gRPC handler for ProcessRAGIngestion RPC: Extracts, chunks, and persists to Postgres pdf_chunks."""
+        start_time = time.time()
         filename = getattr(request, "filename", "doc")
         text_content = getattr(request, "text_content", "")
         file_bytes = getattr(request, "file_bytes", b"")
         chunk_size = getattr(request, "chunk_size", 512) or 512
         chunk_overlap = getattr(request, "chunk_overlap", 64) or 64
 
-        # If raw text content was not passed, extract it using file_processor
         if not text_content and file_bytes:
             ext_res = self.file_processor.extract_document(file_bytes, filename)
             text_content = ext_res.get("extracted_text", "")
@@ -55,8 +66,13 @@ class AIServiceServicer:
             text_content, filename, chunk_size=chunk_size, chunk_overlap=chunk_overlap
         )
 
-        # Upsert chunks directly into PostgreSQL pdf_chunks
         self.db_service.upsert_chunks(filename, raw_chunks)
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        logger.info(
+            f"gRPC ProcessRAGIngestion completed for {filename} ({len(raw_chunks)} chunks, {duration_ms}ms)",
+            extra={"details": {"filename": filename, "chunks": len(raw_chunks), "duration_ms": duration_ms}}
+        )
 
         class ChunkItemWrapper:
             def __init__(self, c):
@@ -77,15 +93,19 @@ class AIServiceServicer:
 
     def SearchRAG(self, request, context):
         """gRPC handler for SearchRAG RPC: Hybrid Search + Cross-Encoder Reranking."""
+        start_time = time.time()
         query = getattr(request, "query", "")
         top_k = getattr(request, "top_k", 5) or 5
         filter_filename = getattr(request, "filter_filename", "")
 
-        # Step 1: Hybrid Search in Postgres pdf_chunks
         db_candidates = self.db_service.hybrid_search(query, top_k=top_k * 2, filter_filename=filter_filename)
-
-        # Step 2: Cross-Encoder Rerank
         reranked = self.reranker.rerank(query, db_candidates, top_n=top_k)
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        logger.info(
+            f"gRPC SearchRAG completed for query '{query[:30]}...' ({len(reranked)} results, {duration_ms}ms)",
+            extra={"details": {"candidates": len(db_candidates), "results": len(reranked), "duration_ms": duration_ms}}
+        )
 
         class SearchResultWrapper:
             def __init__(self, item):
@@ -106,6 +126,7 @@ class AIServiceServicer:
 
     def RerankChunks(self, request, context):
         """gRPC handler for RerankChunks RPC."""
+        start_time = time.time()
         query = getattr(request, "query", "")
         top_n = getattr(request, "top_n", 5) or 5
         raw_candidates = getattr(request, "candidate_chunks", [])
@@ -120,6 +141,12 @@ class AIServiceServicer:
             })
 
         reranked = self.reranker.rerank(query, candidates_dict, top_n=top_n)
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        logger.info(
+            f"gRPC RerankChunks completed ({len(candidates_dict)} in -> {len(reranked)} out, {duration_ms}ms)",
+            extra={"details": {"input_candidates": len(candidates_dict), "output_results": len(reranked), "duration_ms": duration_ms}}
+        )
 
         class RerankedChunkWrapper:
             def __init__(self, r):
@@ -159,6 +186,7 @@ class AIServiceServicer:
         """gRPC handler for DeleteDocument RPC."""
         filename = getattr(request, "filename", "")
         deleted_count = self.db_service.delete_document(filename)
+        logger.info(f"gRPC DeleteDocument completed for {filename} ({deleted_count} chunks deleted)")
 
         class DeleteResponseWrapper:
             def __init__(self, fn, count):

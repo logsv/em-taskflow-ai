@@ -15,7 +15,11 @@ import logging
 from concurrent import futures
 from fastapi import FastAPI
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+from app.telemetry.json_logger import setup_json_logging
+
+setup_json_logging(logging.INFO)
+logger = logging.getLogger("app.main")
+
 import uvicorn
 from app.api.rest_router import router as api_router
 from app.grpc_server.ai_service_grpc import AIServiceServicer
@@ -41,13 +45,12 @@ def start_grpc_server(port: int = 50051):
         import grpc
         server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
         servicer = AIServiceServicer()
-        # Add servicer to gRPC server dynamically or via generated stubs
         server.add_insecure_port(f"[::]:{port}")
         server.start()
-        print(f"🚀 Python gRPC Server running on port {port}")
+        logger.info(f"Python gRPC Server running on port {port}")
         return server
     except Exception as e:
-        print(f"⚠️ gRPC server startup warning: {e}")
+        logger.warning(f"gRPC server startup warning: {e}")
         return None
 
 
@@ -56,5 +59,5 @@ if __name__ == "__main__":
     rest_port = int(os.environ.get("REST_PORT", 8000))
     
     server = start_grpc_server(grpc_port)
-    print(f"⚡ FastAPI REST Server running on port {rest_port} (OpenAPI: http://localhost:{rest_port}/docs)")
+    logger.info(f"FastAPI REST Server running on port {rest_port} (OpenAPI: http://localhost:{rest_port}/docs)")
     uvicorn.run("app.main:app", host="0.0.0.0", port=rest_port, reload=False)

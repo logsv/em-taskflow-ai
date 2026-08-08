@@ -69,6 +69,50 @@ function PDFUpload() {
       setUploadProgress(100);
       
       const data = await res.json();
+      
+      if (res.status === 202 && data.mode === 'temporal' && data.workflowId) {
+        setStatus('⏳ Temporal Workflow running background ingestion...');
+        const workflowId = data.workflowId;
+        let attempts = 0;
+        const pollInterval = setInterval(async () => {
+          attempts += 1;
+          try {
+            const pollRes = await fetch(`/api/rag/workflows/${workflowId}`);
+            if (pollRes.ok) {
+              const pollData = await pollRes.json();
+              if (pollData.status === 'COMPLETED') {
+                clearInterval(pollInterval);
+                setStatus(`✅ Temporal Workflow completed! Processed "${file.name}" into RAG store.`);
+                setTimeout(() => {
+                  setFile(null);
+                  setStatus('');
+                  setUploadProgress(0);
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
+                }, 4000);
+              } else if (pollData.status === 'FAILED') {
+                clearInterval(pollInterval);
+                setStatus(`❌ Upload failed: ${pollData.error || 'Temporal Workflow failed processing PDF.'}`);
+                setUploadProgress(0);
+              }
+            }
+          } catch (e) {
+            // silent retry
+          }
+          if (attempts > 30) {
+            clearInterval(pollInterval);
+            setStatus('⚠️ Ingestion processing in background...');
+            setTimeout(() => {
+              setFile(null);
+              setStatus('');
+              setUploadProgress(0);
+            }, 4000);
+          }
+        }, 2000);
+        return;
+      }
+
       if (data.status === 'success') {
         setStatus(`✅ Upload successful! Processed ${data.chunks} chunks from "${file.name}"`);
         setTimeout(() => {
@@ -80,7 +124,7 @@ function PDFUpload() {
           }
         }, 3000);
       } else {
-        setStatus('❌ Upload failed. Please try again.');
+        setStatus(`❌ Upload failed: ${data.error || 'Please try again.'}`);
         setUploadProgress(0);
       }
     } catch (err) {

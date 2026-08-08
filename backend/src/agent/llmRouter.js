@@ -1,6 +1,7 @@
 import { getChatModel } from "../llm/index.js";
 import { JsonOutputParser } from "@langchain/core/output_parsers";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import { info, warn } from "../utils/logger.js";
 
 // Define the schema for the router's output
 const routerOutputSchema = {
@@ -97,7 +98,7 @@ export function classifyFastPath(query) {
 
   const isFastPath = fastPatterns.some((pattern) => pattern.test(q));
   if (isFastPath) {
-    console.log(`⚡ [FAST-PATH CLASSIFIER]: Fast-routed query "${q.slice(0, 40)}..." directly to LLM (0 tools).`);
+    info(`Fast-routed query directly to LLM (0 tools)`, { querySnippet: q.slice(0, 40) });
     return {
       intent_type: "DIRECT_LLM",
       domains: [],
@@ -142,7 +143,7 @@ const getRouterChain = () => {
         }
         return parsed;
       } catch (e) {
-        console.warn("⚠️ JSON.parse failed, falling back to JsonOutputParser:", e.message);
+        warn("JSON parse failed in router, falling back to JsonOutputParser", { err: e.message });
         return parser.invoke(result);
       }
     }

@@ -207,3 +207,29 @@ function createMessageRepoAdapter(dbService) {
     saveMessage: (...args) => dbService.saveMessage(...args),
   };
 }
+
+/**
+ * Sliding Window + State Anchoring for Chat History
+ * Keeps the latest N turns active, compressing older turns into a state summary anchor.
+ */
+export function optimizeChatHistory(messages = [], maxActiveTurns = 8) {
+  if (!Array.isArray(messages) || messages.length <= maxActiveTurns + 2) {
+    return messages;
+  }
+
+  const activeMessages = messages.slice(-maxActiveTurns);
+  const olderMessages = messages.slice(0, -maxActiveTurns);
+
+  const keyTopics = olderMessages
+    .filter((m) => m.role === 'user')
+    .map((m) => String(m.content || '').slice(0, 40))
+    .filter(Boolean)
+    .slice(-4);
+
+  const summaryAnchor = {
+    role: 'system',
+    content: `[System Memory: Conversation Summary Anchor]\nPrior topics discussed in this session: ${keyTopics.join(' | ')}. (${olderMessages.length} earlier turns archived)`,
+  };
+
+  return [summaryAnchor, ...activeMessages];
+}

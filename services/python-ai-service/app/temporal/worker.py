@@ -9,11 +9,17 @@ import logging
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from app.temporal.workflow import RAGIngestWorkflow
+from app.temporal.workflow import RAGIngestWorkflow, ChatFileExtractWorkflow
 from app.temporal.activities import (
     extract_text_activity,
     chunk_text_activity,
     persist_and_embed_activity,
+    inspect_file_activity,
+    extract_pdf_activity,
+    extract_tabular_activity,
+    extract_docx_activity,
+    extract_image_context_activity,
+    extract_text_fallback_activity,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,11 +51,17 @@ async def start_temporal_worker():
     worker = Worker(
         client,
         task_queue=TASK_QUEUE,
-        workflows=[RAGIngestWorkflow],
+        workflows=[RAGIngestWorkflow, ChatFileExtractWorkflow],
         activities=[
             extract_text_activity,
             chunk_text_activity,
             persist_and_embed_activity,
+            inspect_file_activity,
+            extract_pdf_activity,
+            extract_tabular_activity,
+            extract_docx_activity,
+            extract_image_context_activity,
+            extract_text_fallback_activity,
         ],
     )
 

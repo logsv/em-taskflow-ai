@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuiState } from '@assistant-ui/react';
 import { useGithubSync } from '../hooks/useGithubSync.js';
+import logger from '../utils/logger.js';
 import './Chat.css';
 
 function Chat({ 
@@ -92,36 +93,78 @@ function Chat({
     const file = event.target.files[0];
     if (!file) return;
 
-    if (file.type !== 'application/pdf') {
-      setUploadStatus('Please select a PDF file.');
-      setTimeout(() => setUploadStatus(''), 3000);
-      return;
-    }
-
-    setUploadStatus('Uploading...');
+    setUploadStatus(`Extracting ${file.name}...`);
     const formData = new FormData();
-    formData.append('pdf', file);
+    formData.append('file', file);
 
     try {
-      const res = await fetch('/api/rag/upload', {
+      const res = await fetch('/api/chat/upload', {
         method: 'POST',
         body: formData,
       });
       const data = await res.json();
       
-      if (data.status === 'success') {
-        setUploadStatus(`File uploaded successfully! (${data.chunks} chunks processed)`);
+      const processAttachment = (attachment) => {
+        const fullText = attachment.extractedText || '';
+        const textPreview = fullText.length > 20000 
+          ? `${fullText.slice(0, 20000)}\n\n[...Truncated remaining ${fullText.length - 20000} characters]` 
+          : fullText;
+
+        setUploadStatus(`Attached "${file.name}" successfully!`);
+        
+        if (textPreview) {
+          setInput((prev) => {
+            const prefix = prev.trim() ? `${prev}\n\n` : '';
+            return `${prefix}[Attachment: ${file.name}]\n${textPreview}`;
+          });
+        }
+        
         runtime.thread.append({
           role: 'system',
-          content: [{ type: 'text', text: `📄 File "${file.name}" has been uploaded and processed.` }]
+          content: [{ type: 'text', text: `📎 Attached file "${file.name}" context ready (${attachment.extractionMethod || 'temporal'}, ${fullText.length} chars).` }]
         });
-        setTimeout(() => setUploadStatus(''), 5000);
+        setTimeout(() => setUploadStatus(''), 4000);
+      };
+
+      if (res.status === 202 && data.mode === 'temporal' && data.workflowId) {
+        setUploadStatus('⏳ Temporal Workflow processing file...');
+        const workflowId = data.workflowId;
+        let attempts = 0;
+        const pollInterval = setInterval(async () => {
+          attempts += 1;
+          try {
+            const pollRes = await fetch(`/api/chat/upload/workflows/${workflowId}`);
+            if (pollRes.ok) {
+              const pollData = await pollRes.json();
+              if (pollData.status === 'COMPLETED' && pollData.attachment) {
+                clearInterval(pollInterval);
+                processAttachment(pollData.attachment);
+              } else if (pollData.status === 'FAILED') {
+                clearInterval(pollInterval);
+                setUploadStatus(`❌ Upload failed: ${pollData.error || 'Temporal Workflow failed extracting file.'}`);
+                setTimeout(() => setUploadStatus(''), 5000);
+              }
+            }
+          } catch (e) {
+            // silent retry
+          }
+          if (attempts > 30) {
+            clearInterval(pollInterval);
+            setUploadStatus('⚠️ File extraction processing in background...');
+            setTimeout(() => setUploadStatus(''), 3000);
+          }
+        }, 2000);
+        return;
+      }
+
+      if (res.ok && data.success && data.attachment) {
+        processAttachment(data.attachment);
       } else {
-        setUploadStatus('Upload failed. Please try again.');
+        setUploadStatus(`Upload failed: ${data.error || 'Unknown error'}`);
         setTimeout(() => setUploadStatus(''), 3000);
       }
     } catch (err) {
-      setUploadStatus('Error uploading PDF. Please try again.');
+      setUploadStatus('Error uploading file attachment. Please try again.');
       setTimeout(() => setUploadStatus(''), 3000);
     }
     
@@ -155,7 +198,7 @@ function Chat({
         }));
       }
     } catch (error) {
-      console.error('Failed to submit feedback:', error);
+      logger.error('Failed to submit feedback', { error: error.message });
     }
   };
 
@@ -178,7 +221,7 @@ function Chat({
         });
       }
     } catch (err) {
-      console.error('Sync failed:', err);
+      logger.error('Sync failed', { err: err.message });
     } finally {
       setIsHeaderSyncing(false);
     }
@@ -439,7 +482,7 @@ function Chat({
           <input
             ref={fileInputRef}
             type="file"
-            accept="application/pdf"
+            accept=".pdf,.csv,.tsv,.xlsx,.xls,.docx,.txt,.md,.json,image/*"
             onChange={handleFileUpload}
             style={{ display: 'none' }}
           />

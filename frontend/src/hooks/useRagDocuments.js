@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import logger from '../utils/logger.js';
 
 /**
  * Custom Hook: useRagDocuments
@@ -20,10 +21,10 @@ export function useRagDocuments() {
         const data = await res.json();
         setDocuments(Array.isArray(data.documents) ? data.documents : []);
       } else {
-        console.warn('Failed to fetch RAG documents list');
+        logger.warn('Failed to fetch RAG documents list');
       }
     } catch (err) {
-      console.warn('Error fetching RAG documents:', err);
+      logger.warn('Error fetching RAG documents', { err: err.message });
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -73,7 +74,7 @@ export function useRagDocuments() {
               }
             }
           } catch (e) {
-            console.warn('Workflow polling warning:', e);
+            logger.warn('Workflow polling warning', { err: e.message });
           }
           if (attempts > 30) {
             clearInterval(interval);
@@ -93,6 +94,7 @@ export function useRagDocuments() {
         setUploadStatus(`Upload failed: ${data.error || 'Unknown error'}`);
       }
     } catch (err) {
+      logger.error('Upload error', { err: err.message });
       setUploadStatus('Upload error');
     } finally {
       setIsUploading(false);

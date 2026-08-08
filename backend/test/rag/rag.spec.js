@@ -1,6 +1,7 @@
 import sinon from 'sinon';
 import ragService from '../../src/rag/index.js';
 import { __test__ } from '../../src/rag/ingest.js';
+import pythonAIServiceClient from '../../src/grpc/client.js';
 
 describe('RAG Service', () => {
   let fsMock, chromaClientMock, pdfParseMock, collectionMock;
@@ -63,6 +64,10 @@ describe('RAG Service', () => {
       })
     };
     __test__.setVectorStore(vectorStoreMock);
+
+    // Stub pythonAIServiceClient methods to avoid network timeouts in unit tests
+    sandbox.stub(pythonAIServiceClient, 'extractDocument').resolves({ success: false, extraction_method: 'node_fallback' });
+    sandbox.stub(pythonAIServiceClient, 'processRAGIngestion').resolves({ success: false, chunks: [] });
   });
 
   afterEach(() => {

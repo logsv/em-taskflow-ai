@@ -3,6 +3,7 @@ import { AssistantRuntimeProvider, useLocalRuntime } from '@assistant-ui/react';
 import Chat from './components/Chat';
 import Sidebar from './components/Sidebar';
 import AdminPage from './components/AdminPage';
+import logger from './utils/logger';
 import './App.css';
 
 function App() {
@@ -106,7 +107,7 @@ function App() {
           created: !!data?.created,
         });
       } catch (error) {
-        console.error('Failed to fetch session:', error);
+        logger.error('Failed to fetch session', { error: error.message });
       }
     }
     loadSession();

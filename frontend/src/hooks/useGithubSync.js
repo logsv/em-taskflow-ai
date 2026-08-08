@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import logger from '../utils/logger.js';
 
 /**
  * Custom Hook: useGithubSync
@@ -17,7 +18,7 @@ export function useGithubSync() {
         setSyncStatus(data);
       }
     } catch (err) {
-      console.warn('Failed to fetch GitHub sync status:', err);
+      logger.warn('Failed to fetch GitHub sync status', { err: err.message });
     }
   }, []);
 
@@ -45,6 +46,7 @@ export function useGithubSync() {
         setSyncMessage(`Sync failed: ${data.error || 'Unknown error'}`);
       }
     } catch (error) {
+      logger.error('Error syncing GitHub data', { error: error.message });
       setSyncMessage('Error syncing GitHub data');
     } finally {
       setIsSyncing(false);

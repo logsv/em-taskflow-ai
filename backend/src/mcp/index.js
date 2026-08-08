@@ -1,5 +1,6 @@
 import { config, getMcpConfig } from "../config.js";
 import { ChatOpenAI } from "@langchain/openai";
+import { info, warn, error } from "../utils/logger.js";
 
 let mcpTools = [];
 let jiraMcpTools = [];
@@ -296,22 +297,28 @@ export function wrapToolForResiliency(tool) {
 
   tool.invoke = async function (input, config) {
     const cleanInput = sanitizeToolInput(input, tool.name);
+    const startTime = Date.now();
     try {
-      return await originalInvoke.call(this, cleanInput, config);
-    } catch (error) {
-      console.error(`🛡️ Resiliency Wrap: Tool '${tool.name}' failed:`, error);
-      return `Error executing tool ${tool.name}: ${error?.message || error || "unknown error"}`;
+      const result = await originalInvoke.call(this, cleanInput, config);
+      info(`MCP Tool execution completed`, { toolName: tool.name, latencyMs: Date.now() - startTime, success: true });
+      return result;
+    } catch (err) {
+      error(`MCP Tool execution failed`, { toolName: tool.name, latencyMs: Date.now() - startTime, err: err?.message || String(err) });
+      return `Error executing tool ${tool.name}: ${err?.message || err || "unknown error"}`;
     }
   };
 
   if (originalCall) {
     tool.call = async function (input, config) {
       const cleanInput = sanitizeToolInput(input, tool.name);
+      const startTime = Date.now();
       try {
-        return await originalCall.call(this, cleanInput, config);
-      } catch (error) {
-        console.error(`🛡️ Resiliency Wrap: Tool '${tool.name}' failed:`, error);
-        return `Error executing tool ${tool.name}: ${error?.message || error || "unknown error"}`;
+        const result = await originalCall.call(this, cleanInput, config);
+        info(`MCP Tool execution completed`, { toolName: tool.name, latencyMs: Date.now() - startTime, success: true });
+        return result;
+      } catch (err) {
+        error(`MCP Tool execution failed`, { toolName: tool.name, latencyMs: Date.now() - startTime, err: err?.message || String(err) });
+        return `Error executing tool ${tool.name}: ${err?.message || err || "unknown error"}`;
       }
     };
   }

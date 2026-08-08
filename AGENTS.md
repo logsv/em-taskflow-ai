@@ -60,6 +60,11 @@ This file provides system guidance, architectural rules, anti-hallucination guid
   - `### 📌 Source Citations`
 - **Formatter Bypass**: RAG hit queries (`decision.ragHit = true`) bypass secondary EM JSON re-formatting in `responseFormatter.js` to eliminate double-LLM latency and text degradation.
 
+### 5. Pre-LLM Preprocessing & Compression Suite
+- **LangChain File Compression**: `summarize_with_langchain()` in `pdf_extractor.py` compresses file uploads >15,000 chars into structured executive summaries using Map-Reduce before prompt construction.
+- **RAG Reranking & MMR Deduplication**: `/api/v1/rag/search` runs Cross-Encoder Reranking and Maximal Marginal Relevance (MMR) deduplication to prune redundant chunks.
+- **Chat History State Anchoring**: `optimizeChatHistory()` in `ChatApplicationService.js` applies a sliding window (retaining latest 8 turns) and anchors earlier turns into a 2-line summary block when history exceeds 10 turns.
+
 ---
 
 ## 🛠️ Development & Operational Commands

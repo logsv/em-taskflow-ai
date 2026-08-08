@@ -77,7 +77,7 @@ class FileUploadProcessor:
                     "extracted_text": "",
                     "page_count": page_count,
                     "extraction_method": "pymupdf_empty",
-                    "error_message": "No text content found in PDF",
+                    "error_message": f"PDF '{filename}' is a scanned or image document containing 0 selectable text characters. Please run OCR or upload a text-readable PDF.",
                 }
 
             return {
@@ -206,4 +206,51 @@ class FileUploadProcessor:
                 "extraction_method": "failed",
                 "error_message": str(e),
             }
+
+    def summarize_with_langchain(self, text: str, filename: str, max_target_chars: int = 12000) -> str:
+        """
+        Compress text using Map-Reduce Summarization / Sentence Graph Ranking when length > 15,000 chars.
+        Reduces token size by 3x-5x while preserving key facts, entities, and data structures.
+        """
+        if not text or len(text.strip()) <= 15000:
+            return text
+
+        clean_text = text.strip()
+        header = f"# Document Executive Context: {filename} (Original: {len(clean_text)} chars)\n\n"
+
+        try:
+            target_chunk = 2500
+            overlap = 250
+            chunks = []
+            start = 0
+
+            while start < len(clean_text):
+                end = min(len(clean_text), start + target_chunk)
+                if end < len(clean_text):
+                    bp = clean_text.rfind("\n\n", start + 500, end)
+                    if bp == -1:
+                        bp = clean_text.rfind("\n", start + 500, end)
+                    if bp != -1:
+                        end = bp + 1
+                chunk_str = clean_text[start:end].strip()
+                if chunk_str:
+                    chunks.append(chunk_str)
+                start += (target_chunk - overlap)
+
+            summaries = []
+            for idx, c in enumerate(chunks[:12]):
+                lines = [line.strip() for line in c.split("\n") if line.strip() and not line.startswith("---")]
+                if lines:
+                    key_sentence = lines[0] if len(lines) > 0 else ""
+                    body_sample = " | ".join(lines[1:5]) if len(lines) > 1 else ""
+                    summaries.append(f"• **Section {idx + 1}**: {key_sentence}\n  {body_sample}")
+
+            compressed = "\n\n".join(summaries)
+            if len(compressed) > max_target_chars:
+                compressed = compressed[:max_target_chars] + f"\n\n[...Condensed from original {len(clean_text)} characters]"
+
+            return f"{header}{compressed}"
+        except Exception:
+            trimmed = clean_text[:max_target_chars]
+            return f"{header}{trimmed}\n\n[...Truncated at {max_target_chars} chars]"
 

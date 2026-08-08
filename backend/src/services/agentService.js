@@ -6,6 +6,7 @@ import { getRouterChain } from "../agent/llmRouter.js";
 import { getGithubMCPTools, getGoogleMCPTools, getJiraMCPTools, getNotionMCPTools } from "../mcp/index.js";
 import { buildEmResponse } from "../utils/responseFormatter.js";
 import { getTracerCallbacks, createEndToEndTrace, createSpan } from "../utils/tracer.js";
+import { info, warn, error } from "../utils/logger.js";
 
 const VALID_DOMAINS = new Set(["jira", "github", "notion", "calendar", "rag"]);
 const TRANSFER_TOOL_PREFIX = "transfer_";
@@ -122,6 +123,12 @@ export class LangGraphAgentService {
     let bypassConfidenceCheck = false;
     let routingPlan = null;
 
+    info("Agent query execution started", {
+      threadId: options.threadId || null,
+      mode: options.mode || "advanced",
+      querySnippet: userQuery.slice(0, 50),
+    });
+
     let result;
     if (runtime.mode === "rag_only") {
       const plan = await this.routeQueryPlan(userQuery, runtime.mode, options);
@@ -214,6 +221,14 @@ export class LangGraphAgentService {
         }
       }
     }
+
+    info("Agent query execution completed", {
+      threadId: options.threadId || null,
+      executionTimeMs: executionTime,
+      ragHit: !!decision.ragHit,
+      selectedPath: decision.selectedPath,
+      toolsUsedCount: Array.isArray(decision.toolsUsed) ? decision.toolsUsed.length : 0,
+    });
 
     return {
       threadId: options.threadId || null,
