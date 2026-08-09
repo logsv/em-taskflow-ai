@@ -71,8 +71,11 @@ export class RAGService {
   }
 
   async searchRelevantChunks(query, topK = 5) {
-    await this.ensureInitialized();
-    return simpleRetrieve(query, topK);
+    const pythonAIServiceClient = (await import('../grpc/client.js')).default;
+    const res = await pythonAIServiceClient.searchRAG(query, topK);
+    const chunks = Array.isArray(res) ? res : (res?.chunks || []);
+    chunks.chunks = chunks;
+    return chunks;
   }
 
   async baselineRetrieve(query, options = {}) {

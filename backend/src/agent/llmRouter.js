@@ -54,7 +54,7 @@ Active workspace domains:
 
 CRITICAL ROUTING RULES:
 1. For document/PDF/rubric/uploaded file queries (e.g. "what is in rubrics", "summarize uploaded document", "what does the guide say"): set domains: ["rag"], allow_rag: true, must_use_tools: false, confidence: 0.9.
-2. For specific GitHub queries (e.g. "my open PRs", "repo issues"): set domains: ["github"], must_use_tools: true, allow_rag: false, confidence: 0.9.
+2. For specific GitHub or code repo queries (e.g. "my open PRs", "repo issues"): set domains: ["delivery"], must_use_tools: true, allow_rag: false, confidence: 0.9.
 3. For DORA metric queries: set domains: ["dora"], must_use_tools: true, confidence: 0.9.
 4. For SBI feedback queries: set domains: ["sbi"], must_use_tools: true, confidence: 0.9.
 5. For People / 1-on-1 queries: set domains: ["people"], must_use_tools: true, confidence: 0.9.
@@ -130,6 +130,35 @@ export function classifyFastPath(query, options = {}) {
   return null;
 }
 
+/**
+ * Attempts to repair a truncated JSON string by closing open braces/brackets.
+ * Useful when local Ollama SLMs hit token limits mid-output.
+ * Returns a repaired string or null if repair is not possible.
+ */
+function repairTruncatedJson(str) {
+  if (!str || typeof str !== 'string') return null;
+  let s = str.trimEnd();
+  // Remove trailing incomplete string value or key
+  s = s.replace(/,\s*"[^"]*$/, '');  // trailing incomplete key
+  s = s.replace(/"[^"]*$/, '"null"'); // trailing incomplete value → null string
+  // Count open braces/brackets and close them
+  const opens = [];
+  let inStr = false;
+  let escaped = false;
+  for (const ch of s) {
+    if (escaped) { escaped = false; continue; }
+    if (ch === '\\') { escaped = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (!inStr) {
+      if (ch === '{') opens.push('}');
+      else if (ch === '[') opens.push(']');
+      else if (ch === '}' || ch === ']') opens.pop();
+    }
+  }
+  if (opens.length === 0) return null; // already balanced, original parse should have worked
+  return s + opens.reverse().join('');
+}
+
 // Initialize the LLM with the defined prompt and a JSON output parser
 const getRouterChain = () => {
   const llm = getChatModel();
@@ -161,6 +190,21 @@ const getRouterChain = () => {
         }
         return parsed;
       } catch (e) {
+        // Attempt partial JSON repair: close a truncated JSON object and re-parse
+        const repaired = repairTruncatedJson(content);
+        if (repaired) {
+          try {
+            let parsed = JSON.parse(repaired);
+            if (parsed && parsed.properties && !parsed.domains) {
+              parsed = parsed.properties;
+            }
+            if (parsed && (Array.isArray(parsed.domains) || typeof parsed.must_use_tools === 'boolean')) {
+              return parsed;
+            }
+          } catch (_) {
+            // repair also failed, fall through
+          }
+        }
         warn("JSON parse failed in router, falling back to JsonOutputParser", { err: e.message });
         return parser.invoke(result);
       }

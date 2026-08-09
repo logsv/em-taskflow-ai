@@ -5,15 +5,28 @@ function toArray(value) {
 }
 
 export async function buildEmResponse(query, rawAnswer, evidenceBySource, decision = {}) {
+  const cleanAnswer = String(rawAnswer || "").trim();
+  const isStructured =
+    cleanAnswer.includes("###") ||
+    cleanAnswer.includes("DORA") ||
+    cleanAnswer.includes("Executive Summary") ||
+    cleanAnswer.includes("SBI") ||
+    cleanAnswer.includes("Delivery Risk") ||
+    cleanAnswer.includes("Roadmap") ||
+    cleanAnswer.includes("OKR") ||
+    cleanAnswer.includes("SOP");
+
   if (
+    !cleanAnswer ||
     decision.needsClarification || 
     decision.selectedPath === "direct-llm-fastpath" || 
     decision.selectedPath === "rag+llm" || 
     decision.ragHit || 
-    decision.routingPlan?.intent_type === "DIRECT_LLM"
+    decision.routingPlan?.intent_type === "DIRECT_LLM" ||
+    isStructured
   ) {
     return {
-      answer: rawAnswer,
+      answer: cleanAnswer || "No response generated.",
     };
   }
 
@@ -152,17 +165,11 @@ export function buildFallbackEmSections(rawAnswer, evidenceBySource) {
     }
   }
 
-  if (closedCount > 0 && openCount === 0) {
+  if (actionItems.length === 0) {
     actionItems.push({
-      owner: "@logsv",
-      dueDate: "Completed",
-      description: `All ${closedCount} retrieved issue(s) are closed. No open issue bottlenecks remaining.`,
-    });
-  } else if (openCount === 0 && closedCount === 0) {
-    actionItems.push({
-      owner: "@logsv",
-      dueDate: "Up to date",
-      description: "No open issue bottlenecks detected in user repositories.",
+      owner: "Unassigned",
+      dueDate: "TBD",
+      description: "No explicit action items required.",
     });
   }
 

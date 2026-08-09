@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { ChatOpenAI } from '@langchain/openai';
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { getLlmConfig } from '../config.js';
@@ -5,6 +6,18 @@ import { bgeEmbeddingsClient } from './bgeEmbeddingsClient.js';
 
 let chatModel = null;
 let initialized = false;
+
+function resolveOllamaBaseUrl(configuredUrl) {
+  const inDocker = fs.existsSync('/.dockerenv');
+  let url = configuredUrl || process.env.OLLAMA_BASE_URL || (inDocker ? 'http://host.docker.internal:11434' : 'http://localhost:11434');
+  if (!inDocker && url.includes('host.docker.internal')) {
+    url = url.replace('host.docker.internal', '127.0.0.1');
+  }
+  if (inDocker && url.includes('localhost')) {
+    url = url.replace('localhost', 'host.docker.internal');
+  }
+  return url;
+}
 
 function createChatModelForProvider(providerKey, options = {}) {
   const llmConfig = getLlmConfig();
@@ -20,7 +33,8 @@ function createChatModelForProvider(providerKey, options = {}) {
   let model;
 
   if (providerKey === 'ollama') {
-    const base = provider.baseUrl?.replace(/\/$/, '') || 'http://localhost:11434';
+    const rawBase = provider.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+    const base = resolveOllamaBaseUrl(rawBase).replace(/\/$/, '');
     const baseURL = `${base}/v1`;
 
     model = new ChatOpenAI({

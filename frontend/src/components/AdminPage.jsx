@@ -241,6 +241,85 @@ function AdminPage({ onBackToChat }) {
                 Launch Temporal UI ↗
               </a>
             </div>
+            <div className="service-card card-phoenix">
+              <div className="card-top">
+                <span className="service-icon">🔥</span>
+                <span className="status-dot status-online"></span>
+              </div>
+              <h3>Arize Phoenix (100% Local LLM Tracing)</h3>
+              <p className="service-url">http://127.0.0.1:6006</p>
+              <p className="service-desc">
+                Local OpenLLMetry tracing dashboard for Ollama requests, RAG retrieval chunks, and multi-agent execution traces.
+              </p>
+              <a
+                href="http://127.0.0.1:6006"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="launch-btn"
+              >
+                Launch Phoenix Dashboard ↗
+              </a>
+            </div>
+
+            <div className="service-card card-sentry">
+              <div className="card-top">
+                <span className="service-icon">🛡️</span>
+                <span className="status-dot status-online"></span>
+              </div>
+              <h3>Sentry Cloud (Error Tracking)</h3>
+              <p className="service-url">https://sentry.io</p>
+              <p className="service-desc">
+                Cloud exception monitoring and error stack traces across both Node.js backend and Python AI microservices.
+              </p>
+              <a
+                href="https://sentry.io"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="launch-btn"
+              >
+                Launch Sentry Portal ↗
+              </a>
+            </div>
+
+            <div className="service-card card-newrelic">
+              <div className="card-top">
+                <span className="service-icon">⚡</span>
+                <span className="status-dot status-online"></span>
+              </div>
+              <h3>New Relic APM (Cloud Telemetry)</h3>
+              <p className="service-url">https://one.newrelic.com</p>
+              <p className="service-desc">
+                Full-stack APM latency breakdown, route profiling, and event loop metrics for Node.js and Python services.
+              </p>
+              <a
+                href="https://one.newrelic.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="launch-btn"
+              >
+                Launch New Relic One ↗
+              </a>
+            </div>
+
+            <div className="service-card card-axiom">
+              <div className="card-top">
+                <span className="service-icon">📝</span>
+                <span className="status-dot status-online"></span>
+              </div>
+              <h3>Axiom Cloud (Log Analytics)</h3>
+              <p className="service-url">https://app.axiom.co</p>
+              <p className="service-desc">
+                Serverless log search, stream analytics, and Pino JSON log ingestion with 500 GB/mo free quota.
+              </p>
+              <a
+                href="https://app.axiom.co"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="launch-btn"
+              >
+                Launch Axiom Logs ↗
+              </a>
+            </div>
           </div>
         </section>
 

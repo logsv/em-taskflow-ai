@@ -1,10 +1,23 @@
 import pino from 'pino';
 
-const pinoLogger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  timestamp: pino.stdTimeFunctions.isoTime,
-  base: { service: 'em-taskflow-backend' },
-});
+const transport = process.env.AXIOM_TOKEN && process.env.AXIOM_DATASET
+  ? pino.transport({
+      target: '@axiomhq/pino',
+      options: {
+        dataset: process.env.AXIOM_DATASET || 'em-taskflow-logs',
+        token: process.env.AXIOM_TOKEN,
+      },
+    })
+  : undefined;
+
+const pinoLogger = pino(
+  {
+    level: process.env.LOG_LEVEL || 'info',
+    timestamp: pino.stdTimeFunctions.isoTime,
+    base: { service: 'em-taskflow-backend' },
+  },
+  transport
+);
 
 function info(message, meta = {}) {
   if (typeof message === 'object' && message !== null) {

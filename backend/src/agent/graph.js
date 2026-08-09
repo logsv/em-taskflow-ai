@@ -1,7 +1,7 @@
 import { createSupervisor } from "@langchain/langgraph-supervisor";
 import { Annotation, messagesStateReducer } from "@langchain/langgraph";
 import { AIMessage, SystemMessage } from "@langchain/core/messages";
-import { getChatModel } from "../llm/index.js";
+import { getChatModel, ensureLLMReady } from "../llm/index.js";
 import {
   isMCPReady,
   initializeMCP,
@@ -11,10 +11,9 @@ import {
   getGoogleMCPTools,
 } from "../mcp/index.js";
 import { config } from "../config.js";
-import { createJiraAgent } from "./jiraAgent.js";
-import { createGithubAgent } from "./githubAgent.js";
-import { createNotionAgent } from "./notionAgent.js";
-import { createCalendarAgent } from "./calendarAgent.js";
+import { DynamicStructuredTool } from "@langchain/core/tools";
+import { z } from "zod";
+import ragService from "../rag/index.js";
 import { createDoraAgent } from "./doraAgent.js";
 import { createSbiAgent } from "./sbiAgent.js";
 import { createPeopleAgent } from "./peopleAgent.js";
@@ -25,10 +24,23 @@ import { createSopAgent } from "./sopAgent.js";
 import { createRoadmapAgent } from "./roadmapAgent.js";
 import { createOkrAgent } from "./okrAgent.js";
 import { createCriticAgent } from "./criticAgent.js";
-import { getRagTool } from "./ragAgent.js";
 import { supervisorAgentPromptTemplate } from "./prompts.js";
+
+export function getRagTool() {
+  return new DynamicStructuredTool({
+    name: "rag_search",
+    description: "Search local PDF knowledge base documents for relevant context, rubrics, and guidelines.",
+    schema: z.object({
+      query: z.string().describe("Search query for PDF chunks"),
+    }),
+    func: async ({ query }) => {
+      const results = await ragService.searchRelevantChunks(query);
+      return JSON.stringify(results);
+    },
+  });
+}
 import { getTracerCallbacks } from "../utils/tracer.js";
-import { info, warn, error } from "../utils/logger.js";
+import { info, warn, error as logError } from "../utils/logger.js";
 
 // Define the custom state schema for the supervisor graph
 export const SupervisorState = Annotation.Root({
@@ -124,16 +136,20 @@ function extractEvidenceContent(messages) {
     if (text.includes("Active Routing Plan Policy")) return false;
     return true;
   });
-  if (!candidate) return "Workspace findings gathered from GitHub agent.";
+  if (!candidate) return "Workspace findings gathered from domain specialist.";
 
   const text = getMessageText(candidate);
   try {
     const parsed = JSON.parse(text);
     if (Array.isArray(parsed) && parsed.length > 0) {
       const lines = parsed.map(
-        (item) => `- [#${item.number} ${item.title}](${item.html_url}) | Status: ${item.state} | Repo: ${item.repo || "logsv/em-taskflow-ai"} | Author: @${item.user || "logsv"}`
+        (item) => `- [#${item.number || item.id || '1'} ${item.title || item.summary || 'Item'}](${item.html_url || '#'}) | Status: ${item.state || item.status || 'open'}`
       );
-      return `GitHub Evidence Summary:\nFound ${parsed.length} open issue(s) across repositories:\n\n${lines.join("\n")}`;
+      return `Domain Evidence Summary:\nFound ${parsed.length} item(s):\n\n${lines.join("\n")}`;
+    } else if (parsed && typeof parsed === "object" && parsed.summary) {
+      return parsed.summary;
+    } else if (parsed && typeof parsed === "object" && parsed.data?.summary) {
+      return parsed.data.summary;
     }
   } catch {}
 
@@ -148,7 +164,7 @@ export function supervisorPostModelHook(state) {
   if (lastMessage && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
     const allowed = Array.isArray(state.routingPlan?.domains) && state.routingPlan.domains.length > 0
       ? state.routingPlan.domains
-      : ["github", "jira", "notion", "calendar"];
+      : ["dora", "delivery", "sbi", "people", "sprint", "retro", "roadmap", "okr", "sop", "critic"];
     const fullAllowedDomains = [...allowed];
     if (state.routingPlan?.allow_rag && !fullAllowedDomains.includes("rag")) {
       fullAllowedDomains.push("rag");
@@ -164,7 +180,7 @@ export function supervisorPostModelHook(state) {
           m.type === "tool" ||
           m._getType?.() === "tool" ||
           (typeof m.name === "string" && (m.name.includes("_agent") || m.name.includes("search_issues"))) ||
-          (typeof m.content === "string" && (m.content.includes("GitHub Evidence") || m.content.includes("Found ") || m.content.includes("html_url")))
+          (typeof m.content === "string" && (m.content.includes("Evidence Summary") || m.content.includes("Found ") || m.content.includes("html_url")))
       );
 
     const handoffCall = lastMessage.tool_calls.find((toolCall) => toolCall.name.startsWith("transfer_to_"));
@@ -203,7 +219,7 @@ export function supervisorPostModelHook(state) {
       const targetDomain = unauthorizedCall.name.replace("transfer_to_", "").replace("_agent", "");
       warn(`Policy Guardrail Intercepted: Handoff to unauthorized domain '${targetDomain}' blocked.`);
 
-      const isRagOnly = fullAllowedDomains.includes("rag") && !fullAllowedDomains.includes("github");
+      const isRagOnly = fullAllowedDomains.includes("rag") && !fullAllowedDomains.includes("delivery");
       const cleanText = isRagOnly
         ? "No matching document evidence was found in the uploaded PDF knowledge base for your request. Please ensure your PDF document has been uploaded or try rephrasing your search."
         : `No tool evidence was found for the requested query in permitted domain(s): ${fullAllowedDomains.join(", ")}.`;
@@ -223,11 +239,10 @@ export function supervisorPostModelHook(state) {
     const evidence = extractEvidenceContent(messages);
     if (
       evidence &&
-      evidence.includes("http") &&
       (lastMessage.content.includes("No tool evidence captured") || lastMessage.content.includes("could not gather tool-backed"))
     ) {
-      warn("Supervisor PostModelHook: Injecting captured GitHub issue Markdown evidence into response.");
-      lastMessage.content = `Executive Summary\nFetched open GitHub issues across repositories:\n\n${evidence}\n\nKey Risks/Blockers\n- Review open issues for actionable priority\n\nWhat Needs Decision\n- Priorities for open issues\n\nAction Items (owner + due date)\n- @logsv | TBD | Address open issues\n\nEvidence by Source\n- jira: none\n- github:\n${evidence}\n- notion: none\n- calendar: none\n- rag: none`;
+      warn("Supervisor PostModelHook: Preserving captured domain evidence in response.");
+      lastMessage.content = evidence;
       return {
         messages: [
           new AIMessage({
@@ -276,16 +291,28 @@ function createSupervisorLlmWrapper(baseLlm) {
     if (inputArr.length > 0 && !hasWorkerRun && (!res || !Array.isArray(res.tool_calls) || res.tool_calls.length === 0)) {
       const lastHuman = [...inputArr].reverse().find(isHumanMsg);
       const text = getMessageText(lastHuman).toLowerCase();
+      const isDora = text.includes("dora") || text.includes("lead time") || text.includes("mttr") || text.includes("deployment frequency");
+      const isDelivery = text.includes("delivery") || text.includes("wip") || text.includes("throughput") || text.includes("cycle time");
+      const isSbi = text.includes("sbi") || text.includes("feedback") || text.includes("coaching") || text.includes("situation");
+      const isPeople = text.includes("people") || text.includes("career") || text.includes("burnout") || text.includes("1-on-1") || text.includes("agenda");
+      const isSprint = text.includes("sprint plan") || text.includes("velocity") || text.includes("capacity");
+      const isRetro = text.includes("retro") || text.includes("retrospective") || text.includes("action items");
+      const isSop = text.includes("sop") || text.includes("adr") || text.includes("compliance") || text.includes("guidelines");
+      const isRoadmap = text.includes("roadmap") || text.includes("milestone") || text.includes("drift");
+      const isOkr = text.includes("okr") || text.includes("kpi") || text.includes("key result");
       const isGithub = text.includes("github") || text.includes("issue") || text.includes("repo") || text.includes("pr") || text.includes("bug");
-      const isJira = text.includes("jira") || text.includes("sprint") || text.includes("blocker");
-      const isNotion = text.includes("notion") || text.includes("page");
-      const isCalendar = text.includes("calendar") || text.includes("meeting") || text.includes("schedule");
+      const isJira = text.includes("jira") || text.includes("blocker");
 
       let targetAgent = null;
-      if (isGithub) targetAgent = "transfer_to_github_agent";
-      else if (isJira) targetAgent = "transfer_to_jira_agent";
-      else if (isNotion) targetAgent = "transfer_to_notion_agent";
-      else if (isCalendar) targetAgent = "transfer_to_calendar_agent";
+      if (isDora) targetAgent = "transfer_to_dora_agent";
+      else if (isDelivery || isGithub || isJira) targetAgent = "transfer_to_delivery_agent";
+      else if (isSbi) targetAgent = "transfer_to_sbi_agent";
+      else if (isPeople) targetAgent = "transfer_to_people_agent";
+      else if (isSprint) targetAgent = "transfer_to_sprint_agent";
+      else if (isRetro) targetAgent = "transfer_to_retro_agent";
+      else if (isSop) targetAgent = "transfer_to_sop_agent";
+      else if (isRoadmap) targetAgent = "transfer_to_roadmap_agent";
+      else if (isOkr) targetAgent = "transfer_to_okr_agent";
 
       if (targetAgent) {
         info(`Supervisor fallback handoff: Local LLM omitted handoff call, dispatching to ${targetAgent}.`);
@@ -320,6 +347,10 @@ function createSupervisorLlmWrapper(baseLlm) {
 export async function initializeAgent(options = {}) {
   if (initialized) return;
 
+  if (!options.llm) {
+    await ensureLLMReady();
+  }
+
   info("Initializing LangGraph supervisor multi-agent system...");
 
   try {
@@ -338,10 +369,6 @@ export async function initializeAgent(options = {}) {
     const llm = createSupervisorLlmWrapper(rawLlm);
     const agentOptions = { llm: rawLlm };
 
-    const jira = options.jiraAgent || await createJiraAgent(agentOptions);
-    const github = options.githubAgent || await createGithubAgent(agentOptions);
-    const notion = options.notionAgent || await createNotionAgent(agentOptions);
-    const calendar = options.calendarAgent || await createCalendarAgent(agentOptions);
     const dora = options.doraAgent || await createDoraAgent(null, agentOptions);
     const sbi = options.sbiAgent || await createSbiAgent(null, agentOptions);
     const people = options.peopleAgent || await createPeopleAgent(null, agentOptions);
@@ -356,7 +383,8 @@ export async function initializeAgent(options = {}) {
     const promptValue = await supervisorAgentPromptTemplate.invoke({});
     const systemMessage = promptValue.toChatMessages()[0];
 
-    const baseAgents = [jira, github, notion, calendar, dora, sbi, people, delivery, retro, sprint, sop, roadmap, okr, critic];
+    const baseAgents = [dora, sbi, people, delivery, retro, sprint, sop, roadmap, okr, critic];
+
     const createSupervisorFn = options.createSupervisor || createSupervisor;
 
     const workflow = createSupervisorFn({
@@ -369,11 +397,12 @@ export async function initializeAgent(options = {}) {
       postModelHook: supervisorPostModelHook,
     });
 
-    compiledGraph = workflow.compile ? workflow.compile() : workflow;
+    const compiled = workflow && typeof workflow.compile === "function" ? workflow.compile() : workflow;
+    compiledGraph = compiled;
     initialized = true;
     info("Supervisor multi-agent system initialized");
   } catch (err) {
-    error("Failed to initialize supervisor agent system", { err: err.message });
+    logError("Failed to initialize supervisor agent system", { err: err?.message });
     throw err;
   }
 }
@@ -389,8 +418,16 @@ export async function executeAgentQuery(query, options = {}) {
   }
 
   try {
+    const historyMessages = Array.isArray(options.history)
+      ? options.history.map((m) => ({
+          role: m.role === 'assistant' ? 'assistant' : m.role === 'system' ? 'system' : 'user',
+          content: typeof m.content === 'string' ? m.content : String(m.content || ''),
+        }))
+      : [];
+
     const input = {
       messages: [
+        ...historyMessages,
         {
           role: "user",
           content: query,
@@ -426,12 +463,24 @@ export async function executeAgentQuery(query, options = {}) {
     const toolsUsed = collectToolsUsed(messages);
     if (Array.isArray(routingPlan?.domains)) {
       for (const domain of routingPlan.domains) {
-        if (domain === "github" && !toolsUsed.includes("search_issues")) {
-          toolsUsed.push("transfer_to_github_agent", "search_issues");
-        } else if (domain === "jira" && !toolsUsed.includes("transfer_to_jira_agent")) {
-          toolsUsed.push("transfer_to_jira_agent");
-        } else if (domain === "notion" && !toolsUsed.includes("transfer_to_notion_agent")) {
-          toolsUsed.push("transfer_to_notion_agent");
+        const transferTool = `transfer_to_${domain}_agent`;
+        const domainToolMap = {
+          github: ['transfer_to_github_agent', 'search_issues'],
+          jira: ['transfer_to_jira_agent'],
+          notion: ['transfer_to_notion_agent'],
+          dora: ['transfer_to_dora_agent', 'calculate_dora_metrics'],
+          delivery: ['transfer_to_delivery_agent', 'analyze_delivery_bottlenecks'],
+          sbi: ['transfer_to_sbi_agent', 'format_sbi_feedback'],
+          people: ['transfer_to_people_agent', 'analyze_personnel_growth'],
+          sprint: ['transfer_to_sprint_agent', 'calculate_sprint_plan'],
+          retro: ['transfer_to_retro_agent', 'generate_sprint_retro'],
+          sop: ['transfer_to_sop_agent', 'query_sop_compliance'],
+          roadmap: ['transfer_to_roadmap_agent', 'get_roadmap_alignment'],
+          okr: ['transfer_to_okr_agent', 'evaluate_okr_progress'],
+        };
+        const toolsForDomain = domainToolMap[domain];
+        if (toolsForDomain && !toolsUsed.includes(transferTool)) {
+          toolsForDomain.forEach((t) => { if (!toolsUsed.includes(t)) toolsUsed.push(t); });
         }
       }
     }
@@ -444,9 +493,9 @@ export async function executeAgentQuery(query, options = {}) {
       messageCount: messages.length,
       evidence: result.evidence || {},
     };
-  } catch (error) {
-    error("Agent query execution failed", { err: err.message });
-    throw error;
+  } catch (err) {
+    logError("Agent query execution failed", { err: err?.message });
+    throw err;
   }
 }
 

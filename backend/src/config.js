@@ -78,12 +78,27 @@ const envSchema = z.object({
   GITHUB_TOKEN: z.string().optional(),
   MCP_GOOGLE_ENABLED: boolSchema(false),
   GOOGLE_OAUTH_CREDENTIALS: z.string().optional(),
+  PYTHON_AI_SERVICE_URL: z.string().default('http://localhost:8000'),
+  ENABLE_DORA_AGENT: boolSchema(true),
+  ENABLE_SBI_AGENT: boolSchema(true),
+  ENABLE_PEOPLE_AGENT: boolSchema(true),
+  ENABLE_DELIVERY_AGENT: boolSchema(true),
+  ENABLE_RETRO_AGENT: boolSchema(true),
+  ENABLE_SPRINT_AGENT: boolSchema(true),
+  ENABLE_SOP_AGENT: boolSchema(true),
+  ENABLE_ROADMAP_AGENT: boolSchema(true),
+  ENABLE_OKR_AGENT: boolSchema(true),
+  ENABLE_CRITIC_AGENT: boolSchema(true),
   GOOGLE_CALENDAR_ID: z.string().default('primary'),
   LEGACY_QUERY_API_ENABLED: z.coerce.boolean().default(true),
   LEGACY_RAG_INGEST_API_ENABLED: z.coerce.boolean().default(true),
   LEGACY_THREAD_API_ENABLED: z.coerce.boolean().default(true),
   LEGACY_RAG_DOCUMENT_API_ENABLED: z.coerce.boolean().default(true),
   LEGACY_ROUTER_METRICS_API_ENABLED: z.coerce.boolean().default(true),
+  SESSION_INACTIVITY_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(7),
+  SESSION_CLEANUP_ENABLED: boolSchema(true),
+  SESSION_CLEANUP_CRON_SCHEDULE: z.string().default('0 3 * * *'),
+  SESSION_CLEANUP_BATCH_SIZE: z.coerce.number().int().min(10).max(5000).default(500),
 });
 
 const circuitBreakerSchema = z.object({
@@ -208,6 +223,29 @@ const configSchema = z.object({
       }),
     }),
   }),
+  ENABLE_DORA_AGENT: z.boolean(),
+  ENABLE_SBI_AGENT: z.boolean(),
+  ENABLE_PEOPLE_AGENT: z.boolean(),
+  ENABLE_DELIVERY_AGENT: z.boolean(),
+  ENABLE_RETRO_AGENT: z.boolean(),
+  ENABLE_SPRINT_AGENT: z.boolean(),
+  ENABLE_SOP_AGENT: z.boolean(),
+  ENABLE_ROADMAP_AGENT: z.boolean(),
+  ENABLE_OKR_AGENT: z.boolean(),
+  ENABLE_CRITIC_AGENT: z.boolean(),
+  agents: z.object({
+    dora: z.boolean(),
+    sbi: z.boolean(),
+    people: z.boolean(),
+    delivery: z.boolean(),
+    retro: z.boolean(),
+    sprint: z.boolean(),
+    sop: z.boolean(),
+    roadmap: z.boolean(),
+    okr: z.boolean(),
+    critic: z.boolean(),
+  }),
+  PYTHON_AI_SERVICE_URL: z.string(),
 });
 
 const getDefaultModels = (providerType) => {
@@ -433,6 +471,29 @@ function loadConfig() {
         },
       },
     },
+    ENABLE_DORA_AGENT: env.ENABLE_DORA_AGENT,
+    ENABLE_SBI_AGENT: env.ENABLE_SBI_AGENT,
+    ENABLE_PEOPLE_AGENT: env.ENABLE_PEOPLE_AGENT,
+    ENABLE_DELIVERY_AGENT: env.ENABLE_DELIVERY_AGENT,
+    ENABLE_RETRO_AGENT: env.ENABLE_RETRO_AGENT,
+    ENABLE_SPRINT_AGENT: env.ENABLE_SPRINT_AGENT,
+    ENABLE_SOP_AGENT: env.ENABLE_SOP_AGENT,
+    ENABLE_ROADMAP_AGENT: env.ENABLE_ROADMAP_AGENT,
+    ENABLE_OKR_AGENT: env.ENABLE_OKR_AGENT,
+    ENABLE_CRITIC_AGENT: env.ENABLE_CRITIC_AGENT,
+    agents: {
+      dora: env.ENABLE_DORA_AGENT,
+      sbi: env.ENABLE_SBI_AGENT,
+      people: env.ENABLE_PEOPLE_AGENT,
+      delivery: env.ENABLE_DELIVERY_AGENT,
+      retro: env.ENABLE_RETRO_AGENT,
+      sprint: env.ENABLE_SPRINT_AGENT,
+      sop: env.ENABLE_SOP_AGENT,
+      roadmap: env.ENABLE_ROADMAP_AGENT,
+      okr: env.ENABLE_OKR_AGENT,
+      critic: env.ENABLE_CRITIC_AGENT,
+    },
+    PYTHON_AI_SERVICE_URL: env.PYTHON_AI_SERVICE_URL,
   };
 
   const mergedConfig = { ...config, ...fileConfig };
@@ -463,6 +524,7 @@ export const getRagAdvancedConfig = () => config.ragAdvanced;
 export const getLlmConfig = () => config.llm;
 export const getMcpConfig = () => config.mcp;
 export const getApiConfig = () => config.api;
+export const getAgentConfig = () => config.agents;
 
 export const getLlmProviders = () => {
   const providers = [];

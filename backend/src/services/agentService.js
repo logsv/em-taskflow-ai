@@ -8,7 +8,10 @@ import { buildEmResponse } from "../utils/responseFormatter.js";
 import { getTracerCallbacks, createEndToEndTrace, createSpan } from "../utils/tracer.js";
 import { info, warn, error } from "../utils/logger.js";
 
-const VALID_DOMAINS = new Set(["jira", "github", "notion", "calendar", "rag"]);
+const VALID_DOMAINS = new Set([
+  "dora", "delivery", "sbi", "people", "sprint", "retro", "roadmap", "okr", "sop", "critic",
+  "jira", "github", "notion", "calendar", "rag"
+]);
 const TRANSFER_TOOL_PREFIX = "transfer_";
 const RAG_TOOL_NAME = "rag_db_query_retriever";
 
@@ -32,6 +35,16 @@ export class LangGraphAgentService {
     this.tools = [];
     this.ragEnabled = false;
     this.domainToolNames = {
+      dora: new Set(["calculate_dora_metrics", "transfer_to_dora_agent"]),
+      delivery: new Set(["analyze_delivery_bottlenecks", "transfer_to_delivery_agent", "search_issues", "list_pull_requests"]),
+      sbi: new Set(["format_sbi_feedback", "transfer_to_sbi_agent"]),
+      people: new Set(["analyze_personnel_growth", "transfer_to_people_agent"]),
+      sprint: new Set(["calculate_sprint_plan", "transfer_to_sprint_agent"]),
+      retro: new Set(["generate_sprint_retro", "transfer_to_retro_agent"]),
+      roadmap: new Set(["get_roadmap_alignment", "transfer_to_roadmap_agent"]),
+      okr: new Set(["evaluate_okr_progress", "transfer_to_okr_agent"]),
+      sop: new Set(["query_sop_compliance", "transfer_to_sop_agent"]),
+      critic: new Set(["audit_em_report", "transfer_to_critic_agent"]),
       jira: new Set(),
       github: new Set(),
       notion: new Set(),
@@ -55,6 +68,8 @@ export class LangGraphAgentService {
     if (this.initialized) {
       return;
     }
+
+    await ensureLLMReady();
 
     const runtime = getRuntimeConfig();
     const ragStatus = await ragService.getStatus().catch(() => ({ ready: false }));
@@ -409,19 +424,34 @@ export class LangGraphAgentService {
       };
     }
     const domains = [];
-    if (q.includes("issue") || q.includes("repo") || q.includes("pr") || q.includes("pull request") || q.includes("github")) {
-      domains.push("github");
+    if (q.includes("dora") || q.includes("lead time") || q.includes("mttr") || q.includes("deployment frequency")) {
+      domains.push("dora");
     }
-    if (q.includes("jira") || q.includes("sprint") || q.includes("blocker")) {
-      domains.push("jira");
+    if (q.includes("delivery") || q.includes("wip") || q.includes("throughput") || q.includes("cycle time") || q.includes("github") || q.includes("pr") || q.includes("issue") || q.includes("jira")) {
+      domains.push("delivery");
     }
-    if (q.includes("notion") || q.includes("page")) {
-      domains.push("notion");
+    if (q.includes("sbi") || q.includes("feedback") || q.includes("coaching")) {
+      domains.push("sbi");
     }
-    if (q.includes("calendar") || q.includes("meeting") || q.includes("schedule")) {
-      domains.push("calendar");
+    if (q.includes("people") || q.includes("1-on-1") || q.includes("career") || q.includes("burnout") || q.includes("calendar")) {
+      domains.push("people");
     }
-    if (q.includes("pdf") || q.includes("doc") || q.includes("file") || q.includes("read") || q.includes("summary") || q.includes("what") || q.includes("how") || q.includes("explain") || q.includes("document") || domains.length === 0) {
+    if (q.includes("sprint") || q.includes("velocity") || q.includes("capacity")) {
+      domains.push("sprint");
+    }
+    if (q.includes("retro") || q.includes("retrospective")) {
+      domains.push("retro");
+    }
+    if (q.includes("sop") || q.includes("compliance") || q.includes("adr")) {
+      domains.push("sop");
+    }
+    if (q.includes("roadmap") || q.includes("milestone") || q.includes("drift")) {
+      domains.push("roadmap");
+    }
+    if (q.includes("okr") || q.includes("kpi") || q.includes("notion")) {
+      domains.push("okr");
+    }
+    if (domains.length === 0 || q.includes("pdf") || q.includes("doc") || q.includes("file") || q.includes("guide") || q.includes("rubric")) {
       domains.push("rag");
     }
 
@@ -472,10 +502,9 @@ export class LangGraphAgentService {
         }
       }
       if (!mapped) {
-        // If not explicitly mapped by Set name, fallback to heuristic matching or register under all active domains with tools
-        for (const [domain, names] of Object.entries(this.domainToolNames)) {
+        for (const domain of Object.keys(this.domainToolNames)) {
           if (domain === "rag") continue;
-          if (names.size > 0 || toolName.includes(domain)) {
+          if (toolName.includes(domain)) {
             invoked.add(domain);
           }
         }
@@ -536,6 +565,16 @@ export class LangGraphAgentService {
 
   buildEvidenceBySource({ toolsUsed, sources, routingPlan, rawAnswer }) {
     const evidence = {
+      dora: [],
+      delivery: [],
+      sbi: [],
+      people: [],
+      sprint: [],
+      retro: [],
+      roadmap: [],
+      okr: [],
+      sop: [],
+      critic: [],
       jira: [],
       github: [],
       notion: [],
@@ -559,7 +598,9 @@ export class LangGraphAgentService {
       for (const [domain, names] of Object.entries(this.domainToolNames)) {
         if (domain === "rag") continue;
         if (names.has(toolName)) {
-          evidence[domain].push(`Tool: ${toolName}`);
+          if (evidence[domain]) {
+            evidence[domain].push(`Tool: ${toolName}`);
+          }
         }
       }
     }
@@ -640,10 +681,21 @@ export class LangGraphAgentService {
   }
 
   refreshDomainToolMap() {
-    this.domainToolNames.jira = new Set(toArray(getJiraMCPTools()).map((tool) => tool?.name).filter(Boolean));
-    this.domainToolNames.github = new Set(toArray(getGithubMCPTools()).map((tool) => tool?.name).filter(Boolean));
-    this.domainToolNames.notion = new Set(toArray(getNotionMCPTools()).map((tool) => tool?.name).filter(Boolean));
-    this.domainToolNames.calendar = new Set(toArray(getGoogleMCPTools()).map((tool) => tool?.name).filter(Boolean));
+    const jiraTools = toArray(getJiraMCPTools()).map((tool) => tool?.name).filter(Boolean);
+    const githubTools = toArray(getGithubMCPTools()).map((tool) => tool?.name).filter(Boolean);
+    const notionTools = toArray(getNotionMCPTools()).map((tool) => tool?.name).filter(Boolean);
+    const calendarTools = toArray(getGoogleMCPTools()).map((tool) => tool?.name).filter(Boolean);
+
+    this.domainToolNames.dora = new Set(["calculate_dora_metrics", "transfer_to_dora_agent"]);
+    this.domainToolNames.delivery = new Set(["analyze_delivery_bottlenecks", "transfer_to_delivery_agent", ...githubTools, ...jiraTools]);
+    this.domainToolNames.sbi = new Set(["format_sbi_feedback", "transfer_to_sbi_agent"]);
+    this.domainToolNames.people = new Set(["analyze_personnel_growth", "transfer_to_people_agent", ...calendarTools]);
+    this.domainToolNames.sprint = new Set(["calculate_sprint_plan", "transfer_to_sprint_agent"]);
+    this.domainToolNames.retro = new Set(["generate_sprint_retro", "transfer_to_retro_agent"]);
+    this.domainToolNames.roadmap = new Set(["get_roadmap_alignment", "transfer_to_roadmap_agent"]);
+    this.domainToolNames.okr = new Set(["evaluate_okr_progress", "transfer_to_okr_agent", ...notionTools]);
+    this.domainToolNames.sop = new Set(["query_sop_compliance", "transfer_to_sop_agent"]);
+    this.domainToolNames.critic = new Set(["audit_em_report", "transfer_to_critic_agent"]);
     this.domainToolNames.rag = new Set([RAG_TOOL_NAME]);
   }
 

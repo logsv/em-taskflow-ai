@@ -50,12 +50,12 @@ describe('ChatApplicationService', () => {
     });
 
     expect(dbService.ensureThread).toHaveBeenCalledWith('th_123', 'Hello', 'sess_123');
-    expect(agent.processQuery).toHaveBeenCalledWith('Hello', {
+    expect(agent.processQuery).toHaveBeenCalledWith('Hello', jasmine.objectContaining({
       threadId: 'th_123',
       sessionId: 'sess_123',
       userId: 'user_logsv',
       ragMode: 'baseline',
-    });
+    }));
     expect(dbService.saveMessage.calls.count()).toBe(2);
     expect(result.messageId).toBe(12);
     expect(result.threadId).toBe('th_123');

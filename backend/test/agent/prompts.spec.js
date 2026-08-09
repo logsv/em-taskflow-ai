@@ -1,59 +1,55 @@
+import { expect } from 'chai';
 import {
-  githubAgentPromptTemplate,
-  jiraAgentPromptTemplate,
-  notionAgentPromptTemplate,
-  ragAgentPromptTemplate,
+  doraAgentPromptTemplate,
+  sbiAgentPromptTemplate,
+  peopleAgentPromptTemplate,
+  deliveryAgentPromptTemplate,
   supervisorAgentPromptTemplate,
   ragEnhancementTemplate,
   ragStreamEnhancementTemplate
 } from '../../src/agent/prompts.js';
 
 describe('Agent Prompts', () => {
-  it('should render GitHub agent prompt correctly', async () => {
-    const messages = await githubAgentPromptTemplate.invoke({});
+  it('should render DORA agent prompt correctly', async () => {
+    const messages = await doraAgentPromptTemplate.invoke({});
     const systemMessage = messages.toChatMessages()[0];
-    expect(systemMessage.content).toContain('You are a GitHub expert');
-    expect(systemMessage.constructor.name).toBe('SystemMessage');
+    expect(systemMessage.content).to.include('DORA Metrics Specialist');
   });
 
-  it('should render Jira agent prompt correctly', async () => {
-    const messages = await jiraAgentPromptTemplate.invoke({});
+  it('should render SBI agent prompt correctly', async () => {
+    const messages = await sbiAgentPromptTemplate.invoke({});
     const systemMessage = messages.toChatMessages()[0];
-    expect(systemMessage.content).toContain('You are a Jira expert');
-    expect(systemMessage.constructor.name).toBe('SystemMessage');
+    expect(systemMessage.content).to.include('SBI Coaching & Feedback Specialist');
   });
 
-  it('should render Notion agent prompt correctly', async () => {
-    const messages = await notionAgentPromptTemplate.invoke({});
+  it('should render People agent prompt correctly', async () => {
+    const messages = await peopleAgentPromptTemplate.invoke({});
     const systemMessage = messages.toChatMessages()[0];
-    expect(systemMessage.content).toContain('You are a Notion expert');
-    expect(systemMessage.constructor.name).toBe('SystemMessage');
+    expect(systemMessage.content).to.include('People Management Specialist');
   });
 
-  it('should render RAG agent prompt correctly', async () => {
-    const messages = await ragAgentPromptTemplate.invoke({});
+  it('should render Delivery agent prompt correctly', async () => {
+    const messages = await deliveryAgentPromptTemplate.invoke({});
     const systemMessage = messages.toChatMessages()[0];
-    expect(systemMessage.content).toContain('You are a retrieval specialist');
-    expect(systemMessage.constructor.name).toBe('SystemMessage');
+    expect(systemMessage.content).to.include('Delivery & Bottleneck Specialist');
   });
 
   it('should render Supervisor agent prompt correctly', async () => {
     const messages = await supervisorAgentPromptTemplate.invoke({});
     const systemMessage = messages.toChatMessages()[0];
-    expect(systemMessage.content).toContain('You are a supervisor agent');
-    expect(systemMessage.constructor.name).toBe('SystemMessage');
+    expect(systemMessage.content).to.include('You are a supervisor agent');
   });
 
   it('should render RAG enhancement template correctly', async () => {
     const result = await ragEnhancementTemplate.format({ context: 'test context', question: 'test question' });
-    expect(result).toContain('Context from documents:');
-    expect(result).toContain('test context');
-    expect(result).toContain('test question');
+    expect(result).to.include('Context from documents:');
+    expect(result).to.include('test context');
+    expect(result).to.include('test question');
   });
 
   it('should render RAG stream enhancement template correctly', async () => {
     const result = await ragStreamEnhancementTemplate.format({ context: 'test context', question: 'test question' });
-    expect(result).toContain('Context: test context');
-    expect(result).toContain('User question: test question');
+    expect(result).to.include('Context: test context');
+    expect(result).to.include('User question: test question');
   });
 });

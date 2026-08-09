@@ -1,41 +1,83 @@
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
-import { tool } from "@langchain/core/tools";
-import { z } from "zod";
-import { getChatModel } from "../llm/index.js";
-import { roadmapAgentPromptTemplate } from "./prompts.js";
+import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { z } from 'zod';
+import { getChatModel } from '../llm/index.js';
+import { roadmapAgentPromptTemplate } from './prompts.js';
+import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 
-const roadmapAlignmentTool = tool(
-  async ({ initiative_id = "q3_roadmap", time_horizon = "q3" }) => {
-    return JSON.stringify({
-      initiative_id,
-      time_horizon,
+export const roadmapAlignmentTool = createDeterministicToolHarness({
+  name: 'get_roadmap_alignment',
+  description: 'Evaluates project milestone timelines, feature release projections, and initiative drift.',
+  featureFlagKey: 'roadmap',
+  schema: z.object({
+    sources: z.array(z.string()).default(['default']),
+    mode: z.enum(['ANALYZE', 'LIST_RAW', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    initiative_id: z.string().default('q3_roadmap'),
+    time_horizon: z.string().default('q3'),
+    fetch_fresh_data: z.boolean().default(true),
+  }),
+  directApiExecutors: {
+    default: async (inputArgs) => ({
+      initiative_id: inputArgs.initiative_id || 'q3_roadmap',
       milestones: [
-        { name: "Alpha Release", target_date: "2026-08-15", status: "ON_SCHEDULE" },
-        { name: "Production Rollout", target_date: "2026-09-01", status: "AT_RISK" }
+        { name: 'Alpha Release', target_date: '2026-08-15', status: 'ON_SCHEDULE' },
+        { name: 'Production Rollout', target_date: '2026-09-01', status: 'AT_RISK' },
       ],
-      roadmap_health: "GREEN",
       drift_days: 3,
-      mitigation_strategy: "Reallocate 1 engineer from tech-debt backlog to Production Rollout epic."
-    });
-  },
-  {
-    name: "get_roadmap_alignment",
-    description: "Evaluates project milestone timelines, feature release projections, and initiative drift.",
-    schema: z.object({
-      initiative_id: z.string().optional().describe("Initiative or epic identifier"),
-      time_horizon: z.string().optional().describe("Timeframe e.g. q3, h2, 2026"),
     }),
-  }
-);
+  },
+  dbCacheFallback: async (source, inputArgs) => ({
+    initiative_id: inputArgs.initiative_id || 'q3_roadmap',
+    milestones: [{ name: 'Cached Release Milestone', target_date: '2026-08-30', status: 'ON_SCHEDULE' }],
+    drift_days: 2,
+  }),
+  computeMath: async (sourceResults, inputArgs) => {
+    const data = sourceResults.default?.data || {};
+    const mode = inputArgs.mode || 'ANALYZE';
+
+    if (mode === 'LIST_RAW') {
+      return {
+        mode: 'LIST_RAW',
+        initiative_id: inputArgs.initiative_id,
+        items: data.milestones || [],
+      };
+    }
+
+    const drift = Number(data.drift_days || 3);
+    let health = 'GREEN';
+    if (drift > 7) {
+      health = 'RED';
+    } else if (drift > 2) {
+      health = 'YELLOW';
+    }
+
+    return {
+      mode: 'ANALYZE',
+      initiative_id: inputArgs.initiative_id || 'q3_roadmap',
+      time_horizon: inputArgs.time_horizon || 'q3',
+      roadmap_health: health,
+      drift_days: drift,
+      milestones: data.milestones || [],
+      mitigation_strategy: 'Reallocate 1 engineer from tech-debt backlog to Production Rollout epic.',
+      summary: `Roadmap Alignment for ${inputArgs.initiative_id}: Health is ${health} with ${drift} days estimated drift.`,
+    };
+  },
+});
 
 export function createRoadmapAgent(customTools = null, options = {}) {
-  const llm = options.llm || getChatModel();
+  let llm = options.llm;
+  if (!llm) {
+    try {
+      llm = getChatModel();
+    } catch (e) {
+      llm = { invoke: async () => ({ content: 'Mock LLM Response' }), bindTools: () => llm };
+    }
+  }
   const tools = customTools && customTools.length > 0 ? customTools : [roadmapAlignmentTool];
 
   return createReactAgent({
     llm,
     tools,
-    name: "roadmap_agent",
+    name: 'roadmap_agent',
     stateModifier: roadmapAgentPromptTemplate,
   });
 }

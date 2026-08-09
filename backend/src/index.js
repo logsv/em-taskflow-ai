@@ -1,8 +1,10 @@
+import 'newrelic';
 import express from 'express';
 import cors from 'cors';
 import apiRouter from './routes/api.js';
 import { config, getServerConfig, getRuntimeConfig, getDatabaseConfig, getLlmConfig, getRagConfig, validateConfig } from './config.js';
 import dotenv from 'dotenv';
+import * as Sentry from '@sentry/node';
 import { initializeLLM } from './llm/index.js';
 import { initializeIngest } from './rag/index.js';
 import db from './db/index.js';
@@ -10,6 +12,64 @@ import { attachRequestContext, createRateLimiter } from './middleware/hardening.
 import { info, warn, error } from './utils/logger.js';
 
 dotenv.config();
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0.1),
+  });
+}
+
+if (process.env.OTEL_ENABLED !== 'false') {
+  try {
+    const { NodeSDK } = await import('@opentelemetry/sdk-node');
+    const { getNodeAutoInstrumentations } = await import('@opentelemetry/auto-instrumentations-node');
+    const { OTLPTraceExporter } = await import('@opentelemetry/exporter-trace-otlp-grpc');
+
+    const otelSdk = new NodeSDK({
+      traceExporter: new OTLPTraceExporter({
+        url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
+      }),
+      instrumentations: [getNodeAutoInstrumentations()],
+    });
+
+    otelSdk.start();
+    info('Generic OpenTelemetry Node SDK & HTTP/Express auto-instrumentation started');
+  } catch (err) {
+    warn('OpenTelemetry Node SDK initialization warning', { err: err?.message || String(err) });
+  }
+}
+
+if (process.env.PHOENIX_ENABLED !== 'false') {
+  try {
+    const { register } = await import('@arizeai/phoenix-otel');
+    const { LangChainInstrumentation } = await import('@arizeai/openinference-instrumentation-langchain');
+    const CallbackManagerModule = await import('@langchain/core/callbacks/manager');
+
+    register({
+      projectName: process.env.LANGCHAIN_PROJECT || 'em-taskflow-ai',
+      endpoint: process.env.PHOENIX_COLLECTOR_ENDPOINT || 'http://127.0.0.1:6006/v1/traces',
+    });
+
+    const lcInstrumentation = new LangChainInstrumentation();
+    lcInstrumentation.manuallyInstrument(CallbackManagerModule);
+
+    info('Arize Phoenix OpenInference & LangChain instrumentation initialized successfully');
+  } catch (err) {
+    try {
+      const traceloop = await import('@traceloop/node-server-sdk');
+      traceloop.initialize({
+        appName: 'em-taskflow-ai',
+        baseUrl: process.env.PHOENIX_OTLP_URL || 'http://localhost:4317',
+        disableBatch: process.env.NODE_ENV === 'test',
+      });
+      info('OpenLLMetry initialized targeting local Arize Phoenix');
+    } catch (fallbackErr) {
+      warn('Phoenix initialization warning', { err: fallbackErr?.message || String(fallbackErr) });
+    }
+  }
+}
 
 const app = express();
 const serverConfig = getServerConfig();

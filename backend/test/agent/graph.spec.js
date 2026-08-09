@@ -16,8 +16,9 @@ describe('Agent Graph', () => {
 
   it('should initialize the agent without errors', async () => {
     const mockLlm = {
-      bind: () => ({ bindTools: () => {} }),
-      bindTools: () => {},
+      bind: function() { return this; },
+      bindTools: function() { return this; },
+      invoke: sandbox.stub().resolves({ content: '', tool_calls: [] }),
     };
     const mockAgent = {};
     const mockCompile = sandbox.stub().returns({});
@@ -50,8 +51,9 @@ describe('Agent Graph', () => {
     };
 
     const mockLlm = {
-      bind: () => ({ bindTools: () => {} }),
-      bindTools: () => {},
+      bind: function() { return this; },
+      bindTools: function() { return this; },
+      invoke: sandbox.stub().resolves({ content: '', tool_calls: [] }),
     };
     const mockAgent = {};
 

@@ -14,6 +14,11 @@ services:
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-a4eeeb19-4a09-440b-a80e-4cc2d2b89c66}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-11d33cb9-7d44-42d0-8087-deb3d7b81aac}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
+      SENTRY_DSN: ${SENTRY_DSN:-https://c9ea2673ec5424cfa2cffaf0cb4ab760@o4511882439819264.ingest.us.sentry.io/4511882443227136}
+      NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY:-b935e749c388e8fe66cc799e29e782bb73f7NRAL}
+      NEW_RELIC_APP_NAME: ${NEW_RELIC_APP_NAME:-em-taskflow-python-ai}
+      AXIOM_TOKEN: ${AXIOM_TOKEN:-xaat-8d0e2c12-a34d-4c18-89a6-2d7ec1ed8094}
+      AXIOM_DATASET: ${AXIOM_DATASET:-em-taskflow-logs}
     volumes:
       - backend_data:/app/data
     ports:
@@ -57,6 +62,8 @@ services:
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-a4eeeb19-4a09-440b-a80e-4cc2d2b89c66}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-11d33cb9-7d44-42d0-8087-deb3d7b81aac}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
+      NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY:-b935e749c388e8fe66cc799e29e782bb73f7NRAL}
+      NEW_RELIC_APP_NAME: ${NEW_RELIC_APP_NAME:-em-taskflow-backend}
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,6 +102,7 @@ services:
       POSTGRES_USER: taskflow
       POSTGRES_PASSWORD: taskflow
       POSTGRES_DB: taskflow
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements", "-c", "pg_stat_statements.track=top"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -226,6 +234,20 @@ services:
       - "8233:8080"
     depends_on:
       - temporal
+    networks:
+      - em-taskflow-net
+
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: em-taskflow-phoenix
+    environment:
+      - PHOENIX_SQL_DATABASE_URL=postgresql://taskflow:taskflow@postgres:5432/taskflow
+    ports:
+      - "6006:6006"
+      - "4317:4317"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - em-taskflow-net
 
