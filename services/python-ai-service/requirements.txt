@@ -27,4 +27,4 @@ opentelemetry-sdk==1.24.0
 opentelemetry-exporter-otlp-proto-grpc==1.24.0
 opentelemetry-instrumentation-fastapi==0.45b0
 opentelemetry-instrumentation-grpc==0.45b0
-axiom-py==0.5.1
+axiom-py>=0.3.0
