@@ -178,9 +178,14 @@ const getRouterChain = () => {
       ];
       const result = await llm.invoke(messages);
 
-      // Clean up Markdown formatting if outputted by local LLMs
+      // Clean up Markdown formatting and extract JSON object if outputted with preambles by local LLMs
       let content = typeof result.content === 'string' ? result.content : String(result.content || '');
-      content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        content = jsonMatch[0];
+      } else {
+        content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      }
       
       try {
         let parsed = JSON.parse(content);

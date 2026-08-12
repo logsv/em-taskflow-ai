@@ -1,4 +1,4 @@
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { createAgent } from 'langchain';
 import { z } from 'zod';
 import { getChatModel } from '../llm/index.js';
 import { criticAgentPromptTemplate } from './prompts.js';
@@ -76,10 +76,11 @@ export function createCriticAgent(customTools = null, options = {}) {
   }
   const tools = customTools && customTools.length > 0 ? customTools : [auditReportTool];
 
-  return createReactAgent({
-    llm,
+  const agent = createAgent({
+    model: llm,
     tools,
     name: 'critic_agent',
-    stateModifier: criticAgentPromptTemplate,
+    prompt: criticAgentPromptTemplate,
   });
+  return agent.graph;
 }

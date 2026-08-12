@@ -1,4 +1,4 @@
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { createAgent } from 'langchain';
 import { z } from 'zod';
 import { getChatModel } from '../llm/index.js';
 import { retroAgentPromptTemplate } from './prompts.js';
@@ -90,10 +90,11 @@ export function createRetroAgent(customTools = null, options = {}) {
   }
   const tools = customTools && customTools.length > 0 ? customTools : [sprintRetroTool];
 
-  return createReactAgent({
-    llm,
+  const agent = createAgent({
+    model: llm,
     tools,
     name: 'retro_agent',
-    stateModifier: retroAgentPromptTemplate,
+    prompt: retroAgentPromptTemplate,
   });
+  return agent.graph;
 }

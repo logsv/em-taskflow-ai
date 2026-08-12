@@ -1,4 +1,4 @@
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { createAgent } from 'langchain';
 import { z } from 'zod';
 import { getChatModel } from '../llm/index.js';
 import { sopAgentPromptTemplate } from './prompts.js';
@@ -71,10 +71,11 @@ export function createSopAgent(customTools = null, options = {}) {
   }
   const tools = customTools && customTools.length > 0 ? customTools : [sopComplianceTool];
 
-  return createReactAgent({
-    llm,
+  const agent = createAgent({
+    model: llm,
     tools,
     name: 'sop_agent',
-    stateModifier: sopAgentPromptTemplate,
+    prompt: sopAgentPromptTemplate,
   });
+  return agent.graph;
 }

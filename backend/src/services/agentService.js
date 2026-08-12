@@ -45,10 +45,10 @@ export class LangGraphAgentService {
       okr: new Set(["evaluate_okr_progress", "transfer_to_okr_agent"]),
       sop: new Set(["query_sop_compliance", "transfer_to_sop_agent"]),
       critic: new Set(["audit_em_report", "transfer_to_critic_agent"]),
-      jira: new Set(),
-      github: new Set(),
-      notion: new Set(),
-      calendar: new Set(),
+      jira: new Set(["jira_search", "transfer_to_jira_agent"]),
+      github: new Set(["search_issues", "list_pull_requests", "transfer_to_github_agent"]),
+      notion: new Set(["notion_search", "transfer_to_notion_agent"]),
+      calendar: new Set(["calendar_list_events", "transfer_to_calendar_agent"]),
       rag: new Set([RAG_TOOL_NAME]),
     };
     this.runtimeMetrics = {
@@ -589,6 +589,9 @@ export class LangGraphAgentService {
         if (evidence[domain]) {
           evidence[domain].push(`Tool: ${toolName}`);
         }
+        if (domain === "delivery" || domain === "dora") {
+          evidence.github.push(`Tool: ${toolName}`);
+        }
         continue;
       }
       if (toolName === RAG_TOOL_NAME) {
@@ -608,8 +611,7 @@ export class LangGraphAgentService {
     if (typeof rawAnswer === "string" && rawAnswer.length > 0) {
       const githubLinks = rawAnswer.match(/\[[^\]]+\]\(https:\/\/github\.com\/[^\)]+\)|https:\/\/github\.com\/[^\s\)]+/g);
       if (githubLinks && githubLinks.length > 0) {
-        evidence.github = evidence.github.filter((e) => e !== "No tool evidence captured.");
-        evidence.github.push(...githubLinks);
+        evidence.github = Array.from(new Set(githubLinks));
       }
     }
 
@@ -752,10 +754,11 @@ export class LangGraphAgentService {
     const runtimeConfig = getRuntimeConfig();
     const runtimeMode = runtimeConfig.mode;
     const llmStatus = await getLLMStatus().catch(() => ({ initialized: false }));
-    const readiness =
-      runtimeMode === "full"
-         ? await checkAgentReadiness().catch(() => ({ ready: false, toolCount: 0 }))
-         : { ready: false, toolCount: 0 };
+    const readiness = this.initialized
+      ? { ready: true, toolCount: this.tools.length }
+      : (runtimeMode === "full"
+          ? await checkAgentReadiness().catch(() => ({ ready: false, toolCount: 0 }))
+          : { ready: false, toolCount: 0 });
     return {
       ready: this.initialized,
       mcpReady: readiness.ready,

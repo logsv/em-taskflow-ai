@@ -1,4 +1,4 @@
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { createAgent } from 'langchain';
 import { z } from 'zod';
 import { getChatModel } from '../llm/index.js';
 import { sprintAgentPromptTemplate } from './prompts.js';
@@ -72,10 +72,11 @@ export function createSprintAgent(customTools = null, options = {}) {
   }
   const tools = customTools && customTools.length > 0 ? customTools : [sprintPlanTool];
 
-  return createReactAgent({
-    llm,
+  const agent = createAgent({
+    model: llm,
     tools,
     name: 'sprint_agent',
-    stateModifier: sprintAgentPromptTemplate,
+    prompt: sprintAgentPromptTemplate,
   });
+  return agent.graph;
 }

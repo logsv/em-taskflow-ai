@@ -1,4 +1,4 @@
-FROM node:20-bullseye-slim
+FROM node:22-bullseye-slim
 
 WORKDIR /app
 
@@ -16,4 +16,7 @@ COPY . .
 
 EXPOSE 4000
 
-CMD ["npm", "start"]
+# --import newrelic/esm-loader.mjs bootstraps the New Relic agent BEFORE any
+# ES module is loaded (import statements are hoisted in ESM — this is the only
+# supported way to instrument ESM code with New Relic).
+CMD ["node", "--import", "newrelic/esm-loader.mjs", "src/index.js"]

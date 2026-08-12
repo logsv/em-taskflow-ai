@@ -1,4 +1,3 @@
-import 'newrelic';
 import express from 'express';
 import cors from 'cors';
 import apiRouter from './routes/api.js';
@@ -21,7 +20,12 @@ if (process.env.SENTRY_DSN) {
   });
 }
 
-if (process.env.OTEL_ENABLED !== 'false') {
+// NOTE: Generic OTel auto-instrumentation is disabled by default because
+// newrelic/esm-loader.mjs and @opentelemetry/auto-instrumentations-node both
+// register 'import-in-the-middle' hooks which conflict in Node.js ESM mode.
+// New Relic APM handles HTTP/Express instrumentation natively.
+// Set OTEL_ENABLED=true only when running without New Relic.
+if (process.env.OTEL_ENABLED === 'true') {
   try {
     const { NodeSDK } = await import('@opentelemetry/sdk-node');
     const { getNodeAutoInstrumentations } = await import('@opentelemetry/auto-instrumentations-node');
@@ -41,15 +45,42 @@ if (process.env.OTEL_ENABLED !== 'false') {
   }
 }
 
+// NOTE: Phoenix register() also uses import-in-the-middle which conflicts with
+// newrelic/esm-loader.mjs. Enable only when New Relic is NOT active.
+// Enable Phoenix OpenInference & LangChain tracing by default unless explicitly disabled
 if (process.env.PHOENIX_ENABLED !== 'false') {
   try {
     const { register } = await import('@arizeai/phoenix-otel');
     const { LangChainInstrumentation } = await import('@arizeai/openinference-instrumentation-langchain');
+    const { SamplingDecision } = await import('@opentelemetry/sdk-trace-base');
     const CallbackManagerModule = await import('@langchain/core/callbacks/manager');
 
+    class IgnoreHealthSampler {
+      shouldSample(context, traceId, spanName, spanKind, attributes, links) {
+        const name = String(spanName || '');
+        const url = String(attributes?.['http.target'] || attributes?.['http.url'] || attributes?.['url.path'] || '');
+        if (
+          name.includes('/health') ||
+          name.includes('/api/health') ||
+          url.includes('/health') ||
+          url.includes('/api/health')
+        ) {
+          return { decision: SamplingDecision.NOT_RECORD };
+        }
+        return { decision: SamplingDecision.RECORD_AND_SAMPLED };
+      }
+      toString() {
+        return 'IgnoreHealthSampler';
+      }
+    }
+
+    // Pass IgnoreHealthSampler and instrumentations: [] to trace LLM/LangChain executions only
+    // and exclude HTTP health check pings (/api/health) from cluttering Phoenix
     register({
-      projectName: process.env.LANGCHAIN_PROJECT || 'em-taskflow-ai',
+      projectName: process.env.PHOENIX_PROJECT_NAME || process.env.LANGCHAIN_PROJECT || 'emtaskflow',
       endpoint: process.env.PHOENIX_COLLECTOR_ENDPOINT || 'http://127.0.0.1:6006/v1/traces',
+      instrumentations: [],
+      sampler: new IgnoreHealthSampler(),
     });
 
     const lcInstrumentation = new LangChainInstrumentation();
@@ -75,6 +106,12 @@ const app = express();
 const serverConfig = getServerConfig();
 const PORT = serverConfig.port;
 
+if (process.env.SENTRY_DSN) {
+  if (Sentry.Handlers?.requestHandler) {
+    app.use(Sentry.Handlers.requestHandler());
+  }
+}
+
 app.use(cors());
 app.use(attachRequestContext);
 app.use(createRateLimiter());
@@ -99,6 +136,12 @@ app.use('/api', apiRouter);
 app.get('/', (req, res) => {
   res.send('EM TaskFlow AI is running.');
 });
+
+if (process.env.SENTRY_DSN) {
+  if (Sentry.Handlers?.errorHandler) {
+    app.use(Sentry.Handlers.errorHandler());
+  }
+}
 
 async function startServer() {
   try {
@@ -167,6 +210,20 @@ async function startServer() {
     process.exit(1);
   }
 }
+
+process.on('uncaughtException', (err) => {
+  if (process.env.SENTRY_DSN) {
+    try { Sentry.captureException(err); } catch (_) {}
+  }
+  error('Uncaught Exception', { err: err?.message || String(err), stack: err?.stack });
+});
+
+process.on('unhandledRejection', (reason) => {
+  if (process.env.SENTRY_DSN) {
+    try { Sentry.captureException(reason instanceof Error ? reason : new Error(String(reason))); } catch (_) {}
+  }
+  error('Unhandled Promise Rejection', { reason: String(reason) });
+});
 
 process.on('SIGINT', () => {
   info('Shutting down gracefully...');

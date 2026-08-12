@@ -197,6 +197,7 @@ const configSchema = z.object({
     github: z.object({
       enabled: z.boolean(),
       token: z.string().optional(),
+      owner: z.string().optional(),
     }),
     google: z.object({
       enabled: z.boolean(),
@@ -445,6 +446,7 @@ function loadConfig() {
       github: {
         enabled: env.MCP_GITHUB_ENABLED,
         token: env.GITHUB_TOKEN,
+        owner: env.GITHUB_OWNER || env.GITHUB_USERNAME,
       },
       google: {
         enabled: env.MCP_GOOGLE_ENABLED,

@@ -1,4 +1,4 @@
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { createAgent } from 'langchain';
 import { z } from 'zod';
 import { getChatModel } from '../llm/index.js';
 import { okrAgentPromptTemplate } from './prompts.js';
@@ -107,10 +107,11 @@ export function createOkrAgent(customTools = null, options = {}) {
   }
   const tools = customTools && customTools.length > 0 ? customTools : [okrProgressTool];
 
-  return createReactAgent({
-    llm,
+  const agent = createAgent({
+    model: llm,
     tools,
     name: options.name || 'okr_agent',
-    stateModifier: okrAgentPromptTemplate,
+    prompt: okrAgentPromptTemplate,
   });
+  return agent.graph;
 }

@@ -25,15 +25,38 @@ if sentry_dsn:
     try:
         import sentry_sdk
         from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.starlette import StarletteIntegration
+        from sentry_sdk.integrations.asyncio import AsyncioIntegration
+        from sentry_sdk.integrations.logging import LoggingIntegration
+        import logging as _logging
+
         sentry_sdk.init(
             dsn=sentry_dsn,
             environment=os.environ.get("ENVIRONMENT", "development"),
+            release=os.environ.get("APP_VERSION", "em-taskflow-python-ai@1.0.0"),
+            # Capture 10% of transactions for performance monitoring
             traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
-            integrations=[FastApiIntegration()],
+            # Capture 100% of errors/exceptions
+            sample_rate=1.0,
+            integrations=[
+                # FastAPI + Starlette must both be listed together
+                StarletteIntegration(transaction_style="endpoint"),
+                FastApiIntegration(transaction_style="endpoint"),
+                # Capture asyncio task errors automatically
+                AsyncioIntegration(),
+                # Forward ERROR+ Python log records to Sentry as breadcrumbs/events
+                LoggingIntegration(
+                    level=_logging.INFO,        # Breadcrumb level
+                    event_level=_logging.ERROR, # Create Sentry event on ERROR+
+                ),
+            ],
+            # Strip PII from payloads
+            send_default_pii=False,
         )
-        logger.info("Sentry SDK initialized for Python AI microservice")
+        logger.info("Sentry SDK initialized for Python AI microservice (FastAPI + asyncio + logging)")
     except Exception as e:
         logger.warning(f"Sentry SDK initialization failed: {e}")
+
 
 newrelic_license_key = os.environ.get("NEW_RELIC_LICENSE_KEY")
 if newrelic_license_key:

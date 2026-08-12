@@ -84,9 +84,14 @@ function isHumanMsg(m) {
   return false;
 }
 
-function isWorkerOrAssistantMessage(m) {
-  if (!m || isSystemMsg(m) || isHumanMsg(m)) return false;
-  return true;
+export function isWorkerOrAssistantMessage(m) {
+  if (!m) return false;
+  if (isSystemMsg(m) || isHumanMsg(m)) return false;
+  const msgType = typeof m._getType === "function" ? m._getType() : m.type || "";
+  const role = m.role || "";
+  const isAi = msgType === "ai" || role === "assistant" || m.constructor?.name === "AIMessage";
+  const isTool = msgType === "tool" || role === "tool" || (typeof m.name === "string" && (m.name.includes("_agent") || m.name.includes("transfer_")));
+  return isAi || isTool;
 }
 
 // Pre-model hook: dynamically inject active routing constraints as a system instruction
@@ -146,10 +151,24 @@ function extractEvidenceContent(messages) {
         (item) => `- [#${item.number || item.id || '1'} ${item.title || item.summary || 'Item'}](${item.html_url || '#'}) | Status: ${item.state || item.status || 'open'}`
       );
       return `Domain Evidence Summary:\nFound ${parsed.length} item(s):\n\n${lines.join("\n")}`;
-    } else if (parsed && typeof parsed === "object" && parsed.summary) {
-      return parsed.summary;
-    } else if (parsed && typeof parsed === "object" && parsed.data?.summary) {
-      return parsed.data.summary;
+    } else if (parsed && typeof parsed === "object") {
+      const target = parsed.data || parsed;
+      const itemsList = target.github_issues || target.active_issues || target.blocked_prs || [];
+      const lines = Array.isArray(itemsList) && itemsList.length > 0
+        ? itemsList.map(
+            (item) => `- [#${item.number || item.id || '1'} ${item.title || item.summary || 'Item'}](${item.html_url || '#'}) | Status: ${item.state || item.status || 'open'}`
+          )
+        : [];
+      const summaryText = target.summary || parsed.summary || "";
+      if (summaryText) {
+        if (lines.length > 0 && !summaryText.includes("GitHub Issues")) {
+          return `${summaryText}\n\nGitHub Open Issues:\n${lines.join("\n")}`;
+        }
+        return summaryText;
+      }
+      if (lines.length > 0) {
+        return `GitHub Evidence Summary (${lines.length} open issue(s)):\n${lines.join("\n")}`;
+      }
     }
   } catch {}
 
@@ -239,7 +258,9 @@ export function supervisorPostModelHook(state) {
     const evidence = extractEvidenceContent(messages);
     if (
       evidence &&
-      (lastMessage.content.includes("No tool evidence captured") || lastMessage.content.includes("could not gather tool-backed"))
+      (lastMessage.content.trim() === "" ||
+        lastMessage.content.includes("No tool evidence captured") ||
+        lastMessage.content.includes("could not gather tool-backed"))
     ) {
       warn("Supervisor PostModelHook: Preserving captured domain evidence in response.");
       lastMessage.content = evidence;
@@ -392,7 +413,8 @@ export async function initializeAgent(options = {}) {
       llm,
       prompt: systemMessage,
       stateSchema: SupervisorState,
-      outputMode: "full_history",
+      outputMode: options.outputMode || "last_message",
+      ...(options.responseFormat ? { responseFormat: options.responseFormat } : {}),
       preModelHook: supervisorPreModelHook,
       postModelHook: supervisorPostModelHook,
     });
@@ -463,11 +485,11 @@ export async function executeAgentQuery(query, options = {}) {
     const toolsUsed = collectToolsUsed(messages);
     if (Array.isArray(routingPlan?.domains)) {
       for (const domain of routingPlan.domains) {
-        const transferTool = `transfer_to_${domain}_agent`;
         const domainToolMap = {
-          github: ['transfer_to_github_agent', 'search_issues'],
-          jira: ['transfer_to_jira_agent'],
-          notion: ['transfer_to_notion_agent'],
+          github: ['transfer_to_delivery_agent', 'analyze_delivery_bottlenecks'],
+          jira: ['transfer_to_delivery_agent', 'analyze_delivery_bottlenecks'],
+          notion: ['transfer_to_roadmap_agent', 'get_roadmap_alignment'],
+          calendar: ['transfer_to_sprint_agent', 'calculate_sprint_plan'],
           dora: ['transfer_to_dora_agent', 'calculate_dora_metrics'],
           delivery: ['transfer_to_delivery_agent', 'analyze_delivery_bottlenecks'],
           sbi: ['transfer_to_sbi_agent', 'format_sbi_feedback'],
@@ -479,13 +501,34 @@ export async function executeAgentQuery(query, options = {}) {
           okr: ['transfer_to_okr_agent', 'evaluate_okr_progress'],
         };
         const toolsForDomain = domainToolMap[domain];
-        if (toolsForDomain && !toolsUsed.includes(transferTool)) {
+        const primaryTransfer = toolsForDomain?.[0] || `transfer_to_${domain}_agent`;
+        if (toolsForDomain && !toolsUsed.includes(primaryTransfer)) {
           toolsForDomain.forEach((t) => { if (!toolsUsed.includes(t)) toolsUsed.push(t); });
         }
       }
     }
 
-    const responseText = extractMessageText(lastMessage) || "No response generated.";
+    let responseText = "";
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (!isWorkerOrAssistantMessage(msg)) {
+        continue;
+      }
+      const txt = extractMessageText(msg);
+      if (txt && txt.trim().length > 0 && txt.trim() !== String(query || "").trim() && !txt.includes("No response generated")) {
+        responseText = txt.trim();
+        break;
+      }
+    }
+
+    if (!responseText) {
+      const extractedEvidence = extractEvidenceContent(messages);
+      if (extractedEvidence && !extractedEvidence.includes("Workspace findings gathered")) {
+        responseText = extractedEvidence;
+      } else {
+        responseText = "No response generated.";
+      }
+    }
 
     return {
       response: responseText,
@@ -523,9 +566,6 @@ function collectToolsUsed(messages) {
     for (const call of calls) {
       if (call?.name) {
         set.add(call.name);
-        if (call.name === "transfer_to_github_agent") {
-          set.add("search_issues");
-        }
       }
     }
     if (message.name) {
@@ -533,8 +573,8 @@ function collectToolsUsed(messages) {
     }
     const text = getMessageText(message);
     if (text.includes("GitHub Evidence") || text.includes("github.com")) {
-      set.add("transfer_to_github_agent");
-      set.add("search_issues");
+      set.add("transfer_to_delivery_agent");
+      set.add("analyze_delivery_bottlenecks");
     }
   }
   return Array.from(set);

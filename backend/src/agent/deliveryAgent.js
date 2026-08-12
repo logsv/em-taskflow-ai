@@ -1,4 +1,4 @@
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { createAgent } from 'langchain';
 import { z } from 'zod';
 import { getChatModel } from '../llm/index.js';
 import { deliveryAgentPromptTemplate } from './prompts.js';
@@ -18,71 +18,111 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
     time_window: z.enum(['7d', '30d', '90d']).default('30d'),
     fetch_fresh_data: z.boolean().default(true),
   }),
-  directApiExecutors: {
-    github: async () => {
+  mcpExecutors: {
+    github: async (inputArgs) => {
       try {
-        const issues = await databaseService.getGithubIssues({});
-        const items = (issues || []).map((i) => ({
-          id: `#${i.number}`,
-          number: i.number,
-          title: i.title,
-          html_url: i.html_url || `https://github.com/logsv/em-taskflow-ai/issues/${i.number}`,
-          state: i.state || 'open',
-          repo: i.repo || 'logsv/em-taskflow-ai',
-          assignee: i.assignee || 'unassigned',
-        }));
-        return {
-          open_prs: items.length,
-          avg_pr_review_wait_hours: items.length > 0 ? 8.5 : 0.0,
-          blocked_prs: items,
-        };
+        const { executeMCPTool } = await import('../mcp/index.js');
+        const q = inputArgs?.repo_id && inputArgs.repo_id !== 'default'
+          ? `repo:${inputArgs.repo_id} is:issue state:open`
+          : `is:issue is:open`;
+        const res = await executeMCPTool('search_issues', { query: q }).catch(() => null);
+        let items = null;
+        if (Array.isArray(res)) {
+          items = res;
+        } else if (res && Array.isArray(res.items)) {
+          items = res.items;
+        } else if (res && Array.isArray(res.data)) {
+          items = res.data;
+        } else if (typeof res === 'string' && res.trim().length > 0) {
+          try {
+            const parsed = JSON.parse(res);
+            items = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.items) ? parsed.items : null;
+          } catch (e) { items = null; }
+        }
+        if (Array.isArray(items) && items.length > 0) {
+          const prs = items.map((i) => ({
+            id: `#${i.number}`,
+            number: i.number,
+            title: i.title,
+            html_url: i.html_url || `https://github.com/issues/${i.number}`,
+            state: i.state || 'open',
+            repo: i.repo || 'github_repo',
+            assignee: i.user || i.assignee || 'unassigned',
+          }));
+          return {
+            open_prs: prs.length,
+            avg_pr_review_wait_hours: prs.length > 0 ? 8.5 : 0.0,
+            blocked_prs: prs,
+            github_issues: prs,
+            source: 'mcp',
+          };
+        }
       } catch (err) {
-        return {
-          open_prs: 0,
-          avg_pr_review_wait_hours: 0.0,
-          blocked_prs: [],
-          error: err?.message || 'Failed to fetch GitHub issues',
-        };
+        // Fall back to PostgreSQL DB cache
       }
+      return null;
     },
-    jira: async () => ({
-      wip_count: 7,
-      wip_limit: 5,
-      blocked_tickets: [{ key: 'ENG-104', summary: 'Database migration schema lock', blocked_by: 'ENG-99' }],
-      missed_deadline_tickets: [{ key: 'ENG-88', summary: 'OAuth token refresh bug', due_date: '2026-08-01' }],
-    }),
+    jira: async () => {
+      try {
+        const { executeMCPTool } = await import('../mcp/index.js');
+        const res = await executeMCPTool('jira_search', { jql: 'status in ("In Progress", "Blocked")' }).catch(() => null);
+        if (res) {
+          let data = null;
+          if (typeof res === 'object') data = res;
+          else if (typeof res === 'string' && res.trim().startsWith('{')) {
+            try { data = JSON.parse(res); } catch (e) { data = null; }
+          }
+          if (data) {
+            return {
+              wip_count: data.total || 7,
+              wip_limit: 5,
+              blocked_tickets: data.issues || [{ key: 'ENG-104', summary: 'Database migration schema lock', blocked_by: 'ENG-99' }],
+              missed_deadline_tickets: [{ key: 'ENG-88', summary: 'OAuth token refresh bug', due_date: '2026-08-01' }],
+              source: 'mcp',
+            };
+          }
+        }
+      } catch (err) {
+        // Fall back to PostgreSQL DB cache
+      }
+      return null;
+    },
   },
+  // Fallback: PostgreSQL Database Cache Snapshot
   dbCacheFallback: async (source) => {
     if (source === 'jira') {
-      const analytics = await databaseService.getSprintAnalytics();
+      const analytics = await databaseService.getSprintAnalytics().catch(() => []);
       return {
         wip_count: analytics[0]?.wip_violations || 2,
         blocked_tickets: [{ key: 'ENG-104', summary: 'Cached DB lock issue' }],
         missed_deadline_tickets: [{ key: 'ENG-88', summary: 'Cached missed deadline ticket' }],
+        is_cached: true,
       };
     }
     try {
-      const issues = await databaseService.getGithubIssues({});
+      const issues = await databaseService.getGithubIssues({}).catch(() => []);
       const prs = (issues || []).map((i) => ({
         id: `#${i.number}`,
         number: i.number,
         title: i.title,
-        html_url: i.html_url || `https://github.com/logsv/em-taskflow-ai/issues/${i.number}`,
+        html_url: i.html_url || `https://github.com/issues/${i.number}`,
         state: i.state || 'open',
-        repo: i.repo || 'logsv/em-taskflow-ai',
+        repo: i.repo || 'github_repo',
         assignee: i.assignee || 'unassigned',
       }));
       return {
         open_prs: prs.length,
         avg_pr_review_wait_hours: prs.length > 0 ? 4.5 : 0.0,
         blocked_prs: prs,
+        github_issues: prs,
+        is_cached: true,
       };
     } catch (err) {
-      console.error("❌ DeliveryAgent DB fallback failed:", err?.message);
       return {
         open_prs: 0,
         avg_pr_review_wait_hours: 0.0,
         blocked_prs: [],
+        github_issues: [],
         error: err?.message || "Failed to fetch GitHub issues from PostgreSQL DB",
       };
     }
@@ -94,6 +134,8 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
     const mode = inputArgs.mode || 'ANALYZE';
     const filter = inputArgs.filter || 'ALL';
 
+    const githubIssues = gh.blocked_prs || gh.github_issues || [];
+
     if (mode === 'LIST_RAW') {
       let rawList = [];
       if (filter === 'MISSED_DEADLINE') {
@@ -101,7 +143,7 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
       } else if (filter === 'WIP_VIOLATION') {
         rawList = jira.blocked_tickets || [];
       } else {
-        rawList = [...(jira.blocked_tickets || []), ...(jira.missed_deadline_tickets || []), ...(gh.blocked_prs || [])];
+        rawList = [...(jira.blocked_tickets || []), ...(jira.missed_deadline_tickets || []), ...githubIssues];
       }
 
       return {
@@ -123,6 +165,13 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
       riskIndex = 'MEDIUM';
     }
 
+    const githubMarkdown = githubIssues.length > 0
+      ? githubIssues.map((i) => `- [#${i.number} ${i.title}](${i.html_url}) | Assignee: ${i.assignee || 'unassigned'} | Status: ${i.state || 'open'}`).join('\n')
+      : '';
+
+    const summaryText = `Delivery Risk Index: ${riskIndex}. ${wipViolations} WIP limit violations detected. Avg PR review wait: ${avgPrWaitHours}h. Active Open GitHub Issues (${githubIssues.length}).` +
+      (githubMarkdown ? `\n\nOpen GitHub Issues:\n${githubMarkdown}` : '');
+
     return {
       mode: 'ANALYZE',
       sprint_id: inputArgs.sprint_id || 'active_sprint',
@@ -134,10 +183,13 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
         avg_pr_review_wait_hours: avgPrWaitHours,
         cycle_time_p80_hours: cycleTimeP80Hours,
         scope_creep_points: 5,
+        open_github_issues_count: githubIssues.length,
       },
+      blocked_prs: githubIssues,
+      github_issues: githubIssues,
       blocked_tickets: jira.blocked_tickets || [],
       missed_deadline_tickets: jira.missed_deadline_tickets || [],
-      summary: `Delivery Risk Index: ${riskIndex}. ${wipViolations} WIP limit violations detected. Avg PR review wait: ${avgPrWaitHours}h.`,
+      summary: summaryText,
     };
   },
 });
@@ -153,10 +205,11 @@ export function createDeliveryAgent(customTools = null, options = {}) {
   }
   const tools = customTools && customTools.length > 0 ? customTools : [deliveryBottlenecksTool];
 
-  return createReactAgent({
-    llm,
+  const agent = createAgent({
+    model: llm,
     tools,
     name: options.name || 'delivery_agent',
-    stateModifier: deliveryAgentPromptTemplate,
+    prompt: deliveryAgentPromptTemplate,
   });
+  return agent.graph;
 }

@@ -1,4 +1,4 @@
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { createAgent } from 'langchain';
 import { z } from 'zod';
 import { getChatModel } from '../llm/index.js';
 import { roadmapAgentPromptTemplate } from './prompts.js';
@@ -74,10 +74,11 @@ export function createRoadmapAgent(customTools = null, options = {}) {
   }
   const tools = customTools && customTools.length > 0 ? customTools : [roadmapAlignmentTool];
 
-  return createReactAgent({
-    llm,
+  const agent = createAgent({
+    model: llm,
     tools,
     name: 'roadmap_agent',
-    stateModifier: roadmapAgentPromptTemplate,
+    prompt: roadmapAgentPromptTemplate,
   });
+  return agent.graph;
 }

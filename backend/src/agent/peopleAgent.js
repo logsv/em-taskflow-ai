@@ -1,4 +1,4 @@
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { createAgent } from 'langchain';
 import { z } from 'zod';
 import { getChatModel } from '../llm/index.js';
 import { peopleAgentPromptTemplate } from './prompts.js';
@@ -95,10 +95,11 @@ export function createPeopleAgent(customTools = null, options = {}) {
   }
   const tools = customTools && customTools.length > 0 ? customTools : [peopleGrowthTool];
 
-  return createReactAgent({
-    llm,
+  const agent = createAgent({
+    model: llm,
     tools,
     name: options.name || 'people_agent',
-    stateModifier: peopleAgentPromptTemplate,
+    prompt: peopleAgentPromptTemplate,
   });
+  return agent.graph;
 }

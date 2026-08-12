@@ -1,4 +1,4 @@
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { createAgent } from 'langchain';
 import { z } from 'zod';
 import { getChatModel } from '../llm/index.js';
 import { sbiAgentPromptTemplate } from './prompts.js';
@@ -103,10 +103,11 @@ export function createSbiAgent(customTools = null, options = {}) {
   }
   const tools = customTools && customTools.length > 0 ? customTools : [sbiFeedbackTool];
 
-  return createReactAgent({
-    llm,
+  const agent = createAgent({
+    model: llm,
     tools,
     name: 'sbi_agent',
-    stateModifier: sbiAgentPromptTemplate,
+    prompt: sbiAgentPromptTemplate,
   });
+  return agent.graph;
 }

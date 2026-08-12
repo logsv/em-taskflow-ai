@@ -18,7 +18,9 @@ services:
       NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY:-b935e749c388e8fe66cc799e29e782bb73f7NRAL}
       NEW_RELIC_APP_NAME: ${NEW_RELIC_APP_NAME:-em-taskflow-python-ai}
       AXIOM_TOKEN: ${AXIOM_TOKEN:-xaat-8d0e2c12-a34d-4c18-89a6-2d7ec1ed8094}
-      AXIOM_DATASET: ${AXIOM_DATASET:-em-taskflow-logs}
+      AXIOM_DATASET: ${AXIOM_DATASET:-emtaskflowai}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      APP_VERSION: ${APP_VERSION:-em-taskflow-python-ai@1.0.0}
     volumes:
       - backend_data:/app/data
     ports:
@@ -58,12 +60,20 @@ services:
       MCP_GITHUB_ENABLED: "true"
       GITHUB_TOKEN: ${GITHUB_TOKEN}
       LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-false}
-      LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-em-taskflow-ai}
+      LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-emtaskflow}
+      PHOENIX_ENABLED: ${PHOENIX_ENABLED:-true}
+      PHOENIX_PROJECT_NAME: ${PHOENIX_PROJECT_NAME:-emtaskflow}
+      PHOENIX_COLLECTOR_ENDPOINT: ${PHOENIX_COLLECTOR_ENDPOINT:-http://phoenix:6006/v1/traces}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-a4eeeb19-4a09-440b-a80e-4cc2d2b89c66}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-11d33cb9-7d44-42d0-8087-deb3d7b81aac}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
       NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY:-b935e749c388e8fe66cc799e29e782bb73f7NRAL}
       NEW_RELIC_APP_NAME: ${NEW_RELIC_APP_NAME:-em-taskflow-backend}
+      NEW_RELIC_LOG: stdout
+      NEW_RELIC_LOG_LEVEL: ${NEW_RELIC_LOG_LEVEL:-info}
+      NEW_RELIC_DISTRIBUTED_TRACING_ENABLED: "true"
+      NEW_RELIC_APPLICATION_LOGGING_ENABLED: "true"
+      NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED: "true"
     depends_on:
       postgres:
         condition: service_healthy
@@ -176,7 +186,10 @@ services:
     networks:
       - em-taskflow-net
 
+  # ── Dozzle (Docker log viewer) ────────────────────────────
+  # Disabled by default. Start with: docker compose --profile dozzle up -d
   dozzle:
+    profiles: ["dozzle"]
     image: amir20/dozzle:latest
     container_name: em-taskflow-dozzle
     ports:

@@ -816,7 +816,7 @@ class DatabaseService {
         effectiveSearch = cleanWords.join(' ').trim();
       }
 
-      if (repo) {
+      if (repo && typeof repo === 'string' && repo.trim() !== '' && repo !== 'default' && repo !== 'all') {
         params.push(repo);
         queryStr += ` AND repo = $${params.length}`;
       }

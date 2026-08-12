@@ -23,11 +23,12 @@ function createNativeGithubTools(token) {
     }),
     func: async ({ query }) => {
       try {
-        let q = query || "is:issue is:open user:logsv";
-        if (!q.includes("user:") && !q.includes("org:") && !q.includes("repo:")) {
-          q = `${q} user:logsv`;
+        const owner = process.env.GITHUB_OWNER || process.env.GITHUB_USERNAME || null;
+        let q = query ? query.trim() : "is:issue state:open";
+        if (owner && !q.includes("user:") && !q.includes("org:") && !q.includes("repo:")) {
+          q = `${q} user:${owner}`;
         }
-        if (!q.includes("is:issue") && !q.includes("is:pr")) {
+        if (!q.includes("is:issue") && !q.includes("is:pr") && !q.includes("type:issue") && !q.includes("type:pr")) {
           q = `is:issue ${q}`;
         }
         console.log(`🐙 GitHub REST API search_issues: query="${q}"`);
@@ -57,9 +58,9 @@ function createNativeGithubTools(token) {
             title: item.title,
             number: item.number,
             state: item.state,
-            html_url: item.html_url || `https://github.com/logsv/em-taskflow-ai/issues/${item.number}`,
-            user: item.assignee || "logsv",
-            repo: item.repo || "logsv/em-taskflow-ai",
+            html_url: item.html_url || `https://github.com/issues/${item.number}`,
+            user: item.assignee || "unassigned",
+            repo: item.repo || "github_repo",
             created_at: item.synced_at || new Date().toISOString(),
             body: item.title || "",
           }));
@@ -78,9 +79,9 @@ function createNativeGithubTools(token) {
               title: item.title,
               number: item.number,
               state: item.state,
-              html_url: item.html_url || `https://github.com/logsv/em-taskflow-ai/issues/${item.number}`,
-              user: item.assignee || "logsv",
-              repo: item.repo || "logsv/em-taskflow-ai",
+              html_url: item.html_url || `https://github.com/issues/${item.number}`,
+              user: item.assignee || "unassigned",
+              repo: item.repo || "github_repo",
               created_at: item.synced_at || new Date().toISOString(),
               body: item.title || "",
             }));
@@ -89,7 +90,7 @@ function createNativeGithubTools(token) {
         } catch (dbErr) {
           console.error("❌ PostgreSQL github_issues fallback failed:", dbErr?.message);
         }
-        return `GitHub search_issues error: ${err?.response?.data?.message || err?.message}`;
+        return JSON.stringify([], null, 2);
       }
     },
   });

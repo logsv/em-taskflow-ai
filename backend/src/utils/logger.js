@@ -1,10 +1,11 @@
 import pino from 'pino';
+import * as Sentry from '@sentry/node';
 
 const transport = process.env.AXIOM_TOKEN && process.env.AXIOM_DATASET
   ? pino.transport({
       target: '@axiomhq/pino',
       options: {
-        dataset: process.env.AXIOM_DATASET || 'em-taskflow-logs',
+        dataset: process.env.AXIOM_DATASET || 'emtaskflowai',
         token: process.env.AXIOM_TOKEN,
       },
     })
@@ -36,6 +37,15 @@ function error(message, meta = {}) {
     pinoLogger.error(message);
   } else {
     pinoLogger.error(meta, message ?? '');
+  }
+
+  if (process.env.SENTRY_DSN) {
+    try {
+      const errObj = meta?.err || meta?.error || (message instanceof Error ? message : new Error(typeof message === 'string' ? message : 'Unknown Error'));
+      Sentry.captureException(errObj, { extra: typeof meta === 'object' ? meta : { meta } });
+    } catch (_) {
+      // Prevent Sentry capture failure from interrupting logging
+    }
   }
 }
 
