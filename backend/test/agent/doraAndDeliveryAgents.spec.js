@@ -13,14 +13,25 @@ describe('Phase 3 Core Analytics Agents Specs: DORA & Delivery Harnesses', () =>
       expect(res.status).toBe('SUCCESS');
       expect(res.name).toBe('calculate_dora_metrics');
       expect(res.data.rating).toBeDefined();
-      expect(res.data.metrics.deployment_frequency).toContain('deploys/week');
-      expect(typeof res.data.metrics.lead_time_hours).toBe('number');
-      expect(typeof res.data.metrics.change_failure_rate_pct).toBe('number');
+      if (res.data.rating === 'UNAVAILABLE') {
+        expect(res.data.metrics).toBeNull();
+        expect(res.data.data_availability).toBe('no_dora_snapshot');
+      } else {
+        expect(res.data.metrics.deployment_frequency).toContain('deploys/week');
+        expect(typeof res.data.metrics.lead_time_hours).toBe('number');
+        expect(typeof res.data.metrics.change_failure_rate_pct).toBe('number');
+      }
     });
 
     it('should create doraAgent with custom or default tools', () => {
       const agent = createDoraAgent();
       expect(agent).toBeDefined();
+    });
+
+    it('should not assign an implicit default team or repository', () => {
+      const parsed = doraMetricsTool.schema.parse({});
+      expect(parsed.team_id).toBeUndefined();
+      expect(parsed.repo_id).toBeUndefined();
     });
   });
 
@@ -36,7 +47,12 @@ describe('Phase 3 Core Analytics Agents Specs: DORA & Delivery Harnesses', () =>
       expect(res.name).toBe('analyze_delivery_bottlenecks');
       expect(res.data.mode).toBe('ANALYZE');
       expect(res.data.delivery_risk_index).toBeDefined();
-      expect(res.data.metrics.wip_violations).toBeDefined();
+      if (res.data.delivery_risk_index === 'UNAVAILABLE') {
+        expect(res.data.metrics).toBeNull();
+        expect(res.data.data_availability).toBe('empty');
+      } else {
+        expect(res.data.metrics.wip_violations).toBeDefined();
+      }
       expect(res.sourcesExecuted).toEqual(['github', 'jira']);
     });
 

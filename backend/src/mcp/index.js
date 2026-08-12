@@ -132,14 +132,28 @@ export function getMCPToolsByServer(serverName) {
 
 export async function executeMCPTool(toolName, parameters) {
   try {
+    // Domain harnesses can be invoked outside the supervisor during recovery.
+    // Ensure their MCP dependencies have been loaded before resolving a tool.
+    await ensureMCPReady();
     info(`Executing MCP tool`, { toolName });
-    const tool =
+    let tool =
       jiraMcpTools.find((t) => t.name === toolName) ||
       notionMcpTools.find((t) => t.name === toolName) ||
       githubMcpTools.find((t) => t.name === toolName) ||
       googleMcpTools.find((t) => t.name === toolName);
+
+    // Atlassian MCP servers do not share one stable search-tool name. Resolve
+    // the Delivery harness capability within its server group, never globally.
+    if (!tool && toolName === "jira_search") {
+      tool = jiraMcpTools.find((candidate) =>
+        /search|jql|issue/.test(String(candidate?.name || "").toLowerCase()),
+      );
+    }
     if (!tool) {
-      throw new Error(`Tool '${toolName}' not found`);
+      const available = [...jiraMcpTools, ...notionMcpTools, ...githubMcpTools, ...googleMcpTools]
+        .map((candidate) => candidate.name)
+        .filter(Boolean);
+      throw new Error(`Tool '${toolName}' not found. Available tools: ${available.join(", ") || "none"}`);
     }
     const result = await tool.invoke(parameters);
     info(`MCP tool completed`, { toolName });

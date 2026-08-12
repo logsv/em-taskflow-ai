@@ -4,6 +4,10 @@ import { executeAgentQuery, checkAgentReadiness, getAgentTools } from "../agent/
 import { getRuntimeConfig } from "../config.js";
 import { getRouterChain } from "../agent/llmRouter.js";
 import { getGithubMCPTools, getGoogleMCPTools, getJiraMCPTools, getNotionMCPTools } from "../mcp/index.js";
+import { doraMetricsTool } from "../agent/doraAgent.js";
+import { deliveryBottlenecksTool } from "../agent/deliveryAgent.js";
+import { sbiFeedbackTool } from "../agent/sbiAgent.js";
+import { sprintPlanTool } from "../agent/sprintAgent.js";
 import { buildEmResponse } from "../utils/responseFormatter.js";
 import { getTracerCallbacks, createEndToEndTrace, createSpan } from "../utils/tracer.js";
 import { info, warn, error } from "../utils/logger.js";
@@ -346,10 +350,20 @@ export class LangGraphAgentService {
         };
       }
 
+      const recovery = await this.runRequiredDomainRecovery(query, routingPlan, decision);
+      if (recovery) {
+        return recovery;
+      }
+
       decision.reasons.push("policy_violations_detected");
       decision.reasons.push(...policy.violations.map((v) => `policy:${v}`));
     } else if (forceToolUse && !decision.mcpReady) {
       decision.reasons.push("mcp_required_but_unavailable");
+
+      const recovery = await this.runRequiredDomainRecovery(query, routingPlan, decision);
+      if (recovery) {
+        return recovery;
+      }
     }
 
     if (decision.ragHit && allowRag) {
@@ -369,6 +383,61 @@ export class LangGraphAgentService {
 
     decision.selectedPath = "llm-only";
     return this.runLlmExecutor(query);
+  }
+
+  async runRequiredDomainRecovery(query, routingPlan, decision) {
+    const domains = toArray(routingPlan?.domains);
+    const recoveryTools = {
+      dora: { tool: doraMetricsTool, input: { sources: ["github"] } },
+      delivery: { tool: deliveryBottlenecksTool, input: { sources: ["github", "jira"] } },
+      sbi: {
+        tool: sbiFeedbackTool,
+        input: {
+          situation: String(query || ""),
+          context_type: "coaching_request",
+        },
+      },
+      sprint: { tool: sprintPlanTool, input: {} },
+    };
+    const recoverable = domains.filter((domain) => recoveryTools[domain]);
+    if (recoverable.length === 0) return null;
+
+    const answers = [];
+    let recoveredAny = false;
+    try {
+      for (const domain of recoverable) {
+        const { tool, input } = recoveryTools[domain];
+        const result = await tool.invoke({ mode: "ANALYZE", fetch_fresh_data: true, ...input });
+        decision.toolsUsed = Array.from(new Set([...toArray(decision.toolsUsed), tool.name]));
+        decision.reasons.push(`supervisor_missing_${tool.name}_recovered_deterministically`);
+        if (result?.status !== "SUCCESS") {
+          decision.reasons.push(`recovery_tool_status:${tool.name}:${result?.status || "unknown"}`);
+          continue;
+        }
+        recoveredAny = true;
+        const data = result.data || {};
+        if (data.summary) {
+          answers.push(data.summary);
+        } else if (domain === "sprint") {
+          const metrics = data.capacity_metrics || {};
+          answers.push(`Sprint capacity: ${metrics.team_capacity_hours ?? "unavailable"} hours; target velocity: ${metrics.target_velocity_points ?? "unavailable"} points; recommended commitment: ${metrics.recommended_commitment_points ?? "unavailable"} points.`);
+        }
+        if (result.staleDataWarning) {
+          decision.reasons.push(`postgresql_cache_fallback_used:${domain}`);
+        }
+      }
+      decision.policy = this.validatePolicy(routingPlan, decision.toolsUsed, true);
+      if (!recoveredAny) return null;
+      decision.selectedPath = "deterministic-domain-tool-recovery";
+      if (decision.policy.violations.length === 0) {
+        this.runtimeMetrics.toolGroundedMet += 1;
+      }
+      return { answer: answers.join("\n\n") || "The requested domain tools completed without a summary.", sources: [] };
+    } catch (recoveryError) {
+      warn("Required domain recovery failed", { domains: recoverable, err: recoveryError?.message });
+      decision.reasons.push("recovery_failed");
+      return null;
+    }
   }
 
   async routeQueryPlan(query, runtimeMode, options = {}) {
@@ -472,7 +541,13 @@ export class LangGraphAgentService {
   hasMeaningfulToolCalls(toolsUsed) {
     const arr = toArray(toolsUsed);
     if (arr.length === 0) return false;
-    return arr.some((toolName) => typeof toolName === "string" && (toolName.startsWith(TRANSFER_TOOL_PREFIX) || toolName === RAG_TOOL_NAME || Object.values(this.domainToolNames).some((set) => set.has(toolName))));
+    return arr.some((toolName) =>
+      typeof toolName === "string" &&
+      (toolName === RAG_TOOL_NAME ||
+        Object.entries(this.domainToolNames).some(([domain, names]) =>
+          domain !== "rag" && !toolName.startsWith(TRANSFER_TOOL_PREFIX) && names.has(toolName),
+        )),
+    );
   }
 
   mapInvokedDomains(toolsUsed = []) {
@@ -518,6 +593,14 @@ export class LangGraphAgentService {
     return this.domainToolNames[domain].size > 0;
   }
 
+  hasExecutedDomainTool(domain, toolsUsed) {
+    const names = this.domainToolNames[domain];
+    if (!names) return false;
+    return toArray(toolsUsed).some(
+      (toolName) => typeof toolName === "string" && !toolName.startsWith(TRANSFER_TOOL_PREFIX) && names.has(toolName),
+    );
+  }
+
   validatePolicy(routingPlan, toolsUsed, forceToolUse) {
     const invokedDomains = this.mapInvokedDomains(toolsUsed);
     const selectedDomains = toArray(routingPlan?.domains);
@@ -531,7 +614,7 @@ export class LangGraphAgentService {
     }
 
     for (const domain of selectedWorkspaceDomains) {
-      if (this.domainHasTools(domain) && !invokedDomains.has(domain)) {
+      if (this.domainHasTools(domain) && !this.hasExecutedDomainTool(domain, toolsUsed)) {
         missingDomains.push(domain);
       }
     }
@@ -588,9 +671,6 @@ export class LangGraphAgentService {
         const domain = toolName.replace(/^transfer_to_|^transfer_/, "").replace(/_agent$/, "");
         if (evidence[domain]) {
           evidence[domain].push(`Tool: ${toolName}`);
-        }
-        if (domain === "delivery" || domain === "dora") {
-          evidence.github.push(`Tool: ${toolName}`);
         }
         continue;
       }

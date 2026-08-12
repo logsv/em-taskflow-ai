@@ -51,7 +51,7 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
           }));
           return {
             open_prs: prs.length,
-            avg_pr_review_wait_hours: prs.length > 0 ? 8.5 : 0.0,
+            avg_pr_review_wait_hours: null,
             blocked_prs: prs,
             github_issues: prs,
             source: 'mcp',
@@ -93,10 +93,12 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
     if (source === 'jira') {
       const analytics = await databaseService.getSprintAnalytics().catch(() => []);
       return {
-        wip_count: analytics[0]?.wip_violations || 2,
-        blocked_tickets: [{ key: 'ENG-104', summary: 'Cached DB lock issue' }],
-        missed_deadline_tickets: [{ key: 'ENG-88', summary: 'Cached missed deadline ticket' }],
+        wip_count: analytics[0]?.wip_count ?? null,
+        wip_limit: analytics[0]?.wip_limit ?? null,
+        blocked_tickets: analytics[0]?.blocked_tickets || [],
+        missed_deadline_tickets: analytics[0]?.missed_deadline_tickets || [],
         is_cached: true,
+        data_availability: analytics.length > 0 ? 'cached' : 'empty',
       };
     }
     try {
@@ -112,7 +114,7 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
       }));
       return {
         open_prs: prs.length,
-        avg_pr_review_wait_hours: prs.length > 0 ? 4.5 : 0.0,
+        avg_pr_review_wait_hours: null,
         blocked_prs: prs,
         github_issues: prs,
         is_cached: true,
@@ -120,7 +122,7 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
     } catch (err) {
       return {
         open_prs: 0,
-        avg_pr_review_wait_hours: 0.0,
+        avg_pr_review_wait_hours: null,
         blocked_prs: [],
         github_issues: [],
         error: err?.message || "Failed to fetch GitHub issues from PostgreSQL DB",
@@ -154,14 +156,31 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
       };
     }
 
-    const wipViolations = Math.max(0, (jira.wip_count || 0) - (jira.wip_limit || 5));
-    const avgPrWaitHours = Number((gh.avg_pr_review_wait_hours || 14.2).toFixed(1));
-    const cycleTimeP80Hours = Number(((avgPrWaitHours * 2.5) + (wipViolations * 8)).toFixed(1));
+    const hasFiniteMetric = (value) => typeof value === 'number' && Number.isFinite(value);
+    const hasDeliveryData = githubIssues.length > 0 || hasFiniteMetric(jira.wip_count);
+    if (!hasDeliveryData) {
+      return {
+        mode: 'ANALYZE',
+        delivery_risk_index: 'UNAVAILABLE',
+        metrics: null,
+        blocked_prs: [],
+        github_issues: [],
+        blocked_tickets: [],
+        missed_deadline_tickets: [],
+        data_availability: 'empty',
+        summary: 'Delivery data is unavailable from both live integrations and the PostgreSQL cache.',
+      };
+    }
+    const wipLimit = hasFiniteMetric(jira.wip_limit) ? jira.wip_limit : 5;
+    const wipCount = hasFiniteMetric(jira.wip_count) ? jira.wip_count : 0;
+    const wipViolations = Math.max(0, wipCount - wipLimit);
+    const avgPrWaitHours = hasFiniteMetric(gh.avg_pr_review_wait_hours) ? Number(gh.avg_pr_review_wait_hours.toFixed(1)) : null;
+    const cycleTimeP80Hours = avgPrWaitHours === null ? null : Number(((avgPrWaitHours * 2.5) + (wipViolations * 8)).toFixed(1));
 
-    let riskIndex = 'LOW';
-    if (wipViolations > 2 || avgPrWaitHours > 24.0) {
+    let riskIndex = avgPrWaitHours === null && !hasFiniteMetric(jira.wip_count) ? 'PARTIAL' : 'LOW';
+    if (wipViolations > 2 || (avgPrWaitHours !== null && avgPrWaitHours > 24.0)) {
       riskIndex = 'HIGH';
-    } else if (wipViolations > 0 || avgPrWaitHours > 12.0) {
+    } else if (wipViolations > 0 || (avgPrWaitHours !== null && avgPrWaitHours > 12.0)) {
       riskIndex = 'MEDIUM';
     }
 
@@ -169,7 +188,8 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
       ? githubIssues.map((i) => `- [#${i.number} ${i.title}](${i.html_url}) | Assignee: ${i.assignee || 'unassigned'} | Status: ${i.state || 'open'}`).join('\n')
       : '';
 
-    const summaryText = `Delivery Risk Index: ${riskIndex}. ${wipViolations} WIP limit violations detected. Avg PR review wait: ${avgPrWaitHours}h. Active Open GitHub Issues (${githubIssues.length}).` +
+    const reviewWaitText = avgPrWaitHours === null ? 'unavailable' : `${avgPrWaitHours}h`;
+    const summaryText = `Delivery Risk Index: ${riskIndex}. ${hasFiniteMetric(jira.wip_count) ? `${wipViolations} WIP limit violations detected.` : 'WIP data unavailable.'} Avg PR review wait: ${reviewWaitText}. Active Open GitHub Issues (${githubIssues.length}).` +
       (githubMarkdown ? `\n\nOpen GitHub Issues:\n${githubMarkdown}` : '');
 
     return {
@@ -178,8 +198,8 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
       delivery_risk_index: riskIndex,
       metrics: {
         wip_violations: wipViolations,
-        wip_count: jira.wip_count || 7,
-        wip_limit: jira.wip_limit || 5,
+        wip_count: wipCount,
+        wip_limit: wipLimit,
         avg_pr_review_wait_hours: avgPrWaitHours,
         cycle_time_p80_hours: cycleTimeP80Hours,
         scope_creep_points: 5,

@@ -13,8 +13,8 @@ export const doraMetricsTool = createDeterministicToolHarness({
     sources: z.array(z.string()).default(['github']),
     time_window: z.enum(['7d', '30d', '90d']).default('30d'),
     mode: z.enum(['ANALYZE', 'LIST_RAW', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
-    repo_id: z.string().default('default'),
-    team_id: z.string().default('default'),
+    repo_id: z.string().optional(),
+    team_id: z.string().optional(),
     fetch_fresh_data: z.boolean().default(true),
   }),
   // Tier 1: Model Context Protocol (MCP) tool execution
@@ -22,7 +22,7 @@ export const doraMetricsTool = createDeterministicToolHarness({
     github: async (inputArgs) => {
       try {
         const { executeMCPTool } = await import('../mcp/index.js');
-        const queryStr = inputArgs.repo_id && inputArgs.repo_id !== 'default'
+        const queryStr = inputArgs.repo_id
           ? `repo:${inputArgs.repo_id} is:issue`
           : `is:issue is:open`;
         const res = await executeMCPTool('search_issues', { query: queryStr }).catch(() => null);
@@ -40,28 +40,11 @@ export const doraMetricsTool = createDeterministicToolHarness({
           } catch (e) { items = null; }
         }
         if (Array.isArray(items) && items.length > 0) {
-          const issueCount = items.length;
-          const deploys = Math.max(5, issueCount * 3);
-          const totalLeadTime = Number((issueCount * 18.5).toFixed(1));
-          const failedDeploys = Math.max(1, Math.round(issueCount * 0.1));
-          const mttrHours = 1.5;
-          return {
-            repo_id: inputArgs.repo_id || 'default',
-            time_window: inputArgs.time_window || '30d',
-            deploys,
-            total_lead_time_hours: totalLeadTime,
-            failed_deploys: failedDeploys,
-            total_mttr_hours: mttrHours,
-            pr_count: issueCount,
-            active_issues: items.slice(0, 10).map((i) => ({
-              number: i.number,
-              title: i.title,
-              state: i.state || 'open',
-              html_url: i.html_url || `https://github.com/issues/${i.number}`,
-              assignee: i.user || i.assignee || 'unassigned',
-            })),
-            source: 'mcp',
-          };
+          // GitHub issue search is useful supplementary evidence, but it does
+          // not contain deployments, incidents, or lead-time measurements.
+          // Return null so the harness obtains authoritative DORA snapshots
+          // from PostgreSQL rather than inventing operational metrics.
+          return null;
         }
       } catch (err) {
         // Fall back to PostgreSQL DB cache
@@ -71,8 +54,11 @@ export const doraMetricsTool = createDeterministicToolHarness({
   },
   // Fallback: PostgreSQL Database Cache Snapshot
   dbCacheFallback: async (source, inputArgs) => {
-    const snapshots = await databaseService.getDoraSnapshots(inputArgs.team_id || 'default').catch(() => []);
-    const issues = await databaseService.getGithubIssues({}).catch(() => []);
+    const snapshots = await databaseService.getDoraSnapshots(inputArgs.team_id || null).catch(() => []);
+    const issues = await databaseService.getGithubIssues({
+      ...(inputArgs.repo_id ? { repo: inputArgs.repo_id } : {}),
+      state: 'open',
+    }).catch(() => []);
     const activeIssues = (issues || []).map((i) => ({
       number: i.number,
       title: i.title,
@@ -84,46 +70,56 @@ export const doraMetricsTool = createDeterministicToolHarness({
     if (snapshots && snapshots.length > 0) {
       const snap = snapshots[0];
       return {
-        repo_id: inputArgs.repo_id || 'default',
-        team_id: inputArgs.team_id || 'default',
+        repo_id: inputArgs.repo_id || null,
+        team_id: inputArgs.team_id || snap.team_id || null,
         time_window: inputArgs.time_window || '30d',
-        deploys: snap.deployment_frequency ? Math.round(snap.deployment_frequency * 4) : 12,
-        total_lead_time_hours: snap.lead_time_hours ? snap.lead_time_hours * 12 : 222,
-        failed_deploys: snap.change_failure_rate ? Math.round((snap.change_failure_rate / 100) * 12) : 1,
-        total_mttr_hours: snap.mttr_hours || 1.5,
-        pr_count: 12,
+        deployment_frequency_per_week: Number(snap.deployment_frequency),
+        lead_time_hours: Number(snap.lead_time_hours),
+        change_failure_rate_pct: Number(snap.change_failure_rate),
+        mttr_hours: Number(snap.mttr_hours),
         active_issues: activeIssues,
         is_cached: true,
         synced_at: snap.created_at || new Date().toISOString(),
       };
     }
 
-    const issueCount = activeIssues.length > 0 ? activeIssues.length : 3;
     return {
-      repo_id: inputArgs.repo_id || 'default',
-      team_id: inputArgs.team_id || 'default',
+      repo_id: inputArgs.repo_id || null,
+      team_id: inputArgs.team_id || null,
       time_window: inputArgs.time_window || '30d',
-      deploys: Math.max(5, issueCount * 3),
-      total_lead_time_hours: Number((issueCount * 18.5).toFixed(1)),
-      failed_deploys: 1,
-      total_mttr_hours: 1.5,
-      pr_count: issueCount,
       active_issues: activeIssues,
       is_cached: true,
+      data_availability: 'no_dora_snapshot',
     };
   },
   computeMath: async (sourceResults, inputArgs) => {
     const ghData = sourceResults.github?.data || sourceResults.default?.data || Object.values(sourceResults)[0]?.data || {};
 
-    const deploys = Number(ghData.deploys) || 14;
-    const totalLeadTime = Number(ghData.total_lead_time_hours) || 259.0;
-    const failedDeploys = Number(ghData.failed_deploys) || 1;
-    const mttrHours = Number(ghData.total_mttr_hours) || 1.5;
-    const windowDays = inputArgs.time_window === '7d' ? 7 : inputArgs.time_window === '90d' ? 90 : 30;
-
-    const deploymentFrequencyWeeks = Number(((deploys / windowDays) * 7).toFixed(1));
-    const averageLeadTimeHours = Number((totalLeadTime / Math.max(1, deploys)).toFixed(1));
-    const changeFailureRatePct = Number(((failedDeploys / Math.max(1, deploys)) * 100).toFixed(1));
+    const hasFiniteMetric = (value) => typeof value === 'number' && Number.isFinite(value);
+    const hasSnapshot = hasFiniteMetric(ghData.deployment_frequency_per_week) &&
+      hasFiniteMetric(ghData.lead_time_hours) &&
+      hasFiniteMetric(ghData.change_failure_rate_pct) &&
+      hasFiniteMetric(ghData.mttr_hours);
+    const activeIssues = ghData.active_issues || [];
+    if (!hasSnapshot) {
+      return {
+        rating: 'UNAVAILABLE',
+        team_id: inputArgs.team_id || null,
+        repo_id: inputArgs.repo_id || null,
+        time_window: inputArgs.time_window || '30d',
+        metrics: null,
+        active_issues: activeIssues,
+        github_issues: activeIssues,
+        data_availability: 'no_dora_snapshot',
+        summary: inputArgs.team_id
+          ? `DORA metrics are unavailable because no cached DORA snapshot exists for team '${inputArgs.team_id}'. GitHub issue data alone cannot establish deployment frequency, lead time, change-failure rate, or MTTR.`
+          : 'DORA metrics are unavailable because no cached DORA snapshot exists. GitHub issue data alone cannot establish deployment frequency, lead time, change-failure rate, or MTTR.',
+      };
+    }
+    const deploymentFrequencyWeeks = ghData.deployment_frequency_per_week;
+    const averageLeadTimeHours = ghData.lead_time_hours;
+    const changeFailureRatePct = ghData.change_failure_rate_pct;
+    const mttrHours = ghData.mttr_hours;
 
     let rating = 'HIGH';
     if (deploymentFrequencyWeeks < 1.0 || averageLeadTimeHours > 168.0) {
@@ -134,7 +130,6 @@ export const doraMetricsTool = createDeterministicToolHarness({
       rating = 'ELITE';
     }
 
-    const activeIssues = ghData.active_issues || [];
     const issuesMarkdown = activeIssues.length > 0
       ? activeIssues.map((i) => `- [#${i.number} ${i.title}](${i.html_url}) | Assignee: ${i.assignee || 'unassigned'} | Status: ${i.state || 'open'}`).join('\n')
       : '';
@@ -144,8 +139,8 @@ export const doraMetricsTool = createDeterministicToolHarness({
 
     return {
       rating,
-      team_id: inputArgs.team_id || 'default',
-      repo_id: inputArgs.repo_id || 'default',
+      team_id: inputArgs.team_id || ghData.team_id || null,
+      repo_id: inputArgs.repo_id || ghData.repo_id || null,
       time_window: inputArgs.time_window || '30d',
       metrics: {
         deployment_frequency: `${deploymentFrequencyWeeks} deploys/week`,

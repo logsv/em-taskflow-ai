@@ -483,31 +483,6 @@ export async function executeAgentQuery(query, options = {}) {
     const messages = Array.isArray(result.messages) ? result.messages : [];
     const lastMessage = messages[messages.length - 1];
     const toolsUsed = collectToolsUsed(messages);
-    if (Array.isArray(routingPlan?.domains)) {
-      for (const domain of routingPlan.domains) {
-        const domainToolMap = {
-          github: ['transfer_to_delivery_agent', 'analyze_delivery_bottlenecks'],
-          jira: ['transfer_to_delivery_agent', 'analyze_delivery_bottlenecks'],
-          notion: ['transfer_to_roadmap_agent', 'get_roadmap_alignment'],
-          calendar: ['transfer_to_sprint_agent', 'calculate_sprint_plan'],
-          dora: ['transfer_to_dora_agent', 'calculate_dora_metrics'],
-          delivery: ['transfer_to_delivery_agent', 'analyze_delivery_bottlenecks'],
-          sbi: ['transfer_to_sbi_agent', 'format_sbi_feedback'],
-          people: ['transfer_to_people_agent', 'analyze_personnel_growth'],
-          sprint: ['transfer_to_sprint_agent', 'calculate_sprint_plan'],
-          retro: ['transfer_to_retro_agent', 'generate_sprint_retro'],
-          sop: ['transfer_to_sop_agent', 'query_sop_compliance'],
-          roadmap: ['transfer_to_roadmap_agent', 'get_roadmap_alignment'],
-          okr: ['transfer_to_okr_agent', 'evaluate_okr_progress'],
-        };
-        const toolsForDomain = domainToolMap[domain];
-        const primaryTransfer = toolsForDomain?.[0] || `transfer_to_${domain}_agent`;
-        if (toolsForDomain && !toolsUsed.includes(primaryTransfer)) {
-          toolsForDomain.forEach((t) => { if (!toolsUsed.includes(t)) toolsUsed.push(t); });
-        }
-      }
-    }
-
     let responseText = "";
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
@@ -571,11 +546,6 @@ function collectToolsUsed(messages) {
     if (message.name) {
       set.add(message.name);
     }
-    const text = getMessageText(message);
-    if (text.includes("GitHub Evidence") || text.includes("github.com")) {
-      set.add("transfer_to_delivery_agent");
-      set.add("analyze_delivery_bottlenecks");
-    }
   }
   return Array.from(set);
 }
@@ -631,4 +601,3 @@ async function ensureAgentReady() {
     await initializeAgent();
   }
 }
-
