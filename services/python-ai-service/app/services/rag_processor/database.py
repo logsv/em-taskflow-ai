@@ -21,7 +21,7 @@ class RAGDatabaseService:
     def __init__(self):
         self.host = os.getenv("POSTGRES_HOST", "postgres")
         self.port = int(os.getenv("POSTGRES_PORT", "5432"))
-        self.dbname = os.getenv("POSTGRES_DB", "taskflow")
+        self.dbname = os.getenv("POSTGRES_DB", "taskflow_ai")
         self.user = os.getenv("POSTGRES_USER", "taskflow")
         self.password = os.getenv("POSTGRES_PASSWORD", "taskflow")
         self._ensure_table_exists()
@@ -63,10 +63,19 @@ class RAGDatabaseService:
                         cur.execute("ALTER TABLE pdf_chunks ADD COLUMN IF NOT EXISTS token_count INT DEFAULT 0;")
                         cur.execute("ALTER TABLE pdf_chunks ADD COLUMN IF NOT EXISTS parent_content TEXT;")
                         cur.execute("ALTER TABLE pdf_chunks ADD COLUMN IF NOT EXISTS embedding_json TEXT;")
+                        cur.execute("ALTER TABLE pdf_chunks ADD COLUMN IF NOT EXISTS embedding vector(768);")
                         cur.execute("ALTER TABLE pdf_chunks ALTER COLUMN document_id DROP NOT NULL;")
                         cur.execute("ALTER TABLE pdf_chunks ALTER COLUMN parent_content DROP NOT NULL;")
                         cur.execute("CREATE INDEX IF NOT EXISTS idx_pdf_chunks_filename ON pdf_chunks(filename);")
                         cur.execute("CREATE INDEX IF NOT EXISTS idx_pdf_chunks_fts ON pdf_chunks USING gin(to_tsvector('english', content));")
+                        try:
+                            cur.execute("CREATE INDEX IF NOT EXISTS idx_pdf_chunks_embedding ON pdf_chunks USING hnsw (embedding vector_cosine_ops);")
+                        except Exception as e:
+                            logger.info(f"HNSW index creation failed (might be unsupported/already exist): {e}")
+                        try:
+                            cur.execute("UPDATE pdf_chunks SET embedding = embedding_json::vector WHERE embedding IS NULL AND embedding_json IS NOT NULL;")
+                        except Exception as e:
+                            logger.info(f"Embedding migration skipped/failed: {e}")
                     except Exception as migration_err:
                         logger.warning(f"Column migration warning: {migration_err}")
                 conn.commit()
@@ -137,8 +146,8 @@ class RAGDatabaseService:
                         emb_json, working_ollama_url = self._fetch_ollama_embedding(content_val, working_ollama_url)
                         try:
                             cur.execute("""
-                                INSERT INTO pdf_chunks (id, document_id, filename, chunk_index, content, parent_content, token_count, embedding_json)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+                                INSERT INTO pdf_chunks (id, document_id, filename, chunk_index, content, parent_content, token_count, embedding_json, embedding)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::vector);
                             """, (
                                 chunk_id,
                                 filename,
@@ -147,6 +156,7 @@ class RAGDatabaseService:
                                 content_val,
                                 parent_val,
                                 c.get("token_count", 0),
+                                emb_json,
                                 emb_json,
                             ))
                         except Exception as e:
@@ -158,8 +168,8 @@ class RAGDatabaseService:
                                 citem_content = chunk_item.get("content", "")
                                 citem_parent = chunk_item.get("parent_content") or citem_content
                                 cur.execute("""
-                                    INSERT INTO pdf_chunks (id, document_id, filename, chunk_index, content, parent_content, embedding_json)
-                                    VALUES (%s, %s, %s, %s, %s, %s, %s);
+                                    INSERT INTO pdf_chunks (id, document_id, filename, chunk_index, content, parent_content, embedding_json, embedding)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector);
                                 """, (
                                     cid,
                                     filename,
@@ -167,6 +177,7 @@ class RAGDatabaseService:
                                     chunk_item.get("chunk_index", 0),
                                     citem_content,
                                     citem_parent,
+                                    emb_json,
                                     emb_json,
                                 ))
                             break
@@ -186,22 +197,62 @@ class RAGDatabaseService:
             return []
 
         try:
+            query_emb_json, _ = self._fetch_ollama_embedding(query_text)
             with self._get_connection() as conn:
                 with conn.cursor() as cur:
-                    query_sql = """
-                        SELECT id, filename, chunk_index, content, COALESCE(parent_content, content) AS parent_content, COALESCE(token_count, 0) AS token_count,
-                               ts_rank_cd(to_tsvector('english', content), plainto_tsquery('english', %s)) AS rank_score
-                        FROM pdf_chunks
-                        WHERE to_tsvector('english', content) @@ plainto_tsquery('english', %s)
-                    """
-                    params = [query_text, query_text]
+                    if query_emb_json:
+                        # Full RRF Hybrid Search
+                        query_sql = """
+                            WITH sparse AS (
+                                SELECT id, row_number() over(order by ts_rank_cd(to_tsvector('english', content), plainto_tsquery('english', %s)) DESC) as rank
+                                FROM pdf_chunks
+                                WHERE to_tsvector('english', content) @@ plainto_tsquery('english', %s)
+                        """
+                        params = [query_text, query_text]
+                        if filter_filename:
+                            query_sql += " AND filename = %s"
+                            params.append(filter_filename)
+                        query_sql += """
+                                LIMIT 60
+                            ),
+                            dense AS (
+                                SELECT id, row_number() over(order by embedding <=> %s::vector) as rank
+                                FROM pdf_chunks
+                                WHERE embedding IS NOT NULL
+                        """
+                        params.append(query_emb_json)
+                        if filter_filename:
+                            query_sql += " AND filename = %s"
+                            params.append(filter_filename)
+                        query_sql += """
+                                LIMIT 60
+                            )
+                            SELECT p.id, p.filename, p.chunk_index, p.content, COALESCE(p.parent_content, p.content) AS parent_content, COALESCE(p.token_count, 0) AS token_count,
+                                   COALESCE(1.0 / (60 + s.rank), 0.0) + COALESCE(1.0 / (60 + d.rank), 0.0) AS rrf_score
+                            FROM pdf_chunks p
+                            LEFT JOIN sparse s ON p.id = s.id
+                            LEFT JOIN dense d ON p.id = d.id
+                            WHERE s.id IS NOT NULL OR d.id IS NOT NULL
+                            ORDER BY rrf_score DESC
+                            LIMIT %s;
+                        """
+                        params.append(top_k)
+                    else:
+                        # Fallback to sparse only if embedding fails
+                        query_sql = """
+                            SELECT id, filename, chunk_index, content, COALESCE(parent_content, content) AS parent_content, COALESCE(token_count, 0) AS token_count,
+                                   ts_rank_cd(to_tsvector('english', content), plainto_tsquery('english', %s)) AS rrf_score
+                            FROM pdf_chunks
+                            WHERE to_tsvector('english', content) @@ plainto_tsquery('english', %s)
+                        """
+                        params = [query_text, query_text]
 
-                    if filter_filename:
-                        query_sql += " AND filename = %s"
-                        params.append(filter_filename)
+                        if filter_filename:
+                            query_sql += " AND filename = %s"
+                            params.append(filter_filename)
 
-                    query_sql += " ORDER BY rank_score DESC LIMIT %s;"
-                    params.append(top_k)
+                        query_sql += " ORDER BY rrf_score DESC LIMIT %s;"
+                        params.append(top_k)
 
                     cur.execute(query_sql, params)
                     rows = cur.fetchall()
@@ -215,7 +266,7 @@ class RAGDatabaseService:
                             "content": r["content"],
                             "parent_content": r["parent_content"] or "",
                             "token_count": r["token_count"] or 0,
-                            "score": float(r["rank_score"]),
+                            "score": float(r["rrf_score"]),
                         })
 
                     if results:

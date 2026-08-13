@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import * as Sentry from '@sentry/node';
 import { initializeLLM } from './llm/index.js';
 import { initializeIngest } from './rag/index.js';
+import { initSemanticCache } from './cache/semanticCache.js';
 import db from './db/index.js';
 import { attachRequestContext, createRateLimiter } from './middleware/hardening.js';
 import { info, warn, error } from './utils/logger.js';
@@ -167,6 +168,13 @@ async function startServer() {
       info('RAG ingest pipeline initialized at startup');
     } catch (e) {
       warn('RAG ingest initialization failed', { err: e.message });
+    }
+
+    try {
+      await initSemanticCache();
+      info('Semantic cache initialized at startup');
+    } catch (e) {
+      warn('Semantic cache initialization failed (gracefully degraded)', { err: e.message });
     }
 
     const runtimeConfig = getRuntimeConfig();

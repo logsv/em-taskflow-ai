@@ -32,7 +32,7 @@ const envSchema = z.object({
   ROUTER_SUCCESS_EM_USEFULNESS_MIN: z.coerce.number().min(0).max(1).default(0.8),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   HOST: z.string().ip().default('127.0.0.1'),
-  DATABASE_URL: z.string().url().default('postgresql://taskflow:taskflow@localhost:5432/taskflow'),
+  DATABASE_URL: z.string().url().default('postgresql://taskflow:taskflow@localhost:5432/taskflow_backend'),
   LANGFUSE_PUBLIC_KEY: z.string().optional(),
   LANGFUSE_SECRET_KEY: z.string().optional(),
   LANGFUSE_HOST: z.string().optional(),
