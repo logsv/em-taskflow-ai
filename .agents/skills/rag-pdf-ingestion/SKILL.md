@@ -1,44 +1,52 @@
 ---
 name: rag-pdf-ingestion
-description: Procedures for testing PDF ingestion, PostgreSQL hybrid search, in-memory fallbacks, document chunk inspection, and single-pass RAG synthesis in EM TaskFlow AI.
+description: Procedures for testing PDF ingestion, HyDE query transformation, CTE-based RRF hybrid search, Redis semantic caching, taskflow_ai vector store, and single-pass RAG synthesis in EM TaskFlow AI.
 ---
 
-# RAG PDF Ingestion & Retrieval Skill
+# RAG Document Ingestion & Retrieval Skill
 
-Use this skill when developing, testing, or troubleshooting PDF document uploads, vector chunk inspection, hybrid keyword search, or RAG answer generation.
+Use this skill when developing, testing, or troubleshooting multi-format document uploads (PDF, CSV, Images, Text), HyDE query expansion, Reciprocal Rank Fusion (RRF) search, Redis semantic caching, or vector chunk inspection.
 
 ## 📌 Architecture Overview
 
-1. **PDF Ingestion**:
-   - Endpoint: `POST /api/rag/upload`
-   - Splits PDFs into token-aware parent-child chunks (`TokenTextSplitter`).
-   - Stores chunks in PostgreSQL table `pdf_chunks` (with `inMemoryPdfChunks` fallback if DB is unavailable).
+1. **Document Ingestion**:
+   - Endpoint: `POST /api/rag/upload` (Supports PDF, CSV, Plain Text, PNG/JPG).
+   - Ingests durably via Temporal workflow on queue `rag-ingest-queue`.
+   - Tokenizes documents into parent-child chunks (`chunker.py`).
+   - Stores vector embeddings in PostgreSQL database `taskflow_ai`, table `pdf_chunks` with `pgvector` HNSW index (`idx_pdf_chunks_embedding`).
 
-2. **Document Inventory & Chunk Inspection**:
+2. **Redis Vector Semantic Caching**:
+   - Intercepts queries before LLM generation via `src/cache/semanticCache.js`.
+   - Cosine similarity >= **0.95** triggers a cache hit returning instant response (<50ms) with 1-hour TTL.
+
+3. **HyDE Query Transformation & RRF Hybrid Search**:
+   - `generateHypotheticalDocument` generates candidate hypothetical document answers.
+   - Executes SQL CTE Reciprocal Rank Fusion (RRF) merging dense `pgvector` HNSW search with sparse `pg_trgm` BM25 search ($1.0 / (60 + rank)$).
+   - Reranks top candidates via Cross-Encoder (`reranker.py`).
+
+4. **Document Inventory & Chunk Inspection**:
    - Endpoint: `GET /api/admin/documents` (lists ingested documents and total chunks)
    - Endpoint: `GET /api/admin/documents/:filename/chunks` (retrieves exact text chunks for a document)
    - Endpoint: `DELETE /api/admin/documents/:filename` (purges document chunks from vector store)
 
-3. **Hybrid Keyword Search**:
-   - Tokenizes queries (e.g. `"5 analysis from rubrics pdf"`) and removes stop words (`"what"`, `"is"`, `"in"`).
-   - Queries `pdf_chunks` using `pg_trgm` full-text search and vector distance.
-
-4. **Single-Pass Answer Synthesis**:
+5. **Single-Pass Answer Synthesis**:
    - `generateAnswer()` in `backend/src/rag/retriever.js` generates structured markdown sections (`### 📄 Executive Summary`, `### 🔍 Key Document Analysis`, `### 📌 Source Citations`) directly in 1 LLM pass.
 
 ## 🧪 Verification Commands
 
 ### Test Document Chunk Inspection via Admin API
 ```bash
-curl -s http://localhost:4000/api/admin/documents/01-valid.pdf/chunks
+curl -s http://localhost:4000/api/admin/documents/sample.pdf/chunks
 ```
 
-### Test PDF Search & Ingestion via Node CLI
+### Run Python AI RAG Test Suite
 ```bash
-node -e "import('./src/db/postgres.js').then(async (m) => { const db = m.default; console.log('Doc List:', await db.listPdfDocuments()); console.log('Search:', await db.hybridSearchPdfChunks({ query: 'rubrics' })); });"
+cd services/python-ai-service
+uv run pytest
 ```
 
 ### Run Backend RAG Test Suite
 ```bash
-npm test -- --spec=test/rag/rag.spec.js
+cd backend
+npm test
 ```
