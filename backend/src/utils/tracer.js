@@ -154,3 +154,28 @@ export function getTracerCallbacks(options = {}) {
   options.tracerCallbacks = res;
   return res;
 }
+
+/**
+ * Safely attaches evaluation metric scores to live trace spans in langfuse_db.
+ * @param {Object} options { traceId, name, value, comment }
+ * @returns {boolean} Success status
+ */
+export function scoreTrace(options = {}) {
+  const client = getLangfuseClient();
+  if (!client || !options.traceId || !options.name) {
+    return false;
+  }
+  try {
+    client.score({
+      traceId: options.traceId,
+      name: options.name,
+      value: options.value ?? 1,
+      comment: options.comment || 'Evaluation framework metric score',
+    });
+    return true;
+  } catch (err) {
+    console.warn('⚠️ Non-blocking trace score warning:', err.message);
+    return false;
+  }
+}
+

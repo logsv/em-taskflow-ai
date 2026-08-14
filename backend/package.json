@@ -10,6 +10,9 @@
     "dev": "nodemon src/index.js",
     "test": "NODE_OPTIONS='--loader @istanbuljs/esm-loader-hook' npx nyc jasmine test/**/*.js",
     "evaluate": "node evaluation/run-evaluation.js",
+    "eval:multi-agent": "node evaluation/evaluators/multi-agent-eval.js",
+    "eval:rag": "node evaluation/evaluators/rag-eval.js",
+    "eval:pre-llm": "node evaluation/evaluators/pre-llm-eval.js",
     "start:google": "pnpm -C ../mcp-servers/google-workspace start",
     "start:mcp": "pnpm start:google"
   },

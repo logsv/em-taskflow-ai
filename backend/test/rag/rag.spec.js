@@ -68,6 +68,7 @@ describe('RAG Service', () => {
     // Stub pythonAIServiceClient methods to avoid network timeouts in unit tests
     sandbox.stub(pythonAIServiceClient, 'extractDocument').resolves({ success: false, extraction_method: 'node_fallback' });
     sandbox.stub(pythonAIServiceClient, 'processRAGIngestion').resolves({ success: false, chunks: [] });
+    sandbox.stub(pythonAIServiceClient, 'searchRAG').resolves({ success: true, chunks: [] });
   });
 
   afterEach(() => {

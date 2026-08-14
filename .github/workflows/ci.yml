@@ -1,4 +1,4 @@
-name: CI
+name: Main CI Orchestrator
 
 on:
   push:
@@ -8,10 +8,11 @@ on:
 
 jobs:
   check-changes:
+    name: Detect Changed Paths
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.changes.outputs.backend }}
-      frontend: ${{ steps.changes.outputs.frontend }}
+      python_ai: ${{ steps.changes.outputs.python_ai }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v2
@@ -20,12 +21,12 @@ jobs:
           filters: |
             backend:
               - 'backend/**'
-            frontend:
-              - 'frontend/**'
+            python_ai:
+              - 'services/python-ai-service/**'
 
-  backend:
+  backend-ci:
     needs: check-changes
-    if: needs.check-changes.outputs.backend == 'true'
+    if: needs.check-changes.outputs.backend == 'true' || needs.check-changes.outputs.python_ai == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -41,21 +42,4 @@ jobs:
       - run: npm run build
       - run: npx tsc -p tsconfig.test.json
       - run: npm test
-
-  # Future: Add frontend tests when needed
-  # frontend:
-  #   needs: check-changes
-  #   if: needs.check-changes.outputs.frontend == 'true'
-  #   runs-on: ubuntu-latest
-  #   defaults:
-  #     run:
-  #       working-directory: ./frontend
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-node@v4
-  #       with:
-  #         node-version: '18'
-  #         cache: 'npm'
-  #         cache-dependency-path: frontend/package-lock.json
-  #     - run: npm ci
-  #     - run: npm test
+      - run: npm run evaluate
