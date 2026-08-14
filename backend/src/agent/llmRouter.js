@@ -178,8 +178,9 @@ const getRouterChain = () => {
       ];
       const result = await llm.invoke(messages);
 
-      // Clean up Markdown formatting and extract JSON object if outputted with preambles by local LLMs
+      // Clean up Markdown formatting, thinking tags, and extract JSON object if outputted with preambles by local LLMs
       let content = typeof result.content === 'string' ? result.content : String(result.content || '');
+      content = content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         content = jsonMatch[0];
@@ -210,8 +211,8 @@ const getRouterChain = () => {
             // repair also failed, fall through
           }
         }
-        warn("JSON parse failed in router, falling back to JsonOutputParser", { err: e.message });
-        return parser.invoke(result);
+        warn("JSON parse failed in router, throwing for fallback keyword router", { err: e.message, contentSnippet: content.slice(0, 100) });
+        throw new Error(`JSON parse failed in router: ${e.message}`);
       }
     }
   };

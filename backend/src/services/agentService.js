@@ -307,7 +307,7 @@ export class LangGraphAgentService {
     const requiresWorkspaceDomains = this.requiresWorkspaceDomains(routingPlan);
     const forceToolUse = routingPlan.must_use_tools || requiresWorkspaceDomains;
     const qLower = String(query || "").toLowerCase();
-    const isDocQuery = ["rubric", "pdf", "doc", "document", "uploaded", "file", "what is in"].some((kw) => qLower.includes(kw));
+    const isDocQuery = ["rubric", "pdf", "doc", "document", "uploaded", "file", "what is in", "sop", "guide", "pointer", "summary", "policy"].some((kw) => qLower.includes(kw));
     const allowRag = (routingPlan.allow_rag !== false || routingPlan.domains.includes("rag") || isDocQuery) && this.ragEnabled && options.includeRag !== false;
     let ragResult = { answer: "", sources: [] };
 
@@ -520,7 +520,7 @@ export class LangGraphAgentService {
     if (q.includes("okr") || q.includes("kpi") || q.includes("notion")) {
       domains.push("okr");
     }
-    if (domains.length === 0 || q.includes("pdf") || q.includes("doc") || q.includes("file") || q.includes("guide") || q.includes("rubric")) {
+    if (domains.length === 0 || q.includes("pdf") || q.includes("doc") || q.includes("file") || q.includes("guide") || q.includes("rubric") || q.includes("sop") || q.includes("pointer") || q.includes("summary")) {
       domains.push("rag");
     }
 
@@ -535,7 +535,7 @@ export class LangGraphAgentService {
   }
 
   requiresWorkspaceDomains(plan) {
-    return toArray(plan?.domains).some((domain) => domain !== "rag");
+    return toArray(plan?.domains).some((domain) => domain !== "rag" && domain !== "sop");
   }
 
   hasMeaningfulToolCalls(toolsUsed) {
@@ -604,7 +604,7 @@ export class LangGraphAgentService {
   validatePolicy(routingPlan, toolsUsed, forceToolUse) {
     const invokedDomains = this.mapInvokedDomains(toolsUsed);
     const selectedDomains = toArray(routingPlan?.domains);
-    const selectedWorkspaceDomains = selectedDomains.filter((domain) => domain !== "rag");
+    const selectedWorkspaceDomains = selectedDomains.filter((domain) => domain !== "rag" && domain !== "sop");
     const violations = [];
     const missingDomains = [];
     const unexpectedDomains = [];

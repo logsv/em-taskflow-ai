@@ -101,7 +101,7 @@ class RAGDatabaseService:
                 res = httpx.post(
                     f"{url}/api/embeddings",
                     json={"model": model_name, "prompt": text[:2000]},
-                    timeout=5.0
+                    timeout=20.0
                 )
                 if res.status_code == 200:
                     emb = res.json().get("embedding")
@@ -204,9 +204,9 @@ class RAGDatabaseService:
                         # Full RRF Hybrid Search
                         query_sql = """
                             WITH sparse AS (
-                                SELECT id, row_number() over(order by ts_rank_cd(to_tsvector('english', content), plainto_tsquery('english', %s)) DESC) as rank
+                                SELECT id, row_number() over(order by ts_rank_cd(to_tsvector('english', content), websearch_to_tsquery('english', %s)) DESC) as rank
                                 FROM pdf_chunks
-                                WHERE to_tsvector('english', content) @@ plainto_tsquery('english', %s)
+                                WHERE to_tsvector('english', content) @@ websearch_to_tsquery('english', %s)
                         """
                         params = [query_text, query_text]
                         if filter_filename:
@@ -241,9 +241,9 @@ class RAGDatabaseService:
                         # Fallback to sparse only if embedding fails
                         query_sql = """
                             SELECT id, filename, chunk_index, content, COALESCE(parent_content, content) AS parent_content, COALESCE(token_count, 0) AS token_count,
-                                   ts_rank_cd(to_tsvector('english', content), plainto_tsquery('english', %s)) AS rrf_score
+                                   ts_rank_cd(to_tsvector('english', content), websearch_to_tsquery('english', %s)) AS rrf_score
                             FROM pdf_chunks
-                            WHERE to_tsvector('english', content) @@ plainto_tsquery('english', %s)
+                            WHERE to_tsvector('english', content) @@ websearch_to_tsquery('english', %s)
                         """
                         params = [query_text, query_text]
 
