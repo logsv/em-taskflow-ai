@@ -51,7 +51,7 @@ services:
       TEMPORAL_HOST: ${TEMPORAL_HOST:-temporal:7233}
       RAG_ENABLED: "true"
       LLM_DEFAULT_PROVIDER: ${LLM_DEFAULT_PROVIDER:-ollama}
-      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-llama3.2:latest}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-hermes3:8b}
       LLM_OLLAMA_ENABLED: "true"
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       MCP_JIRA_ENABLED: "false"
