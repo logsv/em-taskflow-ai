@@ -39,7 +39,7 @@ This file provides system guidance, architectural rules, anti-hallucination guid
 
 ### 1. Local LLM Infrastructure (100% Ollama)
 - **Primary LLM Provider**: **Ollama** running locally on `http://localhost:11434` (or `http://host.docker.internal:11434` in Docker).
-- **Default Models**: `llama3.2:latest` (or `mistral:latest`) for chat/reasoning and `nomic-embed-text` / `qwen3-vl` for embeddings.
+- **Default Models**: `hermes3:8b` (or `mistral:latest`) for chat/reasoning/evaluations and `nomic-embed-text` / `qwen3-vl` for embeddings.
 - **Zero Cloud Key Requirement**: External cloud APIs (Gemini, OpenAI, Anthropic) are disabled (`LLM_GOOGLE_ENABLED: false`, `LLM_OPENAI_ENABLED: false`).
 
 ### 2. Isolated Database & Vector Storage (PostgreSQL 16 `pgvector/pgvector:pg16` + Redis)
@@ -81,6 +81,19 @@ This file provides system guidance, architectural rules, anti-hallucination guid
   - `### 📌 Source Citations`
 - **Formatter Bypass**: RAG hit queries (`decision.ragHit = true`) bypass secondary EM JSON re-formatting in `responseFormatter.js` to eliminate double-LLM latency and text degradation.
 
+### 6. 3-Phase Enterprise Evaluation Framework (`hermes3:8b`)
+- **Phase 1: Golden Dataset & Node.js Composite Evaluators**:
+  - `GoldenDatasetRepository`: Schema-validated test suite (`golden-dataset.json`).
+  - `MultiAgentTrajectoryStrategy`: Domain precision ($\ge 90\%$), recall, 1-tool constraint validation.
+  - `RAGPipelineStrategy`: gRPC transport verification and single-pass Markdown structure check.
+  - `PreLLMProcessorChain`: Map-Reduce summary density and Fast-Path $<300\text{ms}$ SLA gate.
+- **Phase 2: Python LLM-as-a-Judge & Hybrid RAG Retrieval Evaluator**:
+  - `LLMJudgeFactory`: G-Eval Chain-of-Thought (CoT) and Pairwise Arena dual-pass scoring.
+  - `PythonRAGEvaluator`: Hybrid dense/sparse recall, context precision, HyDE synergy lift evaluation.
+- **Phase 3: Telemetry Tracing, Local Git Hook & CI/CD Enforcement**:
+  - `scoreTrace()`: Non-blocking trace score exporter to `langfuse_db` (port 5433).
+  - `.git/hooks/pre-push`: Automated local pre-push git verification executing Jasmine unit tests, Python Pytests, and evaluation SLA gates.
+
 ---
 
 ## 🛠️ Development & Operational Commands
@@ -95,11 +108,19 @@ npm run build
 
 # Run unit tests with Jasmine & coverage (155 specs)
 npm test
+
+# Run full evaluation suite (Model: hermes3:8b)
+npm run evaluate
+
+# Run specific evaluation sub-suites
+npm run eval:multi-agent
+npm run eval:rag
+npm run eval:pre-llm
 ```
 
 ### Python AI Service Commands (from `/services/python-ai-service`)
 ```bash
-# Run Python unit & integration tests (16 specs)
+# Run Python unit & evaluation tests (28 specs)
 uv run pytest
 ```
 

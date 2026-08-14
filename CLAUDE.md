@@ -13,13 +13,13 @@ This is a full-stack TypeScript application with:
 - **Backend**: Node.js with TypeScript using ES modules (`"type": "module"`)
 - **Frontend**: React application with service worker support
 - **Vector Database**: ChromaDB for document embeddings and semantic search
-- **LLM Provider**: Ollama for local LLM and embedding models (mistral:latest, nomic-embed-text)
+- **LLM Provider**: Ollama for local LLM and embedding models (`hermes3:8b`, `nomic-embed-text`)
 - **External Integrations**: MCP servers for Notion, Jira, Google Calendar via Model Context Protocol
 
 ### Key Services
 
 - **Agent Service**: Orchestrates intent analysis, data fetching, and response generation
-- **Enhanced LLM Router**: Production-ready router using the [llm-router](https://www.npmjs.com/package/llm-router) npm package with resilience patterns, metrics tracking, and multi-provider support
+- **Enhanced LLM Router**: Production-ready router using local `hermes3:8b` Ollama inference with resilience patterns, metrics tracking, and multi-provider support
 - **RAG Service**: Processes PDFs and performs semantic search using vector embeddings
 - **MCP Service**: Connects to external tools via Model Context Protocol
 - **Database Service**: SQLite3 for chat history and metadata
@@ -39,6 +39,12 @@ npm run dev
 
 # Run tests with coverage (requires building first)
 npm test
+
+# Run Enterprise Evaluation Suite
+npm run evaluate
+npm run eval:multi-agent
+npm run eval:rag
+npm run eval:pre-llm
 
 # Start MCP servers
 npm run start:mcp

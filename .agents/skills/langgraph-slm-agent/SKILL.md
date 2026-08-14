@@ -13,11 +13,11 @@ Use this skill when developing, testing, or debugging LangGraph supervisor agent
    - `classifyFastPath(query)` checks for direct LLM intent (greetings, code generation, math) in `<300ms`, bypassing tool calls.
 
 2. **Router Chain**:
-   - `getRouterChain().invoke({ query })` uses Ollama to classify domains (`github`, `rag`, `jira`, `notion`, `calendar`).
+   - `getRouterChain().invoke({ query })` uses local Ollama (`hermes3:8b`) to classify domains (`dora`, `delivery`, `sbi`, `people`, `sprint`, `retro`, `roadmap`, `okr`, `sop`, `critic`, `rag`).
 
 3. **LangGraph Supervisor**:
    - `graph.js` builds state graph with top-level supervisor.
-   - Enforces **Tool Bounding Rule**: Specialized worker agents (e.g. `github_issue_agent`) receive **max 1 tool per invocation** to maintain 95%+ execution accuracy on 3B/7B local SLMs.
+   - Enforces **Tool Bounding Rule**: Specialized worker agents (e.g. `doraAgent`) receive **max 1 tool per invocation** to maintain 95%+ execution accuracy on local `hermes3:8b` SLM.
 
 4. **Observability**:
    - Setting `LANGCHAIN_TRACING_V2=true` automatically traces multi-agent execution steps to LangSmith under project `em-taskflow-ai`.

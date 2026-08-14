@@ -20,7 +20,7 @@ The backend agent uses a **6-stage hybrid architecture** optimized for **Local S
       │
       ├── 3. Fast-Path Classifier (<300ms) ──► Direct LLM Output (0 tools)
       │
-      └── 4. LLM Router (Ollama llama3.2)
+      └── 4. LLM Router (Ollama hermes3:8b)
             │
             ├── RAG Intent ──► Single-Pass HyDE + RRF Hybrid Document Synthesis (taskflow_ai DB)
             │

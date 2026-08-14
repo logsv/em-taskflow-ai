@@ -25,7 +25,7 @@ The backend implements a **6-stage hybrid multi-agent pipeline** optimized for l
         │
         ├── 2. Fast-Path Pre-Classifier (<300ms) ──► Direct LLM Output (No Routing Overhead)
         │
-        └── 3. LLM Router (Ollama llama3.2)
+        └── 3. LLM Router (Ollama hermes3:8b)
               │
               ├── 4. RAG Intent ──► Single-Pass HyDE + RRF Engine (taskflow_ai DB)
               │
