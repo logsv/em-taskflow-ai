@@ -11,12 +11,25 @@ import databaseService from '../db/postgres.js';
 import { getTracerCallbacks, createSpan } from '../utils/tracer.js';
 import pythonAIServiceClient from '../grpc/client.js';
 import { info, warn, error } from '../utils/logger.js';
+import { checkSemanticCache, setSemanticCache } from '../cache/semanticCache.js';
 
 /**
  * Baseline retrieval: vector search + answer generation
  */
 export async function baselineRetrieve(query, options = {}) {
   const startTime = Date.now();
+
+  const cached = await checkSemanticCache(query);
+  if (cached) {
+    return {
+      answer: cached.answer,
+      sources: cached.sources,
+      originalQuery: query,
+      executionTime: Date.now() - startTime,
+      fromCache: true,
+    };
+  }
+
   const ragConfig = getRagConfig();
   const {
     topK = ragConfig.topK || 6,
@@ -29,6 +42,9 @@ export async function baselineRetrieve(query, options = {}) {
     // Apply Cross-Encoder Reranking
     const rerankedDocs = await pythonAIServiceClient.rerankChunks(query, docs, topK);
     const answer = await generateAnswer(query, rerankedDocs, options);
+    
+    await setSemanticCache(query, answer, rerankedDocs);
+
     const executionTime = Date.now() - startTime;
 
     return {
@@ -54,6 +70,22 @@ export async function baselineRetrieve(query, options = {}) {
  */
 export async function agenticRetrieve(query, options = {}) {
   const startTime = Date.now();
+
+  const cached = await checkSemanticCache(query);
+  if (cached) {
+    info('Agentic retrieval completed from semantic cache', { querySnippet: query.slice(0, 50) });
+    return {
+      answer: cached.answer,
+      sources: cached.sources,
+      originalQuery: query,
+      rewrittenQueries: [query],
+      relevanceScores: [],
+      compressionApplied: false,
+      executionTime: Date.now() - startTime,
+      fromCache: true,
+    };
+  }
+
   const ragConfig = getRagConfig();
   const ragAdvanced = getRagAdvancedConfig();
 
@@ -74,9 +106,19 @@ export async function agenticRetrieve(query, options = {}) {
 
     // Step 1: Query rewriting and expansion
     let queries = [query];
+    const enableHyDE = options.enableHyDE !== undefined ? options.enableHyDE : true;
+    
     if (enableQueryRewriting) {
       queries = await rewriteQueries(query, maxQueries, options);
       info('Generated query variants', { queryCount: queries.length });
+    }
+
+    if (enableHyDE) {
+      const hydeDoc = await generateHypotheticalDocument(query, options);
+      if (hydeDoc) {
+        queries.push(hydeDoc);
+        info('Generated HyDE document and added to queries');
+      }
     }
 
     // Step 2: Multi-query retrieval
@@ -106,6 +148,8 @@ export async function agenticRetrieve(query, options = {}) {
 
     // Step 5: Generate answer
     const answer = await generateAnswer(query, finalDocs, options);
+
+    await setSemanticCache(query, answer, finalDocs);
 
     const executionTime = Date.now() - startTime;
     info('Agentic retrieval completed', { docsRetrieved: finalDocs.length, executionTimeMs: executionTime });
@@ -347,4 +391,27 @@ export async function getRetrieverStatus() {
     vectorStoreReady: true,
     llmAvailable: true,
   };
+}
+
+/**
+ * Generate a hypothetical document for HyDE retrieval
+ */
+async function generateHypotheticalDocument(query, options = {}) {
+  const llm = getChatModel();
+  const callbacks = getTracerCallbacks(options);
+  
+  try {
+    const prompt = ChatPromptTemplate.fromMessages([
+      ['system', `Given the following question, write a brief passage (~150 words) that would directly answer this question as if it were found in an authoritative document. Do not include any preamble or explanation, just write the passage itself.
+
+Question: {query}`]
+    ]);
+
+    const finalPrompt = await prompt.format({ query });
+    const result = await llm.invoke(finalPrompt, { callbacks });
+    return typeof result.content === 'string' ? result.content : String(result.content);
+  } catch (error) {
+    console.warn('⚠️ HyDE generation failed:', error);
+    return null;
+  }
 }

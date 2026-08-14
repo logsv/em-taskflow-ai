@@ -6,7 +6,7 @@ This file provides system guidance, architectural rules, anti-hallucination guid
 
 ## 🏗️ Project Overview
 
-**EM TaskFlow AI** is a full-stack, local-first enterprise productivity platform powered by **100% Local LLM Inference (Ollama)**, Retrieval-Augmented Generation (RAG), Model Context Protocol (MCP) integrations, and a LangGraph Multi-Agent Supervisor.
+**EM TaskFlow AI** is a full-stack, local-first enterprise productivity platform powered by **100% Local LLM Inference (Ollama)**, Retrieval-Augmented Generation (RAG), Model Context Protocol (MCP) integrations, a LangGraph Multi-Agent Supervisor, and isolated per-service PostgreSQL databases.
 
 ---
 
@@ -20,13 +20,15 @@ This file provides system guidance, architectural rules, anti-hallucination guid
    - Telemetry, tracing (Langfuse/LangSmith), and observability callbacks MUST be non-blocking.
    - An error in telemetry or trace logging must NEVER fail an API request or crash a server endpoint.
 
-3. **Rule of Database Separation**:
-   - **Primary App DB** (`taskflow` on port 5432): Application state, sessions, issue caches, PDF chunks.
-   - **Analytics DB** (`langfuse_db` on port 5433): Dedicated strictly to trace graphs, token counts, and latency telemetry.
-   - Agents must NEVER write analytics trace tables into the primary application schema.
+3. **Rule of Database Per-Service Isolation**:
+   - **Backend API DB** (`taskflow_backend` on port 5432): Application state, sessions, issue caches, OKRs, sprint analytics, DORA metrics.
+   - **Python AI DB** (`taskflow_ai` on port 5432): Dedicated strictly to RAG document embeddings (`pdf_chunks`), HNSW vector indexes, and `pg_trgm` full-text search indexes.
+   - **Temporal Workflows DB** (`temporal` & `temporal_visibility` on port 5432): Dedicated strictly to Temporal activity execution and task queue state.
+   - **Analytics DB** (`langfuse_db` on port 5433): Dedicated strictly to trace graphs, token counts, and latency telemetry on an isolated container (`analytics-db`).
+   - Agents must NEVER write analytics trace tables into application databases.
 
 4. **Rule of Verification**:
-   - Never declare success without executing `npm test`. All 93 specs must pass with **0 failures**.
+   - Never declare success without executing unit tests. All **155 backend specs** and **16 Python AI specs** must pass with **0 failures**.
 
 5. **No Superficial Symptom Patches**:
    - NEVER resolve errors by masking symptoms, swallowing exceptions silently, returning dummy fallbacks, or commenting out failing unit test assertions.
@@ -40,30 +42,44 @@ This file provides system guidance, architectural rules, anti-hallucination guid
 - **Default Models**: `llama3.2:latest` (or `mistral:latest`) for chat/reasoning and `nomic-embed-text` / `qwen3-vl` for embeddings.
 - **Zero Cloud Key Requirement**: External cloud APIs (Gemini, OpenAI, Anthropic) are disabled (`LLM_GOOGLE_ENABLED: false`, `LLM_OPENAI_ENABLED: false`).
 
-### 2. Database & Vector Storage (PostgreSQL 16)
-- **Single Source of Truth**: PostgreSQL 16 (user: `taskflow`, db: `taskflow`, password: `taskflow`).
-- **Hybrid Vector + Full-Text Search**:
-  - `pdf_chunks`: Parent-child document chunking with `pg_trgm` full-text search and vector similarity.
-  - `github_issues`: Cached GitHub issues with JSONB fields.
-  - `sessions`, `chat_threads`, `chat_messages`, `feedback`: Session state and message history.
+### 2. Isolated Database & Vector Storage (PostgreSQL 16 `pgvector/pgvector:pg16` + Redis)
+- **PostgreSQL 16 (`em-taskflow-postgres`)**:
+  - `taskflow_backend`: Application state, sessions, chat history, GitHub issues cache.
+  - `taskflow_ai`: Dedicated `pdf_chunks` table with `pgvector` HNSW index (`idx_pdf_chunks_embedding`) and `pg_trgm` FTS index (`idx_pdf_chunks_fts`).
+- **Redis (`em-taskflow-redis:6379`)**:
+  - `semanticCache.js`: High-speed vector similarity semantic caching for RAG queries (0.95 threshold, 1-hour TTL, SHA-256 keying).
 - **Fault-Tolerant In-Memory Fallbacks**: In-memory stores (`inMemoryPdfChunks`, `inMemoryGithubIssues`) ensure backend endpoints NEVER fail even if PostgreSQL is temporarily offline.
 
-### 3. Multi-Agent System (LangGraph Supervisor + Micro-Agents)
-- **Fast-Path Classifier**: `<300ms` pre-router classifier (`classifyFastPath`) for direct LLM queries (greetings, code generation, math), bypassing routing overhead.
-- **LangGraph Supervisor**: `@langchain/langgraph-supervisor` top-level orchestrator.
-- **Micro-Agent Tool Limit Rule**: Local 3B/7B SLMs degrade in accuracy when presented with >5 tools. Each ReAct sub-agent (e.g., `github_issue_agent`) is restricted to **max 1 tool definition** at a time (raising execution accuracy to 95%+).
+### 3. Advanced RAG Engine (HyDE + Dense/Sparse Hybrid Search + RRF)
+- **HyDE Query Expansion**: Generates hypothetical candidate document answers (`generateHypotheticalDocument` in `retriever.js`) to enrich retrieval context.
+- **Hybrid Dense + Sparse Search**: Dense cosine similarity (`<=>`) combined with `pg_trgm` BM25 full-text search.
+- **Reciprocal Rank Fusion (RRF)**: Merges dense and sparse ranks via SQL CTE (`1 / (60 + rank)`) in `database.py`.
+- **Multi-Format Ingestion**: Supports PDF, Plain Text, CSV/Sheets, Images (OCR / `qwen3-vl`) processed durably via Temporal workflows (`rag-ingest-queue`).
 
-### 4. Single-Pass RAG Engine & Response Formatter
+### 4. Multi-Agent System (LangGraph Supervisor + 10 Domain Micro-Agents)
+- **Fast-Path Classifier**: `<300ms` pre-router classifier (`classifyFastPath`) for direct LLM queries (greetings, code generation, math), bypassing routing overhead.
+- **LangGraph Supervisor**: `@langchain/langgraph-supervisor` top-level orchestrator managing handoffs between 10 domain micro-agents:
+  1. `dora` (`calculate_dora_metrics`)
+  2. `delivery` (`analyze_delivery_bottlenecks`)
+  3. `sbi` (`format_sbi_feedback`)
+  4. `people` (`analyze_personnel_growth`)
+  5. `sprint` (`calculate_sprint_plan`)
+  6. `retro` (`generate_sprint_retro`)
+  7. `roadmap` (`get_roadmap_alignment`)
+  8. `okr` (`evaluate_okr_progress`)
+  9. `sop` (`query_sop_compliance`)
+  10. `critic` (`audit_em_report`)
+- **`VALID_DOMAINS` Set**: Aligned across `agentService.js`, pre-classifier router, fallback router, policy validator, and evidence builder to prevent false `unexpected_domains` policy violations.
+- **Micro-Agent Tool Limit Rule**: Local 3B/7B SLMs degrade in accuracy when presented with >5 tools. Each ReAct sub-agent is restricted to **max 1 tool definition** at a time (raising execution accuracy to 95%+).
+- **Rule of Zero Misleading Fallbacks**: System must NEVER output hardcoded generic placeholder strings (such as fake `@logsv` or fake GitHub issues on non-GitHub queries). Fallbacks must accurately present real PostgreSQL DB snapshots or domain-neutral status indicators.
+
+### 5. 100% Python AI Service Delegation & Single-Pass RAG Engine
+- **Python AI Delegation**: 100% of RAG queries, document embeddings, and PDF/CSV/Image chunking execute exclusively via Python AI service (`pythonAIServiceClient` in `grpc/client.js`).
 - **Single-Pass Generation**: `generateAnswer()` in `backend/src/rag/retriever.js` generates structured markdown sections directly in ONE pass:
   - `### 📄 Executive Summary`
   - `### 🔍 Key Document Analysis & Rubric Guidelines`
   - `### 📌 Source Citations`
 - **Formatter Bypass**: RAG hit queries (`decision.ragHit = true`) bypass secondary EM JSON re-formatting in `responseFormatter.js` to eliminate double-LLM latency and text degradation.
-
-### 5. Pre-LLM Preprocessing & Compression Suite
-- **LangChain File Compression**: `summarize_with_langchain()` in `pdf_extractor.py` compresses file uploads >15,000 chars into structured executive summaries using Map-Reduce before prompt construction.
-- **RAG Reranking & MMR Deduplication**: `/api/v1/rag/search` runs Cross-Encoder Reranking and Maximal Marginal Relevance (MMR) deduplication to prune redundant chunks.
-- **Chat History State Anchoring**: `optimizeChatHistory()` in `ChatApplicationService.js` applies a sliding window (retaining latest 8 turns) and anchors earlier turns into a 2-line summary block when history exceeds 10 turns.
 
 ---
 
@@ -77,17 +93,20 @@ npm run dev
 # Build ESM JavaScript output
 npm run build
 
-# Run unit tests with Jasmine & coverage (93 specs)
+# Run unit tests with Jasmine & coverage (155 specs)
 npm test
+```
+
+### Python AI Service Commands (from `/services/python-ai-service`)
+```bash
+# Run Python unit & integration tests (16 specs)
+uv run pytest
 ```
 
 ### Full Container Management (from project root)
 ```bash
 # Build and launch all containers in background
 docker compose up -d --build
-
-# Force rebuild frontend container without cache
-docker compose build --no-cache frontend && docker compose up -d frontend
 
 # Check container health status
 docker compose ps

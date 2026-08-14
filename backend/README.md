@@ -1,6 +1,6 @@
 # ⚙️ EM TaskFlow AI - Backend Service
 
-> **Node.js ESM Microservices Backend powering local-first RAG, LangGraph Multi-Agent Supervision, Administrative APIs, and Ollama LLM Inference.**
+> **Node.js ESM Microservices Backend powering local-first RAG (HyDE + RRF + Redis Cache), LangGraph Multi-Agent Supervision, Administrative APIs, Per-Service Database Isolation, and Ollama LLM Inference.**
 
 ---
 
@@ -16,49 +16,56 @@
 
 ## 🏛️ System Architecture
 
-The backend implements a **5-stage hybrid multi-agent pipeline** optimized for local Small Language Models (SLMs) running on Ollama:
+The backend implements a **6-stage hybrid multi-agent pipeline** optimized for local Small Language Models (SLMs) running on Ollama:
 
 ```
 [ POST /api/chat ]
         │
-        ├── 1. Fast-Path Pre-Classifier (<300ms) ──► Direct LLM Output (No Routing Overhead)
+        ├── 1. Redis Semantic Cache Check (Cosine Sim >= 0.95) ──► Cache Hit (Instant Response)
         │
-        └── 2. LLM Router (Ollama llama3.2)
+        ├── 2. Fast-Path Pre-Classifier (<300ms) ──► Direct LLM Output (No Routing Overhead)
+        │
+        └── 3. LLM Router (Ollama llama3.2)
               │
-              ├── 3. RAG Intent ──► Single-Pass RAG Engine (PostgreSQL 16 Vector + pg_trgm)
+              ├── 4. RAG Intent ──► Single-Pass HyDE + RRF Engine (taskflow_ai DB)
               │
-              └── 4. Multi-Domain Intent ──► LangGraph Supervisor (@langchain/langgraph-supervisor)
+              └── 5. Multi-Domain Intent ──► LangGraph Supervisor (@langchain/langgraph-supervisor)
                                                     │
                                                     ├── GitHub Micro-Agent (1 Bounded Tool)
                                                     ├── Jira Micro-Agent (1 Bounded Tool)
                                                     └── Notion Micro-Agent (1 Bounded Tool)
                                                     │
-                                                    └── 5. Single-Pass Markdown Response Formatter
+                                                    └── 6. Single-Pass Markdown Response Formatter
 ```
 
 ---
 
 ## 🧩 Subsystem Breakdown
 
-### 1. Fast-Path Pre-Classifier (`src/agent/fastPath.js`)
+### 1. Redis Semantic Cache (`src/cache/semanticCache.js`)
+- Uses Redis vector similarity search (`redis:7-alpine`) to intercept incoming queries.
+- Returns pre-computed answers in **<50ms** when query cosine similarity is >= **0.95**, with a 1-hour TTL and SHA-256 query keying.
+
+### 2. Fast-Path Pre-Classifier (`src/agents/fastPath.js`)
 - Intercepts simple conversational, math, or code generation queries in **<300ms**.
 - Bypasses tool routing overhead and vector search latency when external tools are not required.
 
-### 2. Multi-Agent Supervisor (`src/agent/graph.js`)
+### 3. Multi-Agent Supervisor (`src/agents/graph.js`)
 - Built on `@langchain/langgraph-supervisor` to manage worker agent handoffs and prevent routing loops.
 - **Single-Tool Bounding Policy**: Restricts specialized sub-agents to **at most 1 tool definition per call**, raising SLM function-calling accuracy above 95%.
 
-### 3. Single-Pass RAG Engine (`src/rag/retriever.js` & `src/rag/ingest.js`)
-- Uses PostgreSQL 16 parent-child document chunking with `pg_trgm` full-text search and vector similarity (`pdf_chunks`).
-- Synthesizes document summaries, key insights, and citations in a **single LLM pass** to eliminate double-LLM latency and text degradation.
+### 4. Single-Pass RAG Engine (`src/rag/retriever.js` & `src/rag/ingest.js`)
+- Performs **HyDE (Hypothetical Document Embeddings)** query expansion.
+- Calls Python AI service (`python-ai-service:50051`/`8000`) for Dense HNSW vector search + Sparse `pg_trgm` BM25 search merged via SQL CTE Reciprocal Rank Fusion (RRF).
+- Synthesizes document summaries, key insights, and citations in a **single LLM pass** to eliminate double-LLM latency.
 
-### 4. Admin API Module (`src/routes/admin.js`)
+### 5. Admin API Module (`src/routes/admin.js`)
 - Provides RESTful management interfaces for system status aggregation, RAG PDF document vector chunk inspection, document deletion, and telemetry metrics.
 
-### 5. Database Separation & Fallbacks (`src/db/postgres.js`)
-- **Primary App DB** (`taskflow` on port 5432): Application state, active session threads, PDF chunks, and cached GitHub issues (`github_issues`).
+### 6. Database Per-Service Isolation (`src/db/postgres.js`)
+- **Backend API DB** (`taskflow_backend` on port 5432): Application state, active session threads, GitHub issues (`github_issues`), OKRs, DORA metrics.
+- **Python AI DB** (`taskflow_ai` on port 5432): RAG document chunks (`pdf_chunks`) and vector embeddings.
 - **Analytics DB** (`langfuse_db` on port 5433): Dedicated strictly to telemetry traces, token counts, and latency metrics.
-- **Fault-Tolerant Caching**: In-memory stores (`inMemoryPdfChunks`, `inMemoryGithubIssues`) guarantee backend endpoints respond even if PostgreSQL is temporarily restarting.
 
 ---
 
@@ -91,8 +98,8 @@ The backend implements a **5-stage hybrid multi-agent pipeline** optimized for l
 
 ### PDF Document Ingestion
 - **`POST /api/rag/upload`**
-  - **Body**: `multipart/form-data` with `pdf` file attachment.
-  - Chunks, embeds, and indexes PDF content into PostgreSQL `pdf_chunks`.
+  - **Body**: `multipart/form-data` with document file attachment (PDF, CSV, TXT, PNG/JPG).
+  - Processes document ingestion durably via Temporal workflows (`rag-ingest-queue`).
 
 ### Telemetry & Feedback
 - **`POST /api/feedback`**
@@ -109,8 +116,9 @@ Configuration is managed via [`backend/.env`](file:///Users/logsv/Documents/agen
 | :--- | :--- | :--- |
 | `RUNTIME_MODE` | `full` | Runtime profile (`rag_only` or `full`) |
 | `ROUTER_ROLLOUT_MODE` | `enforced` | Pre-classifier router state (`off`, `shadow`, `enforced`) |
-| `DATABASE_URL` | `postgresql://taskflow:taskflow@localhost:5432/taskflow` | Primary PostgreSQL database connection string |
+| `DATABASE_URL` | `postgresql://taskflow:taskflow@localhost:5432/taskflow_backend` | Backend PostgreSQL database connection string |
 | `ANALYTICS_DB_URL` | `postgresql://langfuse:langfuse@localhost:5433/langfuse_db` | Dedicated telemetry database connection string |
+| `REDIS_URL` | `redis://localhost:6379` | Redis semantic cache URL |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama local API base URL |
 | `LLM_DEFAULT_PROVIDER` | `ollama` | Provider backend (`ollama`, `google`, `openai`) |
 
@@ -127,7 +135,7 @@ npm run dev
 The server will start on port `4000` (or `PORT` environment variable).
 
 ### Automated Testing (Jasmine Suite)
-Run all **104 unit specs**:
+Run all **155 unit specs**:
 ```bash
 npm test
 ```
@@ -144,15 +152,16 @@ npx jasmine test/services/agentService.spec.js
 ```
 backend/
 ├── src/
-│   ├── agent/            # LangGraph supervisor, router, fast-path classifier
+│   ├── agents/           # LangGraph supervisor, router, fast-path classifier, response formatters
 │   ├── application/      # Service layer orchestration (chat, health, feedback)
+│   ├── cache/            # Redis semantic caching (semanticCache.js)
 │   ├── db/               # PostgreSQL connection pool & resilient fallback stores
-│   ├── llm/              # Ollama/LangChain model initializer
+│   ├── llm/              # Ollama/LangChain model initializer & BGE embeddings adapter
 │   ├── mcp/              # Model Context Protocol integrations & tool resiliency wrappers
-│   ├── rag/              # PDF chunking, embedding, hybrid retriever engine
+│   ├── rag/              # PDF chunking, HyDE transformation, hybrid retriever engine
 │   ├── routes/           # Express API endpoints (api.js, admin.js, rag.js, upload.js)
 │   └── utils/            # Response formatters, logger, non-blocking tracer
-├── test/                 # Jasmine unit test specifications (104 specs)
+├── test/                 # Jasmine unit test specifications (155 specs)
 ├── .env.example          # Environment variables template
 └── package.json          # Node.js dependencies & ESM scripts
 ```

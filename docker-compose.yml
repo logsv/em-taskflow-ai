@@ -7,10 +7,10 @@ services:
       GRPC_PORT: 50051
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      POSTGRES_DB: taskflow
+      POSTGRES_DB: taskflow_ai
       POSTGRES_USER: taskflow
       POSTGRES_PASSWORD: taskflow
-      TEMPORAL_HOST: ${TEMPORAL_HOST:-temporal:7233}
+      TEMPORAL_HOST: ${TEMPORAL_HOST:-em-taskflow-temporal:7233}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-a4eeeb19-4a09-440b-a80e-4cc2d2b89c66}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-11d33cb9-7d44-42d0-8087-deb3d7b81aac}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
@@ -45,7 +45,7 @@ services:
       RUNTIME_MODE: ${RUNTIME_MODE:-full}
       PORT: 4000
       HOST: 0.0.0.0
-      DATABASE_URL: postgresql://taskflow:taskflow@postgres:5432/taskflow
+      DATABASE_URL: postgresql://taskflow:taskflow@postgres:5432/taskflow_backend
       PYTHON_AI_SERVICE_URL: http://python-ai-service:8000
       PYTHON_AI_GRPC_HOST: python-ai-service:50051
       TEMPORAL_HOST: ${TEMPORAL_HOST:-temporal:7233}
@@ -106,23 +106,38 @@ services:
       - em-taskflow-net
 
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: em-taskflow-postgres
     environment:
       POSTGRES_USER: taskflow
       POSTGRES_PASSWORD: taskflow
-      POSTGRES_DB: taskflow
+      POSTGRES_DB: taskflow_backend
     command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements", "-c", "pg_stat_statements.track=top"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U taskflow -d taskflow"]
+      test: ["CMD-SHELL", "pg_isready -U taskflow -d taskflow_backend"]
       interval: 10s
       timeout: 5s
       retries: 20
       start_period: 10s
+    networks:
+      - em-taskflow-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: em-taskflow-redis
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - em-taskflow-net
 
