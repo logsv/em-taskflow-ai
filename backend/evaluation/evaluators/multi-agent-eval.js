@@ -17,12 +17,18 @@ export class MultiAgentTrajectoryStrategy {
    * @returns {Object} Metric evaluation result
    */
   async evaluate(testCase, plan) {
-    const { prompt, expected_domains, is_rag_appropriate } = testCase;
+    const prompt = testCase.user_query || testCase.prompt || '';
+    const { expected_domains, is_rag_appropriate } = testCase;
     const predicted_domains = plan?.domains || [];
     const expectedWorkspace = (expected_domains || []).some((domain) => domain !== 'rag');
 
-    const sorted_expected = _.sortBy(expected_domains || []);
-    const sorted_predicted = _.sortBy(predicted_domains);
+    // Normalize domain aliases (jira/github -> delivery) to match llmRouter rules
+    const normalizeDomain = (d) => (d === 'jira' || d === 'github' ? 'delivery' : d);
+    const normalized_expected = _.uniq((expected_domains || []).map(normalizeDomain));
+    const normalized_predicted = _.uniq(predicted_domains.map(normalizeDomain));
+
+    const sorted_expected = _.sortBy(normalized_expected);
+    const sorted_predicted = _.sortBy(normalized_predicted);
 
     const is_exact_match = _.isEqual(sorted_expected, sorted_predicted);
     

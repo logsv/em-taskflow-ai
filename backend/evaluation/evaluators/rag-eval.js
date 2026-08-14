@@ -31,7 +31,7 @@ export class RAGPipelineStrategy {
     try {
       if (this.grpcClient && typeof this.grpcClient.searchRAG === 'function') {
         const query = testCase.user_query || testCase.prompt || 'eval query';
-        await this.grpcClient.searchRAG({ query, top_k: 3 });
+        await this.grpcClient.searchRAG(query, 3);
       }
     } catch (err) {
       grpcTransportPassed = false;
