@@ -50,11 +50,25 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci --legacy-peer-deps
       - run: npm test
-      - name: Run Evaluation Suite Gate
+      - name: Cache Ollama Models
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama
+          key: ollama-hermes3-8b-v1
+          restore-keys: |
+            ollama-hermes3-8b-
+      - name: Install & Start Ollama
         run: |
-          if npm run evaluate --silent 2>/dev/null; then
-            npm run evaluate
-          else
-            echo "Evaluation suite executed"
-          fi
-        continue-on-error: true
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve &
+          echo "Waiting for Ollama daemon to initialize..."
+          while ! curl -s http://localhost:11434/api/tags > /dev/null; do
+            sleep 1
+          done
+          echo "✅ Ollama is ready!"
+          ollama pull hermes3:8b
+      - name: Run Evaluation Suite Gate
+        run: npm run evaluate
+        env:
+          OLLAMA_AVAILABLE: true
+          CI_MODE: false
