@@ -14,28 +14,29 @@ export async function initializeMCP() {
   if (isInitialized) return;
 
   try {
-    console.log("🚀 Initializing MCP MultiServer client...");
+    info("Initializing MCP MultiServer client...");
 
     const mcpConfig = getMcpConfig();
-    console.log("🔧 MCP Configuration:");
-    console.log("  Notion:", mcpConfig.notion.enabled ? "✅ Enabled" : "❌ Disabled");
-    console.log("  Jira:", mcpConfig.jira.enabled ? "✅ Enabled" : "❌ Disabled");
-    console.log("  Google:", mcpConfig.google.enabled ? "✅ Enabled" : "❌ Disabled");
+    info("MCP Configuration", {
+      notion: mcpConfig.notion.enabled ? "Enabled" : "Disabled",
+      jira: mcpConfig.jira.enabled ? "Enabled" : "Disabled",
+      google: mcpConfig.google.enabled ? "Enabled" : "Disabled",
+    });
 
     const jiraModule = await import("./jira.js").catch((error) => {
-      console.warn("⚠️ Failed to load Jira MCP module:", error?.message || error);
+      warn("Failed to load Jira MCP module", { err: error?.message || error });
       return null;
     });
     const notionModule = await import("./notion.js").catch((error) => {
-      console.warn("⚠️ Failed to load Notion MCP module:", error?.message || error);
+      warn("Failed to load Notion MCP module", { err: error?.message || error });
       return null;
     });
     const githubModule = await import("./github.js").catch((error) => {
-      console.warn("⚠️ Failed to load GitHub MCP module:", error?.message || error);
+      warn("Failed to load GitHub MCP module", { err: error?.message || error });
       return null;
     });
     const googleModule = await import("./google.js").catch((error) => {
-      console.warn("⚠️ Failed to load Google MCP module:", error?.message || error);
+      warn("Failed to load Google MCP module", { err: error?.message || error });
       return null;
     });
 
@@ -45,9 +46,13 @@ export async function initializeMCP() {
     googleMcpTools = googleModule ? await loadTools("Google", googleModule.getGoogleTools) : [];
     mcpTools = [...jiraMcpTools, ...notionMcpTools, ...githubMcpTools, ...googleMcpTools];
 
-    console.log(
-      `📋 Loaded ${mcpTools.length} MCP tools (Jira: ${jiraMcpTools.length}, GitHub: ${githubMcpTools.length}, Notion: ${notionMcpTools.length}, Calendar: ${googleMcpTools.length})`,
-    );
+    info(`Loaded MCP tools`, {
+      total: mcpTools.length,
+      jira: jiraMcpTools.length,
+      github: githubMcpTools.length,
+      notion: notionMcpTools.length,
+      calendar: googleMcpTools.length,
+    });
 
     const llmConfig = config.llm;
     const openaiProvider = llmConfig.providers.openai;
@@ -62,16 +67,16 @@ export async function initializeMCP() {
           },
           temperature: 0.1,
         });
-        console.log("✅ Using OpenAI for MCP tool calling");
+        info("Using OpenAI for MCP tool calling");
       } catch (error) {
-        console.warn("⚠️  OpenAI initialization failed, will use Ollama");
+        warn("OpenAI initialization failed, will use Ollama", { err: error?.message || error });
       }
     }
 
     isInitialized = true;
-    console.log(`✅ MCP MultiServer initialized with ${mcpTools.length} tools`);
-  } catch (error) {
-    console.error("❌ Failed to initialize MCP MultiServer:", error);
+    info(`MCP MultiServer initialized`, { totalTools: mcpTools.length });
+  } catch (err) {
+    error("Failed to initialize MCP MultiServer", { err: err?.message || err });
     isInitialized = false;
   }
 }
@@ -127,21 +132,35 @@ export function getMCPToolsByServer(serverName) {
 
 export async function executeMCPTool(toolName, parameters) {
   try {
-    console.log(`🔧 Executing MCP tool: ${toolName}`);
-    const tool =
+    // Domain harnesses can be invoked outside the supervisor during recovery.
+    // Ensure their MCP dependencies have been loaded before resolving a tool.
+    await ensureMCPReady();
+    info(`Executing MCP tool`, { toolName });
+    let tool =
       jiraMcpTools.find((t) => t.name === toolName) ||
       notionMcpTools.find((t) => t.name === toolName) ||
       githubMcpTools.find((t) => t.name === toolName) ||
       googleMcpTools.find((t) => t.name === toolName);
+
+    // Atlassian MCP servers do not share one stable search-tool name. Resolve
+    // the Delivery harness capability within its server group, never globally.
+    if (!tool && toolName === "jira_search") {
+      tool = jiraMcpTools.find((candidate) =>
+        /search|jql|issue/.test(String(candidate?.name || "").toLowerCase()),
+      );
+    }
     if (!tool) {
-      throw new Error(`Tool '${toolName}' not found`);
+      const available = [...jiraMcpTools, ...notionMcpTools, ...githubMcpTools, ...googleMcpTools]
+        .map((candidate) => candidate.name)
+        .filter(Boolean);
+      throw new Error(`Tool '${toolName}' not found. Available tools: ${available.join(", ") || "none"}`);
     }
     const result = await tool.invoke(parameters);
-    console.log(`✅ MCP tool completed: ${toolName}`);
+    info(`MCP tool completed`, { toolName });
     return result;
-  } catch (error) {
-    console.error(`❌ MCP tool failed: ${toolName}:`, error);
-    throw error;
+  } catch (err) {
+    error(`MCP tool failed`, { toolName, err: err?.message || err });
+    throw err;
   }
 }
 
@@ -176,14 +195,14 @@ export async function getMCPHealthStatus() {
 }
 
 export async function reconnectMCP() {
-  console.log("🔄 Reconnecting MCP servers...");
+  info("Reconnecting MCP servers...");
 
   try {
     await closeMCP();
     await initializeMCP();
-  } catch (error) {
-    console.error("❌ MCP reconnection failed:", error);
-    throw error;
+  } catch (err) {
+    error("MCP reconnection failed", { err: err?.message || err });
+    throw err;
   }
 }
 
@@ -330,8 +349,10 @@ async function loadTools(name, getToolsFn) {
   try {
     const tools = await getToolsFn();
     return tools.map(wrapToolForResiliency);
-  } catch (error) {
-    console.warn(`⚠️ ${name} MCP tools unavailable:`, error?.message || error);
+  } catch (err) {
+    warn(`${name} MCP tools unavailable`, { err: err?.message || err });
     return [];
   }
 }
+
+export { createDeterministicToolHarness, commonHarnessSchema } from './baseToolHarness.js';

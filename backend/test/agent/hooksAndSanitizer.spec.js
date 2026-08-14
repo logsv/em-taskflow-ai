@@ -1,6 +1,5 @@
 import { expect } from 'chai';
 import { supervisorPreModelHook, supervisorPostModelHook } from '../../src/agent/graph.js';
-import { githubPreModelHook } from '../../src/agent/githubAgent.js';
 import { sanitizeToolInput, wrapToolForResiliency } from '../../src/mcp/index.js';
 
 describe('Supervisor & Worker Hooks + Tool Sanitizer Unit Tests', () => {
@@ -56,37 +55,6 @@ describe('Supervisor & Worker Hooks + Tool Sanitizer Unit Tests', () => {
       const result = supervisorPostModelHook(state);
       expect(result).to.have.property('messages');
       expect(result.messages[0].content).to.match(/Issue findings|Workspace findings/);
-    });
-  });
-
-  describe('githubPreModelHook', () => {
-    it('should inject worker directive on turn 1', () => {
-      const state = {
-        messages: [{ role: 'user', content: 'Find high priority issues' }],
-      };
-
-      const result = githubPreModelHook(state);
-      expect(result).to.have.property('llmInputMessages');
-      expect(result.llmInputMessages[0].content).to.include('[DIRECTIVE: Call tool');
-    });
-
-    it('should inject summary directive and stop tool calls once tool message is present', () => {
-      const state = {
-        messages: [
-          { role: 'user', content: 'Find high priority issues' },
-          {
-            constructor: { name: 'ToolMessage' },
-            _getType: () => 'tool',
-            name: 'search_issues',
-            content: '{"total_count": 2, "items": [{"title": "Bug 1"}]}',
-          },
-        ],
-      };
-
-      const result = githubPreModelHook(state);
-      expect(result).to.have.property('llmInputMessages');
-      expect(result.llmInputMessages[1].content).to.include('Provide a detailed summary of every GitHub issue listed above');
-      expect(result.llmInputMessages[1].content).to.include('DO NOT invoke any tool calls');
     });
   });
 

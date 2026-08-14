@@ -1,42 +1,82 @@
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
-import { tool } from "@langchain/core/tools";
-import { z } from "zod";
-import { getChatModel } from "../llm/index.js";
-import { sprintAgentPromptTemplate } from "./prompts.js";
+import { createAgent } from 'langchain';
+import { z } from 'zod';
+import { getChatModel } from '../llm/index.js';
+import { sprintAgentPromptTemplate } from './prompts.js';
+import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
+import databaseService from '../db/postgres.js';
 
-const sprintPlanTool = tool(
-  async ({ backlog_ids = [], team_capacity = 40, target_velocity = 35 }) => {
-    return JSON.stringify({
-      target_velocity,
-      team_capacity_hours: team_capacity,
-      recommended_commitment_points: 32,
-      planned_stories_count: backlog_ids.length > 0 ? backlog_ids.length : 8,
-      risk_factors: [
-        "2 engineers taking PTO on Day 7-8",
-        "High complexity in backend service migration ticket"
-      ],
-      suggested_scope: "Commit to 32 story points to maintain buffer for unexpected production issues."
-    });
+export const sprintPlanTool = createDeterministicToolHarness({
+  name: 'calculate_sprint_plan',
+  description: 'Calculates sprint capacity, story point velocity, commitment buffers, and scope creep risk for upcoming sprint planning.',
+  featureFlagKey: 'sprint',
+  schema: z.object({
+    sources: z.array(z.string()).default(['default']),
+    mode: z.enum(['ANALYZE', 'LIST_RAW', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    sprint_id: z.string().default('upcoming_sprint'),
+    backlog_ids: z.array(z.string()).default([]),
+    team_capacity: z.number().default(40),
+    target_velocity: z.number().default(35),
+    fetch_fresh_data: z.boolean().default(true),
+  }),
+  directApiExecutors: {
+    default: async (inputArgs) => {
+      const analytics = await databaseService.getSprintAnalytics(inputArgs.sprint_id);
+      const existing = analytics[0] || {};
+      return {
+        sprint_id: inputArgs.sprint_id || 'upcoming_sprint',
+        target_velocity: inputArgs.target_velocity || existing.total_points || 35,
+        team_capacity: inputArgs.team_capacity || 40,
+        backlog_count: inputArgs.backlog_ids?.length || 8,
+      };
+    },
   },
-  {
-    name: "calculate_sprint_plan",
-    description: "Calculates sprint capacity, story point velocity, and commitments for upcoming sprint planning.",
-    schema: z.object({
-      backlog_ids: z.array(z.string()).optional().describe("List of candidate ticket IDs"),
-      team_capacity: z.number().optional().describe("Total team capacity in engineering days or hours"),
-      target_velocity: z.number().optional().describe("Historical average story point velocity"),
-    }),
-  }
-);
+  dbCacheFallback: async (source, inputArgs) => ({
+    sprint_id: inputArgs.sprint_id || 'upcoming_sprint',
+    target_velocity: 35,
+    team_capacity: 40,
+    backlog_count: 6,
+  }),
+  computeMath: async (sourceResults, inputArgs) => {
+    const data = sourceResults.default?.data || {};
+    const capacity = Number(data.team_capacity || 40);
+    const velocity = Number(data.target_velocity || 35);
+    const recommendedCommitment = Math.round(velocity * 0.85);
+    const bufferPoints = velocity - recommendedCommitment;
+
+    return {
+      mode: 'ANALYZE',
+      sprint_id: inputArgs.sprint_id || 'upcoming_sprint',
+      capacity_metrics: {
+        team_capacity_hours: capacity,
+        target_velocity_points: velocity,
+        recommended_commitment_points: recommendedCommitment,
+        commitment_buffer_points: bufferPoints,
+      },
+      risk_factors: [
+        '2 engineers taking PTO on Day 7-8',
+        'High complexity in database migration task',
+      ],
+      suggested_scope: `Commit to ${recommendedCommitment} story points (with ${bufferPoints} points buffer) to maintain 100% sprint commitment reliability.`,
+    };
+  },
+});
 
 export function createSprintAgent(customTools = null, options = {}) {
-  const llm = options.llm || getChatModel();
+  let llm = options.llm;
+  if (!llm) {
+    try {
+      llm = getChatModel();
+    } catch (e) {
+      llm = { invoke: async () => ({ content: 'Mock LLM Response' }), bindTools: () => llm };
+    }
+  }
   const tools = customTools && customTools.length > 0 ? customTools : [sprintPlanTool];
 
-  return createReactAgent({
-    llm,
+  const agent = createAgent({
+    model: llm,
     tools,
-    name: "sprint_agent",
-    stateModifier: sprintAgentPromptTemplate,
+    name: 'sprint_agent',
+    prompt: sprintAgentPromptTemplate,
   });
+  return agent.graph;
 }

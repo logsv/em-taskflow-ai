@@ -4,11 +4,18 @@ import { executeAgentQuery, checkAgentReadiness, getAgentTools } from "../agent/
 import { getRuntimeConfig } from "../config.js";
 import { getRouterChain } from "../agent/llmRouter.js";
 import { getGithubMCPTools, getGoogleMCPTools, getJiraMCPTools, getNotionMCPTools } from "../mcp/index.js";
+import { doraMetricsTool } from "../agent/doraAgent.js";
+import { deliveryBottlenecksTool } from "../agent/deliveryAgent.js";
+import { sbiFeedbackTool } from "../agent/sbiAgent.js";
+import { sprintPlanTool } from "../agent/sprintAgent.js";
 import { buildEmResponse } from "../utils/responseFormatter.js";
 import { getTracerCallbacks, createEndToEndTrace, createSpan } from "../utils/tracer.js";
 import { info, warn, error } from "../utils/logger.js";
 
-const VALID_DOMAINS = new Set(["jira", "github", "notion", "calendar", "rag"]);
+const VALID_DOMAINS = new Set([
+  "dora", "delivery", "sbi", "people", "sprint", "retro", "roadmap", "okr", "sop", "critic",
+  "jira", "github", "notion", "calendar", "rag"
+]);
 const TRANSFER_TOOL_PREFIX = "transfer_";
 const RAG_TOOL_NAME = "rag_db_query_retriever";
 
@@ -32,10 +39,20 @@ export class LangGraphAgentService {
     this.tools = [];
     this.ragEnabled = false;
     this.domainToolNames = {
-      jira: new Set(),
-      github: new Set(),
-      notion: new Set(),
-      calendar: new Set(),
+      dora: new Set(["calculate_dora_metrics", "transfer_to_dora_agent"]),
+      delivery: new Set(["analyze_delivery_bottlenecks", "transfer_to_delivery_agent", "search_issues", "list_pull_requests"]),
+      sbi: new Set(["format_sbi_feedback", "transfer_to_sbi_agent"]),
+      people: new Set(["analyze_personnel_growth", "transfer_to_people_agent"]),
+      sprint: new Set(["calculate_sprint_plan", "transfer_to_sprint_agent"]),
+      retro: new Set(["generate_sprint_retro", "transfer_to_retro_agent"]),
+      roadmap: new Set(["get_roadmap_alignment", "transfer_to_roadmap_agent"]),
+      okr: new Set(["evaluate_okr_progress", "transfer_to_okr_agent"]),
+      sop: new Set(["query_sop_compliance", "transfer_to_sop_agent"]),
+      critic: new Set(["audit_em_report", "transfer_to_critic_agent"]),
+      jira: new Set(["jira_search", "transfer_to_jira_agent"]),
+      github: new Set(["search_issues", "list_pull_requests", "transfer_to_github_agent"]),
+      notion: new Set(["notion_search", "transfer_to_notion_agent"]),
+      calendar: new Set(["calendar_list_events", "transfer_to_calendar_agent"]),
       rag: new Set([RAG_TOOL_NAME]),
     };
     this.runtimeMetrics = {
@@ -55,6 +72,8 @@ export class LangGraphAgentService {
     if (this.initialized) {
       return;
     }
+
+    await ensureLLMReady();
 
     const runtime = getRuntimeConfig();
     const ragStatus = await ragService.getStatus().catch(() => ({ ready: false }));
@@ -331,10 +350,20 @@ export class LangGraphAgentService {
         };
       }
 
+      const recovery = await this.runRequiredDomainRecovery(query, routingPlan, decision);
+      if (recovery) {
+        return recovery;
+      }
+
       decision.reasons.push("policy_violations_detected");
       decision.reasons.push(...policy.violations.map((v) => `policy:${v}`));
     } else if (forceToolUse && !decision.mcpReady) {
       decision.reasons.push("mcp_required_but_unavailable");
+
+      const recovery = await this.runRequiredDomainRecovery(query, routingPlan, decision);
+      if (recovery) {
+        return recovery;
+      }
     }
 
     if (decision.ragHit && allowRag) {
@@ -354,6 +383,61 @@ export class LangGraphAgentService {
 
     decision.selectedPath = "llm-only";
     return this.runLlmExecutor(query);
+  }
+
+  async runRequiredDomainRecovery(query, routingPlan, decision) {
+    const domains = toArray(routingPlan?.domains);
+    const recoveryTools = {
+      dora: { tool: doraMetricsTool, input: { sources: ["github"] } },
+      delivery: { tool: deliveryBottlenecksTool, input: { sources: ["github", "jira"] } },
+      sbi: {
+        tool: sbiFeedbackTool,
+        input: {
+          situation: String(query || ""),
+          context_type: "coaching_request",
+        },
+      },
+      sprint: { tool: sprintPlanTool, input: {} },
+    };
+    const recoverable = domains.filter((domain) => recoveryTools[domain]);
+    if (recoverable.length === 0) return null;
+
+    const answers = [];
+    let recoveredAny = false;
+    try {
+      for (const domain of recoverable) {
+        const { tool, input } = recoveryTools[domain];
+        const result = await tool.invoke({ mode: "ANALYZE", fetch_fresh_data: true, ...input });
+        decision.toolsUsed = Array.from(new Set([...toArray(decision.toolsUsed), tool.name]));
+        decision.reasons.push(`supervisor_missing_${tool.name}_recovered_deterministically`);
+        if (result?.status !== "SUCCESS") {
+          decision.reasons.push(`recovery_tool_status:${tool.name}:${result?.status || "unknown"}`);
+          continue;
+        }
+        recoveredAny = true;
+        const data = result.data || {};
+        if (data.summary) {
+          answers.push(data.summary);
+        } else if (domain === "sprint") {
+          const metrics = data.capacity_metrics || {};
+          answers.push(`Sprint capacity: ${metrics.team_capacity_hours ?? "unavailable"} hours; target velocity: ${metrics.target_velocity_points ?? "unavailable"} points; recommended commitment: ${metrics.recommended_commitment_points ?? "unavailable"} points.`);
+        }
+        if (result.staleDataWarning) {
+          decision.reasons.push(`postgresql_cache_fallback_used:${domain}`);
+        }
+      }
+      decision.policy = this.validatePolicy(routingPlan, decision.toolsUsed, true);
+      if (!recoveredAny) return null;
+      decision.selectedPath = "deterministic-domain-tool-recovery";
+      if (decision.policy.violations.length === 0) {
+        this.runtimeMetrics.toolGroundedMet += 1;
+      }
+      return { answer: answers.join("\n\n") || "The requested domain tools completed without a summary.", sources: [] };
+    } catch (recoveryError) {
+      warn("Required domain recovery failed", { domains: recoverable, err: recoveryError?.message });
+      decision.reasons.push("recovery_failed");
+      return null;
+    }
   }
 
   async routeQueryPlan(query, runtimeMode, options = {}) {
@@ -409,19 +493,34 @@ export class LangGraphAgentService {
       };
     }
     const domains = [];
-    if (q.includes("issue") || q.includes("repo") || q.includes("pr") || q.includes("pull request") || q.includes("github")) {
-      domains.push("github");
+    if (q.includes("dora") || q.includes("lead time") || q.includes("mttr") || q.includes("deployment frequency")) {
+      domains.push("dora");
     }
-    if (q.includes("jira") || q.includes("sprint") || q.includes("blocker")) {
-      domains.push("jira");
+    if (q.includes("delivery") || q.includes("wip") || q.includes("throughput") || q.includes("cycle time") || q.includes("github") || q.includes("pr") || q.includes("issue") || q.includes("jira")) {
+      domains.push("delivery");
     }
-    if (q.includes("notion") || q.includes("page")) {
-      domains.push("notion");
+    if (q.includes("sbi") || q.includes("feedback") || q.includes("coaching")) {
+      domains.push("sbi");
     }
-    if (q.includes("calendar") || q.includes("meeting") || q.includes("schedule")) {
-      domains.push("calendar");
+    if (q.includes("people") || q.includes("1-on-1") || q.includes("career") || q.includes("burnout") || q.includes("calendar")) {
+      domains.push("people");
     }
-    if (q.includes("pdf") || q.includes("doc") || q.includes("file") || q.includes("read") || q.includes("summary") || q.includes("what") || q.includes("how") || q.includes("explain") || q.includes("document") || domains.length === 0) {
+    if (q.includes("sprint") || q.includes("velocity") || q.includes("capacity")) {
+      domains.push("sprint");
+    }
+    if (q.includes("retro") || q.includes("retrospective")) {
+      domains.push("retro");
+    }
+    if (q.includes("sop") || q.includes("compliance") || q.includes("adr")) {
+      domains.push("sop");
+    }
+    if (q.includes("roadmap") || q.includes("milestone") || q.includes("drift")) {
+      domains.push("roadmap");
+    }
+    if (q.includes("okr") || q.includes("kpi") || q.includes("notion")) {
+      domains.push("okr");
+    }
+    if (domains.length === 0 || q.includes("pdf") || q.includes("doc") || q.includes("file") || q.includes("guide") || q.includes("rubric")) {
       domains.push("rag");
     }
 
@@ -442,7 +541,13 @@ export class LangGraphAgentService {
   hasMeaningfulToolCalls(toolsUsed) {
     const arr = toArray(toolsUsed);
     if (arr.length === 0) return false;
-    return arr.some((toolName) => typeof toolName === "string" && (toolName.startsWith(TRANSFER_TOOL_PREFIX) || toolName === RAG_TOOL_NAME || Object.values(this.domainToolNames).some((set) => set.has(toolName))));
+    return arr.some((toolName) =>
+      typeof toolName === "string" &&
+      (toolName === RAG_TOOL_NAME ||
+        Object.entries(this.domainToolNames).some(([domain, names]) =>
+          domain !== "rag" && !toolName.startsWith(TRANSFER_TOOL_PREFIX) && names.has(toolName),
+        )),
+    );
   }
 
   mapInvokedDomains(toolsUsed = []) {
@@ -472,10 +577,9 @@ export class LangGraphAgentService {
         }
       }
       if (!mapped) {
-        // If not explicitly mapped by Set name, fallback to heuristic matching or register under all active domains with tools
-        for (const [domain, names] of Object.entries(this.domainToolNames)) {
+        for (const domain of Object.keys(this.domainToolNames)) {
           if (domain === "rag") continue;
-          if (names.size > 0 || toolName.includes(domain)) {
+          if (toolName.includes(domain)) {
             invoked.add(domain);
           }
         }
@@ -487,6 +591,14 @@ export class LangGraphAgentService {
   domainHasTools(domain) {
     if (!this.domainToolNames[domain]) return false;
     return this.domainToolNames[domain].size > 0;
+  }
+
+  hasExecutedDomainTool(domain, toolsUsed) {
+    const names = this.domainToolNames[domain];
+    if (!names) return false;
+    return toArray(toolsUsed).some(
+      (toolName) => typeof toolName === "string" && !toolName.startsWith(TRANSFER_TOOL_PREFIX) && names.has(toolName),
+    );
   }
 
   validatePolicy(routingPlan, toolsUsed, forceToolUse) {
@@ -502,7 +614,7 @@ export class LangGraphAgentService {
     }
 
     for (const domain of selectedWorkspaceDomains) {
-      if (this.domainHasTools(domain) && !invokedDomains.has(domain)) {
+      if (this.domainHasTools(domain) && !this.hasExecutedDomainTool(domain, toolsUsed)) {
         missingDomains.push(domain);
       }
     }
@@ -536,6 +648,16 @@ export class LangGraphAgentService {
 
   buildEvidenceBySource({ toolsUsed, sources, routingPlan, rawAnswer }) {
     const evidence = {
+      dora: [],
+      delivery: [],
+      sbi: [],
+      people: [],
+      sprint: [],
+      retro: [],
+      roadmap: [],
+      okr: [],
+      sop: [],
+      critic: [],
       jira: [],
       github: [],
       notion: [],
@@ -559,7 +681,9 @@ export class LangGraphAgentService {
       for (const [domain, names] of Object.entries(this.domainToolNames)) {
         if (domain === "rag") continue;
         if (names.has(toolName)) {
-          evidence[domain].push(`Tool: ${toolName}`);
+          if (evidence[domain]) {
+            evidence[domain].push(`Tool: ${toolName}`);
+          }
         }
       }
     }
@@ -567,8 +691,7 @@ export class LangGraphAgentService {
     if (typeof rawAnswer === "string" && rawAnswer.length > 0) {
       const githubLinks = rawAnswer.match(/\[[^\]]+\]\(https:\/\/github\.com\/[^\)]+\)|https:\/\/github\.com\/[^\s\)]+/g);
       if (githubLinks && githubLinks.length > 0) {
-        evidence.github = evidence.github.filter((e) => e !== "No tool evidence captured.");
-        evidence.github.push(...githubLinks);
+        evidence.github = Array.from(new Set(githubLinks));
       }
     }
 
@@ -640,10 +763,21 @@ export class LangGraphAgentService {
   }
 
   refreshDomainToolMap() {
-    this.domainToolNames.jira = new Set(toArray(getJiraMCPTools()).map((tool) => tool?.name).filter(Boolean));
-    this.domainToolNames.github = new Set(toArray(getGithubMCPTools()).map((tool) => tool?.name).filter(Boolean));
-    this.domainToolNames.notion = new Set(toArray(getNotionMCPTools()).map((tool) => tool?.name).filter(Boolean));
-    this.domainToolNames.calendar = new Set(toArray(getGoogleMCPTools()).map((tool) => tool?.name).filter(Boolean));
+    const jiraTools = toArray(getJiraMCPTools()).map((tool) => tool?.name).filter(Boolean);
+    const githubTools = toArray(getGithubMCPTools()).map((tool) => tool?.name).filter(Boolean);
+    const notionTools = toArray(getNotionMCPTools()).map((tool) => tool?.name).filter(Boolean);
+    const calendarTools = toArray(getGoogleMCPTools()).map((tool) => tool?.name).filter(Boolean);
+
+    this.domainToolNames.dora = new Set(["calculate_dora_metrics", "transfer_to_dora_agent"]);
+    this.domainToolNames.delivery = new Set(["analyze_delivery_bottlenecks", "transfer_to_delivery_agent", ...githubTools, ...jiraTools]);
+    this.domainToolNames.sbi = new Set(["format_sbi_feedback", "transfer_to_sbi_agent"]);
+    this.domainToolNames.people = new Set(["analyze_personnel_growth", "transfer_to_people_agent", ...calendarTools]);
+    this.domainToolNames.sprint = new Set(["calculate_sprint_plan", "transfer_to_sprint_agent"]);
+    this.domainToolNames.retro = new Set(["generate_sprint_retro", "transfer_to_retro_agent"]);
+    this.domainToolNames.roadmap = new Set(["get_roadmap_alignment", "transfer_to_roadmap_agent"]);
+    this.domainToolNames.okr = new Set(["evaluate_okr_progress", "transfer_to_okr_agent", ...notionTools]);
+    this.domainToolNames.sop = new Set(["query_sop_compliance", "transfer_to_sop_agent"]);
+    this.domainToolNames.critic = new Set(["audit_em_report", "transfer_to_critic_agent"]);
     this.domainToolNames.rag = new Set([RAG_TOOL_NAME]);
   }
 
@@ -700,10 +834,11 @@ export class LangGraphAgentService {
     const runtimeConfig = getRuntimeConfig();
     const runtimeMode = runtimeConfig.mode;
     const llmStatus = await getLLMStatus().catch(() => ({ initialized: false }));
-    const readiness =
-      runtimeMode === "full"
-         ? await checkAgentReadiness().catch(() => ({ ready: false, toolCount: 0 }))
-         : { ready: false, toolCount: 0 };
+    const readiness = this.initialized
+      ? { ready: true, toolCount: this.tools.length }
+      : (runtimeMode === "full"
+          ? await checkAgentReadiness().catch(() => ({ ready: false, toolCount: 0 }))
+          : { ready: false, toolCount: 0 });
     return {
       ready: this.initialized,
       mcpReady: readiness.ready,

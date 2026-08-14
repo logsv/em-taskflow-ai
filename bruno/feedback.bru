@@ -1,0 +1,19 @@
+meta {
+  name: Feedback API
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/v1/feedback
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "traceId": "test_trace_123",
+    "score": 1,
+    "comment": "Accurate response"
+  }
+}

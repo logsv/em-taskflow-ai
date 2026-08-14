@@ -5,15 +5,35 @@ function toArray(value) {
 }
 
 export async function buildEmResponse(query, rawAnswer, evidenceBySource, decision = {}) {
+  const cleanAnswer = String(rawAnswer || "").trim();
+  const hasVerifiedToolEvidence = Object.values(evidenceBySource || {}).some((entries) =>
+    toArray(entries).some((entry) => {
+      const text = String(entry || "");
+      return text.length > 0 && !text.includes("No tool evidence captured.") && !text.includes("transfer_to_");
+    }),
+  );
+  const isStructured =
+    cleanAnswer.includes("###") ||
+    cleanAnswer.includes("DORA") ||
+    cleanAnswer.includes("Executive Summary") ||
+    cleanAnswer.includes("SBI") ||
+    cleanAnswer.includes("Delivery Risk") ||
+    cleanAnswer.includes("Roadmap") ||
+    cleanAnswer.includes("OKR") ||
+    cleanAnswer.includes("SOP");
+
   if (
+    !cleanAnswer ||
     decision.needsClarification || 
     decision.selectedPath === "direct-llm-fastpath" || 
     decision.selectedPath === "rag+llm" || 
     decision.ragHit || 
-    decision.routingPlan?.intent_type === "DIRECT_LLM"
+    decision.routingPlan?.intent_type === "DIRECT_LLM" ||
+    !hasVerifiedToolEvidence ||
+    isStructured
   ) {
     return {
-      answer: rawAnswer,
+      answer: cleanAnswer || "No response generated.",
     };
   }
 
@@ -23,7 +43,7 @@ export async function buildEmResponse(query, rawAnswer, evidenceBySource, decisi
     const prompt = [
       "Format the assistant output into JSON with keys:",
       "executiveSummary (string), keyRisksAndBlockers (string[]), whatNeedsDecision (string[]),",
-      "actionItems ([{owner,dueDate,description}]), evidenceBySource (object of string[] keyed jira/github/notion/calendar/rag).",
+      "actionItems ([{owner,dueDate,description}]), evidenceBySource (object of string[] keyed dora/delivery/jira/github/notion/calendar/rag).",
       "Do not invent facts. Keep entries concise. Return JSON only.",
       "IMPORTANT: Preserve all Markdown links (e.g. [#14 Title](https://github.com/owner/repo/issues/14)) intact in executiveSummary and evidenceBySource.",
       `User query: ${query}`,
@@ -73,6 +93,8 @@ export async function buildEmResponse(query, rawAnswer, evidenceBySource, decisi
         whatNeedsDecision: toArray(parsed.whatNeedsDecision).length > 0 ? toArray(parsed.whatNeedsDecision).map(String) : normalized.whatNeedsDecision,
         actionItems,
         evidenceBySource: {
+          dora: toArray(parsed?.evidenceBySource?.dora).length > 0 ? toArray(parsed?.evidenceBySource?.dora).map(String) : normalized.evidenceBySource.dora,
+          delivery: toArray(parsed?.evidenceBySource?.delivery).length > 0 ? toArray(parsed?.evidenceBySource?.delivery).map(String) : normalized.evidenceBySource.delivery,
           jira: toArray(parsed?.evidenceBySource?.jira).length > 0 ? toArray(parsed?.evidenceBySource?.jira).map(String) : normalized.evidenceBySource.jira,
           github: toArray(parsed?.evidenceBySource?.github).length > 0 ? toArray(parsed?.evidenceBySource?.github).map(String) : normalized.evidenceBySource.github,
           notion: toArray(parsed?.evidenceBySource?.notion).length > 0 ? toArray(parsed?.evidenceBySource?.notion).map(String) : normalized.evidenceBySource.notion,
@@ -152,17 +174,11 @@ export function buildFallbackEmSections(rawAnswer, evidenceBySource) {
     }
   }
 
-  if (closedCount > 0 && openCount === 0) {
+  if (actionItems.length === 0) {
     actionItems.push({
-      owner: "@logsv",
-      dueDate: "Completed",
-      description: `All ${closedCount} retrieved issue(s) are closed. No open issue bottlenecks remaining.`,
-    });
-  } else if (openCount === 0 && closedCount === 0) {
-    actionItems.push({
-      owner: "@logsv",
-      dueDate: "Up to date",
-      description: "No open issue bottlenecks detected in user repositories.",
+      owner: "Unassigned",
+      dueDate: "TBD",
+      description: "No explicit action items required.",
     });
   }
 
@@ -209,7 +225,7 @@ export function renderEmSections(payload) {
   lines.push("");
   lines.push("Evidence by Source");
   const evidence = payload.evidenceBySource || {};
-  for (const domain of ["jira", "github", "notion", "calendar", "rag"]) {
+  for (const domain of ["dora", "delivery", "jira", "github", "notion", "calendar", "rag"]) {
     const entries = toArray(evidence[domain]);
     if (entries.length === 0) {
       lines.push(`- ${domain}: none`);

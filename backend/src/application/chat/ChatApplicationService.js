@@ -57,23 +57,30 @@ export class ChatApplicationService {
       query.slice(0, 80),
       sessionContext?.sessionId || null,
     );
+    const existingMessages = ensuredThread?.id
+      ? await Promise.resolve(this.messageRepo.getThreadMessages(ensuredThread.id, 50)).catch(() => [])
+      : [];
+    const historyContext = optimizeChatHistory(existingMessages, 8);
+
     const result = await this.agentService.processQuery(query, {
       threadId: ensuredThread.id,
       sessionId: sessionContext?.sessionId || null,
       userId: sessionContext?.userId || 'user_logsv',
       ragMode,
       attachments: normalizedAttachments,
+      history: historyContext,
     });
 
     const decision = result.meta?.decision || {};
     const routingPlan = decision.routingPlan || {};
     const routedDomains = Array.isArray(routingPlan.domains) ? routingPlan.domains : [];
 
-    // OAuth checks trigger ONLY when an explicit external workspace tool execution is required
-    const requiresToolAuth = routingPlan.must_use_tools === true && (routedDomains.includes('github') || routedDomains.includes('notion'));
+    let notionOAuth = null;
+    let githubOAuth = null;
+    const requiresToolAuth = routingPlan.must_use_tools !== false && (routedDomains.includes('github') || routedDomains.includes('notion'));
     if (requiresToolAuth) {
-      const notionOAuth = await this.resolveNotionOAuth();
-      const githubOAuth = await this.resolveGithubOAuth();
+      notionOAuth = await this.resolveNotionOAuth();
+      githubOAuth = await this.resolveGithubOAuth();
 
       const githubIntent = routedDomains.includes('github');
       const notionIntent = routedDomains.includes('notion');
@@ -228,6 +235,7 @@ function createMessageRepoAdapter(dbService) {
 
   return {
     saveMessage: (...args) => dbService.saveMessage(...args),
+    getThreadMessages: (...args) => (typeof dbService.getThreadMessages === 'function' ? dbService.getThreadMessages(...args) : []),
   };
 }
 

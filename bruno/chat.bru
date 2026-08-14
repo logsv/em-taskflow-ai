@@ -1,0 +1,17 @@
+meta {
+  name: Chat API
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/chat
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "message": "What is our current sprint status?"
+  }
+}
