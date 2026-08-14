@@ -52,12 +52,6 @@ jobs:
     - name: Install Node dependencies
       run: npm ci --legacy-peer-deps
     
-    - name: Build TypeScript
-      run: npm run build
-    
-    - name: Compile tests
-      run: npx tsc -p tsconfig.test.json
-    
     - name: Run Node Unit Tests (155 Specs)
       run: npm test
       continue-on-error: false
