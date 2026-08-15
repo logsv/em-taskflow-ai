@@ -10,12 +10,22 @@ from app.services.file_processor.pdf_extractor import FileUploadProcessor
 from app.services.rag_processor.chunker import RAGChunker
 from app.services.rag_processor.reranker import CrossEncoderReranker
 from app.services.rag_processor.database import RAGDatabaseService
+from app.telemetry.shadow_evaluator import ShadowEvaluatorWorker
 
 router = APIRouter()
 file_processor = FileUploadProcessor()
 rag_chunker = RAGChunker()
 reranker = CrossEncoderReranker()
 db_service = RAGDatabaseService()
+shadow_evaluator = ShadowEvaluatorWorker(sampling_rate=0.05)
+
+
+class ShadowEvalRequest(BaseModel):
+    query: str
+    answer: str
+    context: Optional[List[str]] = []
+    trace_id: Optional[str] = None
+    domain: Optional[str] = "general"
 
 
 class ExtractRequest(BaseModel):
@@ -107,3 +117,25 @@ def rerank_candidates(req: RerankApiRequest):
     chunks_dict = [c.dict() for c in req.candidate_chunks]
     ranked = reranker.rerank(req.query, chunks_dict, top_n=req.top_n)
     return {"query": req.query, "reranked_chunks": ranked}
+
+
+@router.post("/api/v1/eval/shadow-evaluate")
+def evaluate_shadow(req: ShadowEvalRequest):
+    """
+    Non-blocking online continuous shadow evaluation endpoint.
+    Samples 5% of live traffic, evaluates G-Eval/Faithfulness, and exports scores to Langfuse DB.
+    """
+    trace_context = {
+        "query": req.query,
+        "answer": req.answer,
+        "context": req.context,
+        "trace_id": req.trace_id,
+        "domain": req.domain,
+    }
+    result = shadow_evaluator.evaluate_shadow_trace(trace_context)
+    return {
+        "sampled": result is not None,
+        "eval_result": result,
+        "trace_id": req.trace_id,
+    }
+

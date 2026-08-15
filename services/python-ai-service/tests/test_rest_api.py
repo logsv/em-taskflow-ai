@@ -43,3 +43,19 @@ def test_rag_rerank_endpoint():
     assert data["query"] == "Cross-Encoder"
     assert len(data["reranked_chunks"]) > 0
     assert data["reranked_chunks"][0]["id"] == "2"
+
+
+def test_shadow_evaluate_endpoint():
+    payload = {
+        "query": "What are DORA metrics?",
+        "answer": "DORA metrics include deployment frequency, lead time for changes, MTTR, and change failure rate.",
+        "context": ["DORA framework established 4 core engineering metrics."],
+        "trace_id": "test_trace_123",
+        "domain": "dora"
+    }
+    response = client.post("/api/v1/eval/shadow-evaluate", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "sampled" in data
+    assert data["trace_id"] == "test_trace_123"
+
