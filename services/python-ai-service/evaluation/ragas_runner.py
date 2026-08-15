@@ -20,6 +20,9 @@ from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from langchain_community.chat_models import ChatOllama
 from langchain_community.embeddings import OllamaEmbeddings
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -86,13 +89,19 @@ def run_ragas_evaluation(
         if sync_to_langfuse:
             try:
                 from langfuse import Langfuse
-                langfuse = Langfuse()
+                host = os.getenv("LANGFUSE_HOST", "http://localhost:3001")
+                langfuse = Langfuse(
+                    public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
+                    secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
+                    host=host,
+                )
                 for metric_name, score in results.items():
                     langfuse.score(
                         name=f"ragas_{metric_name}",
                         value=float(score),
                         comment="Official Ragas SDK evaluation run (hermes3:8b)",
                     )
+                langfuse.flush()
                 logger.info("📊 Synced Ragas scores to Langfuse!")
             except Exception as e:
                 logger.warning(f"⚠️ Langfuse sync skipped: {e}")
