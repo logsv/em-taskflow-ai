@@ -132,6 +132,10 @@ def run_scheduled_deep_benchmark(
     with open(json_report_path, "w", encoding="utf-8") as f:
         json.dump(report_data, f, indent=2)
 
+    json_latest_path = os.path.join(reports_dir, "latest_benchmark.json")
+    with open(json_latest_path, "w", encoding="utf-8") as f:
+        json.dump(report_data, f, indent=2)
+
     md_report_path = os.path.join(reports_dir, f"benchmark_{timestamp_str}.md")
     md_latest_path = os.path.join(reports_dir, "latest_benchmark.md")
 
