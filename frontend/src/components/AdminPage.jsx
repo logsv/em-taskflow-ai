@@ -471,7 +471,7 @@ function AdminPage({ onBackToChat }) {
             <div className="service-card card-phoenix">
               <div className="card-top">
                 <span className="service-icon">🔥</span>
-                <span className="status-dot status-online"></span>
+                <span className={`status-dot ${systemStatus?.services?.phoenix?.status === 'online' ? 'status-online' : 'status-offline'}`}></span>
               </div>
               <h3>Arize Phoenix (100% Local LLM Tracing)</h3>
               <p className="service-url">http://127.0.0.1:6006</p>

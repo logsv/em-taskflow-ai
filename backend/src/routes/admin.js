@@ -61,6 +61,7 @@ router.get('/system-status', async (req, res) => {
       adminer: { url: 'http://localhost:8080', probeUrl: 'http://adminer:8080', name: 'Adminer DB Manager', description: 'PostgreSQL Database Explorer' },
       dozzle: { url: 'http://localhost:8088', probeUrl: 'http://dozzle:8080', name: 'Dozzle Log Viewer', description: 'Real-time Container Log Stream' },
       temporal: { url: 'http://localhost:8233', probeUrl: 'http://temporal-ui:8080', name: 'Temporal Web UI', description: 'Durable Workflow Execution Dashboard' },
+      phoenix: { url: 'http://localhost:6006', probeUrl: 'http://phoenix:6006', name: 'Arize Phoenix', description: 'Local OpenLLMetry LLM Tracing' },
     };
 
     // Probe status concurrently (trying internal container URL first, then external host URL)

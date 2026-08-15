@@ -269,7 +269,12 @@ services:
     image: arizephoenix/phoenix:latest
     container_name: em-taskflow-phoenix
     environment:
-      - PHOENIX_SQL_DATABASE_URL=postgresql://taskflow:taskflow@postgres:5432/taskflow
+      - PHOENIX_SQL_DATABASE_URL=postgresql://taskflow:taskflow@postgres:5432/taskflow_phoenix
+      - PHOENIX_PORT=6006
+      - PHOENIX_HOST=0.0.0.0
+      - PHOENIX_GRPC_PORT=4317
+    volumes:
+      - phoenix_data:/root/.phoenix
     ports:
       - "6006:6006"
       - "4317:4317"
@@ -320,4 +325,5 @@ volumes:
   backend_data:
   postgres_data:
   analytics_postgres_data:
+  phoenix_data:
   vllm_cache:
