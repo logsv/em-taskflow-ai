@@ -10,6 +10,8 @@ function AdminPage({ onBackToChat }) {
   const [evalMetrics, setEvalMetrics] = useState(null);
   const [benchmarkStatus, setBenchmarkStatus] = useState(null);
   const [isRunningBenchmark, setIsRunningBenchmark] = useState(false);
+  const [replayStatus, setReplayStatus] = useState(null);
+  const [isRunningReplay, setIsRunningReplay] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
   const [loadingDocs, setLoadingDocs] = useState(true);
@@ -29,6 +31,7 @@ function AdminPage({ onBackToChat }) {
     fetchDoraMetrics();
     fetchEvalMetrics();
     fetchBenchmarkStatus();
+    fetchReplayStatus();
   }, []);
 
   // Poll benchmark status if running
@@ -45,6 +48,19 @@ function AdminPage({ onBackToChat }) {
     };
   }, [benchmarkStatus?.status, isRunningBenchmark]);
 
+  // Poll replay status if running
+  useEffect(() => {
+    let interval = null;
+    if (replayStatus?.status === 'running' || isRunningReplay) {
+      interval = setInterval(() => {
+        fetchReplayStatus();
+      }, 2000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [replayStatus?.status, isRunningReplay]);
+
   const fetchBenchmarkStatus = async () => {
     try {
       const res = await fetch('/api/admin/eval/benchmark-status');
@@ -57,6 +73,21 @@ function AdminPage({ onBackToChat }) {
       }
     } catch (err) {
       logger.error('Failed to fetch benchmark status', { err: err.message });
+    }
+  };
+
+  const fetchReplayStatus = async () => {
+    try {
+      const res = await fetch('/api/admin/eval/replay-status');
+      const data = await res.json();
+      if (data.success) {
+        setReplayStatus(data.state);
+        if (data.state?.status !== 'running') {
+          setIsRunningReplay(false);
+        }
+      }
+    } catch (err) {
+      logger.error('Failed to fetch replay status', { err: err.message });
     }
   };
 
@@ -131,6 +162,24 @@ function AdminPage({ onBackToChat }) {
     } catch (err) {
       setEvalActionMsg('Benchmark trigger error: ' + err.message);
       setIsRunningBenchmark(false);
+    }
+  };
+
+  const handleRunTraceReplay = async () => {
+    setIsRunningReplay(true);
+    setEvalActionMsg('🔄 Replaying historical Langfuse failure traces & comparing Candidate Model vs Baseline...');
+    try {
+      const res = await fetch('/api/admin/eval/replay-traces', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setEvalActionMsg(data.message);
+        setReplayStatus(data.state);
+      } else {
+        setEvalActionMsg('⚠️ ' + (data.message || 'Failed to trigger trace replay'));
+      }
+    } catch (err) {
+      setEvalActionMsg('Trace replay error: ' + err.message);
+      setIsRunningReplay(false);
     }
   };
 
@@ -506,6 +555,22 @@ function AdminPage({ onBackToChat }) {
                   </>
                 )}
               </button>
+              <button
+                className="trigger-replay-btn"
+                onClick={handleRunTraceReplay}
+                disabled={isRunningReplay || replayStatus?.status === 'running'}
+              >
+                {isRunningReplay || replayStatus?.status === 'running' ? (
+                  <>
+                    <span className="btn-spinner"></span>
+                    <span>Replaying Traces...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🔄 Replay Langfuse Traces</span>
+                  </>
+                )}
+              </button>
               <a
                 href="http://127.0.0.1:3001"
                 target="_blank"
@@ -603,6 +668,49 @@ function AdminPage({ onBackToChat }) {
               </div>
             </div>
           </div>
+
+          {/* Trace Replay Model Upgrade Comparison Card */}
+          {replayStatus?.latestReport && (
+            <div className="scheduled-benchmark-card replay-card">
+              <div className="benchmark-card-header">
+                <div className="benchmark-title-wrap">
+                  <span className="benchmark-icon">🔄</span>
+                  <div>
+                    <h4 className="benchmark-title">Offline Model Upgrade & Trace Replay</h4>
+                    <p className="benchmark-desc">
+                      Historical Langfuse Failure Trace Replay & Pairwise Arena Comparison
+                    </p>
+                  </div>
+                </div>
+                <div className="benchmark-status-badge-wrap">
+                  <span className="eval-badge badge-replay">
+                    RECOMMENDATION: {replayStatus.latestReport.recommendation}
+                  </span>
+                </div>
+              </div>
+
+              <div className="benchmark-details-grid">
+                <div className="benchmark-detail-item">
+                  <span className="detail-label">Baseline Model</span>
+                  <span className="detail-value">{replayStatus.latestReport.baseline_model}</span>
+                </div>
+                <div className="benchmark-detail-item">
+                  <span className="detail-label">Candidate Model</span>
+                  <span className="detail-value highlight-text">{replayStatus.latestReport.candidate_model}</span>
+                </div>
+                <div className="benchmark-detail-item">
+                  <span className="detail-label">Traces Replayed</span>
+                  <span className="detail-value">{replayStatus.latestReport.total_traces_replayed} traces</span>
+                </div>
+                <div className="benchmark-detail-item">
+                  <span className="detail-label">Candidate Win Rate</span>
+                  <span className="detail-value win-rate-value">
+                    {replayStatus.latestReport.candidate_win_rate_pct}% ({replayStatus.latestReport.wins_candidate}W / {replayStatus.latestReport.wins_baseline}L / {replayStatus.latestReport.ties}T)
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="eval-metrics-grid">
             <div className="eval-card">

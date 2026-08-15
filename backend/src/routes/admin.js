@@ -264,6 +264,117 @@ router.get('/eval/benchmark-status', async (req, res) => {
   }
 });
 
+// Replay State Tracker
+let replayState = {
+  status: 'idle', // 'idle' | 'running' | 'completed' | 'failed'
+  startedAt: null,
+  completedAt: null,
+  durationSeconds: null,
+  error: null,
+  latestReport: null,
+};
+
+// Helper to load latest replay report
+function loadLatestReplayReport() {
+  try {
+    const rootDir = path.resolve(process.cwd(), '..');
+    const reportsDir = path.join(rootDir, 'reports', 'evaluations');
+    const altReportsDir = path.join(process.cwd(), 'reports', 'evaluations');
+    const targetDir = fs.existsSync(reportsDir) ? reportsDir : (fs.existsSync(altReportsDir) ? altReportsDir : null);
+    if (!targetDir) return null;
+
+    const latestFile = path.join(targetDir, 'latest_replay_report.json');
+    if (fs.existsSync(latestFile)) {
+      const raw = fs.readFileSync(latestFile, 'utf8');
+      return JSON.parse(raw);
+    }
+    return null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+// Trigger Offline Model Upgrade & Trace Replay on Demand
+router.post('/eval/replay-traces', async (req, res) => {
+  try {
+    if (replayState.status === 'running') {
+      return res.json({
+        success: false,
+        message: 'A trace replay evaluation is currently in progress.',
+        state: replayState,
+      });
+    }
+
+    const { baselineModel = 'hermes3:8b', candidateModel = 'hermes3:8b' } = req.body || {};
+    const pythonDir = path.resolve(process.cwd(), '..', 'services/python-ai-service');
+
+    replayState = {
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      durationSeconds: null,
+      error: null,
+      latestReport: replayState.latestReport || loadLatestReplayReport(),
+    };
+
+    const replayProcess = spawn('uv', ['run', 'python', 'evaluation/replay_langfuse_traces.py'], {
+      cwd: pythonDir,
+      detached: true,
+      stdio: 'ignore',
+    });
+    replayProcess.unref();
+
+    const startTime = Date.now();
+    const checkInterval = setInterval(() => {
+      const latest = loadLatestReplayReport();
+      if (latest && (!replayState.latestReport || latest.timestamp !== replayState.latestReport.timestamp)) {
+        replayState.status = 'completed';
+        replayState.completedAt = new Date().toISOString();
+        replayState.durationSeconds = Math.round((Date.now() - startTime) / 1000);
+        replayState.latestReport = latest;
+        clearInterval(checkInterval);
+      }
+    }, 2000);
+
+    setTimeout(() => {
+      clearInterval(checkInterval);
+      if (replayState.status === 'running') {
+        replayState.status = 'completed';
+        replayState.completedAt = new Date().toISOString();
+        replayState.durationSeconds = Math.round((Date.now() - startTime) / 1000);
+        replayState.latestReport = loadLatestReplayReport();
+      }
+    }, 60000);
+
+    res.json({
+      success: true,
+      message: `🔄 Offline trace replay started comparing ${candidateModel} against ${baselineModel}!`,
+      state: replayState,
+      requestId: req.requestId,
+    });
+  } catch (error) {
+    replayState.status = 'failed';
+    replayState.error = error.message;
+    res.status(500).json({ error: 'Failed to trigger trace replay', details: error.message });
+  }
+});
+
+// Replay Status Endpoint
+router.get('/eval/replay-status', async (req, res) => {
+  try {
+    if (!replayState.latestReport) {
+      replayState.latestReport = loadLatestReplayReport();
+    }
+    res.json({
+      success: true,
+      state: replayState,
+      requestId: req.requestId,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch replay status', details: error.message });
+  }
+});
+
 // Evaluation Aggregated Metrics
 router.get('/eval/metrics', async (req, res) => {
   try {
