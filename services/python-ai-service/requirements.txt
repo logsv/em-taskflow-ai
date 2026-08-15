@@ -19,6 +19,7 @@ temporalio==1.6.0
 pytest-cov==4.1.0
 langchain==0.1.14
 langchain-community==0.0.31
+langchain-ollama>=0.1.0
 langchain-text-splitters==0.0.1
 sentry-sdk[fastapi]>=2.0.0
 newrelic==9.8.0

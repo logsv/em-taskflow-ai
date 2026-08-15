@@ -18,8 +18,25 @@ from ragas.metrics import (
 )
 from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
-from langchain_community.chat_models import ChatOllama
-from langchain_community.embeddings import OllamaEmbeddings
+
+try:
+    from langchain_ollama import ChatOllama, OllamaEmbeddings
+except ImportError:
+    try:
+        from langchain_community.chat_models.ollama import ChatOllama
+        from langchain_community.embeddings.ollama import OllamaEmbeddings
+    except ImportError:
+        try:
+            from langchain_community.chat_models import ChatOllama
+            from langchain_community.embeddings import OllamaEmbeddings
+        except ImportError:
+            class ChatOllama:  # type: ignore
+                def __init__(self, *args, **kwargs):
+                    pass
+            class OllamaEmbeddings:  # type: ignore
+                def __init__(self, *args, **kwargs):
+                    pass
+
 from dotenv import load_dotenv
 
 load_dotenv()

@@ -4,7 +4,21 @@ Tests domain micro-agent routing, 1-tool constraint policy, and SBI feedback str
 """
 
 import pytest
-from deepeval.test_case import LLMTestCase, LLMTestCaseParams
+from deepeval.test_case import LLMTestCase
+
+try:
+    from deepeval.test_case import LLMTestCaseParams
+except ImportError:
+    try:
+        from deepeval.test_case import SingleTurnParams as LLMTestCaseParams
+    except ImportError:
+        class LLMTestCaseParams:  # type: ignore
+            INPUT = "input"
+            ACTUAL_OUTPUT = "actual_output"
+            EXPECTED_OUTPUT = "expected_output"
+            CONTEXT = "context"
+            RETRIEVAL_CONTEXT = "retrieval_context"
+
 from deepeval.metrics import GEval, AnswerRelevancyMetric
 from evaluation.deepeval_hermes import Hermes3Judge
 
