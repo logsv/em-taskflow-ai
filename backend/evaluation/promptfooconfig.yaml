@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: "EM TaskFlow AI - Micro-Agent Router & Prompt Evaluation Matrix"
+
+providers:
+  - id: "ollama:chat:hermes3:8b"
+    config:
+      temperature: 0.0
+      baseUrl: "http://localhost:11434"
+
+prompts:
+  - "You are the EM TaskFlow AI intent router. Classify the user query into exactly one of these domains: [dora, delivery, sbi, people, sprint, retro, roadmap, okr, sop, critic, rag, fast_path]. Return only JSON: {\"domain\": \"...\"}\n\nQuery: {{query}}"
+
+tests:
+  - description: "DORA metrics classification"
+    vars:
+      query: "Calculate our DORA deployment frequency and change failure rate for the last quarter."
+    assert:
+      - type: icontains
+        value: "dora"
+
+  - description: "Delivery bottleneck analysis"
+    vars:
+      query: "Analyze engineering delivery bottlenecks and PR cycle times for the backend team."
+    assert:
+      - type: icontains
+        value: "delivery"
+
+  - description: "SBI feedback generation"
+    vars:
+      query: "Format an SBI feedback for Rahul who was absent from standup three days in a row."
+    assert:
+      - type: icontains
+        value: "sbi"
+
+  - description: "Fast-path pure coding bypassing tools"
+    vars:
+      query: "Write a python function to compute Fibonacci numbers."
+    assert:
+      - type: icontains
+        value: "fast_path"
+
+  - description: "RAG SOP policy inquiry"
+    vars:
+      query: "What is our company SOP for remote expense reimbursements?"
+    assert:
+      - type: icontains
+        value: "sop"

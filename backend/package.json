@@ -13,6 +13,13 @@
     "eval:multi-agent": "node evaluation/evaluators/multi-agent-eval.js",
     "eval:rag": "node evaluation/evaluators/rag-eval.js",
     "eval:pre-llm": "node evaluation/evaluators/pre-llm-eval.js",
+    "eval:promptfoo": "npx -y promptfoo@latest eval -c evaluation/promptfooconfig.yaml",
+    "eval:promptfoo:view": "npx -y promptfoo@latest view -p 15500",
+    "eval:deepeval": "cd ../services/python-ai-service && uv run pytest tests/test_deepeval_agent_trajectories.py",
+    "eval:ragas": "cd ../services/python-ai-service && uv run python evaluation/ragas_runner.py",
+    "eval:trulens": "cd ../services/python-ai-service && uv run python evaluation/trulens_rag_triad.py",
+    "eval:trulens:dashboard": "cd ../services/python-ai-service && uv run trulens-eval run dashboard --port 8501",
+    "eval:enterprise": "npm run evaluate && npm run eval:deepeval && npm run eval:ragas && npm run eval:trulens",
     "start:google": "pnpm -C ../mcp-servers/google-workspace start",
     "start:mcp": "pnpm start:google"
   },

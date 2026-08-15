@@ -64,31 +64,44 @@ The Enterprise Evaluation Framework provides deterministic, automated SLA testin
 
 ## ⚡ Operational Commands
 
-### 1. Run Complete Node.js Backend Evaluation Suite
+### 1. Run Complete Evaluation Suite
 ```bash
-cd backend
-npm run evaluate
+npm run eval:enterprise    # Runs Node evaluate, DeepEval, Ragas, and TruLens
 ```
 
-### 2. Run Focused Evaluation Sub-Suites
+### 2. Run Official Framework Evaluation Sub-Suites
 ```bash
-cd backend
-npm run eval:multi-agent   # Multi-agent domain selection & 1-tool constraint
-npm run eval:rag           # gRPC transport & single-pass markdown formatting
-npm run eval:pre-llm       # Map-Reduce summary density & Fast-Path <300ms SLA
+# DeepEval Agent Trajectory Tests (Pytest)
+npm run eval:deepeval
+
+# Ragas Hybrid RAG Evaluation (Faithfulness, Precision, Recall)
+npm run eval:ragas
+
+# TruLens RAG Triad Evaluation (Groundedness, Context Relevance)
+npm run eval:trulens
+
+# Launch TruLens Streamlit Leaderboard Dashboard (Port 8501)
+npm run eval:trulens:dashboard
+
+# Promptfoo Prompt Matrix & Red-Teaming CLI
+npm run eval:promptfoo
+
+# Launch Promptfoo Visual Web Viewer (Port 15500)
+npm run eval:promptfoo:view
 ```
 
-### 3. Run Python AI Unit & Evaluation Tests
+### 3. Run Node.js Strategy Evaluators & Pytests
 ```bash
-cd services/python-ai-service
-uv run pytest
+cd backend && npm run evaluate
+cd services/python-ai-service && uv run pytest
 ```
 
-### 4. Run Full Stack Local Verification (Pre-Push Equivalent)
-```bash
-cd backend && npm test && npm run evaluate
-cd ../services/python-ai-service && uv run pytest
-```
+### 4. Admin Portal Hub Links
+- **Langfuse Unified Evaluation Dashboard**: `http://localhost:3000`
+- **Promptfoo Matrix Viewer**: `http://localhost:15500`
+- **TruLens Leaderboard**: `http://localhost:8501`
+- **Adminer DB Explorer**: `http://localhost:8080`
+- **Open WebUI**: `http://localhost:3080`
 
 ---
 
