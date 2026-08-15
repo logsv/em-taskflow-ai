@@ -115,13 +115,13 @@ function AdminPage({ onBackToChat }) {
 
   const handleStartPromptfoo = async () => {
     setIsLaunchingPromptfoo(true);
-    setEvalActionMsg('Launching Promptfoo viewer on port 15500...');
+    setEvalActionMsg('🚀 Launching Promptfoo Matrix & Red-Teaming Viewer on port 15500...');
     try {
       const res = await fetch('/api/admin/eval/promptfoo/start', { method: 'POST' });
       const data = await res.json();
       setEvalActionMsg(data.message || 'Promptfoo viewer active!');
+      await fetchSystemStatus();
       window.open('http://127.0.0.1:15500', '_blank');
-      fetchSystemStatus();
     } catch (err) {
       setEvalActionMsg('Failed to launch: ' + err.message);
     } finally {
@@ -132,13 +132,13 @@ function AdminPage({ onBackToChat }) {
 
   const handleStartTrulens = async () => {
     setIsLaunchingTrulens(true);
-    setEvalActionMsg('Launching TruLens Streamlit dashboard on port 8501...');
+    setEvalActionMsg('🚀 Launching TruLens RAG Triad dashboard on port 8501...');
     try {
       const res = await fetch('/api/admin/eval/trulens/start', { method: 'POST' });
       const data = await res.json();
       setEvalActionMsg(data.message || 'TruLens dashboard active!');
+      await fetchSystemStatus();
       window.open('http://127.0.0.1:8501', '_blank');
-      fetchSystemStatus();
     } catch (err) {
       setEvalActionMsg('Failed to launch: ' + err.message);
     } finally {
@@ -323,20 +323,19 @@ function AdminPage({ onBackToChat }) {
                 Visual prompt matrix comparison, LLM red-teaming vulnerabilities, and domain router assertion matrix.
               </p>
               <div className="card-btn-group">
-                <a
-                  href="http://127.0.0.1:15500"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={systemStatus?.services?.promptfoo?.status === 'online' ? () => window.open('http://127.0.0.1:15500', '_blank') : handleStartPromptfoo}
+                  disabled={isLaunchingPromptfoo}
                   className="launch-btn"
                 >
-                  Launch Viewer ↗
-                </a>
+                  {isLaunchingPromptfoo ? 'Starting...' : 'Launch Viewer ↗'}
+                </button>
                 <button
                   onClick={handleStartPromptfoo}
-                  disabled={isLaunchingPromptfoo}
+                  disabled={isLaunchingPromptfoo || systemStatus?.services?.promptfoo?.status === 'online'}
                   className="action-btn secondary-btn"
                 >
-                  {isLaunchingPromptfoo ? 'Starting...' : '▶ Start Process'}
+                  {systemStatus?.services?.promptfoo?.status === 'online' ? '● Running' : isLaunchingPromptfoo ? 'Starting...' : '▶ Start Process'}
                 </button>
               </div>
             </div>
@@ -352,20 +351,19 @@ function AdminPage({ onBackToChat }) {
                 RAG Triad Leaderboard tracking Groundedness, Context Relevance, and Answer Relevance against local Ollama.
               </p>
               <div className="card-btn-group">
-                <a
-                  href="http://127.0.0.1:8501"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={systemStatus?.services?.trulens?.status === 'online' ? () => window.open('http://127.0.0.1:8501', '_blank') : handleStartTrulens}
+                  disabled={isLaunchingTrulens}
                   className="launch-btn"
                 >
-                  Launch Leaderboard ↗
-                </a>
+                  {isLaunchingTrulens ? 'Starting...' : 'Launch Leaderboard ↗'}
+                </button>
                 <button
                   onClick={handleStartTrulens}
-                  disabled={isLaunchingTrulens}
+                  disabled={isLaunchingTrulens || systemStatus?.services?.trulens?.status === 'online'}
                   className="action-btn secondary-btn"
                 >
-                  {isLaunchingTrulens ? 'Starting...' : '▶ Start Process'}
+                  {systemStatus?.services?.trulens?.status === 'online' ? '● Running' : isLaunchingTrulens ? 'Starting...' : '▶ Start Process'}
                 </button>
               </div>
             </div>

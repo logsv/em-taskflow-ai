@@ -103,8 +103,9 @@ router.post('/eval/promptfoo/start', async (req, res) => {
     }
 
     if (!promptfooProcess || promptfooProcess.killed) {
-      const backendDir = path.resolve(process.cwd(), 'backend');
-      promptfooProcess = spawn('npx', ['promptfoo', 'view', '-p', '15500', '--no-browser'], {
+      const backendDir = process.cwd().endsWith('backend') ? process.cwd() : path.resolve(process.cwd(), 'backend');
+      const serverScript = path.join(backendDir, 'src', 'scripts', 'promptfooServer.js');
+      promptfooProcess = spawn('node', [serverScript], {
         cwd: backendDir,
         detached: true,
         stdio: 'ignore',
@@ -112,9 +113,12 @@ router.post('/eval/promptfoo/start', async (req, res) => {
       promptfooProcess.unref();
     }
 
+    // Wait briefly for server startup
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
     res.json({
       success: true,
-      message: 'Promptfoo viewer process launched on port 15500',
+      message: 'Promptfoo Matrix Viewer process launched on port 15500',
       url: 'http://localhost:15500',
       requestId: req.requestId,
     });
@@ -163,14 +167,17 @@ router.post('/eval/trulens/start', async (req, res) => {
     }
 
     if (!trulensProcess || trulensProcess.killed) {
-      const pythonDir = path.resolve(process.cwd(), '..', 'services/python-ai-service');
-      trulensProcess = spawn('uv', ['run', 'trulens-eval', 'run', 'dashboard', '--port', '8501'], {
+      const pythonDir = path.resolve(process.cwd(), process.cwd().endsWith('backend') ? '..' : '.', 'services/python-ai-service');
+      trulensProcess = spawn('uv', ['run', 'python', '-c', 'from trulens.dashboard import run_dashboard; run_dashboard(port=8501)'], {
         cwd: pythonDir,
         detached: true,
         stdio: 'ignore',
       });
       trulensProcess.unref();
     }
+
+    // Wait briefly for dashboard startup
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     res.json({
       success: true,
