@@ -19,6 +19,7 @@
     "eval:ragas": "cd ../services/python-ai-service && uv run python evaluation/ragas_runner.py",
     "eval:trulens": "cd ../services/python-ai-service && uv run python evaluation/trulens_rag_triad.py",
     "eval:trulens:dashboard": "cd ../services/python-ai-service && uv run trulens-eval run dashboard --port 8501",
+    "eval:nightly": "bash ../scripts/run-nightly-eval.sh",
     "eval:enterprise": "npm run evaluate && npm run eval:deepeval && npm run eval:ragas && npm run eval:trulens",
     "start:google": "pnpm -C ../mcp-servers/google-workspace start",
     "start:mcp": "pnpm start:google"
