@@ -4,12 +4,21 @@ import { FeedbackApplicationService } from '../../src/application/feedback/Feedb
 describe('FeedbackApplicationService', () => {
   let sandbox;
 
+  let originalKey;
+
   beforeEach(() => {
     sandbox = sinon.createSandbox();
+    originalKey = process.env.LANGFUSE_PUBLIC_KEY;
+    delete process.env.LANGFUSE_PUBLIC_KEY;
   });
 
   afterEach(() => {
     sandbox.restore();
+    if (originalKey !== undefined) {
+      process.env.LANGFUSE_PUBLIC_KEY = originalKey;
+    } else {
+      delete process.env.LANGFUSE_PUBLIC_KEY;
+    }
   });
 
   it('stores feedback with session-aware defaults and returns the normalized payload', async () => {
