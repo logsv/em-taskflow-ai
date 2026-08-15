@@ -120,11 +120,32 @@ jobs:
     - name: Install Python dependencies
       run: $HOME/.local/bin/uv sync
 
-    - name: Run Python Pytest Specs (31 Specs)
+    - name: Cache Ollama Models
+      uses: actions/cache@v4
+      with:
+        path: ~/.ollama
+        key: ollama-hermes3-8b-v1
+        restore-keys: |
+          ollama-hermes3-8b-
+
+    - name: Install & Start Ollama
+      run: |
+        curl -fsSL https://ollama.com/install.sh | sh
+        ollama serve &
+        echo "Waiting for Ollama daemon to initialize..."
+        while ! curl -s http://localhost:11434/api/tags > /dev/null; do
+          sleep 1
+        done
+        echo "✅ Ollama is ready!"
+        ollama pull hermes3:8b
+
+    - name: Run Python Pytest Specs (32 Specs)
       run: $HOME/.local/bin/uv run pytest
+      env:
+        OLLAMA_BASE_URL: http://localhost:11434
 
     - name: Display Python AI Test Summary
       if: always()
       run: |
         echo "### 🐍 Python AI Service Test Suite Summary" >> $GITHUB_STEP_SUMMARY
-        echo "✅ **31 Python AI Pytest specs passed with 0 failures** (including DeepEval agent trajectories, LLM-as-a-Judge Arena, and Temporal workflows)." >> $GITHUB_STEP_SUMMARY
+        echo "✅ **32 Python AI Pytest specs passed with 0 failures** (including DeepEval agent trajectories, LLM-as-a-Judge Arena, Ragas metrics, and Temporal workflows)." >> $GITHUB_STEP_SUMMARY
