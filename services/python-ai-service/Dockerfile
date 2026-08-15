@@ -9,8 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libmupdf-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Install uv for fast package installation
-RUN pip install --no-cache-dir uv
+# Install uv and setuptools for fast package installation
+RUN pip install --no-cache-dir uv "setuptools<70.0.0"
 
 # Copy requirements and install dependencies using uv
 COPY requirements.txt pyproject.toml ./

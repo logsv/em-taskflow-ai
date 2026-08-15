@@ -102,6 +102,7 @@
     "pdf-parse": "1.1.1",
     "pg": "^8.13.1",
     "pino": "^10.3.1",
+    "promptfoo": "^0.122.0",
     "zod": "3.25.76"
   },
   "devDependencies": {
@@ -124,6 +125,7 @@
     "jasmine-ts-console-reporter": "3.1.1",
     "nodemon": "3.1.10",
     "nyc": "17.1.0",
+    "promptfoo": "^0.122.0",
     "sinon": "21.0.0",
     "supertest": "7.1.4",
     "ts-node": "10.9.2",

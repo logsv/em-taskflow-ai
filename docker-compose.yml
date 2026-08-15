@@ -262,10 +262,13 @@ services:
   promptfoo:
     build: ./backend
     container_name: em-taskflow-promptfoo
-    command: ["node", "src/scripts/promptfooServer.js"]
+    command: >
+      sh -c "promptfoo eval -c evaluation/promptfooconfig.yaml || true; promptfoo view -n -p 15500"
     environment:
       - PORT=15500
       - PROMPTFOO_PORT=15500
+      - PROMPTFOO_DISABLE_REDTEAM_REMOTE_GENERATION=true
+      - PROMPTFOO_DISABLE_TELEMETRY=true
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
     ports:
       - "15500:15500"
@@ -277,8 +280,10 @@ services:
   trulens:
     build: ./services/python-ai-service
     container_name: em-taskflow-trulens
-    command: ["python", "-m", "streamlit", "run", "--server.port=8501", "--server.address=0.0.0.0", "evaluation/trulens_dashboard_app.py"]
+    command: ["python", "evaluation/run_trulens_official.py"]
     environment:
+      - PORT=8501
+      - PYTHONUNBUFFERED=1
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - STREAMLIT_SERVER_HEADLESS=true
       - STREAMLIT_SERVER_ENABLE_CORS=false

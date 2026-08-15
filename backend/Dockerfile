@@ -12,6 +12,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund || \
     npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
 
+RUN npm install -g promptfoo@0.122.0
+
 COPY . .
 
 EXPOSE 4000
