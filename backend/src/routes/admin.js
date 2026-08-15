@@ -57,9 +57,7 @@ router.get('/system-status', async (req, res) => {
       langfuse: { url: 'http://localhost:3001', probeUrl: 'http://langfuse:3000', name: 'Langfuse Traces & Evals', description: 'Central Observability, Traces & LLM Evaluation Dashboard' },
       promptfoo: { url: 'http://localhost:15500', probeUrl: 'http://promptfoo:15500', name: 'Promptfoo Matrix Viewer', description: 'Prompt Matrix & Red-Teaming Viewer' },
       trulens: { url: 'http://localhost:8501', probeUrl: 'http://trulens:8501', name: 'TruLens RAG Triad Dashboard', description: 'RAG Triad Groundedness Leaderboard' },
-      openWebui: { url: 'http://localhost:3080', probeUrl: 'http://open-webui:8080', name: 'Open WebUI', description: 'Ollama Model Chat & Playground' },
       adminer: { url: 'http://localhost:8080', probeUrl: 'http://adminer:8080', name: 'Adminer DB Manager', description: 'PostgreSQL Database Explorer' },
-      dozzle: { url: 'http://localhost:8088', probeUrl: 'http://dozzle:8080', name: 'Dozzle Log Viewer', description: 'Real-time Container Log Stream' },
       temporal: { url: 'http://localhost:8233', probeUrl: 'http://temporal-ui:8080', name: 'Temporal Web UI', description: 'Durable Workflow Execution Dashboard' },
       phoenix: { url: 'http://localhost:6006', probeUrl: 'http://phoenix:6006', name: 'Arize Phoenix', description: 'Local OpenLLMetry LLM Tracing' },
     };

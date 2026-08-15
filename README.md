@@ -54,9 +54,11 @@ Access the Admin Portal by clicking **⚙️ Admin Portal ↗** in the main side
 
 ### 1. 🚀 One-Click Service Launch Hub
 - **📊 Langfuse AI Telemetry** (`http://127.0.0.1:3001`): Multi-agent execution traces, token costs, LLM response latency, and user feedback logs.
-- **🦙 Open WebUI / Ollama GUI** (`http://127.0.0.1:3080`): Model parameter tuning, context window setup, and model management.
+- **🔥 Arize Phoenix Tracing** (`http://127.0.0.1:6006`): Local OpenLLMetry LLM tracing & spans.
+- **🎯 Promptfoo Evaluation Matrix** (`http://127.0.0.1:15500`): Prompt comparison, security red-teaming, and LLM benchmarking dashboard.
+- **⚖️ TruLens RAG Triad Leaderboard** (`http://127.0.0.1:8501`): Triad evaluation (groundedness, context relevance, answer relevance).
 - **🗄️ Adminer Postgres Explorer** (`http://127.0.0.1:8080`): Database GUI pre-configured for `taskflow_backend`, `taskflow_ai`, and `langfuse_db` (port 5433).
-- **🪵 Dozzle Log Viewer** (`http://127.0.0.1:8088`): Real-time streaming container log viewer across all Docker services.
+- **⏳ Temporal Web UI** (`http://127.0.0.1:8233`): Durable workflow execution dashboard for RAG pipelines.
 
 ### 2. 🛠️ Native System Control Features
 - **📄 RAG Vector Store Manager**: View uploaded PDFs, inspect extracted text chunks in an interactive modal, or delete document embeddings.
@@ -165,9 +167,11 @@ flowchart TD
    - **Frontend Chat UI**: `http://localhost:3000`
    - **Standalone Admin Portal**: `http://localhost:3000/admin`
    - **Langfuse AI Telemetry**: `http://localhost:3001`
-   - **Open WebUI (Ollama GUI)**: `http://localhost:3080`
+   - **Arize Phoenix Tracing**: `http://localhost:6006`
+   - **Promptfoo Matrix Viewer**: `http://localhost:15500`
+   - **TruLens Dashboard**: `http://localhost:8501`
    - **Adminer Postgres Explorer**: `http://localhost:8080`
-   - **Dozzle Container Log Viewer**: `http://localhost:8088`
+   - **Temporal Web UI**: `http://localhost:8233`
    - **Backend API**: `http://localhost:4000/api/health`
 
 4. **Stop the stack**:
@@ -264,12 +268,9 @@ uv run pytest
 
 ## 🛠️ Operational Commands
 
-### View Service Logs via Dozzle
-Open `http://localhost:8088` in your browser for real-time container log streaming.
-
 ### CLI Container Logs
 ```bash
-docker compose logs -f backend python-ai-service postgres redis langfuse open-webui
+docker compose logs -f backend python-ai-service postgres redis langfuse phoenix
 ```
 
 ### Clean Teardown (Remove Volumes)

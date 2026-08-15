@@ -389,30 +389,10 @@ function AdminPage({ onBackToChat }) {
               </div>
             </div>
 
-            <div className="service-card card-ollama">
-              <div className="card-top">
-                <span className="service-icon">🦙</span>
-                <span className="status-dot status-online"></span>
-              </div>
-              <h3>Open WebUI (Ollama GUI)</h3>
-              <p className="service-url">http://127.0.0.1:3080</p>
-              <p className="service-desc">
-                Visual Ollama LLM downloader, model parameter fine-tuning, context window setup, and prompt testing.
-              </p>
-              <a
-                href="http://127.0.0.1:3080"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="launch-btn"
-              >
-                Launch Open WebUI ↗
-              </a>
-            </div>
-
             <div className="service-card card-db">
               <div className="card-top">
                 <span className="service-icon">🗄️</span>
-                <span className="status-dot status-online"></span>
+                <span className={`status-dot ${systemStatus?.services?.adminer?.status === 'online' ? 'status-online' : 'status-offline'}`}></span>
               </div>
               <h3>Adminer (Postgres Explorer)</h3>
               <p className="service-url">http://127.0.0.1:8080</p>
@@ -420,7 +400,7 @@ function AdminPage({ onBackToChat }) {
                 Browse PostgreSQL tables (`pdf_chunks`, `github_issues`). Pre-selected with PostgreSQL & server `postgres`. Password: <strong>taskflow</strong>.
               </p>
               <a
-                href="http://127.0.0.1:8080/?pgsql=postgres&username=taskflow&db=taskflow"
+                href="http://127.0.0.1:8080/?pgsql=postgres&username=taskflow&db=taskflow_backend"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="launch-btn"
@@ -429,30 +409,11 @@ function AdminPage({ onBackToChat }) {
               </a>
             </div>
 
-            <div className="service-card card-logs">
-              <div className="card-top">
-                <span className="service-icon">🪵</span>
-                <span className="status-dot status-online"></span>
-              </div>
-              <h3>Dozzle Log Viewer</h3>
-              <p className="service-url">http://127.0.0.1:8088</p>
-              <p className="service-desc">
-                Real-time streaming log analyzer for all Docker services (`backend`, `python-ai`, `postgres`) with live regex search.
-              </p>
-              <a
-                href="http://127.0.0.1:8088"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="launch-btn"
-              >
-                Launch Dozzle Log Viewer ↗
-              </a>
-            </div>
 
             <div className="service-card card-temporal">
               <div className="card-top">
                 <span className="service-icon">⏳</span>
-                <span className="status-dot status-online"></span>
+                <span className={`status-dot ${systemStatus?.services?.temporal?.status === 'online' ? 'status-online' : 'status-offline'}`}></span>
               </div>
               <h3>Temporal Web UI</h3>
               <p className="service-url">http://127.0.0.1:8233</p>

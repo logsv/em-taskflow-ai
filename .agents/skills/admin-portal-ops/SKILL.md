@@ -1,6 +1,6 @@
 ---
 name: admin-portal-ops
-description: Operational procedures for managing the Standalone Admin Portal (/admin), external service hubs (Langfuse, Open WebUI, Adminer, Dozzle), vector chunk inspection, and Express administrative APIs in EM TaskFlow AI.
+description: Operational procedures for managing the Standalone Admin Portal (/admin), external service hubs (Langfuse, Arize Phoenix, Promptfoo, TruLens, Adminer, Temporal), vector chunk inspection, and Express administrative APIs in EM TaskFlow AI.
 ---
 
 # Admin Portal & Service Operations Skill
@@ -15,9 +15,11 @@ Use this skill when developing, testing, or troubleshooting the Standalone Admin
 
 2. **Readymade External Service Hub**:
    - **Langfuse AI Telemetry**: `http://127.0.0.1:3001` (Multi-agent traces, prompt costs, latency, user feedback).
-   - **Open WebUI (Ollama GUI)**: `http://127.0.0.1:3080` (Local Ollama model tuning & prompt testing).
-   - **Adminer Postgres Explorer**: `http://127.0.0.1:8080/?pgsql=postgres&username=taskflow&db=taskflow` (Pre-configured for `taskflow` primary DB on port 5432 & `langfuse_db` on port 5433).
-   - **Dozzle Log Viewer**: `http://127.0.0.1:8088` (Real-time container log streaming).
+   - **Arize Phoenix Tracing**: `http://127.0.0.1:6006` (Local OpenLLMetry LLM tracing & chunk retrieval spans).
+   - **Promptfoo Evaluation Matrix**: `http://127.0.0.1:15500` (Prompt matrix comparison and security red-teaming).
+   - **TruLens RAG Triad Leaderboard**: `http://127.0.0.1:8501` (RAG triad groundedness and relevance dashboard).
+   - **Adminer Postgres Explorer**: `http://127.0.0.1:8080/?pgsql=postgres&username=taskflow&db=taskflow_backend` (Pre-configured for `taskflow_backend`, `taskflow_ai`, and `langfuse_db`).
+   - **Temporal Web UI**: `http://127.0.0.1:8233` (Durable workflow execution dashboard).
 
 3. **Backend Express Admin Endpoints (`src/routes/admin.js`)**:
    - `GET /api/admin/system-status`: Aggregates process uptime, Ollama status, DB connections.

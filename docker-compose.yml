@@ -201,19 +201,6 @@ services:
     networks:
       - em-taskflow-net
 
-  # ── Dozzle (Docker log viewer) ────────────────────────────
-  # Disabled by default. Start with: docker compose --profile dozzle up -d
-  dozzle:
-    profiles: ["dozzle"]
-    image: amir20/dozzle:latest
-    container_name: em-taskflow-dozzle
-    ports:
-      - "8088:8080"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - em-taskflow-net
-
   adminer:
     image: adminer:latest
     container_name: em-taskflow-adminer
@@ -222,18 +209,6 @@ services:
     networks:
       - em-taskflow-net
 
-  open-webui:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: em-taskflow-open-webui
-    environment:
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - RAG_EMBEDDING_ENGINE=ollama
-      - RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - RAG_OLLAMA_MODEL=nomic-embed-text
-    ports:
-      - "3080:8080"
-    networks:
-      - em-taskflow-net
 
   temporal:
     image: temporalio/auto-setup:1.24.2
