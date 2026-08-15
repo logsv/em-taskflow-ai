@@ -279,6 +279,37 @@ services:
     networks:
       - em-taskflow-net
 
+  promptfoo:
+    build: ./backend
+    container_name: em-taskflow-promptfoo
+    command: ["node", "src/scripts/promptfooServer.js"]
+    environment:
+      - PORT=15500
+      - PROMPTFOO_PORT=15500
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    ports:
+      - "15500:15500"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - em-taskflow-net
+
+  trulens:
+    build: ./services/python-ai-service
+    container_name: em-taskflow-trulens
+    command: ["python", "-m", "streamlit", "run", "--server.port=8501", "--server.address=0.0.0.0", "evaluation/trulens_dashboard_app.py"]
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_SERVER_ENABLE_CORS=false
+      - STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false
+    ports:
+      - "8501:8501"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - em-taskflow-net
+
 
 
 networks:

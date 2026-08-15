@@ -45,7 +45,8 @@ async function runPromptMatrixEval() {
     const startTime = Date.now();
 
     try {
-      const ollamaRes = await fetch('http://localhost:11434/api/chat', {
+      const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+      const ollamaRes = await fetch(`${ollamaBaseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

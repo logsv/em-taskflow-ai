@@ -54,19 +54,23 @@ router.get('/system-status', async (req, res) => {
     const ragStatus = await ragService.getStatus();
 
     const services = {
-      langfuse: { url: 'http://localhost:3001', name: 'Langfuse Traces & Evals', description: 'Central Observability, Traces & LLM Evaluation Dashboard' },
-      promptfoo: { url: 'http://localhost:15500', name: 'Promptfoo Matrix Viewer', description: 'Prompt Matrix & Red-Teaming Viewer' },
-      trulens: { url: 'http://localhost:8501', name: 'TruLens RAG Triad Dashboard', description: 'RAG Triad Groundedness Leaderboard' },
-      openWebui: { url: 'http://localhost:3080', name: 'Open WebUI', description: 'Ollama Model Chat & Playground' },
-      adminer: { url: 'http://localhost:8080', name: 'Adminer DB Manager', description: 'PostgreSQL Database Explorer' },
-      dozzle: { url: 'http://localhost:8088', name: 'Dozzle Log Viewer', description: 'Real-time Container Log Stream' },
-      temporal: { url: 'http://localhost:8233', name: 'Temporal Web UI', description: 'Durable Workflow Execution Dashboard' },
+      langfuse: { url: 'http://localhost:3001', probeUrl: 'http://langfuse:3000', name: 'Langfuse Traces & Evals', description: 'Central Observability, Traces & LLM Evaluation Dashboard' },
+      promptfoo: { url: 'http://localhost:15500', probeUrl: 'http://promptfoo:15500', name: 'Promptfoo Matrix Viewer', description: 'Prompt Matrix & Red-Teaming Viewer' },
+      trulens: { url: 'http://localhost:8501', probeUrl: 'http://trulens:8501', name: 'TruLens RAG Triad Dashboard', description: 'RAG Triad Groundedness Leaderboard' },
+      openWebui: { url: 'http://localhost:3080', probeUrl: 'http://open-webui:8080', name: 'Open WebUI', description: 'Ollama Model Chat & Playground' },
+      adminer: { url: 'http://localhost:8080', probeUrl: 'http://adminer:8080', name: 'Adminer DB Manager', description: 'PostgreSQL Database Explorer' },
+      dozzle: { url: 'http://localhost:8088', probeUrl: 'http://dozzle:8080', name: 'Dozzle Log Viewer', description: 'Real-time Container Log Stream' },
+      temporal: { url: 'http://localhost:8233', probeUrl: 'http://temporal-ui:8080', name: 'Temporal Web UI', description: 'Durable Workflow Execution Dashboard' },
     };
 
-    // Probe status concurrently
+    // Probe status concurrently (trying internal container URL first, then external host URL)
     await Promise.all(
       Object.keys(services).map(async (key) => {
-        services[key].status = await probeService(services[key].url);
+        let status = await probeService(services[key].probeUrl);
+        if (status === 'offline') {
+          status = await probeService(services[key].url);
+        }
+        services[key].status = status;
       })
     );
 
@@ -76,9 +80,9 @@ router.get('/system-status', async (req, res) => {
       timestamp: new Date().toISOString(),
       health,
       ollama: {
-        baseUrl: config.ollama.baseUrl,
-        defaultModel: config.ollama.defaultModel,
-        enabled: config.ollama.enabled,
+        baseUrl: config.llm?.providers?.ollama?.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
+        defaultModel: config.llm?.defaultModel || process.env.LLM_DEFAULT_MODEL || 'hermes3:8b',
+        enabled: config.llm?.providers?.ollama?.enabled ?? true,
       },
       services,
       rag: ragStatus,
