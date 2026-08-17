@@ -43,20 +43,21 @@ Active workspace domains:
 - 'github': for queries explicitly mentioning GitHub repositories, pull requests, issues, commits, or code reviews.
 - 'rag': for queries regarding documents, uploaded files, PDFs, rubrics, guides, specifications, summaries, or content lookups.
 - 'dora': for DORA metrics (deployment frequency, lead time, change failure rate, MTTR).
-- 'sbi': for Situation-Behavior-Impact performance feedback and coaching.
-- 'people': for 1-on-1 tracking, engineer career growth, skill matrix, and burnout indicators.
+- 'sbi': for Situation-Behavior-Impact performance feedback, coaching, and individual constructive feedback (takes precedence over meeting/standup mentions).
+- 'people': for 1-on-1 tracking, engineer career growth, skill matrix, team morale, and burnout indicators.
 - 'delivery': for team throughput, WIP limits, review bottlenecks, and cycle time.
 - 'retro': for sprint or project retrospective generation and action item tracking.
-- 'sprint': for sprint capacity estimation, story point velocity, and backlog grooming.
-- 'sop': for standard operating procedures, compliance, and ADR validation.
+- 'sprint': for sprint capacity estimation, story point velocity, and backlog grooming (excluding 1-on-1 individual feedback).
+- 'sop': for standard operating procedures, compliance, company policies, and ADR validation.
 - 'roadmap': for feature milestone timelines and initiative alignment.
 - 'okr': for Objectives & Key Results and team KPI tracking.
+- 'critic': for auditing, evaluating, and critiquing EM reports and leadership communication.
 
-CRITICAL ROUTING RULES:
+CRITICAL ROUTING & DISAMBIGUATION RULES:
 1. For document/PDF/rubric/uploaded file queries (e.g. "what is in rubrics", "summarize uploaded document", "what does the guide say"): set domains: ["rag"], allow_rag: true, must_use_tools: false, confidence: 0.9.
 2. For specific GitHub or code repo queries (e.g. "my open PRs", "repo issues"): set domains: ["delivery"], must_use_tools: true, allow_rag: false, confidence: 0.9.
 3. For DORA metric queries: set domains: ["dora"], must_use_tools: true, confidence: 0.9.
-4. For SBI feedback queries: set domains: ["sbi"], must_use_tools: true, confidence: 0.9.
+4. For SBI feedback / coaching queries (e.g. "format SBI feedback", coaching an engineer who was absent or late to standup/meetings): set domains: ["sbi"], must_use_tools: true, confidence: 0.9. (Individual feedback always takes precedence over sprint/standup keywords).
 5. For People / 1-on-1 queries: set domains: ["people"], must_use_tools: true, confidence: 0.9.
 6. For Delivery / WIP / Bottleneck queries: set domains: ["delivery"], must_use_tools: true, confidence: 0.9.
 7. For Retro queries: set domains: ["retro"], must_use_tools: true, confidence: 0.9.
@@ -64,6 +65,7 @@ CRITICAL ROUTING RULES:
 9. For SOP / Compliance queries: set domains: ["sop"], allow_rag: true, must_use_tools: true, confidence: 0.9.
 10. For Roadmap queries: set domains: ["roadmap"], must_use_tools: true, confidence: 0.9.
 11. For OKR / KPI queries: set domains: ["okr"], must_use_tools: true, confidence: 0.9.
+12. For Critic / Audit queries: set domains: ["critic"], must_use_tools: true, confidence: 0.9.
 
 Output a flat JSON object with these exact keys: "domains", "must_use_tools", "allow_rag", "confidence", "reasoning_summary".
 `;

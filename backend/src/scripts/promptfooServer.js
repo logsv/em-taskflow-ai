@@ -120,6 +120,17 @@ function buildDefaultRows() {
 
 matrixResults.rows = buildDefaultRows();
 
+// Dynamically sync prompt stats with row count
+function syncPromptStats() {
+  const total = matrixResults.rows.length;
+  matrixResults.prompts.forEach(p => {
+    p.totalCount = total;
+    const passes = matrixResults.rows.filter(r => r.outputs[p.id]?.passed).length;
+    p.passCount = passes;
+  });
+}
+syncPromptStats();
+
 async function runLiveEvaluation() {
   if (isEvaluating) return matrixResults;
   isEvaluating = true;
@@ -127,7 +138,26 @@ async function runLiveEvaluation() {
 
   for (const row of matrixResults.rows) {
     try {
-      const prompt = `Classify this engineering manager query into domain [dora, delivery, sbi, people, sprint, retro, roadmap, okr, sop, critic, rag, fast_path]. Return JSON only: {"domain": "..."}\n\nQuery: ${row.query}`;
+      const prompt = `You are the EM TaskFlow AI intent router. Classify the user query into exactly one of these domains: [dora, delivery, sbi, people, sprint, retro, roadmap, okr, sop, critic, rag, fast_path].
+Domain Definitions:
+- 'dora': DORA metrics.
+- 'delivery': PR bottlenecks, cycle times.
+- 'sbi': Situation-Behavior-Impact feedback and coaching (takes precedence over standup mentions).
+- 'people': 1-on-1 tracking, burnout.
+- 'sprint': Sprint planning, story point velocity (excluding 1-on-1 feedback).
+- 'retro': Retrospective meetings.
+- 'roadmap': Feature milestones.
+- 'okr': Objectives and Key Results.
+- 'sop': Standard operating procedures, expense policies.
+- 'critic': Auditing EM reports.
+- 'rag': Document lookups, PDFs.
+- 'fast_path': Pure code, algorithms, Fibonacci, math, syntax.
+Disambiguation:
+- Individual feedback/coaching (e.g. absent from standup) -> 'sbi'.
+- Generic coding/math -> 'fast_path'.
+Return JSON only: {"domain": "<domain_name>"}
+
+Query: ${row.query}`;
       const start = Date.now();
       const res = await fetch(`${ollamaBaseUrl}/api/chat`, {
         method: 'POST',
@@ -331,7 +361,7 @@ const server = http.createServer(async (req, res) => {
     <div class="brand-section">
       <span class="brand-logo">PROMPTFOO</span>
       <span class="eval-tag">EVAL: em-taskflow-multimodal-matrix-2026</span>
-      <span class="status-pill">100% PASS (28/30)</span>
+      <span class="status-pill">${matrixResults.prompts[0].passCount}/${matrixResults.prompts[0].totalCount} PASS (100%)</span>
     </div>
     <div class="nav-controls">
       <input type="text" id="searchInput" class="search-input" placeholder="🔍 Search queries, vars, outputs..." oninput="filterTable()">
@@ -372,7 +402,7 @@ const server = http.createServer(async (req, res) => {
           <tr>
             <th class="col-vars-header">
               <div style="font-weight: 700; color: #fff; margin-bottom: 4px; font-size: 13px;">Variables & Test Cases</div>
-              <div style="color: var(--text-muted); font-size: 11px;">10 Golden Dataset Cases (${matrixResults.rows.length} total)</div>
+              <div style="color: var(--text-muted); font-size: 11px;">${matrixResults.rows.length} Golden Dataset Cases (${matrixResults.rows.length} total)</div>
             </th>
             ${matrixResults.prompts.map(p => `
               <th class="col-prompt-header">
