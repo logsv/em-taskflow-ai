@@ -32,6 +32,7 @@ function AdminPage({ onBackToChat }) {
   const [evalActionMsg, setEvalActionMsg] = useState('');
   const [isLaunchingPromptfoo, setIsLaunchingPromptfoo] = useState(false);
   const [isLaunchingTrulens, setIsLaunchingTrulens] = useState(false);
+  const [isSweepingTrulens, setIsSweepingTrulens] = useState(false);
 
   // PDF Chunk Viewer Modal state
   const [viewingFilename, setViewingFilename] = useState(null);
@@ -136,15 +137,12 @@ function AdminPage({ onBackToChat }) {
 
   const handleStartPromptfoo = async () => {
     setIsLaunchingPromptfoo(true);
-    setEvalActionMsg('🚀 Launching Promptfoo Matrix & Red-Teaming Viewer on port 15500...');
+    setEvalActionMsg('🚀 Opening Promptfoo Managed Cloud Dashboard (https://www.promptfoo.app)...');
     try {
-      const res = await fetch('/api/admin/eval/promptfoo/start', { method: 'POST' });
-      const data = await res.json();
-      setEvalActionMsg(data.message || 'Promptfoo viewer active!');
-      await fetchSystemStatus();
-      window.open('http://127.0.0.1:15500', '_blank');
+      window.open('https://www.promptfoo.app', '_blank');
+      setEvalActionMsg('Promptfoo Managed Cloud workspace opened!');
     } catch (err) {
-      setEvalActionMsg('Failed to launch: ' + err.message);
+      setEvalActionMsg('Failed to open: ' + err.message);
     } finally {
       setIsLaunchingPromptfoo(false);
       setTimeout(() => setEvalActionMsg(''), 4000);
@@ -165,6 +163,21 @@ function AdminPage({ onBackToChat }) {
     } finally {
       setIsLaunchingTrulens(false);
       setTimeout(() => setEvalActionMsg(''), 4000);
+    }
+  };
+
+  const handleSweepTrulens = async () => {
+    setIsSweepingTrulens(true);
+    setEvalActionMsg('⚡ Triggering TruLens RAG Triad Batch Sweep across Golden Dataset & Vector DB chunks...');
+    try {
+      const res = await fetch('/api/admin/eval/trulens/sweep', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 5 }) });
+      const data = await res.json();
+      setEvalActionMsg(data.message || 'TruLens sweep active in background!');
+    } catch (err) {
+      setEvalActionMsg('Failed to trigger sweep: ' + err.message);
+    } finally {
+      setIsSweepingTrulens(false);
+      setTimeout(() => setEvalActionMsg(''), 5000);
     }
   };
 
@@ -336,28 +349,22 @@ function AdminPage({ onBackToChat }) {
             <div className="service-card card-promptfoo">
               <div className="card-top">
                 <span className="service-icon">🧪</span>
-                <span className={`status-dot ${systemStatus?.services?.promptfoo?.status === 'online' ? 'status-online' : 'status-offline'}`}></span>
+                <span className="status-dot status-online"></span>
               </div>
-              <h3>Promptfoo Matrix Viewer</h3>
-              <p className="service-url">http://127.0.0.1:15500</p>
+              <h3>Promptfoo Managed Cloud</h3>
+              <p className="service-url">https://www.promptfoo.app</p>
               <p className="service-desc">
-                Visual prompt matrix comparison, LLM red-teaming vulnerabilities, and domain router assertion matrix.
+                Cloud prompt matrix comparison, LLM red-teaming vulnerabilities, and shared evaluation dashboard (emtaskflow-ai).
               </p>
               <div className="card-btn-group">
-                <button
-                  onClick={systemStatus?.services?.promptfoo?.status === 'online' ? () => window.open('http://127.0.0.1:15500', '_blank') : handleStartPromptfoo}
-                  disabled={isLaunchingPromptfoo}
+                <a
+                  href="https://www.promptfoo.app"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="launch-btn"
                 >
-                  {isLaunchingPromptfoo ? 'Starting...' : 'Launch Viewer ↗'}
-                </button>
-                <button
-                  onClick={handleStartPromptfoo}
-                  disabled={isLaunchingPromptfoo || systemStatus?.services?.promptfoo?.status === 'online'}
-                  className="action-btn secondary-btn"
-                >
-                  {systemStatus?.services?.promptfoo?.status === 'online' ? '● Running' : isLaunchingPromptfoo ? 'Starting...' : '▶ Start Process'}
-                </button>
+                  Open Cloud Workspace ↗
+                </a>
               </div>
             </div>
 
@@ -380,11 +387,12 @@ function AdminPage({ onBackToChat }) {
                   {isLaunchingTrulens ? 'Starting...' : 'Launch Leaderboard ↗'}
                 </button>
                 <button
-                  onClick={handleStartTrulens}
-                  disabled={isLaunchingTrulens || systemStatus?.services?.trulens?.status === 'online'}
+                  onClick={handleSweepTrulens}
+                  disabled={isSweepingTrulens}
                   className="action-btn secondary-btn"
+                  title="Run RAG Triad Batch Evaluation Sweep across Golden Dataset & Vector DB"
                 >
-                  {systemStatus?.services?.trulens?.status === 'online' ? '● Running' : isLaunchingTrulens ? 'Starting...' : '▶ Start Process'}
+                  {isSweepingTrulens ? 'Sweeping...' : '⚡ Run RAG Triad Sweep'}
                 </button>
               </div>
             </div>

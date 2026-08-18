@@ -114,3 +114,52 @@ export async function getWorkflowStatus(workflowId) {
     return { workflowId, status: 'UNKNOWN', error: err.message };
   }
 }
+
+export async function startDeepBenchmarkWorkflow(options = {}) {
+  const client = await getTemporalClient();
+  if (!client) return null;
+
+  const { modelTarget = 'hermes3:8b', trulensLimit = 5 } = options;
+  const workflowId = `deep-benchmark-${Date.now()}`;
+  try {
+    const handle = await client.workflow.start('DeepEvaluationBenchmarkWorkflow', {
+      taskQueue: 'rag-ingest-queue',
+      args: [{ model_name: modelTarget, trulens_limit: trulensLimit }],
+      workflowId,
+    });
+    console.log(`🚀 Started Temporal Deep Benchmark Workflow: ${handle.workflowId}`);
+    return {
+      workflowId: handle.workflowId,
+      runId: handle.firstExecutionRunId,
+      status: 'RUNNING',
+    };
+  } catch (err) {
+    console.warn(`⚠️ Failed to start Temporal Deep Benchmark Workflow (${err.message})`);
+    return null;
+  }
+}
+
+export async function startTraceReplayWorkflow(options = {}) {
+  const client = await getTemporalClient();
+  if (!client) return null;
+
+  const { baselineModel = 'hermes3:8b', candidateModel = 'hermes3:8b' } = options;
+  const workflowId = `trace-replay-${Date.now()}`;
+  try {
+    const handle = await client.workflow.start('TraceReplayWorkflow', {
+      taskQueue: 'rag-ingest-queue',
+      args: [{ baseline_model: baselineModel, candidate_model: candidateModel }],
+      workflowId,
+    });
+    console.log(`🚀 Started Temporal Trace Replay Workflow: ${handle.workflowId}`);
+    return {
+      workflowId: handle.workflowId,
+      runId: handle.firstExecutionRunId,
+      status: 'RUNNING',
+    };
+  } catch (err) {
+    console.warn(`⚠️ Failed to start Temporal Trace Replay Workflow (${err.message})`);
+    return null;
+  }
+}
+

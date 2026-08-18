@@ -25,7 +25,10 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
         const q = inputArgs?.repo_id && inputArgs.repo_id !== 'default'
           ? `repo:${inputArgs.repo_id} is:issue state:open`
           : `is:issue is:open`;
-        const res = await executeMCPTool('search_issues', { query: q }).catch(() => null);
+        const res = await Promise.race([
+          executeMCPTool('search_issues', { query: q }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP GitHub search timed out')), 2000)),
+        ]).catch(() => null);
         let items = null;
         if (Array.isArray(res)) {
           items = res;

@@ -16,7 +16,7 @@ Use this skill when developing, testing, or troubleshooting the Standalone Admin
 2. **Readymade External Service Hub**:
    - **Langfuse AI Telemetry**: `http://127.0.0.1:3001` (Multi-agent traces, prompt costs, latency, user feedback).
    - **Arize Phoenix Tracing**: `http://127.0.0.1:6006` (Local OpenLLMetry LLM tracing & chunk retrieval spans).
-   - **Promptfoo Evaluation Matrix**: `http://127.0.0.1:15500` (Prompt matrix comparison and security red-teaming).
+   - **Promptfoo Managed Cloud**: `https://www.promptfoo.app` (Prompt matrix comparison, security red-teaming, and shared evaluation dashboard for `emtaskflow-ai`).
    - **TruLens RAG Triad Leaderboard**: `http://127.0.0.1:8501` (RAG triad groundedness and relevance dashboard).
    - **Adminer Postgres Explorer**: `http://127.0.0.1:8080/?pgsql=postgres&username=taskflow&db=taskflow_backend` (Pre-configured for `taskflow_backend`, `taskflow_ai`, and `langfuse_db`).
    - **Temporal Web UI**: `http://127.0.0.1:8233` (Durable workflow execution dashboard).

@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-08-15T16:27:01.352Z",
+  "timestamp": "2026-08-18T09:10:21.507Z",
   "model": "hermes3:8b",
-  "total_prompts": 10,
+  "total_prompts": 17,
   "domain_selection_accuracy": 1,
   "unwanted_rag_rate": 0,
   "tool_grounded_rate": 1,

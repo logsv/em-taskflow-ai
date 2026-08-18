@@ -53,7 +53,7 @@ The Standalone Admin Portal (`components/AdminPage.jsx`) provides a unified oper
 ### 1. 🚀 Readymade External Service Hub
 - **📊 Langfuse AI Telemetry** (`http://127.0.0.1:3001`): One-click launch to multi-agent execution traces, prompt cost metrics, and user feedback logs.
 - **🔥 Arize Phoenix Tracing** (`http://127.0.0.1:6006`): Local OpenLLMetry LLM tracing, chunk retrieval spans, and evaluation traces.
-- **🎯 Promptfoo Evaluation Matrix** (`http://127.0.0.1:15500`): Side-by-side prompt matrix comparison and automated red-teaming viewer.
+- **🎯 Promptfoo Managed Cloud** (`https://www.promptfoo.app`): Cloud prompt matrix comparison, automated red-teaming, and shared evaluation workspace (`emtaskflow-ai`).
 - **⚖️ TruLens RAG Triad Leaderboard** (`http://127.0.0.1:8501`): RAG triad evaluation (groundedness, context relevance, answer relevance) dashboard.
 - **🗄️ Adminer Postgres Explorer** (`http://127.0.0.1:8080`): Pre-configured database explorer for `taskflow_backend`, `taskflow_ai`, and `langfuse_db`.
 - **⏳ Temporal Web UI** (`http://127.0.0.1:8233`): Durable workflow execution dashboard for RAG pipelines.

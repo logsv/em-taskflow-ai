@@ -10,6 +10,7 @@ services:
       POSTGRES_DB: taskflow_ai
       POSTGRES_USER: taskflow
       POSTGRES_PASSWORD: taskflow
+      TRULENS_DATABASE_URL: postgresql+psycopg://taskflow:taskflow@postgres:5432/taskflow_eval
       TEMPORAL_HOST: ${TEMPORAL_HOST:-em-taskflow-temporal:7233}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-a4eeeb19-4a09-440b-a80e-4cc2d2b89c66}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-11d33cb9-7d44-42d0-8087-deb3d7b81aac}
@@ -259,23 +260,6 @@ services:
     networks:
       - em-taskflow-net
 
-  promptfoo:
-    build: ./backend
-    container_name: em-taskflow-promptfoo
-    command: >
-      sh -c "promptfoo eval -c evaluation/promptfooconfig.yaml || true; promptfoo view -n -p 15500"
-    environment:
-      - PORT=15500
-      - PROMPTFOO_PORT=15500
-      - PROMPTFOO_DISABLE_REDTEAM_REMOTE_GENERATION=true
-      - PROMPTFOO_DISABLE_TELEMETRY=true
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
-    ports:
-      - "15500:15500"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - em-taskflow-net
 
   trulens:
     build: ./services/python-ai-service
@@ -285,6 +269,7 @@ services:
       - PORT=8501
       - PYTHONUNBUFFERED=1
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - TRULENS_DATABASE_URL=postgresql+psycopg://taskflow:taskflow@postgres:5432/taskflow_eval
       - STREAMLIT_SERVER_HEADLESS=true
       - STREAMLIT_SERVER_ENABLE_CORS=false
       - STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false

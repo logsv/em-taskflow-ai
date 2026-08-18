@@ -3,6 +3,7 @@ FastAPI REST Router (Port 8000)
 Exposes OpenAPI endpoints (/docs, /health, /api/v1/extract, /api/v1/rag/search) for manual inspection and REST access.
 """
 
+import os
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
@@ -154,4 +155,49 @@ def evaluate_shadow(req: ShadowEvalRequest):
         "trace_id": req.trace_id,
         "trulens_recorded": True,
     }
+
+
+class TruLensSweepRequest(BaseModel):
+    limit: Optional[int] = 5
+    model_name: Optional[str] = "hermes3:8b"
+    include_golden: Optional[bool] = True
+
+
+@router.post("/api/v1/eval/trulens/sweep")
+async def trigger_trulens_sweep(req: TruLensSweepRequest):
+    """
+    Triggers batch TruLens RAG Triad evaluation sweep across Golden Dataset and Vector DB chunks.
+    Attempts execution via Temporal workflow with in-process background fallback.
+    """
+    temporal_host = os.getenv("TEMPORAL_HOST", "temporal:7233")
+    try:
+        from temporalio.client import Client
+        client = await Client.connect(temporal_host)
+        handle = await client.start_workflow(
+            "TruLensBatchEvaluationWorkflow",
+            {"limit": req.limit, "model_name": req.model_name, "include_golden": req.include_golden},
+            id=f"trulens-sweep-{os.urandom(4).hex()}",
+            task_queue="rag-ingest-queue",
+        )
+        return {
+            "success": True,
+            "orchestrator": "temporal",
+            "workflow_id": handle.id,
+            "message": "TruLens RAG Triad batch sweep dispatched to Temporal workflow.",
+        }
+    except Exception as e:
+        import asyncio
+        from evaluation.trulens_rag_triad import run_trulens_evaluation
+        loop = asyncio.get_event_loop()
+        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        loop.run_in_executor(
+            None,
+            lambda: run_trulens_evaluation(model_name=req.model_name, api_base=ollama_url, limit=req.limit, include_golden=req.include_golden)
+        )
+        return {
+            "success": True,
+            "orchestrator": "in_process_fallback",
+            "message": f"TruLens RAG Triad batch sweep running in background ({str(e)[:40]}).",
+        }
+
 

@@ -21,7 +21,11 @@ def seed_default_records():
         print(f"Notice: TruLens seed completed with status: {e}", flush=True)
 
 def main():
-    session = TruSession()
+    try:
+        from app.telemetry.trulens_db import get_trulens_session
+        session = get_trulens_session()
+    except Exception:
+        session = TruSession()
     try:
         records, _ = session.get_records_and_feedback()
         if len(records) == 0:

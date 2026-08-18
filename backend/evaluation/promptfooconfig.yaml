@@ -1,6 +1,8 @@
 # yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
 description: "EM TaskFlow AI - Micro-Agent Router & Prompt Evaluation Matrix"
 
+sharing: true
+
 providers:
   - id: "ollama:chat:hermes3:8b"
     config:

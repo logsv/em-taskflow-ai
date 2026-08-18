@@ -1,3 +1,4 @@
+import './tracing.js';
 import express from 'express';
 import cors from 'cors';
 import apiRouter from './routes/api.js';
@@ -43,64 +44,6 @@ if (process.env.OTEL_ENABLED === 'true') {
     info('Generic OpenTelemetry Node SDK & HTTP/Express auto-instrumentation started');
   } catch (err) {
     warn('OpenTelemetry Node SDK initialization warning', { err: err?.message || String(err) });
-  }
-}
-
-// NOTE: Phoenix register() also uses import-in-the-middle which conflicts with
-// newrelic/esm-loader.mjs. Enable only when New Relic is NOT active.
-// Enable Phoenix OpenInference & LangChain tracing by default unless explicitly disabled
-if (process.env.PHOENIX_ENABLED !== 'false') {
-  try {
-    const { register } = await import('@arizeai/phoenix-otel');
-    const { LangChainInstrumentation } = await import('@arizeai/openinference-instrumentation-langchain');
-    const { SamplingDecision } = await import('@opentelemetry/sdk-trace-base');
-    const CallbackManagerModule = await import('@langchain/core/callbacks/manager');
-
-    class AIOnlySampler {
-      shouldSample(context, traceId, spanName, spanKind, attributes, links) {
-        const name = String(spanName || '');
-        const url = String(attributes?.['http.target'] || attributes?.['http.url'] || attributes?.['url.path'] || attributes?.['http.route'] || '');
-        const isHttpSpan = name.startsWith('GET') || name.startsWith('POST') || name.startsWith('HTTP') || Boolean(attributes?.['http.method']);
-        
-        // Suppress non-AI HTTP routes (health checks, session polling, admin probes, static endpoints)
-        if (isHttpSpan) {
-          const isAiRoute = name.includes('/api/chat') || url.includes('/api/chat') || name.includes('/rag/query') || url.includes('/rag/query') || name.includes('/agent') || url.includes('/agent');
-          if (!isAiRoute) {
-            return { decision: SamplingDecision.NOT_RECORD };
-          }
-        }
-        return { decision: SamplingDecision.RECORD_AND_SAMPLED };
-      }
-      toString() {
-        return 'AIOnlySampler';
-      }
-    }
-
-    // Pass AIOnlySampler and instrumentations: [] to trace LLM/LangChain executions only
-    // and exclude generic HTTP polling and health check pings from cluttering Phoenix
-    register({
-      projectName: process.env.PHOENIX_PROJECT_NAME || process.env.LANGCHAIN_PROJECT || 'emtaskflow',
-      endpoint: process.env.PHOENIX_COLLECTOR_ENDPOINT || 'http://127.0.0.1:6006/v1/traces',
-      instrumentations: [],
-      sampler: new AIOnlySampler(),
-    });
-
-    const lcInstrumentation = new LangChainInstrumentation();
-    lcInstrumentation.manuallyInstrument(CallbackManagerModule);
-
-    info('Arize Phoenix OpenInference & LangChain instrumentation initialized successfully');
-  } catch (err) {
-    try {
-      const traceloop = await import('@traceloop/node-server-sdk');
-      traceloop.initialize({
-        appName: 'em-taskflow-ai',
-        baseUrl: process.env.PHOENIX_OTLP_URL || 'http://localhost:4317',
-        disableBatch: process.env.NODE_ENV === 'test',
-      });
-      info('OpenLLMetry initialized targeting local Arize Phoenix');
-    } catch (fallbackErr) {
-      warn('Phoenix initialization warning', { err: fallbackErr?.message || String(fallbackErr) });
-    }
   }
 }
 

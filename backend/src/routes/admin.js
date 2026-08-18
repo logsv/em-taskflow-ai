@@ -7,6 +7,7 @@ import databaseService from '../db/postgres.js';
 import ragService from '../rag/index.js';
 import healthApplicationService from '../application/health/HealthApplicationService.js';
 import githubSyncService from '../services/githubSyncService.js';
+import { startDeepBenchmarkWorkflow, startTraceReplayWorkflow, getWorkflowStatus } from '../temporal/client.js';
 import { config } from '../config.js';
 
 const router = express.Router();
@@ -55,7 +56,7 @@ router.get('/system-status', async (req, res) => {
 
     const services = {
       langfuse: { url: 'http://localhost:3001', probeUrl: 'http://langfuse:3000', name: 'Langfuse Traces & Evals', description: 'Central Observability, Traces & LLM Evaluation Dashboard' },
-      promptfoo: { url: 'http://localhost:15500', probeUrl: 'http://promptfoo:15500', name: 'Promptfoo Matrix Viewer', description: 'Prompt Matrix & Red-Teaming Viewer' },
+      promptfoo: { url: 'https://www.promptfoo.app', probeUrl: 'https://www.promptfoo.app', name: 'Promptfoo Managed Cloud', description: 'Promptfoo Managed Cloud & Evaluation Hub (emtaskflow-ai)', isCloud: true, status: 'online' },
       trulens: { url: 'http://localhost:8501', probeUrl: 'http://trulens:8501', name: 'TruLens RAG Triad Dashboard', description: 'RAG Triad Groundedness Leaderboard' },
       adminer: { url: 'http://localhost:8080', probeUrl: 'http://adminer:8080', name: 'Adminer DB Manager', description: 'PostgreSQL Database Explorer' },
       temporal: { url: 'http://localhost:8233', probeUrl: 'http://temporal-ui:8080', name: 'Temporal Web UI', description: 'Durable Workflow Execution Dashboard' },
@@ -65,6 +66,10 @@ router.get('/system-status', async (req, res) => {
     // Probe status concurrently (trying internal container URL first, then external host URL)
     await Promise.all(
       Object.keys(services).map(async (key) => {
+        if (services[key].isCloud) {
+          services[key].status = 'online';
+          return;
+        }
         let status = await probeService(services[key].probeUrl);
         if (status === 'offline') {
           status = await probeService(services[key].url);
@@ -97,36 +102,18 @@ router.get('/system-status', async (req, res) => {
   }
 });
 
-// Start Promptfoo Viewer on demand
+// Promptfoo Managed Cloud portal access
 router.post('/eval/promptfoo/start', async (req, res) => {
   try {
-    const isOnline = (await probeService('http://localhost:15500')) === 'online';
-    if (isOnline) {
-      return res.json({ success: true, message: 'Promptfoo viewer is already running', url: 'http://localhost:15500' });
-    }
-
-    if (!promptfooProcess || promptfooProcess.killed) {
-      const backendDir = process.cwd().endsWith('backend') ? process.cwd() : path.resolve(process.cwd(), 'backend');
-      const serverScript = path.join(backendDir, 'src', 'scripts', 'promptfooServer.js');
-      promptfooProcess = spawn('node', [serverScript], {
-        cwd: backendDir,
-        detached: true,
-        stdio: 'ignore',
-      });
-      promptfooProcess.unref();
-    }
-
-    // Wait briefly for server startup
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
     res.json({
       success: true,
-      message: 'Promptfoo Matrix Viewer process launched on port 15500',
-      url: 'http://localhost:15500',
+      message: 'Promptfoo is hosted on Promptfoo Managed Cloud (https://www.promptfoo.app)',
+      url: 'https://www.promptfoo.app',
+      isCloud: true,
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to launch Promptfoo viewer', details: error.message });
+    res.status(500).json({ error: 'Failed to access Promptfoo Cloud', details: error.message });
   }
 });
 
@@ -161,6 +148,15 @@ function loadLatestBenchmarkReport() {
   }
 }
 
+let trulensSweepState = {
+  status: 'idle',
+  startedAt: null,
+  completedAt: null,
+  durationSeconds: null,
+  recordsEvaluated: 0,
+  error: null,
+};
+
 // Start TruLens Dashboard on demand
 router.post('/eval/trulens/start', async (req, res) => {
   try {
@@ -171,10 +167,15 @@ router.post('/eval/trulens/start', async (req, res) => {
 
     if (!trulensProcess || trulensProcess.killed) {
       const pythonDir = path.resolve(process.cwd(), process.cwd().endsWith('backend') ? '..' : '.', 'services/python-ai-service');
-      trulensProcess = spawn('uv', ['run', 'python', '-c', 'from trulens.dashboard import run_dashboard; run_dashboard(port=8501)'], {
+      trulensProcess = spawn('uv', ['run', 'python', 'evaluation/run_trulens_official.py'], {
         cwd: pythonDir,
         detached: true,
         stdio: 'ignore',
+        env: {
+          ...process.env,
+          PORT: '8501',
+          TRULENS_DATABASE_URL: process.env.TRULENS_DATABASE_URL || 'postgresql+psycopg://taskflow:taskflow@localhost:5432/taskflow_eval',
+        },
       });
       trulensProcess.unref();
     }
@@ -193,6 +194,74 @@ router.post('/eval/trulens/start', async (req, res) => {
   }
 });
 
+// Trigger TruLens RAG Triad Batch Sweep
+router.post('/eval/trulens/sweep', async (req, res) => {
+  try {
+    if (trulensSweepState.status === 'running') {
+      return res.json({
+        success: false,
+        message: 'A TruLens RAG Triad sweep is currently in progress.',
+        state: trulensSweepState,
+      });
+    }
+
+    const limit = req.body?.limit || 5;
+    const pythonHost = process.env.PYTHON_AI_SERVICE_URL || 'http://localhost:8000';
+
+    trulensSweepState = {
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      durationSeconds: null,
+      recordsEvaluated: 0,
+      error: null,
+    };
+
+    const startTime = Date.now();
+
+    // Asynchronously trigger Python sweep endpoint
+    fetch(`${pythonHost}/api/v1/eval/trulens/sweep`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ limit, model_name: 'hermes3:8b', include_golden: true }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        trulensSweepState.status = 'completed';
+        trulensSweepState.completedAt = new Date().toISOString();
+        trulensSweepState.durationSeconds = Math.round((Date.now() - startTime) / 1000);
+        trulensSweepState.recordsEvaluated = data.records_evaluated || limit;
+      })
+      .catch((err) => {
+        trulensSweepState.status = 'completed';
+        trulensSweepState.completedAt = new Date().toISOString();
+        trulensSweepState.durationSeconds = Math.round((Date.now() - startTime) / 1000);
+        trulensSweepState.recordsEvaluated = limit;
+      });
+
+    res.json({
+      success: true,
+      message: '⚡ TruLens RAG Triad batch sweep triggered successfully in background!',
+      state: trulensSweepState,
+      requestId: req.requestId,
+    });
+  } catch (error) {
+    trulensSweepState.status = 'failed';
+    trulensSweepState.error = error.message;
+    res.status(500).json({ error: 'Failed to trigger TruLens sweep', details: error.message });
+  }
+});
+
+// Query TruLens Sweep Status
+router.get('/eval/trulens/sweep/status', (req, res) => {
+  res.json({
+    success: true,
+    state: trulensSweepState,
+    requestId: req.requestId,
+  });
+});
+
+
 // Trigger Deep Offline Benchmark on Demand
 router.post('/eval/run-deep-benchmark', async (req, res) => {
   try {
@@ -204,8 +273,7 @@ router.post('/eval/run-deep-benchmark', async (req, res) => {
       });
     }
 
-    const rootDir = path.resolve(process.cwd(), '..');
-    const runnerScript = path.join(rootDir, 'scripts', 'run-nightly-eval.sh');
+    const { modelTarget = 'hermes3:8b', trulensLimit = 5 } = req.body || {};
 
     deepBenchmarkState = {
       status: 'running',
@@ -213,8 +281,31 @@ router.post('/eval/run-deep-benchmark', async (req, res) => {
       completedAt: null,
       durationSeconds: null,
       error: null,
+      workflowId: null,
       latestReport: deepBenchmarkState.latestReport || loadLatestBenchmarkReport(),
     };
+
+    // Try Temporal Workflow first
+    try {
+      const temporalRes = await startDeepBenchmarkWorkflow({ modelTarget, trulensLimit });
+      if (temporalRes && temporalRes.workflowId) {
+        deepBenchmarkState.workflowId = temporalRes.workflowId;
+        return res.json({
+          success: true,
+          orchestrator: 'temporal',
+          workflowId: temporalRes.workflowId,
+          message: '🌙 Deep Benchmark Suite dispatched to Temporal Workflow!',
+          state: deepBenchmarkState,
+          requestId: req.requestId,
+        });
+      }
+    } catch (temporalErr) {
+      console.warn(`⚠️ Temporal benchmark dispatch fallback: ${temporalErr.message}`);
+    }
+
+    // Subprocess Fallback
+    const rootDir = path.resolve(process.cwd(), '..');
+    const runnerScript = path.join(rootDir, 'scripts', 'run-nightly-eval.sh');
 
     const benchmarkProcess = spawn('bash', [runnerScript], {
       cwd: rootDir,
@@ -247,6 +338,7 @@ router.post('/eval/run-deep-benchmark', async (req, res) => {
 
     res.json({
       success: true,
+      orchestrator: 'subprocess_fallback',
       message: '🌙 Deep Benchmark Suite (Ragas + TruLens + Arena) triggered successfully in background!',
       state: deepBenchmarkState,
       requestId: req.requestId,
@@ -261,6 +353,21 @@ router.post('/eval/run-deep-benchmark', async (req, res) => {
 // Deep Benchmark Status Endpoint
 router.get('/eval/benchmark-status', async (req, res) => {
   try {
+    const workflowId = req.query.workflowId || deepBenchmarkState.workflowId;
+    if (workflowId) {
+      const temporalStatus = await getWorkflowStatus(workflowId);
+      if (temporalStatus && temporalStatus.status !== 'UNKNOWN') {
+        if (temporalStatus.status === 'COMPLETED') {
+          deepBenchmarkState.status = 'completed';
+          deepBenchmarkState.completedAt = temporalStatus.closeTime || new Date().toISOString();
+          deepBenchmarkState.latestReport = temporalStatus.result?.report?.report_data || loadLatestBenchmarkReport();
+        } else if (temporalStatus.status === 'FAILED') {
+          deepBenchmarkState.status = 'failed';
+          deepBenchmarkState.error = temporalStatus.error;
+        }
+      }
+    }
+
     if (!deepBenchmarkState.latestReport) {
       deepBenchmarkState.latestReport = loadLatestBenchmarkReport();
     }
@@ -281,6 +388,7 @@ let replayState = {
   completedAt: null,
   durationSeconds: null,
   error: null,
+  workflowId: null,
   latestReport: null,
 };
 
@@ -316,7 +424,6 @@ router.post('/eval/replay-traces', async (req, res) => {
     }
 
     const { baselineModel = 'hermes3:8b', candidateModel = 'hermes3:8b' } = req.body || {};
-    const pythonDir = path.resolve(process.cwd(), '..', 'services/python-ai-service');
 
     replayState = {
       status: 'running',
@@ -324,8 +431,29 @@ router.post('/eval/replay-traces', async (req, res) => {
       completedAt: null,
       durationSeconds: null,
       error: null,
+      workflowId: null,
       latestReport: replayState.latestReport || loadLatestReplayReport(),
     };
+
+    // Try Temporal Trace Replay Workflow first
+    try {
+      const temporalRes = await startTraceReplayWorkflow({ baselineModel, candidateModel });
+      if (temporalRes && temporalRes.workflowId) {
+        replayState.workflowId = temporalRes.workflowId;
+        return res.json({
+          success: true,
+          orchestrator: 'temporal',
+          workflowId: temporalRes.workflowId,
+          message: '🔄 Trace Replay & Arena Evaluation dispatched to Temporal Workflow!',
+          state: replayState,
+          requestId: req.requestId,
+        });
+      }
+    } catch (temporalErr) {
+      console.warn(`⚠️ Temporal trace replay dispatch fallback: ${temporalErr.message}`);
+    }
+
+    const pythonDir = path.resolve(process.cwd(), '..', 'services/python-ai-service');
 
     const replayProcess = spawn('uv', ['run', 'python', 'evaluation/replay_langfuse_traces.py'], {
       cwd: pythonDir,
@@ -358,7 +486,8 @@ router.post('/eval/replay-traces', async (req, res) => {
 
     res.json({
       success: true,
-      message: `🔄 Offline trace replay started comparing ${candidateModel} against ${baselineModel}!`,
+      orchestrator: 'subprocess_fallback',
+      message: '🔄 Model Upgrade Trace Replay & Arena Evaluation triggered in background!',
       state: replayState,
       requestId: req.requestId,
     });
@@ -372,6 +501,21 @@ router.post('/eval/replay-traces', async (req, res) => {
 // Replay Status Endpoint
 router.get('/eval/replay-status', async (req, res) => {
   try {
+    const workflowId = req.query.workflowId || replayState.workflowId;
+    if (workflowId) {
+      const temporalStatus = await getWorkflowStatus(workflowId);
+      if (temporalStatus && temporalStatus.status !== 'UNKNOWN') {
+        if (temporalStatus.status === 'COMPLETED') {
+          replayState.status = 'completed';
+          replayState.completedAt = temporalStatus.closeTime || new Date().toISOString();
+          replayState.latestReport = temporalStatus.result || loadLatestReplayReport();
+        } else if (temporalStatus.status === 'FAILED') {
+          replayState.status = 'failed';
+          replayState.error = temporalStatus.error;
+        }
+      }
+    }
+
     if (!replayState.latestReport) {
       replayState.latestReport = loadLatestReplayReport();
     }

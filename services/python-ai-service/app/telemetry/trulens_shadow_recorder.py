@@ -79,15 +79,16 @@ class TruLensShadowRecorder:
 
     def _setup(self):
         try:
-            from trulens.core import Feedback, TruSession
+            from trulens.core import Feedback
             from trulens.apps.custom import TruCustomApp, instrument
+            from app.telemetry.trulens_db import get_trulens_session
 
             # Instrument LiveRAGRunner methods
             LiveRAGRunner.retrieve = instrument(LiveRAGRunner.retrieve)
             LiveRAGRunner.generate = instrument(LiveRAGRunner.generate)
             LiveRAGRunner.query = instrument(LiveRAGRunner.query)
 
-            self.tru = TruSession()
+            self.tru = get_trulens_session()
             
             f_groundedness = Feedback(compute_groundedness, name="Groundedness").on_input_output()
             f_relevance = Feedback(compute_relevance, name="Answer Relevance").on_input_output()

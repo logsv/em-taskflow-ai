@@ -83,11 +83,11 @@ npm run eval:trulens
 # Launch TruLens Streamlit Leaderboard Dashboard (Port 8501)
 npm run eval:trulens:dashboard
 
-# Promptfoo Prompt Matrix & Red-Teaming CLI
+# Promptfoo Prompt Matrix & Red-Teaming (Synced to Promptfoo Managed Cloud)
 npm run eval:promptfoo
 
-# Launch Promptfoo Visual Web Viewer (Port 15500)
-npm run eval:promptfoo:view
+# Log in to Promptfoo Managed Cloud CLI
+npm run eval:promptfoo:login
 ```
 
 ### 3. Run Node.js Strategy Evaluators & Pytests
@@ -98,7 +98,7 @@ cd services/python-ai-service && uv run pytest
 
 ### 4. Admin Portal Hub Links
 - **Langfuse Unified Evaluation Dashboard**: `http://localhost:3000`
-- **Promptfoo Matrix Viewer**: `http://localhost:15500`
+- **Promptfoo Managed Cloud**: `https://www.promptfoo.app` (Organization: `emtaskflow-ai`)
 - **TruLens Leaderboard**: `http://localhost:8501`
 - **Adminer DB Explorer**: `http://localhost:8080`
 - **Open WebUI**: `http://localhost:3080`

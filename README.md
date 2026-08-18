@@ -55,7 +55,7 @@ Access the Admin Portal by clicking **⚙️ Admin Portal ↗** in the main side
 ### 1. 🚀 One-Click Service Launch Hub
 - **📊 Langfuse AI Telemetry** (`http://127.0.0.1:3001`): Multi-agent execution traces, token costs, LLM response latency, and user feedback logs.
 - **🔥 Arize Phoenix Tracing** (`http://127.0.0.1:6006`): Local OpenLLMetry LLM tracing & spans.
-- **🎯 Promptfoo Evaluation Matrix** (`http://127.0.0.1:15500`): Prompt comparison, security red-teaming, and LLM benchmarking dashboard.
+- **🎯 Promptfoo Managed Cloud** (`https://www.promptfoo.app`): Cloud prompt matrix comparison, security red-teaming, and shared LLM evaluation dashboard (`emtaskflow-ai`).
 - **⚖️ TruLens RAG Triad Leaderboard** (`http://127.0.0.1:8501`): Triad evaluation (groundedness, context relevance, answer relevance).
 - **🗄️ Adminer Postgres Explorer** (`http://127.0.0.1:8080`): Database GUI pre-configured for `taskflow_backend`, `taskflow_ai`, and `langfuse_db` (port 5433).
 - **⏳ Temporal Web UI** (`http://127.0.0.1:8233`): Durable workflow execution dashboard for RAG pipelines.
@@ -168,7 +168,7 @@ flowchart TD
    - **Standalone Admin Portal**: `http://localhost:3000/admin`
    - **Langfuse AI Telemetry**: `http://localhost:3001`
    - **Arize Phoenix Tracing**: `http://localhost:6006`
-   - **Promptfoo Matrix Viewer**: `http://localhost:15500`
+   - **Promptfoo Managed Cloud**: `https://www.promptfoo.app`
    - **TruLens Dashboard**: `http://localhost:8501`
    - **Adminer Postgres Explorer**: `http://localhost:8080`
    - **Temporal Web UI**: `http://localhost:8233`

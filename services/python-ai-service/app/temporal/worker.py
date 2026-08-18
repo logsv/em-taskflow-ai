@@ -9,7 +9,13 @@ import logging
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from app.temporal.workflow import RAGIngestWorkflow, ChatFileExtractWorkflow
+from app.temporal.workflow import (
+    RAGIngestWorkflow,
+    ChatFileExtractWorkflow,
+    TruLensBatchEvaluationWorkflow,
+    DeepEvaluationBenchmarkWorkflow,
+    TraceReplayWorkflow,
+)
 from app.temporal.activities import (
     extract_text_activity,
     chunk_text_activity,
@@ -20,6 +26,12 @@ from app.temporal.activities import (
     extract_docx_activity,
     extract_image_context_activity,
     extract_text_fallback_activity,
+    execute_trulens_rag_triad_sweep_activity,
+    evaluate_ingested_document_trulens_activity,
+    run_ragas_evaluation_activity,
+    run_pairwise_arena_activity,
+    export_benchmark_report_activity,
+    run_trace_replay_activity,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,7 +63,13 @@ async def start_temporal_worker():
     worker = Worker(
         client,
         task_queue=TASK_QUEUE,
-        workflows=[RAGIngestWorkflow, ChatFileExtractWorkflow],
+        workflows=[
+            RAGIngestWorkflow,
+            ChatFileExtractWorkflow,
+            TruLensBatchEvaluationWorkflow,
+            DeepEvaluationBenchmarkWorkflow,
+            TraceReplayWorkflow,
+        ],
         activities=[
             extract_text_activity,
             chunk_text_activity,
@@ -62,6 +80,12 @@ async def start_temporal_worker():
             extract_docx_activity,
             extract_image_context_activity,
             extract_text_fallback_activity,
+            execute_trulens_rag_triad_sweep_activity,
+            evaluate_ingested_document_trulens_activity,
+            run_ragas_evaluation_activity,
+            run_pairwise_arena_activity,
+            export_benchmark_report_activity,
+            run_trace_replay_activity,
         ],
     )
 
