@@ -24,6 +24,7 @@ EXPOSE 8000 50051
 ENV REST_PORT=8000
 ENV GRPC_PORT=50051
 ENV PYTHONPATH=/app
+ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 \
   CMD curl -f http://localhost:8000/health || exit 1

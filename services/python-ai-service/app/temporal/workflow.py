@@ -183,7 +183,7 @@ class TruLensBatchEvaluationWorkflow:
             execute_trulens_rag_triad_sweep_activity,
             params,
             start_to_close_timeout=timedelta(minutes=10),
-            heartbeat_timeout=timedelta(seconds=60),
+            heartbeat_timeout=timedelta(minutes=3),
             retry_policy=retry_policy,
         )
 

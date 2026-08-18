@@ -18,6 +18,5 @@ COPY . .
 EXPOSE 4000
 
 # --import newrelic/esm-loader.mjs bootstraps the New Relic agent BEFORE any
-# ES module is loaded (import statements are hoisted in ESM — this is the only
-# supported way to instrument ESM code with New Relic).
-CMD ["node", "--import", "newrelic/esm-loader.mjs", "src/index.js"]
+# ES module is loaded, and --import newrelic initializes the agent runtime.
+CMD ["node", "--import", "newrelic/esm-loader.mjs", "--import", "newrelic", "src/index.js"]

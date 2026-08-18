@@ -69,6 +69,7 @@ describe('RAG Service', () => {
     sandbox.stub(pythonAIServiceClient, 'extractDocument').resolves({ success: false, extraction_method: 'node_fallback' });
     sandbox.stub(pythonAIServiceClient, 'processRAGIngestion').resolves({ success: false, chunks: [] });
     sandbox.stub(pythonAIServiceClient, 'searchRAG').resolves({ success: true, chunks: [] });
+    sandbox.stub(pythonAIServiceClient, 'listDocuments').resolves([]);
   });
 
   afterEach(() => {

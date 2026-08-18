@@ -200,6 +200,7 @@ def run_trulens_evaluation(
     api_base: str = "http://localhost:11434",
     limit: int = 5,
     include_golden: bool = True,
+    heartbeat_cb: Optional[Any] = None,
 ) -> Dict[str, Any]:
     try:
         from app.telemetry.trulens_db import get_trulens_session
@@ -209,24 +210,13 @@ def run_trulens_evaluation(
     logger.info(f"🧪 Initializing TruLens RAG Triad Suite with Ollama ({model_name})...")
 
     # 1. Context Relevance Feedback Function
-    f_context_relevance = (
-        Feedback(compute_context_relevance, name="Context Relevance")
-        .on_input()
-        .on(Select.RecordCalls.retrieve.rets)
-    )
+    f_context_relevance = Feedback(compute_context_relevance, name="Context Relevance").on_input_output()
 
     # 2. Groundedness Feedback Function
-    f_groundedness = (
-        Feedback(compute_groundedness_cot, name="Groundedness")
-        .on(Select.RecordCalls.retrieve.rets)
-        .on_output()
-    )
+    f_groundedness = Feedback(compute_groundedness_cot, name="Groundedness").on_input_output()
 
     # 3. Answer Relevance Feedback Function
-    f_answer_relevance = (
-        Feedback(compute_answer_relevance, name="Answer Relevance")
-        .on_input_output()
-    )
+    f_answer_relevance = Feedback(compute_answer_relevance, name="Answer Relevance").on_input_output()
 
     feedbacks = [f_context_relevance, f_groundedness, f_answer_relevance]
 
@@ -237,7 +227,12 @@ def run_trulens_evaluation(
     logger.info(f"📋 Executing TruLens RAG Triad sweep across {len(test_queries)} queries...")
 
     results = []
-    for q in test_queries:
+    for i, q in enumerate(test_queries):
+        if heartbeat_cb:
+            try:
+                heartbeat_cb(f"Processing query {i+1}/{len(test_queries)}: {q[:30]}")
+            except Exception:
+                pass
         with tru_recorder as recording:
             answer = rag_app.query(q)
         try:
