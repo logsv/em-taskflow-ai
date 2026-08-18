@@ -56,16 +56,16 @@ Active workspace domains:
 CRITICAL ROUTING & DISAMBIGUATION RULES:
 1. For document/PDF/rubric/uploaded file queries (e.g. "what is in rubrics", "summarize uploaded document", "what does the guide say"): set domains: ["rag"], allow_rag: true, must_use_tools: false, confidence: 0.9.
 2. For specific GitHub or code repo queries (e.g. "my open PRs", "repo issues"): set domains: ["delivery"], must_use_tools: true, allow_rag: false, confidence: 0.9.
-3. For DORA metric queries: set domains: ["dora"], must_use_tools: true, confidence: 0.9.
-4. For SBI feedback / coaching queries (e.g. "format SBI feedback", coaching an engineer who was absent or late to standup/meetings): set domains: ["sbi"], must_use_tools: true, confidence: 0.9. (Individual feedback always takes precedence over sprint/standup keywords).
-5. For People / 1-on-1 queries: set domains: ["people"], must_use_tools: true, confidence: 0.9.
-6. For Delivery / WIP / Bottleneck queries: set domains: ["delivery"], must_use_tools: true, confidence: 0.9.
-7. For Retro queries: set domains: ["retro"], must_use_tools: true, confidence: 0.9.
-8. For Sprint planning queries: set domains: ["sprint"], must_use_tools: true, confidence: 0.9.
+3. For DORA metric queries: set domains: ["dora"], must_use_tools: true, allow_rag: false, confidence: 0.9.
+4. For SBI feedback / coaching queries (e.g. "format SBI feedback", coaching an engineer who was absent or late to standup/meetings): set domains: ["sbi"], must_use_tools: true, allow_rag: false, confidence: 0.9. (Individual feedback always takes precedence over sprint/standup keywords).
+5. For People / 1-on-1 queries: set domains: ["people"], must_use_tools: true, allow_rag: false, confidence: 0.9.
+6. For Delivery / WIP / Bottleneck queries: set domains: ["delivery"], must_use_tools: true, allow_rag: false, confidence: 0.9.
+7. For Retro queries: set domains: ["retro"], must_use_tools: true, allow_rag: false, confidence: 0.9.
+8. For Sprint planning queries: set domains: ["sprint"], must_use_tools: true, allow_rag: false, confidence: 0.9.
 9. For SOP / Compliance queries: set domains: ["sop"], allow_rag: true, must_use_tools: true, confidence: 0.9.
-10. For Roadmap queries: set domains: ["roadmap"], must_use_tools: true, confidence: 0.9.
-11. For OKR / KPI queries: set domains: ["okr"], must_use_tools: true, confidence: 0.9.
-12. For Critic / Audit queries: set domains: ["critic"], must_use_tools: true, confidence: 0.9.
+10. For Roadmap queries: set domains: ["roadmap"], must_use_tools: true, allow_rag: false, confidence: 0.9.
+11. For OKR / KPI queries: set domains: ["okr"], must_use_tools: true, allow_rag: false, confidence: 0.9.
+12. For Critic / Audit queries: set domains: ["critic"], must_use_tools: true, allow_rag: false, confidence: 0.9.
 
 Output a flat JSON object with these exact keys: "domains", "must_use_tools", "allow_rag", "confidence", "reasoning_summary".
 `;

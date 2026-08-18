@@ -183,6 +183,19 @@ export class LangGraphAgentService {
                 if (savedPlan && Array.isArray(savedPlan.domains)) {
                   routingPlan = savedPlan;
                 }
+                // Update Langfuse root trace name and metadata for rehydration clarity
+                if (trace && typeof trace.update === "function") {
+                  try {
+                    trace.update({
+                      name: `Chat Request: "${userQuery}" -> [Resolved: "${(queryToRun || '').slice(0, 40)}"]`,
+                      metadata: {
+                        rehydratedFromHistory: true,
+                        resolvedQuery: queryToRun,
+                        clarificationStrategy: true,
+                      },
+                    });
+                  } catch (_) {}
+                }
               }
             }
           } catch (dbError) {
@@ -229,6 +242,20 @@ export class LangGraphAgentService {
             decision,
           },
         });
+      } catch (_err) {}
+    }
+
+    // Finalize Arize Phoenix OpenInference root span
+    if (options.otelSpan && typeof options.otelSpan.end === "function") {
+      try {
+        if (emResponse?.answer) {
+          options.otelSpan.setAttribute("output.value", String(emResponse.answer));
+        }
+        options.otelSpan.setAttribute("metadata", JSON.stringify({
+          executionTime,
+          decision,
+        }));
+        options.otelSpan.end();
       } catch (_err) {}
     }
 
@@ -308,18 +335,13 @@ export class LangGraphAgentService {
     const forceToolUse = routingPlan.must_use_tools || requiresWorkspaceDomains;
     const qLower = String(query || "").toLowerCase();
     const isDocQuery = ["rubric", "pdf", "doc", "document", "uploaded", "file", "what is in", "sop", "guide", "pointer", "summary", "policy"].some((kw) => qLower.includes(kw));
-    const allowRag = (routingPlan.allow_rag !== false || routingPlan.domains.includes("rag") || isDocQuery) && this.ragEnabled && options.includeRag !== false;
+    
+    // Strict Domain Exclusivity: If structured workspace domains exist, disallow RAG unless explicitly requested as 'rag' or 'sop'
+    const hasStructuredWorkspaceDomain = toArray(routingPlan?.domains).some((d) => d !== "rag" && d !== "sop");
+    const allowRag = !hasStructuredWorkspaceDomain && (routingPlan.allow_rag !== false || routingPlan.domains.includes("rag") || isDocQuery) && this.ragEnabled && options.includeRag !== false;
     let ragResult = { answer: "", sources: [] };
 
-    if (allowRag) {
-      ragResult = await this.tryRag(query, decision.ragMode, options);
-      decision.ragHit = Array.isArray(ragResult?.sources) && ragResult.sources.length > 0;
-      if (decision.ragHit) {
-        decision.selectedPath = "rag+llm";
-        console.log(`✅ [AGENT SERVICE RAG HIT]: Returning ${ragResult.sources.length} document source(s) from RAG pipeline.`);
-        return this.formatRagResult(ragResult);
-      }
-    } else {
+    if (!allowRag) {
       decision.reasons.push("rag_disallowed_by_router");
     }
 
@@ -327,7 +349,8 @@ export class LangGraphAgentService {
       this.runtimeMetrics.toolGroundedRequired += 1;
     }
 
-    if (decision.mcpReady && (forceToolUse || !decision.ragHit)) {
+    // Step 1: Execute Domain Supervisor / Domain Tools FIRST when tools are required or workspace domains are present
+    if (decision.mcpReady && forceToolUse) {
       const supervisorResult = await executeAgentQuery(query, {
         ...options,
         threadId: options.threadId,
@@ -339,14 +362,12 @@ export class LangGraphAgentService {
       const policy = this.validatePolicy(routingPlan, decision.toolsUsed, forceToolUse);
       decision.policy = policy;
       if (policy.violations.length === 0) {
-        if (forceToolUse) {
-          this.runtimeMetrics.toolGroundedMet += 1;
-        }
+        this.runtimeMetrics.toolGroundedMet += 1;
         decision.selectedPath = allowRag ? "router+supervisor(+rag)" : "router+supervisor";
         this.updateUnwantedRagMetric(routingPlan, policy.invokedDomains);
         return {
           answer: supervisorResult.response || "No response generated.",
-          sources: decision.ragHit ? ragResult.sources || [] : [],
+          sources: [],
         };
       }
 
@@ -366,10 +387,15 @@ export class LangGraphAgentService {
       }
     }
 
-    if (decision.ragHit && allowRag) {
-      decision.selectedPath = "rag+llm";
-      this.updateUnwantedRagMetric(routingPlan, new Set(["rag"]));
-      return this.formatRagResult(ragResult);
+    // Step 2: Only probe RAG if allowed and workspace domains did not handle the query
+    if (allowRag) {
+      ragResult = await this.tryRag(query, decision.ragMode, options);
+      decision.ragHit = Array.isArray(ragResult?.sources) && ragResult.sources.length > 0;
+      if (decision.ragHit) {
+        decision.selectedPath = "rag+llm";
+        console.log(`✅ [AGENT SERVICE RAG HIT]: Returning ${ragResult.sources.length} document source(s) from RAG pipeline.`);
+        return this.formatRagResult(ragResult);
+      }
     }
 
     if (forceToolUse) {
@@ -520,14 +546,22 @@ export class LangGraphAgentService {
     if (q.includes("okr") || q.includes("kpi") || q.includes("notion")) {
       domains.push("okr");
     }
-    if (domains.length === 0 || q.includes("pdf") || q.includes("doc") || q.includes("file") || q.includes("guide") || q.includes("rubric") || q.includes("sop") || q.includes("pointer") || q.includes("summary")) {
+    if (q.includes("critic") || q.includes("audit")) {
+      domains.push("critic");
+    }
+    
+    const isDocQuery = q.includes("pdf") || q.includes("doc") || q.includes("file") || q.includes("guide") || q.includes("rubric") || q.includes("sop") || q.includes("pointer") || q.includes("summary");
+    if (domains.length === 0 || isDocQuery) {
       domains.push("rag");
     }
 
+    const hasWorkspaceDomains = domains.some((d) => d !== "rag" && d !== "sop");
+    const allowRag = !hasWorkspaceDomains && (domains.includes("rag") || isDocQuery);
+
     return {
       domains,
-      must_use_tools: false,
-      allow_rag: true,
+      must_use_tools: hasWorkspaceDomains,
+      allow_rag: allowRag,
       confidence: 0.9,
       reasoning_summary: `Fallback routing plan: ${reason}.`,
       _routerFailed: true,

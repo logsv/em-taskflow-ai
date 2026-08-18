@@ -130,7 +130,7 @@ export class ChatApplicationService {
     this.triggerShadowEvaluation({
       query,
       answer: result.answer,
-      context: sources.map((s) => s.content),
+      context: sources.map((s) => s.content || s.pageContent || (typeof s === 'string' ? s : '')).filter(Boolean),
       traceId: result.meta?.traceId || null,
       domain: routedDomains[0] || 'general',
     });

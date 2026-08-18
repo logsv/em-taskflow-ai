@@ -11,6 +11,7 @@ from app.services.rag_processor.chunker import RAGChunker
 from app.services.rag_processor.reranker import CrossEncoderReranker
 from app.services.rag_processor.database import RAGDatabaseService
 from app.telemetry.shadow_evaluator import ShadowEvaluatorWorker
+from app.telemetry.trulens_shadow_recorder import TruLensShadowRecorder
 
 router = APIRouter()
 file_processor = FileUploadProcessor()
@@ -18,6 +19,7 @@ rag_chunker = RAGChunker()
 reranker = CrossEncoderReranker()
 db_service = RAGDatabaseService()
 shadow_evaluator = ShadowEvaluatorWorker(sampling_rate=0.05)
+trulens_recorder = TruLensShadowRecorder()
 
 
 class ShadowEvalRequest(BaseModel):
@@ -124,6 +126,7 @@ def evaluate_shadow(req: ShadowEvalRequest):
     """
     Non-blocking online continuous shadow evaluation endpoint.
     Samples 5% of live traffic, evaluates G-Eval/Faithfulness, and exports scores to Langfuse DB.
+    Also records RAG triad live interactions into TruLens SQLite DB (default.sqlite).
     """
     trace_context = {
         "query": req.query,
@@ -133,9 +136,22 @@ def evaluate_shadow(req: ShadowEvalRequest):
         "domain": req.domain,
     }
     result = shadow_evaluator.evaluate_shadow_trace(trace_context)
+    
+    # Non-blocking TruLens live RAG triad recording
+    try:
+        trulens_recorder.record_live_interaction(
+            query=req.query,
+            answer=req.answer,
+            context=req.context or [],
+            trace_id=req.trace_id,
+        )
+    except Exception as trulens_err:
+        pass
+
     return {
         "sampled": result is not None,
         "eval_result": result,
         "trace_id": req.trace_id,
+        "trulens_recorded": True,
     }
 

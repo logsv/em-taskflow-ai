@@ -56,32 +56,33 @@ if (process.env.PHOENIX_ENABLED !== 'false') {
     const { SamplingDecision } = await import('@opentelemetry/sdk-trace-base');
     const CallbackManagerModule = await import('@langchain/core/callbacks/manager');
 
-    class IgnoreHealthSampler {
+    class AIOnlySampler {
       shouldSample(context, traceId, spanName, spanKind, attributes, links) {
         const name = String(spanName || '');
-        const url = String(attributes?.['http.target'] || attributes?.['http.url'] || attributes?.['url.path'] || '');
-        if (
-          name.includes('/health') ||
-          name.includes('/api/health') ||
-          url.includes('/health') ||
-          url.includes('/api/health')
-        ) {
-          return { decision: SamplingDecision.NOT_RECORD };
+        const url = String(attributes?.['http.target'] || attributes?.['http.url'] || attributes?.['url.path'] || attributes?.['http.route'] || '');
+        const isHttpSpan = name.startsWith('GET') || name.startsWith('POST') || name.startsWith('HTTP') || Boolean(attributes?.['http.method']);
+        
+        // Suppress non-AI HTTP routes (health checks, session polling, admin probes, static endpoints)
+        if (isHttpSpan) {
+          const isAiRoute = name.includes('/api/chat') || url.includes('/api/chat') || name.includes('/rag/query') || url.includes('/rag/query') || name.includes('/agent') || url.includes('/agent');
+          if (!isAiRoute) {
+            return { decision: SamplingDecision.NOT_RECORD };
+          }
         }
         return { decision: SamplingDecision.RECORD_AND_SAMPLED };
       }
       toString() {
-        return 'IgnoreHealthSampler';
+        return 'AIOnlySampler';
       }
     }
 
-    // Pass IgnoreHealthSampler and instrumentations: [] to trace LLM/LangChain executions only
-    // and exclude HTTP health check pings (/api/health) from cluttering Phoenix
+    // Pass AIOnlySampler and instrumentations: [] to trace LLM/LangChain executions only
+    // and exclude generic HTTP polling and health check pings from cluttering Phoenix
     register({
       projectName: process.env.PHOENIX_PROJECT_NAME || process.env.LANGCHAIN_PROJECT || 'emtaskflow',
       endpoint: process.env.PHOENIX_COLLECTOR_ENDPOINT || 'http://127.0.0.1:6006/v1/traces',
       instrumentations: [],
-      sampler: new IgnoreHealthSampler(),
+      sampler: new AIOnlySampler(),
     });
 
     const lcInstrumentation = new LangChainInstrumentation();

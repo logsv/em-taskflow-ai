@@ -21,16 +21,13 @@ def seed_default_records():
         print(f"Notice: TruLens seed completed with status: {e}", flush=True)
 
 def main():
-    for f in ["default.sqlite", "/app/default.sqlite"]:
-        if os.path.exists(f):
-            try:
-                os.remove(f)
-                print(f"Cleaned stale {f} before TruLens startup.", flush=True)
-            except Exception:
-                pass
-
     session = TruSession()
-    seed_default_records()
+    try:
+        records, _ = session.get_records_and_feedback()
+        if len(records) == 0:
+            seed_default_records()
+    except Exception:
+        seed_default_records()
     
     port = int(os.environ.get("PORT", "8501"))
     print(f"🚀 Starting Official TruLens Multi-Page Dashboard on port {port}...", flush=True)
