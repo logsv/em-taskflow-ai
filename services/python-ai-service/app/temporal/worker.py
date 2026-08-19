@@ -26,6 +26,9 @@ from app.temporal.activities import (
     extract_docx_activity,
     extract_image_context_activity,
     extract_text_fallback_activity,
+    fetch_evaluation_queries_activity,
+    evaluate_single_rag_triad_query_activity,
+    sync_trulens_leaderboard_activity,
     execute_trulens_rag_triad_sweep_activity,
     evaluate_ingested_document_trulens_activity,
     run_ragas_evaluation_activity,
@@ -60,6 +63,14 @@ async def start_temporal_worker():
         logger.warning(f"⚠️ Could not connect to Temporal Server at {temporal_host}. Temporal Worker disabled.")
         return
 
+    # Automatically register / verify the Nightly Deep Benchmark Schedule (0 2 * * *)
+    try:
+        from app.temporal.schedules import ensure_nightly_benchmark_schedule
+        cron_expr = os.getenv("BENCHMARK_SCHEDULE_CRON", "0 2 * * *")
+        await ensure_nightly_benchmark_schedule(client, cron_expression=cron_expr)
+    except Exception as sched_err:
+        logger.warning(f"⚠️ Schedule registration non-blocking warning: {sched_err}")
+
     worker = Worker(
         client,
         task_queue=TASK_QUEUE,
@@ -80,6 +91,9 @@ async def start_temporal_worker():
             extract_docx_activity,
             extract_image_context_activity,
             extract_text_fallback_activity,
+            fetch_evaluation_queries_activity,
+            evaluate_single_rag_triad_query_activity,
+            sync_trulens_leaderboard_activity,
             execute_trulens_rag_triad_sweep_activity,
             evaluate_ingested_document_trulens_activity,
             run_ragas_evaluation_activity,

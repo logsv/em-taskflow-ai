@@ -248,13 +248,98 @@ async def extract_text_fallback_activity(params: Dict[str, Any]) -> Dict[str, An
 
 
 @activity.defn
+async def fetch_evaluation_queries_activity(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Activity: Discovers evaluation queries from Golden Dataset and Vector DB chunks."""
+    limit = params.get("limit", 5)
+    try:
+        activity.heartbeat("Loading evaluation query dataset")
+    except Exception:
+        pass
+
+    from evaluation.trulens_rag_triad import load_evaluation_queries
+    queries = load_evaluation_queries(limit=limit)
+    logger.info(f"📋 Loaded {len(queries)} evaluation queries for RAG Triad sweep")
+    return {
+        "status": "SUCCESS",
+        "total_queries": len(queries),
+        "queries": queries,
+        "limit": limit,
+    }
+
+
+@activity.defn
+async def evaluate_single_rag_triad_query_activity(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Activity: Evaluates a single query with TruLens RAG Triad metrics."""
+    query = params.get("query", "")
+    query_index = params.get("query_index", 1)
+    total_queries = params.get("total_queries", 1)
+    model_name = params.get("model_name", "hermes3:8b")
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    stop_event = asyncio.Event()
+
+    async def heartbeat_loop():
+        while not stop_event.is_set():
+            try:
+                activity.heartbeat(f"Evaluating query {query_index}/{total_queries}: {query[:35]}...")
+            except Exception:
+                pass
+            try:
+                await asyncio.sleep(5.0)
+            except asyncio.CancelledError:
+                break
+
+    hb_task = asyncio.create_task(heartbeat_loop())
+    try:
+        from evaluation.trulens_rag_triad import evaluate_single_query
+        result = await asyncio.to_thread(
+            evaluate_single_query,
+            query=query,
+            model_name=model_name,
+            api_base=ollama_url,
+        )
+        logger.info(
+            f"✅ [Query {query_index}/{total_queries}] Groundedness: {result['feedbacks']['groundedness']} | "
+            f"Relevance: {result['feedbacks']['answer_relevance']} | Latency: {result['latency_seconds']}s"
+        )
+        return result
+    finally:
+        stop_event.set()
+        hb_task.cancel()
+        try:
+            await hb_task
+        except asyncio.CancelledError:
+            pass
+
+
+@activity.defn
+async def sync_trulens_leaderboard_activity(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Activity: Aggregates individual query evaluation records and syncs TruLens leaderboard."""
+    results = params.get("results", [])
+    model_name = params.get("model_name", "hermes3:8b")
+    app_id = params.get("app_id", "em-taskflow-rag-pipeline")
+
+    try:
+        activity.heartbeat("Aggregating feedback metrics & syncing leaderboard")
+    except Exception:
+        pass
+
+    from evaluation.trulens_rag_triad import sync_leaderboard
+    summary = sync_leaderboard(results=results, model_name=model_name, app_id=app_id)
+    logger.info(
+        f"📊 TruLens Leaderboard Synced! Total: {summary['total_evaluated']} queries | "
+        f"Avg Groundedness: {summary['mean_scores']['groundedness']} | Avg Relevance: {summary['mean_scores']['answer_relevance']}"
+    )
+    return summary
+
+
+@activity.defn
 async def execute_trulens_rag_triad_sweep_activity(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Activity: Executes TruLens RAG Triad batch sweep across Golden Dataset & Vector DB chunks."""
+    """Activity: Backward-compatible monolithic TruLens sweep activity."""
     limit = params.get("limit", 5)
     model_name = params.get("model_name", "hermes3:8b")
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
-    # Start a non-blocking background heartbeat task while synchronous LLM inference runs in worker thread
     stop_event = asyncio.Event()
 
     async def heartbeat_loop():
@@ -264,9 +349,9 @@ async def execute_trulens_rag_triad_sweep_activity(params: Dict[str, Any]) -> Di
             except Exception:
                 pass
             try:
-                await asyncio.wait_for(stop_event.wait(), timeout=10.0)
-            except asyncio.TimeoutError:
-                pass
+                await asyncio.sleep(5.0)
+            except asyncio.CancelledError:
+                break
 
     hb_task = asyncio.create_task(heartbeat_loop())
     try:
@@ -280,19 +365,31 @@ async def execute_trulens_rag_triad_sweep_activity(params: Dict[str, Any]) -> Di
         return result
     finally:
         stop_event.set()
-        await hb_task
+        hb_task.cancel()
+        try:
+            await hb_task
+        except asyncio.CancelledError:
+            pass
 
 
 @activity.defn
 async def evaluate_ingested_document_trulens_activity(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Activity: Evaluates newly ingested document chunks with TruLens RAG Triad."""
+    """Activity: Evaluates newly ingested document chunks with TruLens RAG Triad with durable heartbeats."""
     filename = params.get("filename", "")
-    try:
-        activity.heartbeat(f"Evaluating newly ingested document {filename} in TruLens")
-    except Exception:
-        pass
+    stop_event = asyncio.Event()
 
-    try:
+    async def heartbeat_loop():
+        while not stop_event.is_set():
+            try:
+                activity.heartbeat(f"Evaluating newly ingested document {filename} in TruLens...")
+            except Exception:
+                pass
+            try:
+                await asyncio.sleep(5.0)
+            except asyncio.CancelledError:
+                break
+
+    def _eval_doc(fname: str) -> Dict[str, Any]:
         from evaluation.trulens_rag_triad import LiveRAGPipeline, compute_context_relevance, compute_groundedness_cot, compute_answer_relevance
         from trulens.core import Feedback, TruSession
         from trulens.apps.custom import TruCustomApp
@@ -313,19 +410,31 @@ async def evaluate_ingested_document_trulens_activity(params: Dict[str, Any]) ->
             feedbacks=[f_context_relevance, f_groundedness, f_answer_relevance]
         )
 
-        test_query = f"Summarize the key operational guidelines and procedures in {filename}."
+        test_query = f"Summarize the key operational guidelines and procedures in {fname}."
         with tru_recorder as recording:
             answer = rag_app.query(test_query)
 
         return {
             "success": True,
-            "filename": filename,
+            "filename": fname,
             "query": test_query,
             "answer": answer[:150],
         }
+
+    hb_task = asyncio.create_task(heartbeat_loop())
+    try:
+        res = await asyncio.to_thread(_eval_doc, filename)
+        return res
     except Exception as e:
         logger.warning(f"⚠️ Ingestion TruLens evaluation non-blocking warning: {e}")
         return {"success": False, "filename": filename, "error": str(e)}
+    finally:
+        stop_event.set()
+        hb_task.cancel()
+        try:
+            await hb_task
+        except asyncio.CancelledError:
+            pass
 
 
 @activity.defn
@@ -342,9 +451,9 @@ async def run_ragas_evaluation_activity(params: Dict[str, Any]) -> Dict[str, Any
             except Exception:
                 pass
             try:
-                await asyncio.wait_for(stop_event.wait(), timeout=10.0)
-            except asyncio.TimeoutError:
-                pass
+                await asyncio.sleep(5.0)
+            except asyncio.CancelledError:
+                break
 
     hb_task = asyncio.create_task(heartbeat_loop())
     try:
@@ -361,7 +470,11 @@ async def run_ragas_evaluation_activity(params: Dict[str, Any]) -> Dict[str, Any
         }
     finally:
         stop_event.set()
-        await hb_task
+        hb_task.cancel()
+        try:
+            await hb_task
+        except asyncio.CancelledError:
+            pass
 
 
 @activity.defn
