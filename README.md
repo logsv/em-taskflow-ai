@@ -29,7 +29,7 @@
 
 Modern enterprise productivity tools often require sending sensitive internal workflows, documents, and tool calls to third-party cloud LLM APIs. **EM TaskFlow AI** was built to deliver enterprise-grade multi-agent productivity with **100% data sovereignty and local inference**.
 
-1. **🔒 100% Privacy & Zero Cloud Dependency**: Operates entirely locally via Ollama (`llama3.2`, `mistral`, `nomic-embed-text`). No external cloud API keys required, ensuring zero data leaves your local network.
+1. **🔒 100% Privacy & Zero Cloud Dependency**: Operates entirely locally via Ollama (`hermes3:8b`, `mistral`, `nomic-embed-text`). No external cloud API keys required, ensuring zero data leaves your local network.
 2. **🗄️ Database Per-Service Isolation**: Schema separation into dedicated databases (`taskflow_backend`, `taskflow_ai`, `temporal`, `langfuse_db`) ensuring zero noise, strict domain boundaries, and high security.
 3. **🔍 Production RAG Engine (HyDE + RRF + Redis Cache)**: Features Dense Cosine Vector Search (HNSW) + Sparse BM25 Keyword Search (`pg_trgm`) merged via Reciprocal Rank Fusion (RRF), enriched by HyDE query expansion and Redis semantic caching (0.95 similarity threshold).
 4. **🎯 Bounded Tool Scoping for High SLM Accuracy**: Small Language Models (3B-7B parameters) often degrade when presented with multiple tools simultaneously. EM TaskFlow AI enforces a **single-tool restriction per sub-agent**, boosting execution accuracy past **95%**.
@@ -42,7 +42,7 @@ Modern enterprise productivity tools often require sending sensitive internal wo
 **EM TaskFlow AI** integrates multi-agent AI orchestration, local vector search, multi-format document ingestion (PDF, CSV, Images, Text), and developer workflow tools (GitHub, Jira, Notion, Calendar) into a single cohesive cockpit.
 
 - **Frontend**: Responsive React UI built with Vite, `@assistant-ui/react`, glassmorphism space-dark styling, and a Standalone Admin Portal (`/admin`).
-- **Backend Services**: Node.js microservices platform powered by LangChain, `@langchain/langgraph-supervisor`, Redis semantic cache, and Ollama.
+- **Backend Services**: Node.js microservices platform powered by LangChain, `@langchain/langgraph-supervisor`, Redis semantic cache, and Ollama (`hermes3:8b`).
 - **Python AI RAG Service**: Dedicated Python gRPC/REST service managing parent-child chunking, Cross-Encoder reranking, and `taskflow_ai` vector persistence.
 - **Multi-Agent Orchestrator**: LangGraph supervisor routing queries across specialized micro-agents with bounded execution scopes.
 
@@ -54,14 +54,16 @@ Access the Admin Portal by clicking **⚙️ Admin Portal ↗** in the main side
 
 ### 1. 🚀 One-Click Service Launch Hub
 - **📊 Langfuse AI Telemetry** (`http://127.0.0.1:3001`): Multi-agent execution traces, token costs, LLM response latency, and user feedback logs.
-- **🦙 Open WebUI / Ollama GUI** (`http://127.0.0.1:3080`): Model parameter tuning, context window setup, and model management.
+- **🔥 Arize Phoenix Tracing** (`http://127.0.0.1:6006`): Local OpenLLMetry LLM tracing & spans.
+- **🎯 Promptfoo Managed Cloud** (`https://www.promptfoo.app`): Cloud prompt matrix comparison, security red-teaming, and shared LLM evaluation dashboard (`emtaskflow-ai`).
+- **⚖️ TruLens RAG Triad Leaderboard** (`http://127.0.0.1:8501`): Triad evaluation (groundedness, context relevance, answer relevance).
 - **🗄️ Adminer Postgres Explorer** (`http://127.0.0.1:8080`): Database GUI pre-configured for `taskflow_backend`, `taskflow_ai`, and `langfuse_db` (port 5433).
-- **🪵 Dozzle Log Viewer** (`http://127.0.0.1:8088`): Real-time streaming container log viewer across all Docker services.
+- **⏳ Temporal Web UI** (`http://127.0.0.1:8233`): Durable workflow execution dashboard for RAG pipelines.
 
 ### 2. 🛠️ Native System Control Features
 - **📄 RAG Vector Store Manager**: View uploaded PDFs, inspect extracted text chunks in an interactive modal, or delete document embeddings.
 - **🔄 GitHub Sync & Cache**: Trigger manual backend sync for GitHub repository issues and monitor cache status.
-- **⚡ System Health & Ollama Status**: Real-time status for Ollama (`llama3.2`), primary DB (5432), and analytics DB (5433).
+- **⚡ System Health & Ollama Status**: Real-time status for Ollama (`hermes3:8b`), primary DB (5432), and analytics DB (5433).
 - **📈 EM DORA & Sprint Metrics**: Real-time snapshot of Deployment Frequency, Lead Time, Failure Rate, MTTR, and Sprint Health.
 
 ---
@@ -77,7 +79,7 @@ flowchart TD
     RedisCache -- "Cache Hit" --> CachedResp[🚀 Instant Response\n<50ms]
     RedisCache -- "Cache Miss" --> FastPath{⚡ Fast-Path Classifier\n<300ms}
     
-    FastPath -- "Direct Query (Math/Code/Chat)" --> DirectLLM[🤖 Local Ollama Inference\nllama3.2]
+    FastPath -- "Direct Query (Math/Code/Chat)" --> DirectLLM[🤖 Local Ollama Inference\nhermes3:8b]
     FastPath -- "Complex / Tool / RAG Intent" --> Router[🧩 LLM Router\nDomain & Intent Classifier]
     
     Router -- "RAG Search Intent" --> PythonAI[🐍 Python AI RAG Service\nHyDE + RRF Hybrid Search]
@@ -165,9 +167,11 @@ flowchart TD
    - **Frontend Chat UI**: `http://localhost:3000`
    - **Standalone Admin Portal**: `http://localhost:3000/admin`
    - **Langfuse AI Telemetry**: `http://localhost:3001`
-   - **Open WebUI (Ollama GUI)**: `http://localhost:3080`
+   - **Arize Phoenix Tracing**: `http://localhost:6006`
+   - **Promptfoo Managed Cloud**: `https://www.promptfoo.app`
+   - **TruLens Dashboard**: `http://localhost:8501`
    - **Adminer Postgres Explorer**: `http://localhost:8080`
-   - **Dozzle Container Log Viewer**: `http://localhost:8088`
+   - **Temporal Web UI**: `http://localhost:8233`
    - **Backend API**: `http://localhost:4000/api/health`
 
 4. **Stop the stack**:
@@ -245,15 +249,16 @@ curl -X POST http://localhost:4000/api/chat \
   -d '{"message":"Summarize the uploaded document","mode":"baseline"}'
 ```
 
-### 5. Automated Backend Tests
-Run the Jasmine test suite (155 specs):
+### 5. Automated Backend Unit Tests & Enterprise Evaluation
+Run Jasmine unit tests (155 specs) and evaluation suite (`hermes3:8b`):
 ```bash
 cd backend
-npm test
+npm test            # Unit tests
+npm run evaluate    # Enterprise evaluation suite
 ```
 
 ### 6. Automated Python AI Service Tests
-Run the Pytest suite (16 specs):
+Run the Pytest suite (28 specs):
 ```bash
 cd services/python-ai-service
 uv run pytest
@@ -263,12 +268,9 @@ uv run pytest
 
 ## 🛠️ Operational Commands
 
-### View Service Logs via Dozzle
-Open `http://localhost:8088` in your browser for real-time container log streaming.
-
 ### CLI Container Logs
 ```bash
-docker compose logs -f backend python-ai-service postgres redis langfuse open-webui
+docker compose logs -f backend python-ai-service postgres redis langfuse phoenix
 ```
 
 ### Clean Teardown (Remove Volumes)

@@ -6,6 +6,8 @@ Runs FastAPI REST server on Port 8000 and gRPC Servicer on Port 50051.
 import sys
 import os
 
+os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+
 # Ensure root app directory is in Python path for module resolution
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))

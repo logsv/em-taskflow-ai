@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { Langfuse } from 'langfuse';
 import { CallbackHandler as LangfuseCallbackHandler } from 'langfuse-langchain';
+import { trace as otelTrace, context as otelContext } from '@opentelemetry/api';
 
 let langfuseClientInstance = null;
 
@@ -50,43 +51,66 @@ export function getLangfuseClient() {
 }
 
 /**
- * Creates an End-to-End Root Request Trace in Langfuse and returns the root trace
- * alongside a bound LangChain CallbackHandler that nests all downstream operations under this trace.
+ * Creates an End-to-End Root Request Trace across Langfuse & OpenInference (Phoenix)
+ * and returns the root trace alongside bound LangChain CallbackHandlers.
  * 
  * @param {Object} options Options containing name, query, sessionId, userId, tags, metadata
  * @returns {Object} { trace, callbacks }
  */
 export function createEndToEndTrace(options = {}) {
   const client = getLangfuseClient();
-  if (!client) {
-    return { trace: null, callbacks: undefined };
+  let trace = null;
+  let callbacks = undefined;
+
+  const sessionId = options.sessionId || options.threadId || (options.options && options.options.threadId) || undefined;
+  const userId = options.userId || 'user_logsv';
+  const queryStr = typeof options.query === 'string' ? options.query : (options.input ? JSON.stringify(options.input) : '');
+
+  // 1. Initialize Langfuse Root Trace
+  if (client) {
+    try {
+      trace = client.trace({
+        name: options.name || `Chat Request: "${queryStr.slice(0, 40)}"`,
+        sessionId: sessionId ? String(sessionId) : undefined,
+        userId,
+        tags: options.tags || ['em-taskflow', 'end-to-end'],
+        input: options.query ? { query: options.query } : options.input,
+        metadata: options.metadata || {},
+      });
+
+      const handler = new LangfuseCallbackHandler({ root: trace });
+      callbacks = [handler];
+      options.trace = trace;
+      options.tracerCallbacks = callbacks;
+    } catch (err) {
+      console.warn('⚠️ Non-blocking Langfuse trace creation warning:', err.message);
+    }
   }
 
+  // 2. Initialize Arize Phoenix OpenInference Span if active
   try {
-    const sessionId = options.sessionId || options.threadId || (options.options && options.options.threadId) || undefined;
-    const trace = client.trace({
-      name: options.name || `Chat Request: "${(options.query || '').slice(0, 40)}"`,
-      sessionId: sessionId ? String(sessionId) : undefined,
-      userId: options.userId || 'user_logsv',
-      tags: options.tags || ['em-taskflow', 'end-to-end'],
-      input: options.query ? { query: options.query } : options.input,
-      metadata: options.metadata || {},
-    });
-
-    const handler = new LangfuseCallbackHandler({ root: trace });
-    const callbacks = [handler];
-    options.trace = trace;
-    options.tracerCallbacks = callbacks;
-
-    return { trace, callbacks };
-  } catch (err) {
-    console.warn('⚠️ Non-blocking trace creation warning:', err.message);
-    return { trace: null, callbacks: undefined };
+    const tracer = otelTrace.getTracer('emtaskflow-agent', '1.0.0');
+    if (tracer) {
+      const span = tracer.startSpan(options.name || 'Chat Request', {
+        attributes: {
+          'openinference.span.kind': 'AGENT',
+          'input.value': queryStr,
+          'input.mime_type': 'text/plain',
+          'session.id': sessionId ? String(sessionId) : 'default_session',
+          'user.id': userId,
+        },
+      });
+      options.otelSpan = span;
+    }
+  } catch (_err) {
+    // Non-blocking OpenTelemetry span initialization
   }
+
+  return { trace, callbacks };
 }
 
 /**
- * Safely creates a child span on a parent trace or span.
+ * Safely creates a child span on a parent trace or span for both Langfuse and OpenInference.
  * Returns a dummy span object if tracing is inactive to ensure calling code remains clean.
  * 
  * @param {Object|null} parent Trace or Span object
@@ -95,22 +119,54 @@ export function createEndToEndTrace(options = {}) {
  * @returns {Object} Span controller with .end({ output, metadata }) method
  */
 export function createSpan(parent, name, input = {}) {
+  let langfuseSpan = null;
+  let otelChildSpan = null;
+
+  // 1. Langfuse Child Span
   if (parent && typeof parent.span === 'function') {
     try {
-      const spanObj = parent.span({ name, input });
-      return {
-        span: spanObj,
-        end: (data = {}) => {
-          try {
-            if (spanObj && typeof spanObj.end === 'function') {
-              spanObj.end({ output: data.output, metadata: data.metadata });
-            }
-          } catch (_err) {}
-        },
-      };
+      langfuseSpan = parent.span({ name, input });
     } catch (_err) {}
   }
-  return { span: null, end: () => {} };
+
+  // 2. OpenInference / Phoenix Child Span
+  try {
+    const tracer = otelTrace.getTracer('emtaskflow-agent', '1.0.0');
+    if (tracer) {
+      const inputValue = typeof input === 'string' ? input : JSON.stringify(input);
+      otelChildSpan = tracer.startSpan(name, {
+        attributes: {
+          'openinference.span.kind': name.toLowerCase().includes('tool') ? 'TOOL' : (name.toLowerCase().includes('rag') ? 'RETRIEVER' : 'CHAIN'),
+          'input.value': inputValue,
+        },
+      });
+    }
+  } catch (_err) {}
+
+  return {
+    span: langfuseSpan,
+    otelSpan: otelChildSpan,
+    end: (data = {}) => {
+      try {
+        if (langfuseSpan && typeof langfuseSpan.end === 'function') {
+          langfuseSpan.end({ output: data.output, metadata: data.metadata });
+        }
+      } catch (_err) {}
+
+      try {
+        if (otelChildSpan && typeof otelChildSpan.end === 'function') {
+          if (data.output !== undefined) {
+            const outputValue = typeof data.output === 'string' ? data.output : JSON.stringify(data.output);
+            otelChildSpan.setAttribute('output.value', outputValue);
+          }
+          if (data.metadata) {
+            otelChildSpan.setAttribute('metadata', JSON.stringify(data.metadata));
+          }
+          otelChildSpan.end();
+        }
+      } catch (_err) {}
+    },
+  };
 }
 
 /**
@@ -154,3 +210,28 @@ export function getTracerCallbacks(options = {}) {
   options.tracerCallbacks = res;
   return res;
 }
+
+/**
+ * Safely attaches evaluation metric scores to live trace spans in langfuse_db.
+ * @param {Object} options { traceId, name, value, comment }
+ * @returns {boolean} Success status
+ */
+export function scoreTrace(options = {}) {
+  const client = getLangfuseClient();
+  if (!client || !options.traceId || !options.name) {
+    return false;
+  }
+  try {
+    client.score({
+      traceId: options.traceId,
+      name: options.name,
+      value: options.value ?? 1,
+      comment: options.comment || 'Evaluation framework metric score',
+    });
+    return true;
+  } catch (err) {
+    console.warn('⚠️ Non-blocking trace score warning:', err.message);
+    return false;
+  }
+}
+

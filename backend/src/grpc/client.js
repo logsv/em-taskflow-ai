@@ -97,7 +97,7 @@ class PythonAIServiceClient {
         query,
         top_k: topK,
         filter_filename: filterFilename,
-      }, { timeout: 8000 });
+      }, { timeout: 30000 });
 
       if (response.data && Array.isArray(response.data.results)) {
         return response.data.results.map((r) => ({
@@ -167,7 +167,7 @@ class PythonAIServiceClient {
         top_n: topN,
       };
 
-      const response = await axios.post(`${this.baseUrl}/api/v1/rag/rerank`, payload, { timeout: 8000 });
+      const response = await axios.post(`${this.baseUrl}/api/v1/rag/rerank`, payload, { timeout: 30000 });
       
       if (response.data && Array.isArray(response.data.reranked_chunks) && response.data.reranked_chunks.length > 0) {
         const rerankedMap = new Map(response.data.reranked_chunks.map((r) => [r.id, r.rerank_score]));

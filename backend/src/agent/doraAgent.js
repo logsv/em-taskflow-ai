@@ -25,7 +25,10 @@ export const doraMetricsTool = createDeterministicToolHarness({
         const queryStr = inputArgs.repo_id
           ? `repo:${inputArgs.repo_id} is:issue`
           : `is:issue is:open`;
-        const res = await executeMCPTool('search_issues', { query: queryStr }).catch(() => null);
+        const res = await Promise.race([
+          executeMCPTool('search_issues', { query: queryStr }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP GitHub search timed out')), 2000)),
+        ]).catch(() => null);
         let items = null;
         if (Array.isArray(res)) {
           items = res;

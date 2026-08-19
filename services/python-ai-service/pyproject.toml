@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python-ai-service"
+version = "0.1.0"
+description = "EM TaskFlow AI Python RAG & Evaluation Service"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi==0.110.0",
+    "uvicorn==0.28.0",
+    "pydantic>=2.10.0",
+    "grpcio>=1.62.0",
+    "grpcio-tools>=1.62.0",
+    "protobuf>=4.25.3",
+    "PyMuPDF==1.23.26",
+    "python-multipart==0.0.9",
+    "flashrank==0.2.2",
+    "pandas==2.2.1",
+    "tabulate==0.9.0",
+    "python-docx==1.1.0",
+    "psycopg[binary]==3.1.18",
+    "psycopg2-binary>=2.9.9",
+    "python-dotenv>=1.0.0",
+    "langfuse>=2.50.0",
+    "pytest==8.0.2",
+    "pytest-asyncio==0.23.5",
+    "httpx==0.27.0",
+    "temporalio==1.6.0",
+    "pytest-cov==4.1.0",
+    "langchain>=0.2.0",
+    "langchain-community>=0.2.0",
+    "langchain-ollama>=0.1.0",
+    "langchain-text-splitters>=0.2.0",
+    "langsmith>=0.1.120",
+    "sentry-sdk[fastapi]>=2.0.0",
+    "newrelic==9.8.0",
+    "opentelemetry-api==1.24.0",
+    "opentelemetry-sdk==1.24.0",
+    "opentelemetry-exporter-otlp-proto-grpc==1.24.0",
+    "opentelemetry-instrumentation-fastapi==0.45b0",
+    "opentelemetry-instrumentation-grpc==0.45b0",
+    "axiom-py>=0.3.0",
+    "scipy>=1.11.0",
+    "ollama>=0.1.0",
+    "deepeval>=1.4.0",
+    "ragas>=0.1.15",
+    "datasets>=2.18.0",
+    "trulens-core>=2.13.0",
+    "trulens-dashboard>=2.13.0",
+    "trulens-eval>=2.13.0",
+    "trulens-feedback>=2.13.0",
+    "trulens-otel-semconv>=2.13.0",
+    "trulens-providers-litellm>=2.13.0",
+    "litellm>=1.30.0",
+    "google-genai>=0.1.0",
+    "posthog>=3.0.0",
+    "setuptools<70.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*", "evaluation*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "strict"

@@ -23,14 +23,15 @@ export class FeedbackApplicationService {
     });
 
     if (targetTraceId && process.env.LANGFUSE_PUBLIC_KEY) {
-      try {
-        const { Langfuse } = await import('langfuse');
+      // Non-blocking telemetry as mandated by AGENTS.md Rule of Zero-Downtime Telemetry
+      import('langfuse').then(({ Langfuse }) => {
         const baseUrl = resolveLangfuseBaseUrl();
-
         const langfuse = new Langfuse({
           publicKey: process.env.LANGFUSE_PUBLIC_KEY,
           secretKey: process.env.LANGFUSE_SECRET_KEY,
           baseUrl,
+          flushAt: 1,
+          flushInterval: 1000,
         });
 
         const numericScore = typeof score === 'number' 
@@ -43,11 +44,12 @@ export class FeedbackApplicationService {
           value: numericScore,
           comment: comment || (numericScore === 1.0 ? 'Thumbs Up' : 'Thumbs Down'),
         });
-        await langfuse.flushAsync();
-        console.log(`✅ Langfuse feedback score (${numericScore}) logged successfully for trace: ${targetTraceId}`);
-      } catch (error) {
+        return langfuse.flushAsync().then(() => {
+          console.log(`✅ Langfuse feedback score (${numericScore}) logged successfully for trace: ${targetTraceId}`);
+        });
+      }).catch((error) => {
         console.warn(`⚠️ Failed to submit feedback to Langfuse:`, error?.message || error);
-      }
+      });
     }
 
     return {

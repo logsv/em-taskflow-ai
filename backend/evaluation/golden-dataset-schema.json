@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GoldenDatasetSchema",
+  "description": "Schema for EM TaskFlow AI evaluation benchmark test cases.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "eval_id",
+      "user_query",
+      "domain_category",
+      "expected_domains",
+      "is_rag_appropriate"
+    ],
+    "properties": {
+      "eval_id": {
+        "type": "string",
+        "pattern": "^EVAL-[A-Z0-9]+-[0-9]{3}$",
+        "description": "Unique evaluation item ID, e.g. EVAL-DORA-001"
+      },
+      "user_query": {
+        "type": "string",
+        "minLength": 5,
+        "description": "User input prompt"
+      },
+      "domain_category": {
+        "type": "string",
+        "enum": ["multi_agent", "rag_sop", "fast_path_edge"],
+        "description": "Primary evaluation classification category"
+      },
+      "file_attachments": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Optional list of reference benchmark files attached to query"
+      },
+      "expected_domains": {
+        "type": "array",
+        "items": { "type": "string" },
+        "minItems": 1,
+        "description": "Expected micro-agent domain routing labels"
+      },
+      "expected_tool_calls": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["tool_name"],
+          "properties": {
+            "tool_name": { "type": "string" },
+            "required_args": { "type": "object" }
+          }
+        },
+        "description": "Expected tool calls and argument constraints"
+      },
+      "is_rag_appropriate": {
+        "type": "boolean",
+        "description": "Whether RAG document retrieval is expected"
+      },
+      "ground_truth_context": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Ground truth document chunks required for RAG validation"
+      },
+      "ground_truth_answer": {
+        "type": "string",
+        "description": "Expert-validated ideal Markdown response generated with hermes3:8b"
+      },
+      "success_criteria_gates": {
+        "type": "object",
+        "properties": {
+          "min_domain_precision": { "type": "number", "minimum": 0, "maximum": 1 },
+          "min_faithfulness": { "type": "number", "minimum": 0, "maximum": 1 },
+          "max_latency_ms": { "type": "number", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

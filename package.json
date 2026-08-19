@@ -9,6 +9,16 @@
     "backend:install": "cd backend && npm install",
     "frontend:install": "cd frontend && npm install",
     "frontend:start": "cd frontend && npm start",
-    "frontend:test": "cd frontend && npm test"
+    "frontend:test": "cd frontend && npm test",
+    "eval": "cd backend && npm run evaluate",
+    "eval:deepeval": "cd services/python-ai-service && uv run pytest tests/test_deepeval_agent_trajectories.py",
+    "eval:ragas": "cd services/python-ai-service && uv run python evaluation/ragas_runner.py",
+    "eval:trulens": "cd services/python-ai-service && uv run python evaluation/trulens_rag_triad.py",
+    "eval:trulens:dashboard": "cd services/python-ai-service && uv run trulens-eval run dashboard --port 8501",
+    "eval:promptfoo": "cd backend && npm run eval:promptfoo",
+    "eval:promptfoo:view": "cd backend && npm run eval:promptfoo:view",
+    "eval:nightly": "bash scripts/run-nightly-eval.sh",
+    "eval:setup-daemon": "bash scripts/setup-nightly-eval-daemon.sh",
+    "eval:enterprise": "npm run eval && npm run eval:deepeval && npm run eval:ragas && npm run eval:trulens"
   }
 }

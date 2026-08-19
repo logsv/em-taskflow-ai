@@ -12,7 +12,7 @@ Use this skill when creating, modifying, testing, or auditing any of the 10 Engi
 ## 📌 Architecture & Bounded Tool Policy
 
 1. **1-Tool Bounding Policy**:
-   - Local Small Language Models (Ollama `llama3.2` 3B/7B) degrade in function-calling accuracy when exposed to multiple tools simultaneously.
+   - Local Small Language Models (Ollama `hermes3:8b`) degrade in function-calling accuracy when exposed to multiple tools simultaneously.
    - Each ReAct sub-agent is bound to **1 single tool definition**, elevating tool call accuracy past **95%**.
 
 2. **The 10 Domain Micro-Agents & Harnesses**:

@@ -113,13 +113,13 @@ export async function initializeLLM() {
 
   try {
     chatModel = createChatModelForProvider(providerKey, {
-      model: llmConfig.defaultModel || 'llama3.2:latest',
+      model: llmConfig.defaultModel || 'hermes3:8b',
       temperature: 0.1,
     });
   } catch (err) {
     console.warn(`⚠️ Primary LLM provider "${providerKey}" failed (${err.message}). Falling back to local Ollama...`);
     chatModel = createChatModelForProvider('ollama', {
-      model: 'llama3.2:latest',
+      model: 'hermes3:8b',
       temperature: 0.1,
     });
   }

@@ -2,6 +2,7 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import config, { getAgentConfig, getMcpConfig } from '../config.js';
 import { info, warn, error } from '../utils/logger.js';
+import { createSpan } from '../utils/tracer.js';
 
 export const commonHarnessSchema = z.object({
   sources: z.array(z.string()).default(['default']),
@@ -26,6 +27,7 @@ export function createDeterministicToolHarness({
 }) {
   return tool(
     async (inputArgs) => {
+      const toolSpan = createSpan(null, `tool_${name}`, inputArgs);
       const startTime = Date.now();
       const agentConfig = getAgentConfig() || {};
       const mcpConfig = getMcpConfig() || {};
@@ -38,11 +40,13 @@ export function createDeterministicToolHarness({
 
       if (featureFlagKey && !isAgentEnabled) {
         warn(`Deterministic Harness '${name}' bypassed: Feature flag '${rootFlagKey}' is disabled.`);
-        return {
+        const disabledResult = {
           status: 'DISABLED',
           message: `The '${name}' domain harness is currently disabled by system feature flags.`,
           data: null,
         };
+        toolSpan.end({ output: disabledResult });
+        return disabledResult;
       }
 
       const sources = Array.isArray(inputArgs.sources) && inputArgs.sources.length > 0 ? inputArgs.sources : ['default'];
@@ -51,11 +55,13 @@ export function createDeterministicToolHarness({
 
       // Fast Exit for Conceptual Queries
       if (mode === 'CONCEPTUAL_ONLY') {
-        return {
+        const skippedResult = {
           status: 'SKIPPED',
           message: 'Conceptual mode requested. Tool execution skipped.',
           data: null,
         };
+        toolSpan.end({ output: skippedResult });
+        return skippedResult;
       }
 
       const sourceResults = {};
@@ -125,7 +131,7 @@ export function createDeterministicToolHarness({
       const executionTimeMs = Date.now() - startTime;
       info(`Deterministic Harness '${name}' executed in ${executionTimeMs}ms (Mode: ${mode}, Sources: ${sources.join(',')})`);
 
-      return {
+      const resultPayload = {
         status: 'SUCCESS',
         name,
         mode,
@@ -134,6 +140,10 @@ export function createDeterministicToolHarness({
         sourcesExecuted: sources,
         data: finalPayload,
       };
+
+      toolSpan.end({ output: resultPayload, metadata: { executionTimeMs } });
+
+      return resultPayload;
     },
     {
       name,

@@ -126,6 +126,15 @@ export class ChatApplicationService {
       },
     });
 
+    // Trigger Non-Blocking Online Continuous Shadow Evaluation Worker (5% Traffic Sampling)
+    this.triggerShadowEvaluation({
+      query,
+      answer: result.answer,
+      context: sources.map((s) => s.content || s.pageContent || (typeof s === 'string' ? s : '')).filter(Boolean),
+      traceId: result.meta?.traceId || null,
+      domain: routedDomains[0] || 'general',
+    });
+
     return {
       messageId: assistantMessageRecord.id,
       threadId: ensuredThread.id,
@@ -149,6 +158,28 @@ export class ChatApplicationService {
       },
       requestId,
     };
+  }
+
+  triggerShadowEvaluation({ query, answer, context = [], traceId = null, domain = 'general' }) {
+    // Non-blocking zero-downtime execution
+    setImmediate(async () => {
+      try {
+        const pythonHost = process.env.PYTHON_AI_SERVICE_URL || 'http://localhost:8000';
+        await fetch(`${pythonHost}/api/v1/eval/shadow-evaluate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query,
+            answer,
+            context,
+            trace_id: traceId,
+            domain,
+          }),
+        }).catch(() => null);
+      } catch (_err) {
+        // Silently swallow to preserve zero downtime
+      }
+    });
   }
 
   async resolveNotionOAuth() {

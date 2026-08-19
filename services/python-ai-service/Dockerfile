@@ -1,22 +1,20 @@
-FROM python:3.11-slim
-
-# Copy uv binary for ultra-fast parallel package installation
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies with APT cache mounting
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
-    libmupdf-dev
+    libmupdf-dev && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install dependencies using uv with BuildKit cache mount
-COPY requirements.txt .
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system -r requirements.txt
+# Install uv and setuptools for fast package installation
+RUN pip install --no-cache-dir uv "setuptools<70.0.0"
+
+# Copy requirements and install dependencies using uv
+COPY requirements.txt pyproject.toml ./
+RUN uv pip install --system -r requirements.txt
 
 # Copy source code after dependencies to maximize Docker layer cache hits
 COPY . .
@@ -26,6 +24,7 @@ EXPOSE 8000 50051
 ENV REST_PORT=8000
 ENV GRPC_PORT=50051
 ENV PYTHONPATH=/app
+ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 \
   CMD curl -f http://localhost:8000/health || exit 1

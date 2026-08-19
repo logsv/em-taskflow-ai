@@ -279,3 +279,6 @@ public
 tmp/
 temp/ 
 .vercel
+.deepeval_telemetry.txt
+.promptfoo/
+promptfoo/

@@ -50,7 +50,7 @@ const envSchema = z.object({
   RAG_ADVANCED_MMR_LAMBDA: z.coerce.number().min(0).max(1).default(0.7),
   RAG_ADVANCED_COMPRESSION_ENABLED: z.coerce.boolean().default(true),
   LLM_DEFAULT_PROVIDER: z.string().default('ollama'),
-  LLM_DEFAULT_MODEL: z.string().default('llama3.2:latest'),
+  LLM_DEFAULT_MODEL: z.string().default('hermes3:8b'),
   LLM_LOAD_BALANCING: z.enum(['round_robin', 'cost_priority_round_robin']).default('round_robin'),
   LLM_OPENAI_ENABLED: z.coerce.boolean().default(false),
   OPENAI_API_KEY: z.string().optional(),
@@ -299,10 +299,10 @@ const getDefaultModels = (providerType) => {
     case 'ollama':
       return [
         {
-          name: 'llama3.2:latest',
+          name: 'hermes3:8b',
           costPer1kInputTokens: 0,
           costPer1kOutputTokens: 0,
-          maxTokens: 4096,
+          maxTokens: 8192,
         },
         {
           name: 'gpt-oss:latest',

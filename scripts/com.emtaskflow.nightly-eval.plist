@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.emtaskflow.nightly-eval</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/logsv/Documents/agent-dev/em-taskflow-ai/scripts/run-nightly-eval.sh</string>
+    </array>
+
+    <!-- Run every night at 00:00 (Midnight) Local Time -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>0</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/logsv/Documents/agent-dev/em-taskflow-ai/logs/launchd-stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/logsv/Documents/agent-dev/em-taskflow-ai/logs/launchd-stderr.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/logsv/Documents/agent-dev/em-taskflow-ai</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/logsv/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+        <key>LANGFUSE_HOST</key>
+        <string>http://localhost:3001</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
