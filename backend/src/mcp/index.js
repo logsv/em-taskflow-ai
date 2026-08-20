@@ -306,6 +306,12 @@ export function sanitizeToolInput(input, toolName = "") {
     }
   }
 
+  if (toolName === "get_dora_events" || toolName?.includes("dora_events")) {
+    if (!clean.owner) clean.owner = "logsv";
+    if (!clean.repo) clean.repo = "em-taskflow-ai";
+    if (!clean.time_window) clean.time_window = "30d";
+  }
+
   return clean;
 }
 

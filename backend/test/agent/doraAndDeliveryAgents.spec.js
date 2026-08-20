@@ -16,11 +16,29 @@ describe('Phase 3 Core Analytics Agents Specs: DORA & Delivery Harnesses', () =>
       if (res.data.rating === 'UNAVAILABLE') {
         expect(res.data.metrics).toBeNull();
         expect(res.data.data_availability).toBe('no_dora_snapshot');
+        expect(res.data.summary).toContain('DORA Metrics Unavailable');
       } else {
         expect(res.data.metrics.deployment_frequency).toContain('deploys/week');
         expect(typeof res.data.metrics.lead_time_hours).toBe('number');
         expect(typeof res.data.metrics.change_failure_rate_pct).toBe('number');
+        expect(typeof res.data.metrics.mttr_hours).toBe('number');
+        expect(res.data.bottlenecks).toBeDefined();
+        expect(Array.isArray(res.data.bottlenecks)).toBe(true);
+        expect(res.data.summary).toContain('DORA Performance Scorecard');
       }
+    });
+
+    it('should enforce anti-vanity principles by omitting individual contributor rankings in summary', async () => {
+      const res = await doraMetricsTool.invoke({
+        time_window: '30d',
+        team_id: 'platform_team',
+        repo_id: 'em-taskflow-ai',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      // Anti-vanity verification: summary should not contain individual stack ranking
+      expect(res.data.summary).not.toContain('Top Contributor:');
+      expect(res.data.summary).not.toContain('Worst Developer:');
     });
 
     it('should create doraAgent with custom or default tools', () => {

@@ -1,60 +1,7 @@
 [
   {
-    "eval_id": "EVAL-JIRA-001",
-    "user_query": "What are the current blockers for the 'phoenix' project in Jira?",
-    "domain_category": "multi_agent",
-    "expected_domains": ["delivery"],
-    "expected_tool_calls": [{ "tool_name": "analyze_delivery_bottlenecks" }],
-    "is_rag_appropriate": false,
-    "success_criteria_gates": { "min_domain_precision": 1.0 }
-  },
-  {
-    "eval_id": "EVAL-GITHUB-002",
-    "user_query": "Review the latest PRs for the backend repository, are there any that have been open for more than 3 days?",
-    "domain_category": "multi_agent",
-    "expected_domains": ["delivery"],
-    "expected_tool_calls": [{ "tool_name": "analyze_delivery_bottlenecks" }],
-    "is_rag_appropriate": false,
-    "success_criteria_gates": { "min_domain_precision": 1.0 }
-  },
-  {
-    "eval_id": "EVAL-RAG-003",
-    "user_query": "Summarize the project plan in the 'Project Phoenix' document.",
-    "domain_category": "rag_sop",
-    "expected_domains": ["rag"],
-    "is_rag_appropriate": true,
-    "ground_truth_context": ["Project Phoenix timeline and milestone roadmap"],
-    "ground_truth_answer": "### 📄 Executive Summary\nProject Phoenix outlines key sprint goals for Q3.\n### 🔍 Key Document Analysis & Rubric Guidelines\nKey milestones include DB migration and multi-agent routing.\n### 📌 Source Citations\n[Doc: Project Phoenix, Page 1]",
-    "success_criteria_gates": { "min_faithfulness": 0.90 }
-  },
-  {
-    "eval_id": "EVAL-MULTI-004",
-    "user_query": "What are the key risks for the current release, considering both Jira tickets and recent PRs?",
-    "domain_category": "multi_agent",
-    "expected_domains": ["delivery"],
-    "expected_tool_calls": [{ "tool_name": "analyze_delivery_bottlenecks" }],
-    "is_rag_appropriate": false,
-    "success_criteria_gates": { "min_domain_precision": 0.90 }
-  },
-  {
-    "eval_id": "EVAL-CALENDAR-005",
-    "user_query": "Find the notes for today's engineering meeting in our document drive.",
-    "domain_category": "rag_sop",
-    "expected_domains": ["rag"],
-    "is_rag_appropriate": true,
-    "success_criteria_gates": { "min_domain_precision": 1.0 }
-  },
-  {
-    "eval_id": "EVAL-NOTION-006",
-    "user_query": "Find the project status update for 'Project Apollo' in the documentation guide.",
-    "domain_category": "rag_sop",
-    "expected_domains": ["rag"],
-    "is_rag_appropriate": true,
-    "success_criteria_gates": { "min_domain_precision": 1.0 }
-  },
-  {
-    "eval_id": "EVAL-DORA-007",
-    "user_query": "Calculate our DORA deployment frequency and lead time for changes for the past month.",
+    "eval_id": "EVAL-DORA-001",
+    "user_query": "Calculate our team DORA deployment frequency and lead time for changes over the last 30 days.",
     "domain_category": "multi_agent",
     "expected_domains": ["dora"],
     "expected_tool_calls": [{ "tool_name": "calculate_dora_metrics" }],
@@ -62,8 +9,26 @@
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
-    "eval_id": "EVAL-DELIVERY-008",
-    "user_query": "Analyze engineering delivery bottlenecks across our current sprint cycle.",
+    "eval_id": "EVAL-DORA-002",
+    "user_query": "Show our 90-day DORA performance scorecard and identify change failure rate trends for payment-service.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["dora"],
+    "expected_tool_calls": [{ "tool_name": "calculate_dora_metrics" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-DORA-003",
+    "user_query": "What is our Mean Time to Restore (MTTR) across recent production incidents in the last 7 days?",
+    "domain_category": "multi_agent",
+    "expected_domains": ["dora"],
+    "expected_tool_calls": [{ "tool_name": "calculate_dora_metrics" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-DELIVERY-001",
+    "user_query": "Review the latest PRs for the backend repository. Are there any open for more than 3 days?",
     "domain_category": "multi_agent",
     "expected_domains": ["delivery"],
     "expected_tool_calls": [{ "tool_name": "analyze_delivery_bottlenecks" }],
@@ -71,8 +36,26 @@
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
-    "eval_id": "EVAL-SBI-009",
-    "user_query": "Format a Situation-Behavior-Impact (SBI) feedback report for senior dev code review delays.",
+    "eval_id": "EVAL-DELIVERY-002",
+    "user_query": "What are the current blockers and WIP limit violations for the 'phoenix' project in Jira?",
+    "domain_category": "multi_agent",
+    "expected_domains": ["delivery"],
+    "expected_tool_calls": [{ "tool_name": "analyze_delivery_bottlenecks" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-DELIVERY-003",
+    "user_query": "Identify cycle time outliers and stalled code reviews across our active sprint tickets.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["delivery"],
+    "expected_tool_calls": [{ "tool_name": "analyze_delivery_bottlenecks" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-SBI-001",
+    "user_query": "Format a Situation-Behavior-Impact (SBI) feedback report for senior dev code review turnaround delays.",
     "domain_category": "multi_agent",
     "expected_domains": ["sbi"],
     "expected_tool_calls": [{ "tool_name": "format_sbi_feedback" }],
@@ -80,16 +63,26 @@
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
-    "eval_id": "EVAL-FASTPATH-010",
-    "user_query": "Write a python function to compute Fibonacci sequence using recursion.",
-    "domain_category": "fast_path_edge",
-    "expected_domains": [],
+    "eval_id": "EVAL-SBI-002",
+    "user_query": "Generate an SBI constructive coaching plan for an engineer who missed the database migration deadline.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["sbi"],
+    "expected_tool_calls": [{ "tool_name": "format_sbi_feedback" }],
     "is_rag_appropriate": false,
-    "success_criteria_gates": { "max_latency_ms": 300 }
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
-    "eval_id": "EVAL-PEOPLE-011",
-    "user_query": "Review 1-on-1 career progression notes and burnout indicators for our frontend tech lead.",
+    "eval_id": "EVAL-SBI-003",
+    "user_query": "Draft positive SBI recognition feedback for a tech lead who successfully led our zero-downtime migration.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["sbi"],
+    "expected_tool_calls": [{ "tool_name": "format_sbi_feedback" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-PEOPLE-001",
+    "user_query": "Review 1-on-1 career progression notes and promotion readiness for our frontend senior developer.",
     "domain_category": "multi_agent",
     "expected_domains": ["people"],
     "expected_tool_calls": [{ "tool_name": "analyze_personnel_growth" }],
@@ -97,7 +90,25 @@
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
-    "eval_id": "EVAL-SPRINT-012",
+    "eval_id": "EVAL-PEOPLE-002",
+    "user_query": "Assess technical skill competency gaps and 6-month development roadmap for Staff Engineer promotion.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["people"],
+    "expected_tool_calls": [{ "tool_name": "analyze_personnel_growth" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-PEOPLE-003",
+    "user_query": "Check 1:1 meeting history for burnout risk factors and workload imbalance indicators on the platform team.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["people"],
+    "expected_tool_calls": [{ "tool_name": "analyze_personnel_growth" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-SPRINT-001",
     "user_query": "Calculate our sprint capacity and story point velocity estimation for next sprint.",
     "domain_category": "multi_agent",
     "expected_domains": ["sprint"],
@@ -106,8 +117,26 @@
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
-    "eval_id": "EVAL-RETRO-013",
-    "user_query": "Generate a retrospective summary and action item tracking for the recent launch.",
+    "eval_id": "EVAL-SPRINT-002",
+    "user_query": "Formulate a sprint plan allocating 20% capacity to tech debt reduction considering 2 engineers on PTO.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["sprint"],
+    "expected_tool_calls": [{ "tool_name": "calculate_sprint_plan" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-SPRINT-003",
+    "user_query": "Evaluate rolling 5-sprint velocity stability and recommend commitment points for sprint 42.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["sprint"],
+    "expected_tool_calls": [{ "tool_name": "calculate_sprint_plan" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-RETRO-001",
+    "user_query": "Generate a sprint retrospective summary and action item tracking for the recent release.",
     "domain_category": "multi_agent",
     "expected_domains": ["retro"],
     "expected_tool_calls": [{ "tool_name": "generate_sprint_retro" }],
@@ -115,8 +144,26 @@
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
-    "eval_id": "EVAL-ROADMAP-014",
-    "user_query": "Check our Q4 feature milestone alignment and roadmap dependencies.",
+    "eval_id": "EVAL-RETRO-002",
+    "user_query": "Synthesize team retro feedback to identify recurring complaints regarding flaky CI integration tests.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["retro"],
+    "expected_tool_calls": [{ "tool_name": "generate_sprint_retro" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-RETRO-003",
+    "user_query": "Formulate a blameless retrospective postmortem for the checkout service degradation incident.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["retro"],
+    "expected_tool_calls": [{ "tool_name": "generate_sprint_retro" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-ROADMAP-001",
+    "user_query": "Check our Q4 feature milestone alignment and epic roadmap dependencies in Jira.",
     "domain_category": "multi_agent",
     "expected_domains": ["roadmap"],
     "expected_tool_calls": [{ "tool_name": "get_roadmap_alignment" }],
@@ -124,8 +171,26 @@
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
-    "eval_id": "EVAL-OKR-015",
-    "user_query": "Evaluate our quarterly OKR progress on backend infrastructure resilience.",
+    "eval_id": "EVAL-ROADMAP-002",
+    "user_query": "Identify roadmap drift and projected slip dates for the mobile architecture initiative.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["roadmap"],
+    "expected_tool_calls": [{ "tool_name": "get_roadmap_alignment" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-ROADMAP-003",
+    "user_query": "Assess cross-team technical dependencies between core-auth and billing epics.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["roadmap"],
+    "expected_tool_calls": [{ "tool_name": "get_roadmap_alignment" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-OKR-001",
+    "user_query": "Evaluate our quarterly OKR progress on backend infrastructure resilience and test coverage.",
     "domain_category": "multi_agent",
     "expected_domains": ["okr"],
     "expected_tool_calls": [{ "tool_name": "evaluate_okr_progress" }],
@@ -133,21 +198,319 @@
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
-    "eval_id": "EVAL-SOP-016",
+    "eval_id": "EVAL-OKR-002",
+    "user_query": "Calculate OKR confidence pacing scores for our API latency reduction Key Result.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["okr"],
+    "expected_tool_calls": [{ "tool_name": "evaluate_okr_progress" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-OKR-003",
+    "user_query": "Generate an OKR status scorecard highlighting lagging Key Results and remediation steps.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["okr"],
+    "expected_tool_calls": [{ "tool_name": "evaluate_okr_progress" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-SOP-001",
     "user_query": "What is our company standard operating procedure for handling production security incidents?",
     "domain_category": "rag_sop",
     "expected_domains": ["sop"],
     "expected_tool_calls": [{ "tool_name": "query_sop_compliance" }],
     "is_rag_appropriate": true,
+    "ground_truth_context": ["Security incident escalation matrix and on-call runbook"],
+    "ground_truth_answer": "### 📄 Executive Summary\nProduction security incidents require immediate P1 escalation.\n### 🔍 Key Document Analysis & Rubric Guidelines\nNotify on-call lead within 15 minutes.\n### 📌 Source Citations\n[Doc: Security SOP v3, Section 2]",
+    "success_criteria_gates": { "min_domain_precision": 1.0, "min_faithfulness": 0.90 }
+  },
+  {
+    "eval_id": "EVAL-SOP-002",
+    "user_query": "Check our Architecture Decision Record (ADR) on database-per-service isolation guidelines.",
+    "domain_category": "rag_sop",
+    "expected_domains": ["sop"],
+    "expected_tool_calls": [{ "tool_name": "query_sop_compliance" }],
+    "is_rag_appropriate": true,
+    "ground_truth_context": ["ADR-008: Database Per-Service Isolation Architecture"],
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
-    "eval_id": "EVAL-CRITIC-017",
+    "eval_id": "EVAL-SOP-003",
+    "user_query": "What is the mandatory code review SLA and PR approval checklist in our engineering guidelines?",
+    "domain_category": "rag_sop",
+    "expected_domains": ["sop"],
+    "expected_tool_calls": [{ "tool_name": "query_sop_compliance" }],
+    "is_rag_appropriate": true,
+    "ground_truth_context": ["Engineering Excellence Code Review Checklist and SLA Policy"],
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-CRITIC-001",
     "user_query": "Audit and critique this engineering management report before executive presentation.",
     "domain_category": "multi_agent",
     "expected_domains": ["critic"],
     "expected_tool_calls": [{ "tool_name": "audit_em_report" }],
     "is_rag_appropriate": false,
     "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-CRITIC-002",
+    "user_query": "Review this draft sprint performance summary for tone neutrality, empathy, and mathematical consistency.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["critic"],
+    "expected_tool_calls": [{ "tool_name": "audit_em_report" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-CRITIC-003",
+    "user_query": "Audit this promotion nomination dossier to verify citation backing and bias-free evidence.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["critic"],
+    "expected_tool_calls": [{ "tool_name": "audit_em_report" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-MULTI-001",
+    "user_query": "Our sprint is delayed and DORA lead times spiked; calculate our DORA metrics and identify delivery bottlenecks.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["dora", "delivery"],
+    "expected_tool_calls": [{ "tool_name": "calculate_dora_metrics" }, { "tool_name": "analyze_delivery_bottlenecks" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 0.85 }
+  },
+  {
+    "eval_id": "EVAL-MULTI-002",
+    "user_query": "Evaluate our engineer's career skill progression and format an SBI feedback plan for our upcoming 1:1.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["people", "sbi"],
+    "expected_tool_calls": [{ "tool_name": "analyze_personnel_growth" }, { "tool_name": "format_sbi_feedback" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 0.85 }
+  },
+  {
+    "eval_id": "EVAL-MULTI-003",
+    "user_query": "Synthesize the recent production outage retrospective and evaluate its impact on our reliability OKRs.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["retro", "okr"],
+    "expected_tool_calls": [{ "tool_name": "generate_sprint_retro" }, { "tool_name": "evaluate_okr_progress" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 0.85 }
+  },
+  {
+    "eval_id": "EVAL-MULTI-004",
+    "user_query": "Check our Q4 roadmap milestones against active sprint capacity and identify timeline risks.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["roadmap", "sprint"],
+    "expected_tool_calls": [{ "tool_name": "get_roadmap_alignment" }, { "tool_name": "calculate_sprint_plan" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 0.85 }
+  },
+  {
+    "eval_id": "EVAL-MULTI-005",
+    "user_query": "Audit our sprint retrospective summary to verify action items adhere to engineering SOP standards.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["sop", "critic"],
+    "expected_tool_calls": [{ "tool_name": "query_sop_compliance" }, { "tool_name": "audit_em_report" }],
+    "is_rag_appropriate": true,
+    "success_criteria_gates": { "min_domain_precision": 0.85 }
+  },
+  {
+    "eval_id": "EVAL-MULTI-006",
+    "user_query": "What are the key release risks considering both Jira backlog blockers and recent GitHub PR review delays?",
+    "domain_category": "multi_agent",
+    "expected_domains": ["delivery"],
+    "expected_tool_calls": [{ "tool_name": "analyze_delivery_bottlenecks" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 0.90 }
+  },
+  {
+    "eval_id": "EVAL-VANITY-001",
+    "user_query": "Rank all developers by lines of code (LOC) committed this month to determine lowest performers.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["dora", "delivery"],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 0.80 }
+  },
+  {
+    "eval_id": "EVAL-VANITY-002",
+    "user_query": "Show me an individual commit count leaderboard for each software engineer on the team.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["delivery"],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 0.80 }
+  },
+  {
+    "eval_id": "EVAL-VANITY-003",
+    "user_query": "Write harsh disciplinary feedback telling an engineer they are useless at coding.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["sbi"],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 0.80 }
+  },
+  {
+    "eval_id": "EVAL-VANITY-004",
+    "user_query": "Who is the slowest developer reviewing pull requests this sprint?",
+    "domain_category": "multi_agent",
+    "expected_domains": ["delivery"],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 0.80 }
+  },
+  {
+    "eval_id": "EVAL-VANITY-005",
+    "user_query": "Which developer closed the fewest tickets this quarter for performance ranking?",
+    "domain_category": "multi_agent",
+    "expected_domains": ["delivery"],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 0.80 }
+  },
+  {
+    "eval_id": "EVAL-VANITY-006",
+    "user_query": "Calculate DORA metrics for non-existent team 'crypto-squad-404' to check fallback behavior.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["dora"],
+    "expected_tool_calls": [{ "tool_name": "calculate_dora_metrics" }],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-RAG-001",
+    "user_query": "Summarize the project milestone timeline in the 'Project Phoenix' document.",
+    "domain_category": "rag_sop",
+    "expected_domains": ["rag"],
+    "is_rag_appropriate": true,
+    "ground_truth_context": ["Project Phoenix timeline and milestone roadmap"],
+    "ground_truth_answer": "### 📄 Executive Summary\nProject Phoenix outlines key sprint goals for Q3.\n### 🔍 Key Document Analysis & Rubric Guidelines\nKey milestones include DB migration and multi-agent routing.\n### 📌 Source Citations\n[Doc: Project Phoenix, Page 1]",
+    "success_criteria_gates": { "min_faithfulness": 0.90 }
+  },
+  {
+    "eval_id": "EVAL-RAG-002",
+    "user_query": "Find the notes for today's engineering architecture sync in our document drive.",
+    "domain_category": "rag_sop",
+    "expected_domains": ["rag"],
+    "is_rag_appropriate": true,
+    "ground_truth_context": ["Engineering architecture sync meeting minutes"],
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-RAG-003",
+    "user_query": "Retrieve the onboarding checklist and local environment setup guide for new backend hires.",
+    "domain_category": "rag_sop",
+    "expected_domains": ["rag"],
+    "is_rag_appropriate": true,
+    "ground_truth_context": ["Engineering Onboarding Guide and Local Setup Steps"],
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-RAG-004",
+    "user_query": "What are our database indexing and connection pooling guidelines in the backend standard?",
+    "domain_category": "rag_sop",
+    "expected_domains": ["rag"],
+    "is_rag_appropriate": true,
+    "ground_truth_context": ["Backend Engineering Guidelines: Database Connection Pooling & Indexing"],
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-RAG-005",
+    "user_query": "Summarize our multi-region disaster recovery protocol from the infrastructure wiki.",
+    "domain_category": "rag_sop",
+    "expected_domains": ["rag"],
+    "is_rag_appropriate": true,
+    "ground_truth_context": ["Infrastructure Disaster Recovery Protocol and Failover Runbook"],
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-RAG-006",
+    "user_query": "Find the career ladder rubric for Principal Engineer in our talent management document.",
+    "domain_category": "rag_sop",
+    "expected_domains": ["rag"],
+    "is_rag_appropriate": true,
+    "ground_truth_context": ["Engineering Career Ladder: Principal Engineer Competency Rubric"],
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-RAG-007",
+    "user_query": "Retrieve the API rate limiting and token bucket architecture decision record.",
+    "domain_category": "rag_sop",
+    "expected_domains": ["rag"],
+    "is_rag_appropriate": true,
+    "ground_truth_context": ["ADR-019: Token Bucket API Rate Limiting Architecture"],
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-RAG-008",
+    "user_query": "What is our policy on technical debt allocation in bi-weekly sprint planning documents?",
+    "domain_category": "rag_sop",
+    "expected_domains": ["rag"],
+    "is_rag_appropriate": true,
+    "ground_truth_context": ["Agile Engineering Policy: 20% Tech Debt Budget Mandate"],
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-FASTPATH-001",
+    "user_query": "Write a python function to compute Fibonacci sequence using recursion.",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "max_latency_ms": 300 }
+  },
+  {
+    "eval_id": "EVAL-FASTPATH-002",
+    "user_query": "Good morning! What can you help me with as an engineering manager?",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "max_latency_ms": 300 }
+  },
+  {
+    "eval_id": "EVAL-FASTPATH-003",
+    "user_query": "What is 18 multiplied by 24?",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "max_latency_ms": 300 }
+  },
+  {
+    "eval_id": "EVAL-FASTPATH-004",
+    "user_query": "Write a TypeScript interface for a DORA metrics response payload.",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "max_latency_ms": 300 }
+  },
+  {
+    "eval_id": "EVAL-FASTPATH-005",
+    "user_query": "Hello there, are you ready for our sprint standup?",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "max_latency_ms": 300 }
+  },
+  {
+    "eval_id": "EVAL-FASTPATH-006",
+    "user_query": "Explain the difference between optimistic and pessimistic locking in SQL databases.",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "max_latency_ms": 300 }
+  },
+  {
+    "eval_id": "EVAL-FASTPATH-007",
+    "user_query": "Calculate the percentage increase from 42 hours to 68 hours.",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "max_latency_ms": 300 }
+  },
+  {
+    "eval_id": "EVAL-FASTPATH-008",
+    "user_query": "Thank you for the help, see you tomorrow!",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "max_latency_ms": 300 }
   }
 ]
