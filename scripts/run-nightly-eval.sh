@@ -36,9 +36,12 @@ fi
 # Navigate to python-ai-service
 cd "${ROOT_DIR}/services/python-ai-service"
 
-# Execute Scheduled Deep Benchmark via uv
-if command -v uv > /dev/null 2>&1; then
-  echo "🚀 Running Scheduled Deep Benchmark via uv..." >> "${LOG_FILE}"
+# Execute Scheduled Deep Benchmark via Temporal / uv
+if nc -z localhost 7233 2>/dev/null || nc -z temporal 7233 2>/dev/null; then
+  echo "🚀 Triggering Scheduled Deep Benchmark on Temporal Cluster..." >> "${LOG_FILE}"
+  uv run python evaluation/trigger_temporal_benchmark.py >> "${LOG_FILE}" 2>&1
+elif command -v uv > /dev/null 2>&1; then
+  echo "🚀 Running Scheduled Deep Benchmark directly via uv..." >> "${LOG_FILE}"
   uv run python evaluation/scheduled_deep_benchmark.py >> "${LOG_FILE}" 2>&1
 else
   echo "🚀 Running Scheduled Deep Benchmark via python3..." >> "${LOG_FILE}"

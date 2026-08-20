@@ -20,6 +20,9 @@ with workflow.unsafe.imports_passed_through():
         extract_image_context_activity,
         extract_text_fallback_activity,
         execute_trulens_rag_triad_sweep_activity,
+        fetch_evaluation_queries_activity,
+        evaluate_single_rag_triad_query_activity,
+        sync_trulens_leaderboard_activity,
         evaluate_ingested_document_trulens_activity,
         run_ragas_evaluation_activity,
         run_pairwise_arena_activity,
@@ -78,8 +81,9 @@ class RAGIngestWorkflow:
             trulens_eval_res = await workflow.execute_activity(
                 evaluate_ingested_document_trulens_activity,
                 {"filename": persist_result["filename"]},
-                start_to_close_timeout=timedelta(seconds=60),
-                retry_policy=RetryPolicy(maximum_attempts=1),
+                start_to_close_timeout=timedelta(minutes=3),
+                heartbeat_timeout=timedelta(seconds=45),
+                retry_policy=RetryPolicy(initial_interval=timedelta(seconds=2), maximum_attempts=2),
             )
         except Exception:
             pass
@@ -169,30 +173,85 @@ class ChatFileExtractWorkflow:
 
 @workflow.defn
 class TruLensBatchEvaluationWorkflow:
-    """Durable Batch TruLens RAG Triad Evaluation Workflow."""
+    """Durable Batch TruLens RAG Triad Evaluation Workflow with Granular Step Activities."""
+
+    def __init__(self):
+        self._current_step = "initialized"
+        self._evaluated_queries = []
+
+    @workflow.query
+    def get_status(self) -> Dict[str, Any]:
+        return {
+            "current_step": self._current_step,
+            "evaluated_count": len(self._evaluated_queries),
+            "records": self._evaluated_queries,
+        }
 
     @workflow.run
     async def run(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        limit = params.get("limit", 5)
+        model_name = params.get("model_name", "hermes3:8b")
+
         retry_policy = RetryPolicy(
             initial_interval=timedelta(seconds=2),
             maximum_interval=timedelta(seconds=15),
             maximum_attempts=3,
         )
 
-        res = await workflow.execute_activity(
-            execute_trulens_rag_triad_sweep_activity,
-            params,
-            start_to_close_timeout=timedelta(minutes=10),
-            heartbeat_timeout=timedelta(minutes=3),
+        # Step 1: Discover evaluation queries
+        self._current_step = "fetching_queries"
+        fetch_res = await workflow.execute_activity(
+            fetch_evaluation_queries_activity,
+            {"limit": limit, "include_golden": params.get("include_golden", True)},
+            start_to_close_timeout=timedelta(seconds=30),
             retry_policy=retry_policy,
         )
+        queries = fetch_res.get("queries", [])
+        total_queries = len(queries)
 
-        return res
+        # Step 2: Granular per-query evaluation activities
+        self._current_step = "evaluating_queries"
+        query_results = []
+        for i, q in enumerate(queries):
+            query_res = await workflow.execute_activity(
+                evaluate_single_rag_triad_query_activity,
+                {
+                    "query": q,
+                    "query_index": i + 1,
+                    "total_queries": total_queries,
+                    "model_name": model_name,
+                },
+                start_to_close_timeout=timedelta(minutes=5),
+                heartbeat_timeout=timedelta(seconds=60),
+                retry_policy=retry_policy,
+            )
+            query_results.append(query_res)
+            self._evaluated_queries.append(query_res)
+
+        # Step 3: Aggregate & Sync Leaderboard
+        self._current_step = "syncing_leaderboard"
+        summary = await workflow.execute_activity(
+            sync_trulens_leaderboard_activity,
+            {"results": query_results, "model_name": model_name},
+            start_to_close_timeout=timedelta(seconds=30),
+            retry_policy=retry_policy,
+        )
+        self._current_step = "completed"
+
+        return {
+            "status": "SUCCESS",
+            "records_evaluated": len(query_results),
+            "app_id": "em-taskflow-rag-pipeline",
+            "model_name": model_name,
+            "feedbacks": ["Context Relevance", "Groundedness", "Answer Relevance"],
+            "summary": summary,
+            "results": query_results,
+        }
 
 
 @workflow.defn
 class DeepEvaluationBenchmarkWorkflow:
-    """Durable Multi-Metric Deep Evaluation Benchmark Workflow (Ragas + TruLens + Arena + Langfuse)."""
+    """Durable Multi-Metric Deep Evaluation Benchmark Workflow (Ragas + Granular TruLens + Arena + Langfuse)."""
 
     def __init__(self):
         self._current_phase = "initialized"
@@ -225,15 +284,45 @@ class DeepEvaluationBenchmarkWorkflow:
         )
         self._phase_progress["ragas"] = ragas_scores
 
-        # Phase 2: TruLens RAG Triad Recording
+        # Phase 2: Granular TruLens RAG Triad Suite
         self._current_phase = "trulens_rag_triad"
-        trulens_res = await workflow.execute_activity(
-            execute_trulens_rag_triad_sweep_activity,
-            {"model_name": model_name, "limit": params.get("trulens_limit", 5)},
-            start_to_close_timeout=timedelta(minutes=10),
-            heartbeat_timeout=timedelta(seconds=60),
+        trulens_limit = params.get("trulens_limit", 5)
+        fetch_res = await workflow.execute_activity(
+            fetch_evaluation_queries_activity,
+            {"limit": trulens_limit, "include_golden": True},
+            start_to_close_timeout=timedelta(seconds=30),
             retry_policy=retry_policy,
         )
+        queries = fetch_res.get("queries", [])
+        total_queries = len(queries)
+        trulens_results = []
+        for i, q in enumerate(queries):
+            q_res = await workflow.execute_activity(
+                evaluate_single_rag_triad_query_activity,
+                {
+                    "query": q,
+                    "query_index": i + 1,
+                    "total_queries": total_queries,
+                    "model_name": model_name,
+                },
+                start_to_close_timeout=timedelta(minutes=5),
+                heartbeat_timeout=timedelta(seconds=60),
+                retry_policy=retry_policy,
+            )
+            trulens_results.append(q_res)
+
+        trulens_summary = await workflow.execute_activity(
+            sync_trulens_leaderboard_activity,
+            {"results": trulens_results, "model_name": model_name},
+            start_to_close_timeout=timedelta(seconds=30),
+            retry_policy=retry_policy,
+        )
+        trulens_res = {
+            "status": "SUCCESS",
+            "records_evaluated": len(trulens_results),
+            "summary": trulens_summary,
+            "results": trulens_results,
+        }
         self._phase_progress["trulens"] = trulens_res
 
         # Phase 3: Pairwise Arena Calibration
