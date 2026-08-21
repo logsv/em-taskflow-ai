@@ -1131,7 +1131,7 @@ function AdminPage({ onBackToChat }) {
                           className="settings-input"
                           value={adminSettings?.mcp?.jira?.url || ''}
                           onChange={(e) => updateMcpField('jira', 'url', e.target.value)}
-                          placeholder="https://your-company.atlassian.net"
+                          placeholder="https://vikasmcajnu.atlassian.net"
                         />
                       </div>
                       <div className="form-group flex-2">
@@ -1146,15 +1146,38 @@ function AdminPage({ onBackToChat }) {
                       </div>
                     </div>
 
+                    <div className="form-row">
+                      <div className="form-group flex-1">
+                        <label>Project Key</label>
+                        <input
+                          type="text"
+                          className="settings-input"
+                          value={adminSettings?.mcp?.jira?.projectKey || ''}
+                          onChange={(e) => updateMcpField('jira', 'projectKey', e.target.value)}
+                          placeholder="ENG, KAN, PROJ"
+                        />
+                      </div>
+                      <div className="form-group flex-2">
+                        <label>Atlassian Remote MCP URL (Optional)</label>
+                        <input
+                          type="text"
+                          className="settings-input"
+                          value={adminSettings?.mcp?.jira?.mcpUrl || ''}
+                          onChange={(e) => updateMcpField('jira', 'mcpUrl', e.target.value)}
+                          placeholder="https://mcp.atlassian.com/v1/mcp/authv2"
+                        />
+                      </div>
+                    </div>
+
                     <div className="form-group">
-                      <label>Jira API Token</label>
+                      <label>Jira API Token / OAuth Token</label>
                       <div className="input-secret-wrapper">
                         <input
                           type={showSecrets.jiraToken ? 'text' : 'password'}
                           className="settings-input"
                           value={adminSettings?.mcp?.jira?.apiToken || ''}
                           onChange={(e) => updateMcpField('jira', 'apiToken', e.target.value)}
-                          placeholder="••••••••••••"
+                          placeholder="ATATT••••••••••••"
                         />
                         <button
                           type="button"

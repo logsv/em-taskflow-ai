@@ -98,10 +98,10 @@ class SettingsService {
       },
       mcp: {
         jira: {
-          url: process.env.JIRA_BASE_URL || process.env.JIRA_MCP_URL || 'https://example.jira.com',
-          email: process.env.JIRA_USER_EMAIL || '',
+          url: process.env.JIRA_BASE_URL || process.env.JIRA_URL || 'https://vikasmcajnu.atlassian.net',
+          email: process.env.JIRA_USER_EMAIL || process.env.JIRA_USERNAME || '',
           apiToken: process.env.JIRA_API_TOKEN || process.env.JIRA_MCP_TOKEN || '',
-          mcpUrl: process.env.JIRA_MCP_URL || '',
+          mcpUrl: process.env.JIRA_MCP_URL || 'https://mcp.atlassian.com/v1/mcp/authv2',
           enabled: true,
         },
         github: {
@@ -375,19 +375,58 @@ class SettingsService {
       }
 
       if (type === 'jira') {
-        const url = credentials.url !== undefined ? credentials.url : raw.mcp.jira?.url;
+        const url = (credentials.url !== undefined ? credentials.url : raw.mcp.jira?.url) || 'https://vikasmcajnu.atlassian.net';
+        const mcpUrl = (credentials.mcpUrl !== undefined ? credentials.mcpUrl : raw.mcp.jira?.mcpUrl) || 'https://mcp.atlassian.com/v1/mcp/authv2';
         const email = credentials.email !== undefined ? credentials.email : raw.mcp.jira?.email;
         const token = isMasked(credentials.apiToken)
           ? raw.mcp.jira?.apiToken
           : credentials.apiToken !== undefined ? credentials.apiToken : raw.mcp.jira?.apiToken;
 
+        // If user explicitly testing Atlassian Remote MCP Cloud (OAuth 2.1)
+        if (credentials.mode === 'mcp' || (url.includes('mcp.atlassian.com') && token)) {
+          const mcpTarget = url.includes('mcp.atlassian.com') ? url : mcpUrl;
+          try {
+            const mcpRes = await axios.post(
+              mcpTarget,
+              {
+                jsonrpc: '2.0',
+                method: 'initialize',
+                params: {
+                  protocolVersion: '2024-11-05',
+                  capabilities: {},
+                  clientInfo: { name: 'EM-TaskFlow-AI', version: '1.0.0' },
+                },
+                id: 1,
+              },
+              {
+                headers: {
+                  Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                },
+                timeout: 4500,
+              }
+            );
+            return {
+              success: true,
+              latencyMs: Date.now() - startTime,
+              message: `Connected to Official Atlassian Remote MCP (${mcpTarget})`,
+            };
+          } catch (mcpErr) {
+            return {
+              success: false,
+              latencyMs: Date.now() - startTime,
+              message: `Remote Atlassian MCP error: ${mcpErr.response?.data?.error || mcpErr.message}`,
+            };
+          }
+        }
+
         if (!url || !url.startsWith('http')) {
-          return { success: false, latencyMs: 0, message: 'Invalid Jira URL provided' };
+          return { success: false, latencyMs: 0, message: 'Invalid Jira URL provided (e.g. https://vikasmcajnu.atlassian.net)' };
         }
 
         const authHeader = email && token
           ? `Basic ${Buffer.from(`${email}:${token}`).toString('base64')}`
-          : token ? `Bearer ${token}` : null;
+          : token ? (token.startsWith('Basic ') || token.startsWith('Bearer ') ? token : `Bearer ${token}`) : null;
 
         const res = await axios.get(`${url.replace(/\/$/, '')}/rest/api/3/myself`, {
           headers: authHeader ? { Authorization: authHeader, Accept: 'application/json' } : { Accept: 'application/json' },
@@ -397,7 +436,7 @@ class SettingsService {
         return {
           success: true,
           latencyMs: Date.now() - startTime,
-          message: `Connected as ${res.data?.displayName || res.data?.emailAddress || 'Jira User'}`,
+          message: `Connected as ${res.data?.displayName || res.data?.emailAddress || 'Jira User'} (${res.data?.emailAddress || url})`,
         };
       }
 
