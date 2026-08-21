@@ -957,3 +957,190 @@
   color: #7dd3fc;
 }
 
+/* Markdown Ordered Lists */
+.message-text .md-ol {
+  margin: 0.4rem 0 0.8rem 1.4rem;
+  padding-left: 0.6rem;
+}
+
+.message-text .md-oli {
+  margin: 0.3rem 0;
+  line-height: 1.5;
+  color: #e2e8f0;
+}
+
+/* Markdown Tables */
+.message-text .md-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  margin: 1.1rem 0;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(18, 20, 29, 0.85);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+  -webkit-overflow-scrolling: touch;
+}
+
+.message-text .md-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.875rem;
+  text-align: left;
+}
+
+.message-text .md-table th {
+  background: linear-gradient(180deg, rgba(32, 34, 50, 0.98) 0%, rgba(22, 23, 36, 0.98) 100%);
+  color: #c084fc;
+  font-size: 0.775rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 12px 16px;
+  border-bottom: 2px solid rgba(171, 104, 255, 0.35);
+  white-space: nowrap;
+}
+
+.message-text .md-table td {
+  padding: 11px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #f1f5f9;
+  vertical-align: middle;
+  line-height: 1.5;
+}
+
+.message-text .md-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.message-text .md-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.message-text .md-table tbody tr:hover {
+  background: rgba(171, 104, 255, 0.09);
+}
+
+/* Status / Risk Badges inside Tables */
+.message-text .table-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 0.785rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.message-text .table-pill.pill-danger {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.message-text .table-pill.pill-warning {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fcd34d;
+}
+
+.message-text .table-pill.pill-success {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #6ee7b7;
+}
+
+.message-text .table-pill.pill-info {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #7dd3fc;
+}
+
+/* Blockquotes & Callout Notices */
+.message-text .md-blockquote {
+  margin: 0.9rem 0;
+  padding: 11px 16px;
+  border-left: 4px solid #ab68ff;
+  background: rgba(171, 104, 255, 0.08);
+  border-radius: 0 8px 8px 0;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.message-text .md-blockquote.notice-callout {
+  border-left-color: #34d399;
+  background: rgba(52, 211, 153, 0.09);
+  color: #ecfdf5;
+}
+
+.message-text .md-blockquote.warning-callout {
+  border-left-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.09);
+  color: #fffbeb;
+}
+
+.message-text .md-blockquote.danger-callout {
+  border-left-color: #ef4444;
+  background: rgba(239, 68, 68, 0.09);
+  color: #fef2f2;
+}
+
+/* Inline Code & Math */
+.message-text .md-inline-code {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e9d5ff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: 0.825rem;
+}
+
+.message-text .md-math {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+/* Fenced Code Block Wrapper */
+.message-text .md-code-block-wrapper {
+  margin: 1rem 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #111218;
+}
+
+.message-text .md-code-header {
+  background: #1a1b26;
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.message-text .md-pre {
+  margin: 0;
+  padding: 14px;
+  overflow-x: auto;
+  background: transparent;
+}
+
+.message-text .md-code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.85rem;
+  color: #f1f5f9;
+  line-height: 1.5;
+}
+
+

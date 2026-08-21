@@ -117,7 +117,7 @@ export async function ingestPDF(filePath, filename) {
     // Try Python AI Microservice extraction (PDF, CSV, Word, Images, Text)
     let text = '';
     const pyExtract = await pythonAIServiceClient.extractDocument(dataBuffer, filename, '');
-    if (pyExtract && pyExtract.success && pyExtract.extracted_text && pyExtract.extraction_method !== 'node_fallback') {
+    if (pyExtract && pyExtract.success && pyExtract.extracted_text) {
       text = pyExtract.extracted_text;
       info(`Document extracted via Python AI service`, { filename, charCount: text.length, method: pyExtract.extraction_method });
     } else if (filename.toLowerCase().endsWith('.pdf')) {
@@ -134,7 +134,7 @@ export async function ingestPDF(filePath, filename) {
     }
 
     if (!text || text.trim().length === 0) {
-      throw new Error('No text content found in PDF');
+      throw new Error(filename.toLowerCase().endsWith('.pdf') ? 'No text content found in PDF' : 'No text content found in document');
     }
 
     // Create chunks with token-aware splitting

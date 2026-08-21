@@ -215,45 +215,172 @@ function Chat({
 
   const formatMessage = (text) => {
     let safeText = typeof text === 'string' ? text : text == null ? '' : String(text);
+    if (!safeText.trim()) return '';
 
-    // Convert <think> tags
+    // 1. Convert <think> tags
     safeText = safeText.replace(
       /<think>([\s\S]*?)<\/think>/g,
       '<span class="think-content">$1</span>'
     );
 
-    // Convert Markdown headers (###, ##, #)
+    // 2. Pre-process LaTeX Math symbols in inline expressions
     safeText = safeText
+      .replace(/\\le(q)?\b/g, '≤')
+      .replace(/\\ge(q)?\b/g, '≥')
+      .replace(/\\approx\b/g, '≈')
+      .replace(/\\neq\b/g, '≠')
+      .replace(/\\pm\b/g, '±')
+      .replace(/\\times\b/g, '×')
+      .replace(/\$([^\$\n]+)\$/g, '<span class="md-math">$1</span>');
+
+    // 3. Extract and protect Fenced Code Blocks (```lang ... ```)
+    const codeBlocks = [];
+    safeText = safeText.replace(/```([a-zA-Z0-9_-]*)\r?\n([\s\S]*?)```/g, (match, lang, code) => {
+      const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+      const escapedCode = code
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      codeBlocks.push(
+        `<div class="md-code-block-wrapper"><div class="md-code-header"><span>${lang || 'code'}</span></div><pre class="md-pre"><code class="md-code">${escapedCode}</code></pre></div>`
+      );
+      return placeholder;
+    });
+
+    // 4. Parse Blockquotes / Callout Notices (> ...)
+    safeText = safeText.replace(/(?:^[ \t]*>[ \t]?(?:.*)(?:\r?\n|$))+/gm, (block) => {
+      const lines = block.split(/\r?\n/)
+        .map(line => line.replace(/^[ \t]*>[ \t]?/, '').trim())
+        .filter(Boolean);
+      const innerContent = lines.join('<br/>');
+      
+      let calloutClass = 'md-blockquote';
+      if (innerContent.includes('✅') || innerContent.toLowerCase().includes('notice:')) {
+        calloutClass += ' notice-callout';
+      } else if (innerContent.includes('⚠️') || innerContent.toLowerCase().includes('warning:')) {
+        calloutClass += ' warning-callout';
+      } else if (innerContent.includes('❌') || innerContent.toLowerCase().includes('danger:')) {
+        calloutClass += ' danger-callout';
+      }
+      return `\n\n<blockquote class="${calloutClass}">${innerContent}</blockquote>\n\n`;
+    });
+
+    // 5. Parse Markdown GFM Tables
+    const tableRegex = /((?:^[ \t]*\|.+?\|[ \t]*(?:\r?\n|$))+)/gm;
+    safeText = safeText.replace(tableRegex, (match) => {
+      const rawLines = match.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (rawLines.length < 2) return match;
+
+      const sepLine = rawLines[1];
+      const isSep = /^\|?([ \t]*:?-+:?[ \t]*\|)+[ \t]*:?-+:?[ \t]*\|?$/.test(sepLine);
+      if (!isSep) return match;
+
+      const parseCells = (line) => {
+        let trimmed = line.replace(/^\|/, '').replace(/\|$/, '');
+        return trimmed.split('|').map(c => c.trim());
+      };
+
+      const headerCells = parseCells(rawLines[0]);
+      const alignCells = parseCells(sepLine);
+      const alignments = alignCells.map(c => {
+        const starts = c.startsWith(':');
+        const ends = c.endsWith(':');
+        if (starts && ends) return 'center';
+        if (ends) return 'right';
+        return 'left';
+      });
+
+      const bodyRows = rawLines.slice(2);
+
+      const formatCellContent = (content) => {
+        let cell = content;
+        if (/^(🔴|❌|CRITICAL|HIGH)\b/i.test(cell) || cell.includes('🔴') || cell.includes('High Risk') || cell.includes('Stalled') || cell.includes('Over Limit') || cell.includes('Blocked')) {
+          cell = `<span class="table-pill pill-danger">${cell}</span>`;
+        } else if (/^(🟡|⚠️|MEDIUM|WARN|Review Delays)\b/i.test(cell) || cell.includes('🟡') || cell.includes('Review Delays')) {
+          cell = `<span class="table-pill pill-warning">${cell}</span>`;
+        } else if (/^(🟢|✅|LOW|HEALTHY|OPTIMAL|PASS|OK)\b/i.test(cell) || cell.includes('🟢') || cell.includes('Healthy') || cell.includes('Optimal')) {
+          cell = `<span class="table-pill pill-success">${cell}</span>`;
+        } else if (/^(🔵|ℹ️|INFO)\b/i.test(cell)) {
+          cell = `<span class="table-pill pill-info">${cell}</span>`;
+        }
+        return cell;
+      };
+
+      let tableHtml = '<div class="md-table-wrapper"><table class="md-table"><thead><tr>';
+      headerCells.forEach((h, idx) => {
+        const align = alignments[idx] || 'left';
+        tableHtml += `<th style="text-align: ${align}">${h}</th>`;
+      });
+      tableHtml += '</tr></thead><tbody>';
+
+      bodyRows.forEach((row) => {
+        const cells = parseCells(row);
+        tableHtml += '<tr>';
+        cells.forEach((c, idx) => {
+          const align = alignments[idx] || 'left';
+          tableHtml += `<td style="text-align: ${align}">${formatCellContent(c)}</td>`;
+        });
+        tableHtml += '</tr>';
+      });
+
+      tableHtml += '</tbody></table></div>';
+      return `\n\n${tableHtml}\n\n`;
+    });
+
+    // 6. Convert Inline Code (`code`)
+    safeText = safeText.replace(/`([^`\r\n]+)`/g, '<code class="md-inline-code">$1</code>');
+
+    // 7. Convert Markdown headers (####, ###, ##, #)
+    safeText = safeText
+      .replace(/^#### (.*$)/gim, '<h4 class="md-h4">$1</h4>')
       .replace(/^### (.*$)/gim, '<h3 class="md-h3">$1</h3>')
       .replace(/^## (.*$)/gim, '<h2 class="md-h2">$1</h2>')
       .replace(/^# (.*$)/gim, '<h1 class="md-h1">$1</h1>');
 
-    // Convert Bold (**text** or __text__)
+    // 8. Convert Bold (**text** or __text__)
     safeText = safeText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     safeText = safeText.replace(/__(.*?)__/g, '<strong>$1</strong>');
 
-    // Convert Markdown links [text](url)
+    // 9. Convert Italics (*text* or _text_)
+    safeText = safeText.replace(/(?<!\*)\*(?!\*)(.*?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+
+    // 10. Convert Markdown links [text](url)
     safeText = safeText.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-link">$1</a>');
 
-    // Convert bullet list items (+ , * , - )
+    // 11. Convert bullet list items (+ , * , - )
     safeText = safeText.replace(/^\s*[\+\*\-]\s+(.*$)/gim, '<li class="md-li">$1</li>');
-
-    // Wrap continuous <li> elements in <ul>
     safeText = safeText.replace(/(<li class="md-li">[\s\S]*?<\/li>)/g, '<ul class="md-ul">$1</ul>');
     safeText = safeText.replace(/<\/ul>\s*<ul class="md-ul">/g, '');
 
-    // Convert double newlines to paragraphs / line breaks
+    // 12. Convert numbered list items (1. , 2. )
+    safeText = safeText.replace(/^\s*\d+\.\s+(.*$)/gim, '<li class="md-oli">$1</li>');
+    safeText = safeText.replace(/(<li class="md-oli">[\s\S]*?<\/li>)/g, '<ol class="md-ol">$1</ol>');
+    safeText = safeText.replace(/<\/ol>\s*<ol class="md-ol">/g, '');
+
+    // 13. Convert double newlines to paragraphs / line breaks
     const paragraphs = safeText.split(/\n\n+/);
     safeText = paragraphs
       .map(p => p.trim())
       .filter(Boolean)
       .map(p => {
-        if (p.startsWith('<h') || p.startsWith('<ul') || p.startsWith('<div')) {
+        if (
+          p.startsWith('<h') ||
+          p.startsWith('<ul') ||
+          p.startsWith('<ol') ||
+          p.startsWith('<div') ||
+          p.startsWith('<blockquote') ||
+          p.startsWith('__CODE_BLOCK_')
+        ) {
           return p;
         }
         return `<p class="md-p">${p.replace(/\n/g, '<br/>')}</p>`;
       })
       .join('');
+
+    // 14. Restore Protected Code Blocks
+    codeBlocks.forEach((block, i) => {
+      safeText = safeText.replace(`__CODE_BLOCK_${i}__`, block);
+    });
 
     return safeText;
   };

@@ -3,13 +3,16 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import Chat from './Chat';
 
+let mockMessagesStore = [];
+let mockIsRunningStore = false;
+
 // Mock assistant-ui react module
 jest.mock('@assistant-ui/react', () => ({
   useAuiState: (selector) => {
     return selector({
       thread: {
-        messages: [],
-        isRunning: false,
+        messages: mockMessagesStore,
+        isRunning: mockIsRunningStore,
       }
     });
   },
@@ -35,6 +38,8 @@ const defaultProps = {
 
 describe('Chat Component', () => {
   beforeEach(() => {
+    mockMessagesStore = [];
+    mockIsRunningStore = false;
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -142,5 +147,56 @@ describe('Chat Component', () => {
     fireEvent.click(paletteBtn);
 
     expect(screen.getByText(/Fast Agent Prompts & Hints/i)).toBeInTheDocument();
+  });
+
+  test('renders markdown tables, status pills, and callout blockquotes properly in assistant messages', () => {
+    const tableMarkdown = `> ✅ Notice: Fresh delivery telemetry retrieved via Live MCP integration.
+
+| Metric | Current Value | Healthy Benchmark | Risk Level |
+| :--- | :--- | :--- | :--- |
+| Delivery Risk Index | HIGH | LOW | 🔴 High Risk |
+| Active WIP Count | 7 items (Limit: 5) | $\\le 5$ items | 🔴 +2 Over Limit |
+| PR Review Latency (Avg) | 17,617.9 hours (~734.1d) | $\\le 4.0$ hours | 🔴 Stalled |`;
+
+    mockMessagesStore = [
+      {
+        id: 'msg-1',
+        role: 'assistant',
+        content: [{ type: 'text', text: tableMarkdown }],
+      },
+    ];
+
+    render(<Chat {...defaultProps} />);
+
+    // Verify Blockquote Notice Callout
+    const blockquote = document.querySelector('.md-blockquote.notice-callout');
+    expect(blockquote).toBeInTheDocument();
+    expect(blockquote.textContent).toContain('Notice: Fresh delivery telemetry retrieved');
+
+    // Verify Table Elements
+    const tableWrapper = document.querySelector('.md-table-wrapper');
+    expect(tableWrapper).toBeInTheDocument();
+
+    const table = document.querySelector('.md-table');
+    expect(table).toBeInTheDocument();
+
+    const headers = document.querySelectorAll('.md-table th');
+    expect(headers.length).toBe(4);
+    expect(headers[0].textContent).toBe('Metric');
+    expect(headers[1].textContent).toBe('Current Value');
+    expect(headers[2].textContent).toBe('Healthy Benchmark');
+    expect(headers[3].textContent).toBe('Risk Level');
+
+    const rows = document.querySelectorAll('.md-table tbody tr');
+    expect(rows.length).toBe(3);
+
+    // Verify Risk / Status Pills
+    const dangerPills = document.querySelectorAll('.table-pill.pill-danger');
+    expect(dangerPills.length).toBeGreaterThan(0);
+
+    // Verify math rendering
+    const mathSpan = document.querySelector('.md-math');
+    expect(mathSpan).toBeInTheDocument();
+    expect(mathSpan.textContent).toContain('≤ 5 items');
   });
 });

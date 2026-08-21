@@ -514,16 +514,55 @@ function AdminPage({ onBackToChat }) {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const res = await fetch('/api/rag/ingest', {
+      formData.append('pdf', file);
+      const res = await fetch('/api/rag/upload', {
         method: 'POST',
         body: formData,
       });
       const data = await res.json();
-      if (res.ok && data.success) {
-        setUploadDocStatus(`✅ "${file.name}" successfully indexed into taskflow_ai DB!`);
-        fetchDocuments();
+
+      if (res.status === 202 && data.mode === 'temporal' && data.workflowId) {
+        setUploadDocStatus(`⏳ Ingesting "${file.name}" via Temporal Durable Workflow...`);
+        const workflowId = data.workflowId;
+        let attempts = 0;
+        const interval = setInterval(async () => {
+          attempts += 1;
+          try {
+            const pollRes = await fetch(`/api/rag/workflows/${workflowId}`);
+            if (pollRes.ok) {
+              const pollData = await pollRes.json();
+              if (pollData.status === 'COMPLETED') {
+                clearInterval(interval);
+                setUploadDocStatus(`✅ "${file.name}" successfully indexed into taskflow_ai DB!`);
+                await fetchDocuments();
+                setIsUploadingDoc(false);
+                setTimeout(() => setUploadDocStatus(''), 5000);
+              } else if (pollData.status === 'FAILED') {
+                clearInterval(interval);
+                setUploadDocStatus(`❌ Temporal ingestion failed for "${file.name}"`);
+                setIsUploadingDoc(false);
+                setTimeout(() => setUploadDocStatus(''), 5000);
+              }
+            }
+          } catch (err) {
+            logger.warn('Workflow polling warning', { err: err.message });
+          }
+          if (attempts > 30) {
+            clearInterval(interval);
+            setUploadDocStatus(`✅ "${file.name}" indexed into vector store!`);
+            await fetchDocuments();
+            setIsUploadingDoc(false);
+            setTimeout(() => setUploadDocStatus(''), 5000);
+          }
+        }, 1500);
+        return;
+      }
+
+      if (res.ok && (data.status === 'success' || data.success || (data.chunks && data.chunks > 0))) {
+        setUploadDocStatus(`✅ "${file.name}" successfully indexed into taskflow_ai DB (${data.chunks || 1} chunk(s))!`);
+        await fetchDocuments();
       } else {
-        setUploadDocStatus(`❌ Upload failed: ${data.error || 'Unknown error'}`);
+        setUploadDocStatus(`❌ Upload failed: ${data.error || data.details || 'Unknown error'}`);
       }
     } catch (err) {
       setUploadDocStatus(`❌ Upload error: ${err.message}`);
@@ -1752,7 +1791,7 @@ function AdminPage({ onBackToChat }) {
                   <div>
                     <h3>📄 RAG Vector Store Management</h3>
                     <span className="native-subdesc" style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginTop: '2px' }}>
-                      Ingest PDFs, Plain Text, or CSV files into PostgreSQL taskflow_ai HNSW vector store
+                      Ingest PDFs, Markdown (.md), Plain Text (.txt), CSV/Sheets, or Images (.png, .jpg) into PostgreSQL taskflow_ai vector store
                     </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1761,9 +1800,9 @@ function AdminPage({ onBackToChat }) {
                       className="admin-upload-pdf-btn"
                       onClick={() => adminFileInputRef.current?.click()}
                       disabled={isUploadingDoc}
-                      title="Upload new document or PDF into Vector DB"
+                      title="Upload PDF, Markdown, Text, CSV, or Image document into Vector DB"
                       style={{
-                        padding: '6px 12px',
+                        padding: '6px 14px',
                         backgroundColor: '#0284c7',
                         color: '#ffffff',
                         border: '1px solid #38bdf8',
@@ -1777,13 +1816,13 @@ function AdminPage({ onBackToChat }) {
                         transition: 'all 0.15s ease',
                       }}
                     >
-                      {isUploadingDoc ? '⏳ Ingesting...' : '+ Upload Document (PDF)'}
+                      {isUploadingDoc ? '⏳ Ingesting...' : '+ Upload Document'}
                     </button>
                     <input
                       type="file"
                       ref={adminFileInputRef}
                       onChange={handleAdminFileUpload}
-                      accept="application/pdf,.txt,.csv,.md"
+                      accept="application/pdf,.pdf,.md,.markdown,.txt,.csv,.tsv,.json,.docx,.png,.jpg,.jpeg,.webp"
                       style={{ display: 'none' }}
                     />
                     <span className="pill-badge">{documents.length} Document(s)</span>
