@@ -8,6 +8,7 @@ import feedbackApplicationService from '../application/feedback/FeedbackApplicat
 import healthApplicationService from '../application/health/HealthApplicationService.js';
 import githubSyncService from '../services/githubSyncService.js';
 import databaseService from '../db/postgres.js';
+import { startJiraOAuthFlow, completeJiraOAuthFlow, getJiraOAuthStatus, disconnectJiraOAuth } from '../mcp/jiraOAuth.js';
 
 const router = express.Router();
 
@@ -365,6 +366,47 @@ router.get('/em/okrs', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Atlassian Jira OAuth 2.0 (3LO) Endpoints
+router.get('/mcp/jira/oauth/start', async (req, res) => {
+  try {
+    const result = await startJiraOAuthFlow();
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/mcp/jira/oauth/callback', async (req, res) => {
+  try {
+    const code = req.query.code;
+    if (!code) {
+      return res.status(400).send('<h3>Error: Missing authorization code from Atlassian OAuth callback</h3>');
+    }
+    await completeJiraOAuthFlow(code);
+    res.redirect('/admin?tab=settings&jira_oauth=success');
+  } catch (error) {
+    res.status(500).send(`<h3>Atlassian OAuth Failed: ${error.message}</h3><p><a href="/admin">Back to Admin</a></p>`);
+  }
+});
+
+router.get('/mcp/jira/oauth/status', async (req, res) => {
+  try {
+    const status = await getJiraOAuthStatus();
+    res.json({ success: true, ...status });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/mcp/jira/oauth/disconnect', async (req, res) => {
+  try {
+    const result = await disconnectJiraOAuth();
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

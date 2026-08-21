@@ -98,10 +98,16 @@ class SettingsService {
       },
       mcp: {
         jira: {
-          url: process.env.JIRA_BASE_URL || process.env.JIRA_URL || 'https://vikasmcajnu.atlassian.net',
+          url: process.env.JIRA_BASE_URL || process.env.JIRA_URL || 'https://your-company.atlassian.net',
           email: process.env.JIRA_USER_EMAIL || process.env.JIRA_USERNAME || '',
           apiToken: process.env.JIRA_API_TOKEN || process.env.JIRA_MCP_TOKEN || '',
           mcpUrl: process.env.JIRA_MCP_URL || 'https://mcp.atlassian.com/v1/mcp/authv2',
+          projectKey: process.env.JIRA_PROJECT_KEY || '',
+          oauth: {
+            clientId: process.env.JIRA_OAUTH_CLIENT_ID || '',
+            clientSecret: process.env.JIRA_OAUTH_CLIENT_SECRET || '',
+            redirectUrl: process.env.JIRA_OAUTH_REDIRECT_URL || 'http://localhost:5001/api/mcp/jira/oauth/callback',
+          },
           enabled: true,
         },
         github: {
@@ -164,7 +170,11 @@ class SettingsService {
           process.env.JIRA_API_TOKEN = rawSettings.mcp.jira.apiToken;
           process.env.JIRA_MCP_TOKEN = rawSettings.mcp.jira.apiToken;
         }
+        if (rawSettings.mcp.jira.projectKey) process.env.JIRA_PROJECT_KEY = rawSettings.mcp.jira.projectKey;
         if (rawSettings.mcp.jira.mcpUrl) process.env.JIRA_MCP_URL = rawSettings.mcp.jira.mcpUrl;
+        if (rawSettings.mcp.jira.oauth?.clientId) process.env.JIRA_OAUTH_CLIENT_ID = rawSettings.mcp.jira.oauth.clientId;
+        if (rawSettings.mcp.jira.oauth?.clientSecret) process.env.JIRA_OAUTH_CLIENT_SECRET = rawSettings.mcp.jira.oauth.clientSecret;
+        if (rawSettings.mcp.jira.oauth?.redirectUrl) process.env.JIRA_OAUTH_REDIRECT_URL = rawSettings.mcp.jira.oauth.redirectUrl;
       }
       if (rawSettings.mcp.github) {
         if (rawSettings.mcp.github.token) process.env.GITHUB_TOKEN = rawSettings.mcp.github.token;
@@ -212,8 +222,14 @@ class SettingsService {
         jira: {
           url: raw.mcp.jira?.url || '',
           email: raw.mcp.jira?.email || '',
+          projectKey: raw.mcp.jira?.projectKey || '',
           apiToken: maskSecret(raw.mcp.jira?.apiToken),
           mcpUrl: raw.mcp.jira?.mcpUrl || '',
+          oauth: {
+            clientId: raw.mcp.jira?.oauth?.clientId || '',
+            clientSecret: maskSecret(raw.mcp.jira?.oauth?.clientSecret),
+            redirectUrl: raw.mcp.jira?.oauth?.redirectUrl || 'http://localhost:5001/api/mcp/jira/oauth/callback',
+          },
           enabled: raw.mcp.jira?.enabled ?? true,
         },
         github: {
@@ -279,8 +295,16 @@ class SettingsService {
       jira: {
         url: incoming.mcp?.jira?.url || current.mcp.jira?.url || '',
         email: incoming.mcp?.jira?.email || current.mcp.jira?.email || '',
+        projectKey: incoming.mcp?.jira?.projectKey || current.mcp.jira?.projectKey || '',
         apiToken: isMasked(incoming.mcp?.jira?.apiToken) ? current.mcp.jira?.apiToken : incoming.mcp?.jira?.apiToken ?? current.mcp.jira?.apiToken,
         mcpUrl: incoming.mcp?.jira?.mcpUrl || current.mcp.jira?.mcpUrl || '',
+        oauth: {
+          clientId: incoming.mcp?.jira?.oauth?.clientId ?? current.mcp.jira?.oauth?.clientId ?? '',
+          clientSecret: isMasked(incoming.mcp?.jira?.oauth?.clientSecret)
+            ? current.mcp.jira?.oauth?.clientSecret
+            : incoming.mcp?.jira?.oauth?.clientSecret ?? current.mcp.jira?.oauth?.clientSecret ?? '',
+          redirectUrl: incoming.mcp?.jira?.oauth?.redirectUrl || current.mcp.jira?.oauth?.redirectUrl || 'http://localhost:5001/api/mcp/jira/oauth/callback',
+        },
         enabled: incoming.mcp?.jira?.enabled ?? current.mcp.jira?.enabled ?? true,
       },
       github: {
@@ -375,7 +399,7 @@ class SettingsService {
       }
 
       if (type === 'jira') {
-        const url = (credentials.url !== undefined ? credentials.url : raw.mcp.jira?.url) || 'https://vikasmcajnu.atlassian.net';
+        const url = (credentials.url !== undefined ? credentials.url : raw.mcp.jira?.url) || process.env.JIRA_URL || '';
         const mcpUrl = (credentials.mcpUrl !== undefined ? credentials.mcpUrl : raw.mcp.jira?.mcpUrl) || 'https://mcp.atlassian.com/v1/mcp/authv2';
         const email = credentials.email !== undefined ? credentials.email : raw.mcp.jira?.email;
         const token = isMasked(credentials.apiToken)
@@ -421,7 +445,7 @@ class SettingsService {
         }
 
         if (!url || !url.startsWith('http')) {
-          return { success: false, latencyMs: 0, message: 'Invalid Jira URL provided (e.g. https://vikasmcajnu.atlassian.net)' };
+          return { success: false, latencyMs: 0, message: 'Invalid Jira URL provided (e.g. https://your-company.atlassian.net)' };
         }
 
         const authHeader = email && token

@@ -40,8 +40,11 @@ function AdminPage({ onBackToChat }) {
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSaveMsg, setSettingsSaveMsg] = useState('');
   const [connTestStatus, setConnTestStatus] = useState({});
+  const [jiraOAuthStatus, setJiraOAuthStatus] = useState(null);
+  const [isConnectingJiraOAuth, setIsConnectingJiraOAuth] = useState(false);
   const [showSecrets, setShowSecrets] = useState({
     jiraToken: false,
+    jiraOAuthSecret: false,
     githubToken: false,
     notionKey: false,
     openaiKey: false,
@@ -102,10 +105,12 @@ function AdminPage({ onBackToChat }) {
     fetchBenchmarkStatus();
     fetchReplayStatus();
     fetchAdminSettings();
+    fetchJiraOAuthStatus();
 
     const statusTimer = setInterval(() => {
       fetchSystemStatus();
       fetchDoraMetrics();
+      fetchJiraOAuthStatus();
     }, 10000);
 
     return () => clearInterval(statusTimer);
@@ -320,6 +325,52 @@ function AdminPage({ onBackToChat }) {
     }
   };
 
+  const fetchJiraOAuthStatus = async () => {
+    try {
+      const res = await fetch('/api/mcp/jira/oauth/status');
+      const data = await res.json();
+      if (data.success) {
+        setJiraOAuthStatus(data);
+      }
+    } catch (err) {
+      logger.warn('Failed to fetch Jira OAuth status', { err: err.message });
+    }
+  };
+
+  const handleStartJiraOAuth = async () => {
+    setIsConnectingJiraOAuth(true);
+    try {
+      const res = await fetch('/api/mcp/jira/oauth/start');
+      const data = await res.json();
+      if (data.authorizationUrl) {
+        window.location.href = data.authorizationUrl;
+      } else if (data.status === 'authorized') {
+        await fetchJiraOAuthStatus();
+        alert('Atlassian Jira OAuth is already authorized!');
+      } else {
+        alert(data.error || 'Failed to initialize Atlassian OAuth flow');
+      }
+    } catch (err) {
+      alert(`OAuth Error: ${err.message}`);
+    } finally {
+      setIsConnectingJiraOAuth(false);
+    }
+  };
+
+  const handleDisconnectJiraOAuth = async () => {
+    if (!window.confirm('Disconnect Atlassian Jira OAuth and return to API Token mode?')) return;
+    try {
+      const res = await fetch('/api/mcp/jira/oauth/disconnect', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        await fetchJiraOAuthStatus();
+        await fetchSystemStatus();
+      }
+    } catch (err) {
+      logger.error('Failed to disconnect Jira OAuth', { err: err.message });
+    }
+  };
+
   const handleSaveSettings = async () => {
     if (!adminSettings) return;
     setSavingSettings(true);
@@ -459,6 +510,25 @@ function AdminPage({ onBackToChat }) {
           [category]: {
             ...prev.mcp[category],
             [field]: value,
+          },
+        },
+      };
+    });
+  };
+
+  const updateNestedMcpField = (category, nestedObj, field, value) => {
+    setAdminSettings((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        mcp: {
+          ...prev.mcp,
+          [category]: {
+            ...prev.mcp[category],
+            [nestedObj]: {
+              ...(prev.mcp[category]?.[nestedObj] || {}),
+              [field]: value,
+            },
           },
         },
       };
@@ -1131,7 +1201,7 @@ function AdminPage({ onBackToChat }) {
                           className="settings-input"
                           value={adminSettings?.mcp?.jira?.url || ''}
                           onChange={(e) => updateMcpField('jira', 'url', e.target.value)}
-                          placeholder="https://vikasmcajnu.atlassian.net"
+                          placeholder="https://your-company.atlassian.net"
                         />
                       </div>
                       <div className="form-group flex-2">
@@ -1170,7 +1240,7 @@ function AdminPage({ onBackToChat }) {
                     </div>
 
                     <div className="form-group">
-                      <label>Jira API Token / OAuth Token</label>
+                      <label>Jira API Token / Basic Auth Token</label>
                       <div className="input-secret-wrapper">
                         <input
                           type={showSecrets.jiraToken ? 'text' : 'password'}
@@ -1187,6 +1257,85 @@ function AdminPage({ onBackToChat }) {
                           {showSecrets.jiraToken ? '👁️' : '🔒'}
                         </button>
                       </div>
+                    </div>
+
+                    {/* Atlassian OAuth 2.0 (3LO) Integration Section */}
+                    <div className="oauth-integration-panel" style={{ marginTop: '12px', padding: '14px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <div>
+                          <strong>🔐 Atlassian OAuth 2.0 (3LO) & Remote MCP</strong>
+                          <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                            One-click authorization for Atlassian Rovo Remote MCP (<code>mcp.atlassian.com/v1/mcp/authv2</code>).
+                          </div>
+                        </div>
+                        <div>
+                          {jiraOAuthStatus?.authorized && jiraOAuthStatus?.mode === 'oauth_mcp' ? (
+                            <button
+                              type="button"
+                              className="test-conn-btn"
+                              style={{ background: '#dc2626', color: '#fff', borderColor: '#b91c1c' }}
+                              onClick={handleDisconnectJiraOAuth}
+                            >
+                              Disconnect OAuth
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="test-conn-btn"
+                              style={{ background: '#2563eb', color: '#fff', borderColor: '#1d4ed8' }}
+                              onClick={handleStartJiraOAuth}
+                              disabled={isConnectingJiraOAuth}
+                            >
+                              {isConnectingJiraOAuth ? 'Connecting...' : '🔗 Connect with Atlassian'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {jiraOAuthStatus?.authorized && jiraOAuthStatus?.mode === 'oauth_mcp' ? (
+                        <div className="conn-status-badge badge-online" style={{ marginTop: '6px' }}>
+                          ✅ Connected via Atlassian OAuth ({jiraOAuthStatus.resources?.[0]?.name || 'Atlassian Cloud'} - {jiraOAuthStatus.resources?.[0]?.url || 'mcp.atlassian.com'})
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div className="form-row">
+                            <div className="form-group flex-2">
+                              <label style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>Atlassian OAuth Client ID</label>
+                              <input
+                                type="text"
+                                className="settings-input"
+                                value={adminSettings?.mcp?.jira?.oauth?.clientId || ''}
+                                onChange={(e) => updateNestedMcpField('jira', 'oauth', 'clientId', e.target.value)}
+                                placeholder="Paste Client ID from Atlassian Dev Console"
+                              />
+                            </div>
+                            <div className="form-group flex-2">
+                              <label style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>Atlassian OAuth Client Secret</label>
+                              <div className="input-secret-wrapper">
+                                <input
+                                  type={showSecrets.jiraOAuthSecret ? 'text' : 'password'}
+                                  className="settings-input"
+                                  value={adminSettings?.mcp?.jira?.oauth?.clientSecret || ''}
+                                  onChange={(e) => updateNestedMcpField('jira', 'oauth', 'clientSecret', e.target.value)}
+                                  placeholder="Paste Client Secret"
+                                />
+                                <button
+                                  type="button"
+                                  className="toggle-secret-btn"
+                                  onClick={() => setShowSecrets((prev) => ({ ...prev, jiraOAuthSecret: !prev.jiraOAuthSecret }))}
+                                >
+                                  {showSecrets.jiraOAuthSecret ? '👁️' : '🔒'}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                            ℹ️ Create a 3LO App at <a href="https://developer.atlassian.com/console/myapps" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'underline' }}>developer.atlassian.com/console/myapps</a> with Callback URL <code>http://localhost:5001/api/mcp/jira/oauth/callback</code>.
+                            <br />
+                            <em>Note: If you don't have an OAuth App, direct Jira Cloud connection is active using your API Token above.</em>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {connTestStatus.jira && (
