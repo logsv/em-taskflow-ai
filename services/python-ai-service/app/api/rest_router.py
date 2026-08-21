@@ -83,6 +83,12 @@ def chunk_text(req: ExtractRequest):
 @router.post("/api/v1/rag/search")
 def search_rag(req: SearchApiRequest):
     """Hybrid Search (tsvector + vector similarity), Cross-Encoder Reranking, and MMR Deduplication."""
+    if not req.query or not req.query.strip():
+        if req.filter_filename:
+            chunks = db_service.get_document_chunks(req.filter_filename, top_k=req.top_k)
+            return {"query": "", "results": chunks}
+        return {"query": "", "results": []}
+
     candidates = db_service.hybrid_search(req.query, top_k=req.top_k * 3, filter_filename=req.filter_filename or "")
     results = reranker.rerank(req.query, candidates, top_n=req.top_k * 2)
 
@@ -105,6 +111,13 @@ def list_documents():
     """List distinct ingested documents from PostgreSQL pdf_chunks."""
     docs = db_service.list_documents()
     return {"documents": docs}
+
+
+@router.get("/api/v1/rag/documents/{filename}/chunks")
+def get_document_chunks(filename: str):
+    """Fetch all extracted chunks for a specific document."""
+    chunks = db_service.get_document_chunks(filename, top_k=500)
+    return {"filename": filename, "chunks": chunks, "total_chunks": len(chunks)}
 
 
 @router.delete("/api/v1/rag/documents/{filename}")

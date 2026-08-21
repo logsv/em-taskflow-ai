@@ -1,6 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useAuiState } from '@assistant-ui/react';
 import { useGithubSync } from '../hooks/useGithubSync.js';
+import { ALL_AGENT_PROMPTS, AGENT_CATEGORIES, FEATURED_AGENT_IDS } from '../constants/agentPrompts.js';
+import AgentPromptPalette from './AgentPromptPalette.jsx';
 import logger from '../utils/logger.js';
 import './Chat.css';
 
@@ -16,6 +18,9 @@ function Chat({
 }) {
   const [input, setInput] = useState('');
   const [uploadStatus, setUploadStatus] = useState('');
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [welcomeCategory, setWelcomeCategory] = useState('featured');
+  const [welcomeSearch, setWelcomeSearch] = useState('');
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   
@@ -26,44 +31,25 @@ function Chat({
   const isRunning = useAuiState((s) => s?.thread?.isRunning) || false;
   const messages = Array.isArray(rawMessages) ? rawMessages : [];
 
-  // 5 Predefined Engineering Manager Prompts
-  const predefinedPrompts = [
-    {
-      id: 'dora',
-      icon: '📊',
-      title: 'DORA Metrics Audit',
-      domain: 'DORA',
-      text: 'Analyze team DORA metrics for deployment frequency, lead time, and failure rate'
-    },
-    {
-      id: 'sbi',
-      icon: '💬',
-      title: 'SBI Feedback Generator',
-      domain: 'SBI Coaching',
-      text: 'Draft an SBI coaching feedback for an engineer unblocking code reviews'
-    },
-    {
-      id: 'delivery',
-      icon: '🚀',
-      title: 'Delivery & WIP Bottlenecks',
-      domain: 'Delivery',
-      text: 'Check current sprint delivery bottlenecks, WIP limit violations, and blocked PRs'
-    },
-    {
-      id: 'sprint',
-      icon: '⚡',
-      title: 'Sprint Capacity Planning',
-      domain: 'Sprint',
-      text: 'Calculate team sprint velocity and capacity forecast for next sprint planning'
-    },
-    {
-      id: 'okr',
-      icon: '🎯',
-      title: 'OKR & KPI Tracker',
-      domain: 'OKR / KPI',
-      text: 'Evaluate quarterly engineering Objectives & Key Results (OKRs) and team KPI scorecards'
+  // All 11 Predefined Engineering Manager & Knowledge Agents
+  const predefinedPrompts = ALL_AGENT_PROMPTS;
+
+  const filteredWelcomePrompts = useMemo(() => {
+    const q = welcomeSearch.trim().toLowerCase();
+    if (q) {
+      return ALL_AGENT_PROMPTS.filter((p) =>
+        p.title.toLowerCase().includes(q) ||
+        p.domain.toLowerCase().includes(q) ||
+        (p.shortDescription || '').toLowerCase().includes(q) ||
+        p.text.toLowerCase().includes(q) ||
+        p.hints?.some((h) => h.toLowerCase().includes(q))
+      ).slice(0, 4);
     }
-  ];
+    if (welcomeCategory === 'featured') {
+      return ALL_AGENT_PROMPTS.filter((p) => FEATURED_AGENT_IDS.includes(p.id));
+    }
+    return ALL_AGENT_PROMPTS.filter((p) => p.category === welcomeCategory).slice(0, 4);
+  }, [welcomeCategory, welcomeSearch]);
 
   // Auto-scroll to bottom of messages container
   useEffect(() => {
@@ -278,9 +264,15 @@ function Chat({
       <header className="chat-header">
         <div className="chat-header-title">
           <h2>🤖 EM TaskFlow AI</h2>
-          <span className="agent-status-badge">🟢 10 Local Agents Active</span>
         </div>
         <div className="chat-header-actions">
+          <button
+            className="agent-header-palette-btn"
+            onClick={() => setIsPaletteOpen(true)}
+            title="Browse all 11 Agent Prompt Hints"
+          >
+            <span>⚡</span> Agent Hints
+          </button>
           <button
             className={`github-header-sync-btn ${isHeaderSyncing ? 'syncing' : ''}`}
             onClick={triggerGithubSync}
@@ -299,15 +291,33 @@ function Chat({
               <div className="logo-icon">👔</div>
               <h1>Engineering Management Copilot</h1>
             </div>
-            <p className="welcome-subtitle">Select an executive workflow or type your custom query below</p>
+            <p className="welcome-subtitle">Select an executive workflow or choose a domain category below</p>
+
+            {/* Fast Category Filter Pills */}
+            <div className="welcome-category-pills">
+              {AGENT_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  className={`welcome-pill ${welcomeCategory === cat.id ? 'active' : ''}`}
+                  onClick={() => setWelcomeCategory(cat.id)}
+                >
+                  <span>{cat.icon}</span>
+                  <span>{cat.label}</span>
+                </button>
+              ))}
+            </div>
             
+            {/* Clean Compact 2x2 Starter Grid */}
             <div className="suggestion-grid">
-              {predefinedPrompts.map((prompt) => (
+              {filteredWelcomePrompts.map((prompt) => (
                 <button
                   key={prompt.id}
+                  type="button"
                   className="suggestion-card"
                   onClick={() => sendMessage(prompt.text)}
                   disabled={isRunning}
+                  title={prompt.text}
                 >
                   <div className="suggestion-header">
                     <span className="suggestion-icon">{prompt.icon}</span>
@@ -317,6 +327,17 @@ function Chat({
                   <div className="suggestion-text">{prompt.text}</div>
                 </button>
               ))}
+            </div>
+
+            {/* Prompt Library CTA */}
+            <div className="welcome-palette-cta">
+              <button 
+                type="button"
+                className="welcome-open-palette-btn"
+                onClick={() => setIsPaletteOpen(true)}
+              >
+                <span>⚡</span> Browse All 11 Agents & Scenario Hints ({ALL_AGENT_PROMPTS.length})
+              </button>
             </div>
           </div>
         </div>
@@ -430,12 +451,22 @@ function Chat({
         {/* Quick Predefined Prompt Chips during active chat */}
         {messages.length > 0 && (
           <div className="quick-prompt-chips">
+            <button
+              type="button"
+              className="chip-btn all-agents-chip"
+              onClick={() => setIsPaletteOpen(true)}
+              title="Open full prompt library with all 11 agents & scenario hints"
+            >
+              <span>⚡</span>
+              <span>All 11 Agents Hints ▾</span>
+            </button>
             {predefinedPrompts.map((p) => (
               <button
                 key={p.id}
                 className="chip-btn"
                 onClick={() => sendMessage(p.text)}
                 disabled={isRunning}
+                title={p.shortDescription || p.text}
               >
                 <span>{p.icon}</span>
                 <span>{p.title}</span>
@@ -457,6 +488,15 @@ function Chat({
           </label>
           <div className="chat-input">
             <button 
+              type="button"
+              className="prompt-palette-trigger-btn"
+              onClick={() => setIsPaletteOpen(true)}
+              title="Fast Agent Prompts & Scenario Hints (⚡)"
+            >
+              ⚡
+            </button>
+            <button 
+              type="button"
               className="attachment-btn"
               onClick={() => fileInputRef.current?.click()}
               title="Upload PDF"
@@ -467,11 +507,12 @@ function Chat({
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="Message EM TaskFlow AI..."
+              placeholder="Message EM TaskFlow AI (or click ⚡ for Agent Hints)..."
               rows="1"
               disabled={isRunning}
             />
             <button 
+              type="button"
               className="send-btn"
               onClick={() => sendMessage()}
               disabled={isRunning || !input.trim()}
@@ -492,6 +533,15 @@ function Chat({
           <p>EM TaskFlow AI Powered by Local Ollama SLM Inference & LangGraph Supervisor.</p>
         </div>
       </div>
+
+      {/* Global Fast Agent Prompts & Scenario Hints Palette Modal */}
+      <AgentPromptPalette
+        isOpen={isPaletteOpen}
+        onClose={() => setIsPaletteOpen(false)}
+        onSelectPrompt={(promptText) => sendMessage(promptText)}
+        onInsertPrompt={(promptText) => setInput(promptText)}
+        isRunning={isRunning}
+      />
     </div>
   );
 }

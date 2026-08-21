@@ -133,6 +133,33 @@ class PythonAIServiceClient {
   }
 
   /**
+   * Get all extracted chunks for a specific document from Python AI Service
+   */
+  async getDocumentChunks(filename) {
+    try {
+      const response = await axios.get(
+        `${this.baseUrl}/api/v1/rag/documents/${encodeURIComponent(filename)}/chunks`,
+        { timeout: 8000 }
+      );
+      if (response.data && Array.isArray(response.data.chunks)) {
+        return response.data.chunks.map((r) => ({
+          pageContent: r.content,
+          metadata: {
+            id: r.id,
+            filename: r.filename,
+            chunkIndex: r.chunk_index,
+            parentContent: r.parent_content,
+            score: r.score || 1.0,
+          },
+        }));
+      }
+    } catch (error) {
+      // Fall back to searchRAG
+    }
+    return this.searchRAG('', 100, filename);
+  }
+
+  /**
    * Delete document and chunks from Python Postgres DB
    */
   async deleteDocument(filename) {

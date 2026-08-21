@@ -54,9 +54,9 @@ describe('Phase 3 Core Analytics Agents Specs: DORA & Delivery Harnesses', () =>
   });
 
   describe('deliveryAgent & analyze_delivery_bottlenecks Tool Harness', () => {
-    it('should compute delivery risk and WIP metrics in ANALYZE mode', async () => {
+    it('should compute delivery risk and WIP metrics in ANALYZE mode with github, jira, and notion sources', async () => {
       const res = await deliveryBottlenecksTool.invoke({
-        sources: ['github', 'jira'],
+        sources: ['github', 'jira', 'notion'],
         mode: 'ANALYZE',
         sprint_id: 'sprint_101',
       });
@@ -70,8 +70,22 @@ describe('Phase 3 Core Analytics Agents Specs: DORA & Delivery Harnesses', () =>
         expect(res.data.data_availability).toBe('empty');
       } else {
         expect(res.data.metrics.wip_violations).toBeDefined();
+        expect(typeof res.data.metrics.wip_violations).toBe('number');
+        expect(res.data.summary).toContain('Delivery Bottleneck Scorecard');
       }
-      expect(res.sourcesExecuted).toEqual(['github', 'jira']);
+      expect(res.sourcesExecuted).toEqual(['github', 'jira', 'notion']);
+    });
+
+    it('should enforce anti-vanity principles in delivery summary by omitting developer shaming', async () => {
+      const res = await deliveryBottlenecksTool.invoke({
+        sources: ['github', 'jira'],
+        mode: 'ANALYZE',
+        sprint_id: 'sprint_101',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      expect(res.data.summary).not.toContain('Slowest Developer:');
+      expect(res.data.summary).not.toContain('Worst Performer:');
     });
 
     it('should return raw list of missed-deadline tickets in LIST_RAW mode', async () => {
@@ -84,6 +98,19 @@ describe('Phase 3 Core Analytics Agents Specs: DORA & Delivery Harnesses', () =>
       expect(res.status).toBe('SUCCESS');
       expect(res.data.mode).toBe('LIST_RAW');
       expect(res.data.filter).toBe('MISSED_DEADLINE');
+      expect(Array.isArray(res.data.items)).toBe(true);
+    });
+
+    it('should return raw list of stalled reviews in LIST_RAW mode', async () => {
+      const res = await deliveryBottlenecksTool.invoke({
+        sources: ['github'],
+        mode: 'LIST_RAW',
+        filter: 'STALLED_REVIEW',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      expect(res.data.mode).toBe('LIST_RAW');
+      expect(res.data.filter).toBe('STALLED_REVIEW');
       expect(Array.isArray(res.data.items)).toBe(true);
     });
 

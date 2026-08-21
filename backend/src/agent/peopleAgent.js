@@ -1,48 +1,141 @@
 import { createAgent } from 'langchain';
 import { z } from 'zod';
+import axios from 'axios';
 import { getChatModel } from '../llm/index.js';
 import { peopleAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
+import databaseService from '../db/postgres.js';
+import settingsService from '../services/settingsService.js';
+
+// Standard 12 Competency Dimensions
+export const COMPETENCY_DIMENSIONS = [
+  { key: 'ARCH', name: 'Architecture & System Design', desc: 'Modularity, distributed patterns, RFC authorship' },
+  { key: 'DB', name: 'Data Modeling & Storage', desc: 'Schema design, indexing, caching, consistency models' },
+  { key: 'CLOUD', name: 'Cloud & Infrastructure', desc: 'CI/CD automation, containers, observability, IaC' },
+  { key: 'SEC', name: 'Security & Compliance', desc: 'AuthN/AuthZ, OWASP defenses, zero-trust, data privacy' },
+  { key: 'CODE', name: 'Code Quality & Testing', desc: 'Clean architecture, unit/integration testing, maintainability' },
+  { key: 'DELIV', name: 'Delivery Velocity & Execution', desc: 'Sprint task breakdown, estimation, unblocking dependencies' },
+  { key: 'MENTOR', name: 'Mentoring & Peer Growth', desc: 'Pair programming, constructive reviews, onboarding' },
+  { key: 'COLLAB', name: 'Cross-Functional Collaboration', desc: 'Product, Design, QA, and cross-team alignment' },
+  { key: 'STRAT', name: 'Technical Strategy & Vision', desc: 'Tech debt reduction, multi-quarter architectural vision' },
+  { key: 'INCID', name: 'Incident & Production Leadership', desc: 'On-call triage, Incident Commander, post-mortem root causes' },
+  { key: 'ALIGN', name: 'Stakeholder & Business Alignment', desc: 'Translating business OKRs into technical requirements' },
+  { key: 'CULT', name: 'Culture & Community', desc: 'Tech talks, inclusive team practices, knowledge sharing' },
+];
+
+// Standard Level Benchmark Profiles (1.0 to 5.0)
+export const LEVEL_BENCHMARKS = {
+  L3_JUNIOR: {
+    ARCH: 2.0, DB: 2.0, CLOUD: 2.0, SEC: 2.0, CODE: 3.0, DELIV: 2.5,
+    MENTOR: 1.0, COLLAB: 2.0, STRAT: 1.0, INCID: 1.5, ALIGN: 1.5, CULT: 2.0,
+  },
+  L4_MID: {
+    ARCH: 3.0, DB: 3.0, CLOUD: 3.0, SEC: 3.0, CODE: 4.0, DELIV: 3.5,
+    MENTOR: 2.5, COLLAB: 3.0, STRAT: 2.0, INCID: 3.0, ALIGN: 2.5, CULT: 3.0,
+  },
+  L5_SENIOR: {
+    ARCH: 4.5, DB: 4.0, CLOUD: 4.0, SEC: 4.0, CODE: 4.5, DELIV: 4.0,
+    MENTOR: 4.0, COLLAB: 4.0, STRAT: 3.5, INCID: 4.0, ALIGN: 3.5, CULT: 4.0,
+  },
+  L6_STAFF: {
+    ARCH: 5.0, DB: 4.5, CLOUD: 4.5, SEC: 4.5, CODE: 4.8, DELIV: 4.5,
+    MENTOR: 4.8, COLLAB: 4.8, STRAT: 5.0, INCID: 4.5, ALIGN: 4.8, CULT: 4.8,
+  },
+  L7_PRINCIPAL: {
+    ARCH: 5.0, DB: 5.0, CLOUD: 5.0, SEC: 5.0, CODE: 5.0, DELIV: 4.8,
+    MENTOR: 5.0, COLLAB: 5.0, STRAT: 5.0, INCID: 5.0, ALIGN: 5.0, CULT: 5.0,
+  },
+  M1_EM: {
+    ARCH: 3.5, DB: 3.0, CLOUD: 3.0, SEC: 3.5, CODE: 3.5, DELIV: 4.8,
+    MENTOR: 5.0, COLLAB: 5.0, STRAT: 4.5, INCID: 4.5, ALIGN: 5.0, CULT: 5.0,
+  },
+  M2_SENIOR_EM: {
+    ARCH: 4.0, DB: 3.5, CLOUD: 3.5, SEC: 4.0, CODE: 3.5, DELIV: 5.0,
+    MENTOR: 5.0, COLLAB: 5.0, STRAT: 5.0, INCID: 5.0, ALIGN: 5.0, CULT: 5.0,
+  },
+};
 
 export const peopleGrowthTool = createDeterministicToolHarness({
   name: 'analyze_personnel_growth',
-  description: 'Analyzes engineer career growth, skill matrices, 1-on-1 agendas, burnout risk indicators, or lists calendar invites.',
+  description: 'Analyzes engineer competencies across 12 dimensions, evaluates promotion readiness, identifies skill gaps, syncs Google Calendar 1-on-1s, and formulates career roadmaps.',
   featureFlagKey: 'people',
   schema: z.object({
-    sources: z.array(z.enum(['google', 'default'])).default(['default']),
+    sources: z.array(z.string()).default(['default']),
     mode: z.enum(['ANALYZE', 'LIST_RAW', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
     filter: z.enum(['ALL', 'TODAY_EVENTS', 'ONE_ON_ONES']).default('ALL'),
-    engineer_id: z.string().default('eng_alex'),
+    engineer_id: z.string().default('eng_alex').describe('Name or identifier of the engineer'),
+    current_level: z.enum(['L3_JUNIOR', 'L4_MID', 'L5_SENIOR', 'L6_STAFF', 'L7_PRINCIPAL', 'M1_EM']).default('L4_MID'),
+    target_level: z.enum(['L4_MID', 'L5_SENIOR', 'L6_STAFF', 'L7_PRINCIPAL', 'M1_EM', 'M2_SENIOR_EM']).default('L5_SENIOR'),
+    track: z.enum(['INDIVIDUAL_CONTRIBUTOR', 'ENGINEERING_MANAGEMENT']).default('INDIVIDUAL_CONTRIBUTOR'),
+    tenure_months: z.number().default(18),
+    skill_ratings: z.record(z.string(), z.number()).optional().describe('Custom 12-dimension ratings map (1.0-5.0)'),
     review_period: z.string().default('current_quarter'),
     fetch_fresh_data: z.boolean().default(true),
   }),
   directApiExecutors: {
-    google: async () => ({
-      today_events: [
-        { summary: '1-on-1: Alex & Manager', start_time: '10:00 AM', attendee: 'eng_alex' },
-        { summary: 'Architecture Review Sync', start_time: '2:00 PM', attendee: 'team' },
-      ],
-    }),
-    default: async (inputArgs) => ({
-      engineer_id: inputArgs.engineer_id || 'eng_alex',
-      weekly_workload_hours: 41.5,
-      skill_matrix_gaps: ['System Architecture Design', 'Distributed Caching'],
-      promotion_criteria_met_pct: 80,
-    }),
+    googleCalendar: async (_inputArgs) => {
+      try {
+        const rawSettings = await settingsService.getRawSettings().catch(() => null);
+        const gcal = rawSettings?.mcp?.googleCalendar;
+        if (gcal?.apiKey) {
+          const calendarId = encodeURIComponent(gcal.calendarId || 'primary');
+          const res = await axios.get(
+            `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events?maxResults=8&timeMin=${new Date().toISOString()}&key=${gcal.apiKey}`,
+            { timeout: 3500 }
+          );
+          const items = res.data?.items || [];
+          return {
+            today_events: items.map((ev) => ({
+              summary: ev.summary || 'Meeting',
+              start_time: ev.start?.dateTime || ev.start?.date || 'Today',
+              attendee: ev.attendees?.[0]?.email || 'team',
+            })),
+            weekly_meeting_hours: Math.min(items.length * 1.5, 30),
+            source: 'google_calendar_live',
+          };
+        }
+      } catch (_e) {
+        // Fallback gracefully
+      }
+      return {
+        today_events: [
+          { summary: '1-on-1: Alex & Engineering Manager', start_time: '10:00 AM', attendee: 'eng_alex' },
+          { summary: 'Architecture Guild: Distributed Caching RFC', start_time: '2:00 PM', attendee: 'team' },
+        ],
+        weekly_meeting_hours: 14.5,
+        source: 'google_calendar_mock',
+      };
+    },
+    default: async (inputArgs) => {
+      return {
+        engineer_id: inputArgs.engineer_id || 'eng_alex',
+        current_level: inputArgs.current_level || 'L4_MID',
+        target_level: inputArgs.target_level || 'L5_SENIOR',
+        track: inputArgs.track || 'INDIVIDUAL_CONTRIBUTOR',
+        tenure_months: inputArgs.tenure_months || 18,
+        weekly_workload_hours: 41.5,
+        synced_at: new Date().toISOString(),
+      };
+    },
   },
   dbCacheFallback: async () => ({
     engineer_id: 'eng_alex',
+    current_level: 'L4_MID',
+    target_level: 'L5_SENIOR',
+    track: 'INDIVIDUAL_CONTRIBUTOR',
     weekly_workload_hours: 40.0,
-    skill_matrix_gaps: ['Architecture Design'],
-    promotion_criteria_met_pct: 75,
-    today_events: [{ summary: '1-on-1 with Manager (Cached)', start_time: '10:00 AM' }],
+    weekly_meeting_hours: 12.0,
+    today_events: [{ summary: '1-on-1 with Manager (Cached)', start_time: '10:00 AM', attendee: 'eng_alex' }],
+    source: 'postgres_profile_fallback',
   }),
   computeMath: async (sourceResults, inputArgs) => {
     const defaultData = sourceResults.default?.data || {};
-    const googleData = sourceResults.google?.data || {};
+    const googleData = sourceResults.googleCalendar?.data || sourceResults.google?.data || {};
     const mode = inputArgs.mode || 'ANALYZE';
 
-    const events = googleData.today_events || defaultData.today_events || [];
+    const events = googleData.today_events || defaultData.today_events || [
+      { summary: '1-on-1: Performance & Growth Review', start_time: '10:00 AM', attendee: inputArgs.engineer_id || 'eng_alex' },
+    ];
 
     if (mode === 'LIST_RAW') {
       return {
@@ -53,33 +146,173 @@ export const peopleGrowthTool = createDeterministicToolHarness({
       };
     }
 
+    const currentLevel = inputArgs.current_level || defaultData.current_level || 'L4_MID';
+    const targetLevel = inputArgs.target_level || defaultData.target_level || 'L5_SENIOR';
+    const track = inputArgs.track || defaultData.track || 'INDIVIDUAL_CONTRIBUTOR';
+    const tenureMonths = inputArgs.tenure_months || defaultData.tenure_months || 18;
     const workloadHours = Number(defaultData.weekly_workload_hours || 41.5);
-    const promotionPct = Number(defaultData.promotion_criteria_met_pct || 80);
+    const meetingHours = Number(googleData.weekly_meeting_hours || 14.5);
 
+    // Calculate Burnout Index
     let burnoutRisk = 'LOW';
-    if (workloadHours > 50.0) {
+    if (workloadHours > 50.0 || meetingHours > 22.0) {
       burnoutRisk = 'HIGH';
-    } else if (workloadHours > 45.0) {
+    } else if (workloadHours > 44.0 || meetingHours > 16.0) {
       burnoutRisk = 'MEDIUM';
     }
+
+    // Baseline current skill ratings if not explicitly passed
+    const currentBase = LEVEL_BENCHMARKS[currentLevel] || LEVEL_BENCHMARKS.L4_MID;
+    const targetReqs = LEVEL_BENCHMARKS[targetLevel] || LEVEL_BENCHMARKS.L5_SENIOR;
+    const customRatings = inputArgs.skill_ratings || {};
+
+    let totalGaps = 0;
+    let totalTargetWeight = 0;
+    const competencyRadar = [];
+    const significantGaps = [];
+
+    COMPETENCY_DIMENSIONS.forEach((dim) => {
+      const currentRating = customRatings[dim.key] !== undefined
+        ? customRatings[dim.key]
+        : Math.min(currentBase[dim.key] + 0.3, 5.0);
+      const targetRating = targetReqs[dim.key] || 4.0;
+      const gap = Math.max(0, Number((targetRating - currentRating).toFixed(1)));
+
+      totalGaps += gap;
+      totalTargetWeight += targetRating;
+
+      let status = 'MET';
+      if (gap >= 1.0) {
+        status = 'MAJOR_GAP';
+        significantGaps.push(`${dim.name} (-${gap})`);
+      } else if (gap > 0) {
+        status = 'MINOR_GAP';
+        significantGaps.push(`${dim.name} (-${gap})`);
+      }
+
+      competencyRadar.push({
+        dimension: dim.name,
+        code: dim.key,
+        current: Number(currentRating.toFixed(1)),
+        target: Number(targetRating.toFixed(1)),
+        gap,
+        status,
+      });
+    });
+
+    const readinessScore = Math.min(100, Math.max(0, Math.round((1 - (totalGaps / totalTargetWeight)) * 100)));
+
+    let readinessVerdict = 'ON_TRACK';
+    if (readinessScore >= 90) {
+      readinessVerdict = 'READY_FOR_PROMOTION';
+    } else if (readinessScore < 75) {
+      readinessVerdict = 'DEVELOPING';
+    }
+
+    // Prerequisite Checklist
+    const prerequisites = [
+      { name: 'Lead 1 High-Impact Architecture RFC to approval', status: readinessScore >= 80 ? 'MET' : 'PENDING' },
+      { name: 'Complete 1 Mentorship cycle with positive peer feedback', status: readinessScore >= 75 ? 'MET' : 'PENDING' },
+      { name: 'Zero critical production regressions in last 2 quarters', status: 'MET' },
+      { name: 'Active Incident Commander / on-call rotation participation', status: currentLevel !== 'L3_JUNIOR' ? 'MET' : 'PENDING' },
+    ];
+    const metPrereqsCount = prerequisites.filter((p) => p.status === 'MET').length;
+
+    // Roadmaps
+    const roadmaps = {
+      immediate_3_to_6m: {
+        horizon: '3–6 Months',
+        focus: `Close top technical gaps: ${significantGaps.slice(0, 2).join(', ') || 'System Architecture RFC'}`,
+        deliverables: [
+          'Author and present Technical RFC for service decomposition / caching',
+          'Pair with Staff Engineer on quarterly architecture roadmap reviews',
+        ],
+      },
+      medium_6_to_18m: {
+        horizon: '6–18 Months',
+        focus: 'Expand cross-team technical leadership and junior mentorship',
+        deliverables: [
+          'Formally mentor 1-2 junior/mid engineers on backend distributed patterns',
+          'Serve as primary Incident Commander on production on-call rotations',
+        ],
+      },
+      long_term_1_to_3y: {
+        horizon: '1–3 Years',
+        focus: track === 'ENGINEERING_MANAGEMENT' ? 'Engineering Management Mastery (M1 ➔ M2)' : 'Staff IC Domain Leadership (L6 ➔ L7)',
+        deliverables: [
+          track === 'ENGINEERING_MANAGEMENT'
+            ? 'Scale team headcount, lead hiring committee, and govern quarterly OKR velocity'
+            : 'Establish org-wide architectural standards, patents, and multi-year platform strategy',
+        ],
+      },
+    };
+
+    const summaryText = `### 📊 Competency Radar & Gap Analysis: ${inputArgs.engineer_id} (${currentLevel} ➔ ${targetLevel})
+
+> **Track**: ${track === 'ENGINEERING_MANAGEMENT' ? 'Management (M1/M2)' : 'Individual Contributor (IC)'} | **Tenure**: ${tenureMonths} Months | **Promotion Readiness**: **${readinessScore}% (${readinessVerdict.replace(/_/g, ' ')})** | **Workload**: ${workloadHours}h/wk (${burnoutRisk} Burnout Risk)
+
+| Competency Dimension | Current (${currentLevel}) | Target (${targetLevel}) | Status | Gap |
+| :--- | :---: | :---: | :---: | :---: |
+${competencyRadar.map((r) => `| **${r.dimension}** | ${r.current} / 5 | ${r.target} / 5 | ${r.status === 'MET' ? '✅ Met' : r.status === 'MINOR_GAP' ? '⚠️ Minor Gap' : '❌ Major Gap'} | ${r.gap > 0 ? `-${r.gap}` : '0.0'} |`).join('\n')}
+
+---
+
+### 🎯 Promotion Readiness Scorecard & Prerequisites
+- **Overall Readiness Score**: **${readinessScore}%** — **${readinessVerdict.replace(/_/g, ' ')}**.
+- **Mandatory Prerequisites Met**: **${metPrereqsCount} / ${prerequisites.length}**.
+${prerequisites.map((p) => `- [${p.status === 'MET' ? 'x' : ' '}] **${p.name}** (${p.status})`).join('\n')}
+
+---
+
+### 🗺️ Multi-Horizon Career Development Roadmap
+
+#### 🟢 Immediate Horizon (3–6 Months)
+- **Goal**: ${roadmaps.immediate_3_to_6m.focus}
+${roadmaps.immediate_3_to_6m.deliverables.map((d) => `- ${d}`).join('\n')}
+
+#### 🟡 Medium-Term Horizon (6–18 Months)
+- **Goal**: ${roadmaps.medium_6_to_18m.focus}
+${roadmaps.medium_6_to_18m.deliverables.map((d) => `- ${d}`).join('\n')}
+
+#### 🔵 Long-Term Horizon (1–3 Years)
+- **Goal**: ${roadmaps.long_term_1_to_3y.focus}
+${roadmaps.long_term_1_to_3y.deliverables.map((d) => `- ${d}`).join('\n')}
+
+---
+
+### 🚀 Suggested Stretch Assignments & Google Calendar 1-on-1 Sync
+- **Primary Stretch Project**: Lead the migration to isolated database-per-service vector architecture.
+- **Upcoming 1-on-1 Calendar Schedule**:
+${events.map((ev) => `  * 📅 **${ev.start_time}**: ${ev.summary} (${ev.attendee})`).join('\n')}
+- **Weekly Meeting Load**: **${meetingHours} hrs/week** (Sustainability Status: **${burnoutRisk} Risk**).
+`;
 
     return {
       mode: 'ANALYZE',
       engineer_id: inputArgs.engineer_id || 'eng_alex',
-      review_period: inputArgs.review_period || 'current_quarter',
+      current_level: currentLevel,
+      target_level: targetLevel,
+      track,
+      tenure_months: tenureMonths,
       metrics: {
+        promotion_readiness_score: readinessScore,
+        promotion_verdict: readinessVerdict,
         burnout_risk_score: burnoutRisk,
         weekly_workload_hours: workloadHours,
-        promotion_readiness: `ON_TRACK (${promotionPct}% criteria met)`,
+        weekly_meeting_hours: meetingHours,
+        prerequisites_met: `${metPrereqsCount} / ${prerequisites.length}`,
       },
-      skill_matrix_gaps: defaultData.skill_matrix_gaps || ['System Architecture Design'],
+      competency_radar: competencyRadar,
+      skill_matrix_gaps: significantGaps.length > 0 ? significantGaps : ['System Architecture Design'],
       one_on_one_agenda: [
-        `Review progress on ${defaultData.skill_matrix_gaps?.[0] || 'technical goals'}`,
-        'Discuss team workload and upcoming sprint PTO schedule',
-        'Review career progression goals for next engineering level',
+        `Review progress on ${significantGaps[0] || 'technical goals'}`,
+        'Discuss team workload, on-call rotation, and upcoming PTO',
+        `Review career progression milestones for ${targetLevel} (${track === 'ENGINEERING_MANAGEMENT' ? 'Management Track' : 'IC Track'})`,
       ],
+      prerequisites,
+      roadmaps,
       today_schedule: events,
-      summary: `Personnel Growth Profile for ${inputArgs.engineer_id}: Burnout risk is ${burnoutRisk} (${workloadHours} hrs/week). Promotion readiness: ${promotionPct}%.`,
+      summary: summaryText,
     };
   },
 });

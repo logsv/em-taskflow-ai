@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-08-20T07:13:50.068Z",
+  "timestamp": "2026-08-20T08:23:29.684Z",
   "model": "hermes3:8b",
-  "total_prompts": 17,
-  "domain_selection_accuracy": 1,
+  "total_prompts": 58,
+  "domain_selection_accuracy": 0.7241379310344828,
   "unwanted_rag_rate": 0,
-  "tool_grounded_rate": 1,
+  "tool_grounded_rate": 0.9310344827586207,
   "fast_path_latency_ms": 185,
   "rag_faithfulness": 0.95,
-  "status": "PASS"
+  "status": "FAIL"
 }

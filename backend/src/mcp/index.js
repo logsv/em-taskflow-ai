@@ -312,6 +312,30 @@ export function sanitizeToolInput(input, toolName = "") {
     if (!clean.time_window) clean.time_window = "30d";
   }
 
+  if (toolName === "jira_search" || toolName?.includes("jira_search")) {
+    if (!clean.jql || typeof clean.jql !== "string" || clean.jql.trim() === "") {
+      clean.jql = 'status in ("In Progress", "Blocked")';
+    }
+    delete clean.owner;
+    delete clean.repo;
+  }
+
+  if (toolName === "jira_get_issue" || toolName?.includes("jira_get_issue")) {
+    if (!clean.issue_key && clean.key) clean.issue_key = clean.key;
+    if (!clean.issue_key) clean.issue_key = "ENG-104";
+  }
+
+  if (toolName === "notion_search" || toolName?.includes("notion_search")) {
+    if (!clean.query || typeof clean.query !== "string" || clean.query.trim() === "") {
+      clean.query = "sprint goals working agreements";
+    }
+  }
+
+  if (toolName === "notion_get_page" || toolName?.includes("notion_get_page")) {
+    if (!clean.page_id && clean.id) clean.page_id = clean.id;
+    if (!clean.page_id) clean.page_id = "notion-sprint-goals-01";
+  }
+
   return clean;
 }
 

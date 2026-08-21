@@ -186,7 +186,14 @@ export const doraMetricsTool = createDeterministicToolHarness({
     }
 
     // Build Structured Markdown Output Card
-    const targetLabel = inputArgs.team_id ? `Team '${inputArgs.team_id}'` : inputArgs.repo_id ? `Repository '${inputArgs.repo_id}'` : 'Engineering Team';
+    const repoPath = ghData.repo_id || (inputArgs.repo_id ? inputArgs.repo_id : 'logsv/em-taskflow-ai');
+    const repoUrl = `https://github.com/${repoPath}`;
+    const targetLabel = inputArgs.team_id
+      ? `Team '${inputArgs.team_id}'`
+      : inputArgs.repo_id
+      ? `Repository [**${inputArgs.repo_id}**](${repoUrl})`
+      : `[**${repoPath}**](${repoUrl})`;
+
     const provenanceNotice = ghData.is_cached
       ? `> ⚠️ **Notice**: Displaying cached operational telemetry from PostgreSQL database as of \`${syncedAt}\`.`
       : `> ✅ **Notice**: Fresh operational telemetry retrieved via Live GitHub MCP integration at \`${syncedAt}\`.`;
@@ -206,14 +213,14 @@ ${provenanceNotice}
 
 ### 🔍 Flow & Bottleneck Analysis
 ${bottlenecks.map((b) => `- ${b}`).join('\n')}
-- **Review Queue Latency**: Pull requests average **${reviewWaitTimeHours}h** in review.
+- **Review Queue Latency**: Pull requests average **${reviewWaitTimeHours}h** in review across [**${repoPath} Pull Requests**](${repoUrl}/pulls).
 - **CI Pipeline Duration**: Build & test automation accounts for **~${ciBuildTimeHours * 60} minutes**.
 
 ---
 
 ### 🎯 Strategic Recommendations for Engineering Manager
-1. **PR Batch Size Guardrail**: Enforce PR sizing $<400$ lines to reduce review wait time by up to 50%.
-2. **CI Parallelization**: Run unit test suites in parallel to maintain fast $(<15\text{m})$ merge feedback loops.
+1. **PR Batch Size Guardrail**: Enforce PR sizing $< 400$ lines to reduce review wait time by up to 50%.
+2. **CI Parallelization**: Run unit test suites in parallel to maintain fast $(< 15\text{ mins})$ merge feedback loops.
 3. **Automated Rollback Verification**: Implement one-click rollbacks for releases showing error anomalies.
 `;
 

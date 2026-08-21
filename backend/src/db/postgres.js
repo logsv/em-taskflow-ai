@@ -12,6 +12,7 @@ class DatabaseService {
     this.inMemorySbiRecords = [];
     this.inMemorySprintAnalytics = [];
     this.inMemoryOkrTracker = [];
+    this.inMemoryAppSettings = {};
   }
 
   async initialize() {
@@ -248,6 +249,13 @@ class DatabaseService {
         status VARCHAR(32) DEFAULT 'ON_TRACK',
         quarter VARCHAR(16) NOT NULL,
         created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value JSONB NOT NULL,
+        source TEXT DEFAULT 'database',
+        updated_at TIMESTAMPTZ DEFAULT NOW()
       );
     `);
   }
@@ -902,6 +910,22 @@ class DatabaseService {
     }));
   }
 
+  async getPdfChunksByFilename(filename, topK = 100) {
+    const results = await pythonAIServiceClient.getDocumentChunks(filename);
+    if (results && results.length > 0) {
+      return results.map((r) => ({
+        id: r.metadata.id,
+        documentId: r.metadata.filename,
+        filename: r.metadata.filename,
+        chunkIndex: r.metadata.chunkIndex,
+        content: r.pageContent,
+        parentContent: r.metadata.parentContent,
+        score: r.metadata.score,
+      }));
+    }
+    return this.hybridSearchPdfChunks({ query: '', topK, metadataFilter: { filename } });
+  }
+
   async deletePdfDocument(filename) {
     const res = await pythonAIServiceClient.deleteDocument(filename);
     return res?.deleted_chunks || 0;
@@ -1115,6 +1139,91 @@ class DatabaseService {
     } catch (err) {
       warn('PostgreSQL getOkrRecords failed, using in-memory fallback', { err: err.message });
       return quarter ? this.inMemoryOkrTracker.filter(r => r.quarter === quarter) : this.inMemoryOkrTracker;
+    }
+  }
+
+  async getAppSetting(key, defaultValue = null) {
+    try {
+      await this.ensureInitialized();
+      const res = await this.pool.query(
+        'SELECT key, value, source, updated_at FROM app_settings WHERE key = $1',
+        [key]
+      );
+      if (res.rows.length > 0) {
+        return {
+          key: res.rows[0].key,
+          value: res.rows[0].value,
+          source: res.rows[0].source,
+          updated_at: res.rows[0].updated_at,
+        };
+      }
+      return defaultValue != null ? { key, value: defaultValue, source: 'default' } : null;
+    } catch (err) {
+      warn('PostgreSQL getAppSetting failed, using in-memory fallback', { key, err: err.message });
+      const inMem = this.inMemoryAppSettings[key];
+      return inMem || (defaultValue != null ? { key, value: defaultValue, source: 'default' } : null);
+    }
+  }
+
+  async setAppSetting(key, value, source = 'database') {
+    try {
+      await this.ensureInitialized();
+      const res = await this.pool.query(
+        `
+        INSERT INTO app_settings (key, value, source, updated_at)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (key)
+        DO UPDATE SET value = $2, source = $3, updated_at = NOW()
+        RETURNING key, value, source, updated_at
+        `,
+        [key, JSON.stringify(value), source]
+      );
+      this.inMemoryAppSettings[key] = res.rows[0];
+      return res.rows[0];
+    } catch (err) {
+      warn('PostgreSQL setAppSetting failed, storing in-memory', { key, err: err.message });
+      const record = { key, value, source, updated_at: new Date().toISOString() };
+      this.inMemoryAppSettings[key] = record;
+      return record;
+    }
+  }
+
+  async getAllAppSettings() {
+    try {
+      await this.ensureInitialized();
+      const res = await this.pool.query('SELECT key, value, source, updated_at FROM app_settings ORDER BY key ASC');
+      const settingsMap = {};
+      for (const row of res.rows) {
+        settingsMap[row.key] = {
+          value: row.value,
+          source: row.source,
+          updated_at: row.updated_at,
+        };
+      }
+      return settingsMap;
+    } catch (err) {
+      warn('PostgreSQL getAllAppSettings failed, using in-memory fallback', { err: err.message });
+      const settingsMap = {};
+      for (const [k, v] of Object.entries(this.inMemoryAppSettings)) {
+        settingsMap[k] = {
+          value: v.value,
+          source: v.source,
+          updated_at: v.updated_at,
+        };
+      }
+      return settingsMap;
+    }
+  }
+
+  async deleteAppSetting(key) {
+    try {
+      await this.ensureInitialized();
+      await this.pool.query('DELETE FROM app_settings WHERE key = $1', [key]);
+      delete this.inMemoryAppSettings[key];
+      return true;
+    } catch (err) {
+      delete this.inMemoryAppSettings[key];
+      return true;
     }
   }
 

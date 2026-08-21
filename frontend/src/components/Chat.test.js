@@ -107,15 +107,40 @@ describe('Chat Component', () => {
     expect(input).toBeInTheDocument();
   });
 
-  test('renders 5 predefined EM prompts and sends message on click', () => {
+  test('renders 4 featured EM agent prompt cards on welcome screen and sends message on click', () => {
     render(<Chat {...defaultProps} />);
     const cards = document.querySelectorAll('.suggestion-card');
-    expect(cards.length).toBe(5);
+    expect(cards.length).toBe(4);
 
     fireEvent.click(cards[0]);
     expect(mockRuntime.thread.append).toHaveBeenCalledWith({
       role: 'user',
       content: [{ type: 'text', text: 'Analyze team DORA metrics for deployment frequency, lead time, and failure rate' }]
     });
+  });
+
+  test('filters welcome prompts by category pills', () => {
+    render(<Chat {...defaultProps} />);
+    const deliveryPill = screen.getByRole('button', { name: /Delivery & Metrics/i });
+    fireEvent.click(deliveryPill);
+
+    const cards = document.querySelectorAll('.suggestion-card');
+    expect(cards.length).toBe(2); // DORA and Delivery
+  });
+
+  test('opens prompt palette with all 11 agents when clicking browse palette button', () => {
+    render(<Chat {...defaultProps} />);
+    const browseBtn = screen.getByText(/Browse All 11 Agents & Scenario Hints/i);
+    fireEvent.click(browseBtn);
+
+    expect(screen.getByText(/Fast Agent Prompts & Hints/i)).toBeInTheDocument();
+  });
+
+  test('opens prompt palette when clicking ⚡ trigger button in chat input', () => {
+    render(<Chat {...defaultProps} />);
+    const paletteBtn = screen.getByTitle(/Fast Agent Prompts & Scenario Hints/i);
+    fireEvent.click(paletteBtn);
+
+    expect(screen.getByText(/Fast Agent Prompts & Hints/i)).toBeInTheDocument();
   });
 });
