@@ -3,10 +3,12 @@
 .app {
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh;
+  height: 100dvh;
   font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   background: #0d0e12;
   color: #e3e3e8;
-  overflow-x: hidden;
+  overflow: hidden;
   position: relative;
 }
 
@@ -15,8 +17,11 @@
   display: flex;
   flex-direction: column;
   transition: margin-left 0.3s ease, margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100dvh;
   background: #0d0e12;
+  overflow: hidden;
 }
 
 .main-content.sidebar-open {
@@ -33,6 +38,9 @@
   flex-direction: column;
   width: 100%;
   max-width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 * {
@@ -87,6 +95,10 @@ textarea:focus-visible {
 
 /* Mobile responsiveness */
 @media (max-width: 768px) {
+  .app {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
   .main-content.sidebar-open,
   .main-content.sidebar-closed {
     margin-left: 0;

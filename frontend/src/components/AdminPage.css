@@ -204,7 +204,7 @@
 /* KPI Status Strip */
 .admin-kpi-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
   margin-bottom: 24px;
 }
@@ -1902,6 +1902,141 @@
   background: rgba(239, 68, 68, 0.15);
   color: #f87171;
   border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* =========================================================
+   Admin Page Multi-Device Responsive System
+   ========================================================= */
+
+@media (max-width: 1024px) {
+  .admin-header {
+    padding: 14px 16px;
+    gap: 12px;
+  }
+
+  .admin-container {
+    padding: 16px;
+  }
+
+  .admin-kpi-strip {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .native-grid,
+  .services-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-header {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px 14px;
+    gap: 12px;
+  }
+
+  .admin-header-left {
+    width: 100%;
+  }
+
+  .admin-nav-tabs {
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    padding: 3px;
+  }
+
+  .admin-nav-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .admin-nav-tab {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .admin-header-right {
+    justify-content: flex-end;
+    width: 100%;
+  }
+
+  .admin-kpi-strip {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .kpi-item {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .kpi-icon {
+    font-size: 18px;
+  }
+
+  .kpi-label {
+    font-size: 10px;
+  }
+
+  .kpi-value {
+    font-size: 12px;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .dora-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-viewer-modal {
+    width: 96vw;
+    max-height: 92dvh;
+    border-radius: 12px;
+  }
+
+  .doc-modal-header {
+    padding: 12px 14px;
+  }
+
+  .doc-modal-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px 14px;
+  }
+
+  .doc-toolbar-left,
+  .doc-toolbar-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .doc-search-wrapper {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .doc-reading-passage {
+    padding: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-kpi-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-subtitle {
+    font-size: 11px;
+  }
 }
 
 

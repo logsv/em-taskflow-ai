@@ -816,31 +816,182 @@
   background: #3c3d4e;
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-  .welcome-content {
-    padding: 1rem;
+/* =========================================================
+   Responsive Multi-Device System (Big Screen, Laptop, Tablet, Mobile)
+   ========================================================= */
+
+/* Ultra-Wide & 4K Big Displays (>= 1440px) */
+@media (min-width: 1440px) {
+  .message-wrapper,
+  .chat-input-wrapper,
+  .quick-prompt-chips,
+  .upload-status,
+  .chat-disclaimer {
+    max-width: min(1040px, 90vw);
   }
   
+  .welcome-content {
+    max-width: 920px;
+  }
+}
+
+/* Tablets & Medium Screens (768px - 1023px) */
+@media (max-width: 1023px) and (min-width: 769px) {
+  .chat-header {
+    padding: 0 1rem;
+  }
+
+  .message-wrapper,
+  .chat-input-wrapper,
+  .quick-prompt-chips,
+  .upload-status,
+  .chat-disclaimer {
+    max-width: calc(100% - 2rem);
+  }
+
+  .message-wrapper.assistant .message-body {
+    padding: 14px 18px;
+  }
+}
+
+/* Mobile & Small Tablet Devices (<= 768px) */
+@media (max-width: 768px) {
+  .chat-header {
+    height: 56px;
+    padding: 0 0.85rem;
+  }
+
+  .chat-header h2 {
+    font-size: 1rem;
+  }
+
+  .agent-header-palette-btn {
+    padding: 5px 10px;
+    font-size: 0.775rem;
+  }
+
+  .github-header-sync-btn {
+    padding: 5px 10px;
+    font-size: 0.775rem;
+  }
+
+  .chat-messages {
+    padding: 1rem 0.65rem;
+    gap: 1rem;
+  }
+
+  .message-wrapper {
+    max-width: 100%;
+  }
+
+  .message-content {
+    gap: 0.6rem;
+  }
+
+  .message-avatar {
+    width: 1.85rem;
+    height: 1.85rem;
+    font-size: 0.95rem;
+  }
+
+  .message-wrapper.user .message-body {
+    max-width: 88%;
+    padding: 10px 14px;
+    font-size: 0.925rem;
+  }
+
+  .message-wrapper.assistant .message-body {
+    max-width: 100%;
+    padding: 12px 14px;
+    font-size: 0.925rem;
+  }
+
+  .welcome-screen {
+    padding: 0.75rem 0.85rem;
+  }
+
+  .welcome-content {
+    padding: 0.5rem 0;
+    gap: 0.65rem;
+  }
+
+  .welcome-category-pills {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .welcome-category-pills::-webkit-scrollbar {
+    display: none;
+  }
+
+  .welcome-pill {
+    flex-shrink: 0;
+    padding: 5px 11px;
+    font-size: 0.75rem;
+  }
+
   .suggestion-grid {
     grid-template-columns: 1fr;
+    gap: 0.5rem;
   }
-  
-  .message-wrapper.user .message-body,
-  .message-wrapper.assistant .message-body {
-    max-width: 85%;
+
+  .suggestion-card {
+    padding: 0.65rem 0.85rem;
   }
-  
+
   .chat-input-container {
-    padding: 0.75rem;
+    padding: 0.5rem 0.65rem;
   }
-  
+
+  .chat-input {
+    padding: 8px 10px;
+    border-radius: 16px;
+  }
+
+  .chat-input textarea {
+    font-size: 16px; /* Prevents iOS Safari auto-zoom on input focus */
+    min-height: 22px;
+  }
+
+  .quick-prompt-chips {
+    max-width: 100%;
+    padding: 0 0.5rem 6px 0.5rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .message-text .md-table th,
+  .message-text .md-table td {
+    padding: 8px 10px;
+    font-size: 0.8rem;
+  }
+
   .logo h1 {
-    font-size: 1.75rem;
+    font-size: 1.45rem;
   }
-  
+
   .welcome-subtitle {
-    font-size: 1rem;
+    font-size: 0.85rem;
+  }
+}
+
+/* Extra Small Handsets (<= 480px) */
+@media (max-width: 480px) {
+  .chat-header-actions {
+    gap: 6px;
+  }
+
+  .github-header-sync-btn span,
+  .agent-header-palette-btn span {
+    display: inline;
+  }
+
+  .logo-icon {
+    font-size: 2rem;
   }
 }
 
