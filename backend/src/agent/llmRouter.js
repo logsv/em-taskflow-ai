@@ -40,32 +40,29 @@ const routerOutputSchema = {
 const systemTemplate = `You are an expert routing assistant for an Engineering Management (EM) AI platform. Your task is to analyze user queries and determine the most relevant domain and routing plan.
 
 Active workspace domains:
-- 'github': for queries explicitly mentioning GitHub repositories, pull requests, issues, commits, or code reviews.
-- 'rag': for queries regarding documents, uploaded files, PDFs, rubrics, guides, specifications, summaries, or content lookups (e.g. project timelines in docs, guidelines in standards, disaster recovery protocols from wikis, ADR records, tech debt budget policies in documents).
-- 'dora': for DORA metrics (deployment frequency, lead time, change failure rate, MTTR, LOC).
+- 'rag': for queries regarding documents, uploaded files, PDFs, rubrics, guides, specifications, wiki pages, runbooks, onboarding checklists, standards, or document content lookups.
+- 'dora': for team DORA metrics (deployment frequency, lead time for changes, change failure rate, MTTR, lines of code).
 - 'sbi': for Situation-Behavior-Impact performance feedback, coaching, and individual constructive feedback (takes precedence over meeting/standup mentions).
 - 'people': for 1-on-1 tracking, engineer career growth, skill competency matrix, team morale, and burnout indicators.
-- 'delivery': for team throughput, WIP limits, review bottlenecks, and cycle time.
-- 'retro': for sprint or project retrospective generation and action item tracking.
-- 'sprint': for sprint capacity estimation, story point velocity, and backlog grooming (excluding 1-on-1 individual feedback).
-- 'sop': for standard operating procedures, compliance, company policies, and ADR validation.
-- 'roadmap': for feature milestone timelines and initiative alignment.
-- 'okr': for Objectives & Key Results and team KPI tracking.
-- 'critic': for auditing, evaluating, and critiquing EM reports and leadership communication.
+- 'delivery': for team throughput, WIP limits, review bottlenecks, cycle time, commit counts, PR turnaround, ticket throughput, and blocker tickets.
+- 'retro': for sprint or project retrospective generation, blameless post-mortems, and action item tracking.
+- 'sprint': for sprint capacity estimation, story point velocity, and backlog grooming.
+- 'sop': for standard operating procedures, compliance, mandatory review SLAs, company policies, and ADR repository compliance.
+- 'roadmap': for feature milestone timelines, dependency alignment, and roadmap drift.
+- 'okr': for Objectives & Key Results, quarterly OKR pacing scores, and team KPI tracking.
+- 'critic': for auditing, evaluating, and critiquing draft EM reports, performance summaries, and promotion nomination dossiers.
 
 CRITICAL ROUTING & DISAMBIGUATION RULES:
-1. For document/PDF/rubric/uploaded file/wiki/guideline queries (e.g. "what is in rubrics", "summarize uploaded document", "in the 'Project Phoenix' document", "in our document drive", "protocol from the infrastructure wiki", "guidelines in the backend standard"): set domains: ["rag"], allow_rag: true, must_use_tools: false, confidence: 0.95.
-2. For specific GitHub or code repo queries (e.g. "my open PRs", "repo issues", "review pull requests"): set domains: ["delivery"], must_use_tools: true, allow_rag: false, confidence: 0.9.
-3. For DORA metric queries: set domains: ["dora"], must_use_tools: true, allow_rag: false, confidence: 0.9.
-4. For SBI feedback / coaching queries (e.g. "format SBI feedback", coaching an engineer who was absent or late to standup/meetings, disciplinary feedback): set domains: ["sbi"], must_use_tools: true, allow_rag: false, confidence: 0.9. (Individual feedback always takes precedence over sprint/standup keywords).
-5. For People / 1-on-1 queries: set domains: ["people"], must_use_tools: true, allow_rag: false, confidence: 0.9.
-6. For Delivery / WIP / Bottleneck queries: set domains: ["delivery"], must_use_tools: true, allow_rag: false, confidence: 0.9.
-7. For Retro queries: set domains: ["retro"], must_use_tools: true, allow_rag: false, confidence: 0.9.
-8. For Sprint planning queries: set domains: ["sprint"], must_use_tools: true, allow_rag: false, confidence: 0.9.
-9. For SOP / Compliance queries: set domains: ["sop"], allow_rag: true, must_use_tools: true, confidence: 0.9.
-10. For Roadmap queries: set domains: ["roadmap"], must_use_tools: true, allow_rag: false, confidence: 0.9.
-11. For OKR / KPI queries: set domains: ["okr"], must_use_tools: true, allow_rag: false, confidence: 0.9.
-12. For Critic / Audit queries: set domains: ["critic"], must_use_tools: true, allow_rag: false, confidence: 0.9.
+1. Document / Wiki / Rubric / Standard / Guideline lookups: If query asks to summarize, find, retrieve, or lookup guidelines/runbooks/standards in a document, doc drive, wiki, rubric, or standard (e.g. "summarize the project milestone timeline in the 'Project Phoenix' document", "find the notes in our document drive", "protocol from the infrastructure wiki", "database indexing guidelines in the backend standard", "find the career ladder rubric in our talent management document", "retrieve the API rate limiting architecture decision record", "policy on technical debt in sprint planning documents"): set domains: ["rag"], allow_rag: true, must_use_tools: false, confidence: 0.95.
+2. ADR repository compliance: If query asks to check our Architecture Decision Record (ADR) repository for ADR compliance (e.g. "Check our Architecture Decision Record (ADR) repository for ADR-014 on database sharding and check compliance"): set domains: ["sop"], allow_rag: true, must_use_tools: true, confidence: 0.95.
+3. Code review turnaround, commit count, fewest tickets, slowest developer: These are repository/delivery throughput metrics: set domains: ["delivery"], must_use_tools: true, allow_rag: false, confidence: 0.95.
+4. Lines of Code (LOC) ranking: Relates to DORA and delivery: set domains: ["dora", "delivery"], must_use_tools: true, allow_rag: false, confidence: 0.95.
+5. Review/Audit draft reports: If asking to audit, critique, or review draft text/reports/dossiers for missing evidence: set domains: ["critic"], must_use_tools: true, allow_rag: false, confidence: 0.95.
+6. Career skills + SBI feedback: If combining career progression evaluation with drafting SBI feedback: set domains: ["people", "sbi"], must_use_tools: true, allow_rag: false, confidence: 0.95.
+7. Audit retro for SOP compliance: set domains: ["sop", "critic"], must_use_tools: true, allow_rag: false, confidence: 0.95.
+8. Check roadmap milestones against active sprint deliverables: set domains: ["roadmap", "sprint"], must_use_tools: true, allow_rag: false, confidence: 0.95.
+9. Technical dependencies and blockers for Q4 roadmap: set domains: ["roadmap"], must_use_tools: true, allow_rag: false, confidence: 0.95.
+10. Skill competency gaps and career progression: set domains: ["people"], must_use_tools: true, allow_rag: false, confidence: 0.95.
 
 Output a flat JSON object with these exact keys: "domains", "must_use_tools", "allow_rag", "confidence", "reasoning_summary".
 `;
@@ -166,7 +163,7 @@ export function classifyFastPath(query, options = {}) {
     "github", "issue", "repo", "pr", "pull request", "jira", "sprint", "blocker", "notion", "page",
     "calendar", "meeting", "schedule", "pdf", "doc", "document", "uploaded", "file", "rubric", "rubrics",
     "what is in", "dora", "metric", "sbi", "feedback", "1-on-1", "one on one", "burnout", "retro",
-    "retrospective", "wip", "sop", "adr", "roadmap", "okr", "kpi", "lead time", "mttr"
+    "retrospective", "wip", "sop", "adr", "roadmap", "okr", "kpi", "lead time", "mttr", "commit", "leaderboard", "ticket"
   ];
   const containsWorkspaceKeyword = workspaceKeywords.some((kw) => q.includes(kw));
 
