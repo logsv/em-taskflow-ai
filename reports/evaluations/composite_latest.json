@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-08-21T15:10:16.548Z",
+  "timestamp": "2026-08-21T15:29:41.866Z",
   "model": "hermes3:8b",
   "total_prompts": 58,
   "domain_selection_accuracy": 0.9137931034482759,
