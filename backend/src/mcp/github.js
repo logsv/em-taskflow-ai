@@ -10,23 +10,27 @@ let tools = [];
 let initialized = false;
 
 function createNativeGithubTools(token) {
+  const cleanToken = token ? token.trim().replace(/^Bearer\s+Bearer\s+/i, 'Bearer ').replace(/^token\s+token\s+/i, 'token ') : null;
   const headers = {
     Accept: "application/vnd.github+json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    "User-Agent": "EM-TaskFlow-AI-App",
+    "X-GitHub-Api-Version": "2022-11-28",
+    ...(cleanToken ? { Authorization: cleanToken.startsWith("Bearer ") || cleanToken.startsWith("token ") ? cleanToken : `Bearer ${cleanToken}` } : {}),
   };
 
   const searchIssuesTool = new DynamicStructuredTool({
     name: "search_issues",
     description: "Search GitHub issues and pull requests across user repositories.",
     schema: z.object({
-      query: z.string().describe("GitHub search query string e.g. is:issue is:open user:logsv"),
+      query: z.string().describe("GitHub search query string e.g. is:issue is:open repo:logsv/em-taskflow-ai"),
     }),
     func: async ({ query }) => {
       try {
-        const owner = process.env.GITHUB_OWNER || process.env.GITHUB_USERNAME || null;
+        const owner = process.env.GITHUB_OWNER || process.env.GITHUB_USERNAME || "logsv";
+        const repo = process.env.GITHUB_REPO || "em-taskflow-ai";
         let q = query ? query.trim() : "is:issue state:open";
         if (owner && !q.includes("user:") && !q.includes("org:") && !q.includes("repo:")) {
-          q = `${q} user:${owner}`;
+          q = `${q} repo:${owner}/${repo}`;
         }
         if (!q.includes("is:issue") && !q.includes("is:pr") && !q.includes("type:issue") && !q.includes("type:pr")) {
           q = `is:issue ${q}`;

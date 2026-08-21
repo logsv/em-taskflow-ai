@@ -146,10 +146,12 @@ async function ensureInit() {
   if (initialized && tools.length > 0) return;
   const { notion } = getMcpConfig();
 
-  const url = process.env.NOTION_MCP_URL || notion.url;
+  const url = process.env.NOTION_MCP_URL || notion.mcpUrl;
   const token = process.env.NOTION_API_KEY || notion.apiKey;
+  const isInternalSecret = typeof token === 'string' && token.startsWith("secret_");
 
-  if (url && !url.includes("localhost:0")) {
+  // Only attempt Remote MCP if an explicit MCP URL is configured and we are not using standard REST internal integration secrets
+  if (url && url.startsWith("http") && !url.includes("localhost:0") && !isInternalSecret) {
     try {
       const serverConfig = { url };
       if (notion.oauth?.enabled) {

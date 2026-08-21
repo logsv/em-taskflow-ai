@@ -8,11 +8,18 @@ let client = null;
 let tools = [];
 let initialized = false;
 
-function createNativeJiraTools(token, baseUrl) {
+function createNativeJiraTools(token, baseUrl, email = "") {
+  const cleanToken = token ? token.trim() : "";
+  const cleanEmail = (email || process.env.JIRA_USER_EMAIL || process.env.JIRA_USERNAME || "").trim();
+  
+  const authHeader = cleanEmail && cleanToken && !cleanToken.startsWith("Basic ")
+    ? `Basic ${Buffer.from(`${cleanEmail}:${cleanToken}`).toString('base64')}`
+    : (cleanToken ? (cleanToken.startsWith("Basic ") || cleanToken.startsWith("Bearer ") ? cleanToken : `Bearer ${cleanToken}`) : null);
+
   const headers = {
     Accept: "application/json",
     "Content-Type": "application/json",
-    ...(token ? { Authorization: token.startsWith("Basic ") || token.startsWith("Bearer ") ? token : `Bearer ${token}` } : {}),
+    ...(authHeader ? { Authorization: authHeader } : {}),
   };
 
   const jiraSearchTool = new DynamicStructuredTool({
@@ -176,11 +183,13 @@ async function ensureInit() {
   if (initialized && tools.length > 0) return;
   const { jira } = getMcpConfig();
 
-  const url = process.env.JIRA_MCP_URL || jira.url;
+  const url = process.env.JIRA_MCP_URL || jira.mcpUrl;
   const token = process.env.JIRA_MCP_TOKEN || process.env.JIRA_API_TOKEN || jira.apiToken;
+  const email = process.env.JIRA_USER_EMAIL || process.env.JIRA_USERNAME || jira.email || jira.username;
   const baseUrl = process.env.JIRA_BASE_URL || jira.url;
 
-  if (url && !url.includes("mcp.atlassian.com") && !url.includes("localhost:0")) {
+  // Only attempt Remote MCP if an explicit, valid remote MCP endpoint is provided (e.g. mcp.atlassian.com)
+  if (url && url.startsWith("http") && !url.includes("example.jira.com") && !url.includes("localhost:0") && !url.includes("atlassian.net")) {
     try {
       const headers = {};
       if (token) headers.Authorization = `Bearer ${token}`;
@@ -198,7 +207,7 @@ async function ensureInit() {
     }
   }
 
-  tools = createNativeJiraTools(token, baseUrl);
+  tools = createNativeJiraTools(token, baseUrl, email);
   initialized = true;
   console.log(`✅ Loaded ${tools.length} Native Jira REST API tools`);
 }
