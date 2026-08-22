@@ -2,7 +2,10 @@ import teamSyncWorker from '../../src/workers/teamSyncWorker.js';
 
 describe('TeamSyncWorker (Node.js Background Parallel Worker)', () => {
   beforeEach(() => {
+    teamSyncWorker.stop();
     teamSyncWorker.syncIntervalMs = 6 * 60 * 60 * 1000;
+    teamSyncWorker.lastRunStatus = 'IDLE';
+    teamSyncWorker.lastRunAt = null;
   });
 
   afterEach(() => {

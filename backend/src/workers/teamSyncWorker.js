@@ -10,6 +10,7 @@ import settingsService from '../services/settingsService.js';
 class TeamSyncWorker {
   constructor() {
     this.intervalHandle = null;
+    this.warmupTimeoutHandle = null;
     this.isRunning = false;
     this.lastRunAt = null;
     this.lastRunStatus = 'IDLE';
@@ -20,15 +21,13 @@ class TeamSyncWorker {
    * Starts background recurring sync loop.
    */
   start(intervalMs = this.syncIntervalMs) {
+    this.stop();
     this.syncIntervalMs = intervalMs;
-    if (this.intervalHandle) {
-      clearInterval(this.intervalHandle);
-    }
 
     console.log(`⏱️ [TeamSyncWorker] Started Node.js team sync worker (Interval: ${this.syncIntervalMs / 1000 / 60}m)`);
 
     // Run initial sync non-blocking on startup after 5s warm-up
-    setTimeout(() => {
+    this.warmupTimeoutHandle = setTimeout(() => {
       this.executeParallelSync().catch(err => {
         console.warn(`⚠️ [TeamSyncWorker] Initial sync warning: ${err.message}`);
       });
@@ -45,11 +44,16 @@ class TeamSyncWorker {
    * Stops background sync worker.
    */
   stop() {
+    if (this.warmupTimeoutHandle) {
+      clearTimeout(this.warmupTimeoutHandle);
+      this.warmupTimeoutHandle = null;
+    }
     if (this.intervalHandle) {
       clearInterval(this.intervalHandle);
       this.intervalHandle = null;
       console.log('⏹️ [TeamSyncWorker] Stopped Node.js team sync worker');
     }
+    this.isRunning = false;
   }
 
   /**
