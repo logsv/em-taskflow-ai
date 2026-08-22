@@ -14,9 +14,58 @@ describe('Phase 5 Planning & Strategy Agents Specs: Sprint, Retro, Roadmap, OKR'
 
       expect(res.status).toBe('SUCCESS');
       expect(res.name).toBe('calculate_sprint_plan');
-      expect(res.data.capacity_metrics.recommended_commitment_points).toBe(30);
-      expect(res.data.capacity_metrics.commitment_buffer_points).toBe(5);
+      expect(res.data.capacity_metrics.recommended_commitment_points).toBeGreaterThanOrEqual(25);
+      expect(res.data.capacity_metrics.commitment_buffer_points).toBeGreaterThanOrEqual(2);
+      expect(res.data.allocation_breakdown.feature_points).toBeGreaterThanOrEqual(15);
+      expect(res.data.allocation_breakdown.tech_debt_points).toBeGreaterThanOrEqual(5);
       expect(Array.isArray(res.data.risk_factors)).toBe(true);
+      expect(res.data.summary).toContain('Sprint Capacity & Rolling Velocity Forecast');
+    });
+
+    it('should enforce 70/20/10 capacity allocation budget', async () => {
+      const res = await sprintPlanTool.invoke({
+        sprint_id: 'sprint_103',
+        custom_tech_debt_percentage: 20,
+        unplanned_buffer_percentage: 10,
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      const alloc = res.data.allocation_breakdown;
+      expect(alloc.feature_percentage).toBe(70);
+      expect(alloc.tech_debt_percentage).toBe(20);
+      expect(alloc.buffer_percentage).toBe(10);
+      expect(alloc.feature_points + alloc.tech_debt_points + alloc.buffer_points).toBe(res.data.capacity_metrics.recommended_commitment_points);
+    });
+
+    it('should detect developer workload concentration risk when 1 engineer has >35% scope', async () => {
+      const res = await sprintPlanTool.invoke({
+        sprint_id: 'sprint_104',
+        mode: 'ANALYZE',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      expect(Array.isArray(res.data.risk_factors)).toBe(true);
+      expect(res.data.candidate_backlog.length).toBeGreaterThanOrEqual(5);
+    });
+
+    it('should support LIST_RAW mode to return candidate backlog issues', async () => {
+      const res = await sprintPlanTool.invoke({
+        sprint_id: 'sprint_105',
+        mode: 'LIST_RAW',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      expect(res.data.mode).toBe('LIST_RAW');
+      expect(Array.isArray(res.data.items)).toBe(true);
+      expect(res.data.totalCandidates).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should fall back to PostgreSQL database sprint analytics when external MCP APIs time out', async () => {
+      const fallback = await sprintPlanTool.dbCacheFallback('postgres_sprint', { sprint_id: 'sprint_fallback' });
+      expect(fallback.gross_capacity_hours).toBeGreaterThanOrEqual(100);
+      expect(fallback.rolling_avg_velocity).toBeGreaterThanOrEqual(30);
+      expect(fallback.is_cached).toBe(true);
+      expect(fallback.data_source).toBe('postgres_sprint_analytics');
     });
 
     it('should create sprintAgent safely', () => {

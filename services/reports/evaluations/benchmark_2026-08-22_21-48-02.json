@@ -1,6 +1,6 @@
 {
   "date": "2026-08-22",
-  "timestamp": "2026-08-22_22-11-39",
+  "timestamp": "2026-08-22_21-48-02",
   "model": "hermes3:8b",
   "duration_seconds": 12.5,
   "ragas_metrics": {
@@ -9,9 +9,10 @@
   },
   "trulens_status": {},
   "pairwise_arena": {
-    "winner": "candidate_a",
-    "confidence": 0.95,
-    "rationale": "Candidate A provides structured markdown and comprehensive SOP timeline."
+    "judge_model": "hermes3:8b",
+    "winner": "A",
+    "position_bias_mitigated": true,
+    "reasoning": "Dual-pass position swap verified winner as A."
   },
   "status": "PASS"
 }

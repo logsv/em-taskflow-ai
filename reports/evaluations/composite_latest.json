@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-08-22T08:10:53.412Z",
+  "timestamp": "2026-08-22T16:15:47.862Z",
   "model": "hermes3:8b",
   "total_prompts": 68,
-  "domain_selection_accuracy": 0.9117647058823529,
+  "domain_selection_accuracy": 0.9264705882352942,
   "unwanted_rag_rate": 0,
   "tool_grounded_rate": 1,
   "coreference_resolution_rate": 0.875,
