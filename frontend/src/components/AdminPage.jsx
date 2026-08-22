@@ -49,6 +49,10 @@ function AdminPage({ onBackToChat }) {
     githubToken: false,
     notionKey: false,
     openaiKey: false,
+    gcalKey: false,
+    slackBotToken: false,
+    slackSigningSecret: false,
+    slackAppToken: false,
   });
 
   // Active Admin View Tab with URL Query Param Sync (?tab=overview|team|settings|services|evaluation|storage)
@@ -535,6 +539,7 @@ function AdminPage({ onBackToChat }) {
       handleTestConnection('github'),
       handleTestConnection('notion'),
       handleTestConnection('googleCalendar'),
+      handleTestConnection('slack'),
     ]);
   };
 
@@ -2100,6 +2105,115 @@ function AdminPage({ onBackToChat }) {
                         {connTestStatus.googleCalendar.success ? '✅ ' : '❌ '}
                         {connTestStatus.googleCalendar.message}
                         {connTestStatus.googleCalendar.latencyMs ? ` (${connTestStatus.googleCalendar.latencyMs}ms)` : ''}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Tool 5: Slack Workspace & Bot */}
+                  <div className="tool-subcard">
+                    <div className="tool-subcard-header">
+                      <div className="tool-title">
+                        <span className="tool-icon">💬</span>
+                        <strong>Slack Workspace & Bot MCP</strong>
+                      </div>
+                      <button
+                        className="test-conn-btn"
+                        onClick={() => handleTestConnection('slack')}
+                        disabled={connTestStatus.slack?.loading}
+                      >
+                        {connTestStatus.slack?.loading ? 'Testing...' : '🧪 Test Slack'}
+                      </button>
+                    </div>
+
+                    <div className="form-row">
+                      <div className="form-group flex-2">
+                        <label>Default Retro / Alert Channel</label>
+                        <input
+                          type="text"
+                          className="settings-input"
+                          value={adminSettings?.mcp?.slack?.defaultChannel || '#engineering-retro'}
+                          onChange={(e) => updateMcpField('slack', 'defaultChannel', e.target.value)}
+                          placeholder="#engineering-retro, #team-standup, C01234567"
+                        />
+                      </div>
+                      <div className="form-group flex-2">
+                        <label>Slack Workspace Team ID (Optional)</label>
+                        <input
+                          type="text"
+                          className="settings-input"
+                          value={adminSettings?.mcp?.slack?.teamId || ''}
+                          onChange={(e) => updateMcpField('slack', 'teamId', e.target.value)}
+                          placeholder="T01234567"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label>Bot User OAuth Token (<code>xoxb-...</code>)</label>
+                      <div className="input-secret-wrapper">
+                        <input
+                          type={showSecrets.slackBotToken ? 'text' : 'password'}
+                          className="settings-input"
+                          value={adminSettings?.mcp?.slack?.botToken || ''}
+                          onChange={(e) => updateMcpField('slack', 'botToken', e.target.value)}
+                          placeholder="xoxb-••••••••••••••••"
+                        />
+                        <button
+                          type="button"
+                          className="toggle-secret-btn"
+                          onClick={() => setShowSecrets((prev) => ({ ...prev, slackBotToken: !prev.slackBotToken }))}
+                        >
+                          {showSecrets.slackBotToken ? '👁️' : '🔒'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="form-row">
+                      <div className="form-group flex-2">
+                        <label>Slack Signing Secret (Optional)</label>
+                        <div className="input-secret-wrapper">
+                          <input
+                            type={showSecrets.slackSigningSecret ? 'text' : 'password'}
+                            className="settings-input"
+                            value={adminSettings?.mcp?.slack?.signingSecret || ''}
+                            onChange={(e) => updateMcpField('slack', 'signingSecret', e.target.value)}
+                            placeholder="••••••••••••••••••••••••••••••••"
+                          />
+                          <button
+                            type="button"
+                            className="toggle-secret-btn"
+                            onClick={() => setShowSecrets((prev) => ({ ...prev, slackSigningSecret: !prev.slackSigningSecret }))}
+                          >
+                            {showSecrets.slackSigningSecret ? '👁️' : '🔒'}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="form-group flex-2">
+                        <label>App-Level Token (<code>xapp-...</code> Socket Mode - Optional)</label>
+                        <div className="input-secret-wrapper">
+                          <input
+                            type={showSecrets.slackAppToken ? 'text' : 'password'}
+                            className="settings-input"
+                            value={adminSettings?.mcp?.slack?.appToken || ''}
+                            onChange={(e) => updateMcpField('slack', 'appToken', e.target.value)}
+                            placeholder="xapp-••••••••••••••••"
+                          />
+                          <button
+                            type="button"
+                            className="toggle-secret-btn"
+                            onClick={() => setShowSecrets((prev) => ({ ...prev, slackAppToken: !prev.slackAppToken }))}
+                          >
+                            {showSecrets.slackAppToken ? '👁️' : '🔒'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {connTestStatus.slack && (
+                      <div className={`conn-status-badge ${connTestStatus.slack.success ? 'badge-online' : 'badge-offline'}`}>
+                        {connTestStatus.slack.success ? '✅ ' : '❌ '}
+                        {connTestStatus.slack.message}
+                        {connTestStatus.slack.latencyMs ? ` (${connTestStatus.slack.latencyMs}ms)` : ''}
                       </div>
                     )}
                   </div>

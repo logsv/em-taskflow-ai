@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
-description: "EM TaskFlow AI - Micro-Agent Router & Prompt Evaluation Matrix"
+description: "EM TaskFlow AI - Comprehensive Micro-Agent Router & Prompt Evaluation Matrix"
 
 sharing: true
 
@@ -14,22 +14,25 @@ prompts:
     You are the EM TaskFlow AI intent router. Classify the user query into exactly one of these domains: [dora, delivery, sbi, people, sprint, retro, roadmap, okr, sop, critic, rag, fast_path].
 
     Domain Definitions:
-    - 'dora': DORA metrics (deployment frequency, lead time, change failure rate, MTTR).
-    - 'delivery': Team throughput, PR cycle times, WIP limits, review bottlenecks.
+    - 'dora': DORA metrics (deployment frequency, lead time for changes, change failure rate, MTTR).
+    - 'delivery': Team throughput, PR cycle times, WIP limits, review bottlenecks, stalled tickets.
     - 'sbi': Situation-Behavior-Impact performance feedback, coaching, and individual constructive feedback (takes precedence over meeting/standup mentions).
-    - 'people': 1-on-1 tracking, career growth, skill matrix, burnout indicators.
-    - 'sprint': Sprint capacity estimation, story point velocity, backlog grooming (excluding 1-on-1 feedback).
-    - 'retro': Retrospectives and action item tracking.
-    - 'roadmap': Feature milestones and roadmap timelines.
-    - 'okr': Objectives and Key Results, team KPIs.
-    - 'sop': Standard operating procedures, company policies, ADR compliance.
-    - 'critic': Auditing and critiquing EM reports.
-    - 'rag': Document lookups, PDFs, rubrics, guides.
+    - 'people': 1-on-1 tracking, career growth, 12-dimension competency radar, promotion readiness, burnout indicators.
+    - 'sprint': Sprint capacity estimation, story point velocity, 70/20/10 tech-debt budget allocation, backlog grooming (excluding 1-on-1 feedback).
+    - 'retro': Blameless retrospectives, what went well, friction points, recurring multi-sprint patterns, and SMART action items.
+    - 'roadmap': Feature milestones, multi-quarter initiative pacing, and roadmap drift.
+    - 'okr': Objectives and Key Results, team KPIs, and confidence pacing scores.
+    - 'sop': Standard operating procedures, company policies, ADR compliance, and governance guidelines.
+    - 'critic': Auditing, reflective feedback, empathy checks, and critiquing draft EM reports.
+    - 'rag': Document lookups, PDFs, rubrics, company handbooks, and knowledge base search.
     - 'fast_path': Pure coding (e.g. Fibonacci, algorithms), math, syntax, or greetings requiring no EM tools.
 
     Disambiguation Rules:
-    - If coaching/feedback for a team member is requested (e.g. absent from standup), classify as 'sbi'.
-    - If writing standalone code/functions or solving math, classify as 'fast_path'.
+    - If coaching or performance feedback for an individual team member is requested (e.g. missed standup, code review comments), classify as 'sbi'.
+    - If evaluating career progression, leveling rubrics, or 1-on-1 meeting load, classify as 'people'.
+    - If calculating upcoming sprint capacity, developer focus hours, or technical debt budget, classify as 'sprint'.
+    - If analyzing completed sprint learnings, friction themes, or postmortems, classify as 'retro'.
+    - If writing standalone code/functions, solving math, or saying hello, classify as 'fast_path'.
 
     Return only a JSON object: {"domain": "<domain_name>"}
 
@@ -43,9 +46,23 @@ tests:
       - type: icontains
         value: "dora"
 
+  - description: "DORA lead time and MTTR"
+    vars:
+      query: "What is our Mean Time to Restore (MTTR) and PR lead time for changes over the last 30 days?"
+    assert:
+      - type: icontains
+        value: "dora"
+
   - description: "Delivery bottleneck analysis"
     vars:
       query: "Analyze engineering delivery bottlenecks and PR cycle times for the backend team."
+    assert:
+      - type: icontains
+        value: "delivery"
+
+  - description: "Delivery WIP limits and stalled work"
+    vars:
+      query: "Which Jira tickets are currently blocked for more than 2 days and causing WIP violations?"
     assert:
       - type: icontains
         value: "delivery"
@@ -56,6 +73,97 @@ tests:
     assert:
       - type: icontains
         value: "sbi"
+
+  - description: "SBI constructive coaching on code review comments"
+    vars:
+      query: "Help me prepare constructive SBI feedback for an engineer who left dismissive comments on PRs."
+    assert:
+      - type: icontains
+        value: "sbi"
+
+  - description: "SBI positive recognition"
+    vars:
+      query: "Draft positive SBI recognition feedback for Sarah for leading the zero-downtime database migration."
+    assert:
+      - type: icontains
+        value: "sbi"
+
+  - description: "People 1-on-1 and burnout tracking"
+    vars:
+      query: "Review recent 1-on-1 notes for Sarah to assess her career growth and burnout risk."
+    assert:
+      - type: icontains
+        value: "people"
+
+  - description: "People career ladder and promotion readiness"
+    vars:
+      query: "Evaluate Alex against our 12-dimension competency radar for promotion from L4 Mid to L5 Senior Engineer."
+    assert:
+      - type: icontains
+        value: "people"
+
+  - description: "Sprint planning and capacity estimation"
+    vars:
+      query: "Calculate our team sprint capacity and story point velocity for Sprint 45 planning."
+    assert:
+      - type: icontains
+        value: "sprint"
+
+  - description: "Sprint capacity with 70/20/10 tech-debt allocation & PTO deduction"
+    vars:
+      query: "Plan Sprint 43 capacity for our 4-person team considering 2 days of PTO and allocating 20% to tech debt."
+    assert:
+      - type: icontains
+        value: "sprint"
+
+  - description: "Sprint retrospective analysis"
+    vars:
+      query: "Generate a retrospective report summarizing what went well and action items from our last sprint."
+    assert:
+      - type: icontains
+        value: "retro"
+
+  - description: "Sprint retrospective recurring multi-sprint friction"
+    vars:
+      query: "Synthesize team retro feedback to identify recurring chronic complaints regarding flaky CI integration tests."
+    assert:
+      - type: icontains
+        value: "retro"
+
+  - description: "Roadmap milestone alignment"
+    vars:
+      query: "Show our Q4 product roadmap milestone timelines and initiative dependencies."
+    assert:
+      - type: icontains
+        value: "roadmap"
+
+  - description: "OKR progress tracking"
+    vars:
+      query: "Evaluate our Q3 OKR progress on reducing API p99 latency to under 200ms."
+    assert:
+      - type: icontains
+        value: "okr"
+
+  - description: "SOP policy and governance inquiry"
+    vars:
+      query: "What is our company standard operating procedure for handling production security incidents?"
+    assert:
+      - type: icontains
+        value: "sop"
+
+  - description: "Critic report audit"
+    vars:
+      query: "Audit and critique my draft engineering promotion proposal for Alex for tone empathy and math accuracy."
+    assert:
+      - type: icontains
+        value: "critic"
+
+  - description: "RAG Document and PDF lookup"
+    vars:
+      query: "Summarize the architecture specifications and database schema in the uploaded Project Phoenix PDF."
+    assert:
+      - type: icontains
+        value: "rag"
 
   - description: "Fast-path pure coding bypassing tools"
     vars:
@@ -78,66 +186,4 @@ tests:
       - type: icontains
         value: "fast_path"
 
-  - description: "RAG SOP policy inquiry"
-    vars:
-      query: "What is our company SOP for remote expense reimbursements?"
-    assert:
-      - type: icontains
-        value: "sop"
-
-  - description: "RAG Document and PDF lookup"
-    vars:
-      query: "Summarize the architecture specifications and database schema in the uploaded Project Phoenix PDF."
-    assert:
-      - type: icontains
-        value: "rag"
-
-  - description: "People 1-on-1 and burnout tracking"
-    vars:
-      query: "Review recent 1-on-1 notes for Sarah to assess her career growth and burnout risk."
-    assert:
-      - type: icontains
-        value: "people"
-
-  - description: "Sprint planning and capacity estimation"
-    vars:
-      query: "Calculate our team sprint capacity and story point velocity for Sprint 45 planning."
-    assert:
-      - type: icontains
-        value: "sprint"
-
-  - description: "Sprint retrospective analysis"
-    vars:
-      query: "Generate a retrospective report summarizing what went well and action items from our last sprint."
-    assert:
-      - type: icontains
-        value: "retro"
-
-  - description: "Roadmap milestone alignment"
-    vars:
-      query: "Show our Q4 product roadmap milestone timelines and initiative dependencies."
-    assert:
-      - type: icontains
-        value: "roadmap"
-
-  - description: "OKR progress tracking"
-    vars:
-      query: "Evaluate our Q3 OKR progress on reducing API p99 latency to under 200ms."
-    assert:
-      - type: icontains
-        value: "okr"
-
-  - description: "Critic report audit"
-    vars:
-      query: "Audit and critique my draft engineering promotion proposal for Alex."
-    assert:
-      - type: icontains
-        value: "critic"
-
-  - description: "Disambiguation: SBI constructive feedback on code review conduct"
-    vars:
-      query: "Help me prepare constructive SBI feedback for an engineer who left dismissive comments on PRs."
-    assert:
-      - type: icontains
-        value: "sbi"
 

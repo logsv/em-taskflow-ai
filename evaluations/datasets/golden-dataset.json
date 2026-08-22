@@ -114,7 +114,8 @@
     "expected_domains": ["sprint"],
     "expected_tool_calls": [{ "tool_name": "calculate_sprint_plan" }],
     "is_rag_appropriate": false,
-    "success_criteria_gates": { "min_domain_precision": 1.0 }
+    "ground_truth_answer": "### 📊 Sprint Capacity & Rolling Velocity Forecast\nCalculates team gross and net productive hours with 5-sprint rolling velocity.\n### 🎯 Capacity Allocation Breakdown (70/20/10 Rule)\nAllocates 70% features, 20% tech debt, 10% buffer.\n### ⚠️ Sprint Execution Risks & Concentration Audit\nAudits single-developer workload concentration and PTO deductions.",
+    "success_criteria_gates": { "min_domain_precision": 1.0, "min_faithfulness": 0.90 }
   },
   {
     "eval_id": "EVAL-SPRINT-002",
@@ -123,7 +124,8 @@
     "expected_domains": ["sprint"],
     "expected_tool_calls": [{ "tool_name": "calculate_sprint_plan" }],
     "is_rag_appropriate": false,
-    "success_criteria_gates": { "min_domain_precision": 1.0 }
+    "ground_truth_answer": "### 📊 Sprint Capacity & Rolling Velocity Forecast\nDeducts PTO days from gross capacity hours.\n### 🎯 Capacity Allocation Breakdown (70/20/10 Rule)\nAllocates 20% capacity specifically for technical debt reduction.\n### ⚠️ Sprint Execution Risks & Concentration Audit\nHighlights capacity deductions from PTO.",
+    "success_criteria_gates": { "min_domain_precision": 1.0, "min_faithfulness": 0.90 }
   },
   {
     "eval_id": "EVAL-SPRINT-003",
@@ -132,7 +134,8 @@
     "expected_domains": ["sprint"],
     "expected_tool_calls": [{ "tool_name": "calculate_sprint_plan" }],
     "is_rag_appropriate": false,
-    "success_criteria_gates": { "min_domain_precision": 1.0 }
+    "ground_truth_answer": "### 📊 Sprint Capacity & Rolling Velocity Forecast\nCalculates rolling 5-sprint mean and standard deviation.\n### 📋 Recommended Sprint Commitment Plan\nProvides candidate backlog list with story points.",
+    "success_criteria_gates": { "min_domain_precision": 1.0, "min_faithfulness": 0.90 }
   },
   {
     "eval_id": "EVAL-RETRO-001",
@@ -141,7 +144,8 @@
     "expected_domains": ["retro"],
     "expected_tool_calls": [{ "tool_name": "generate_sprint_retro" }],
     "is_rag_appropriate": false,
-    "success_criteria_gates": { "min_domain_precision": 1.0 }
+    "ground_truth_answer": "### 🏆 Sprint Achievements & Team Kudos (What Went Well)\nCelebrates zero-downtime release and test coverage.\n### 🔍 Friction Points & Thematic Clustering (What Didn't Go Well)\nClusters friction into CI/CD reliability and PR turnaround.\n### 🎯 SMART Continuous Improvement Action Plan\nAssigns SMART action items with dynamic real owners.",
+    "success_criteria_gates": { "min_domain_precision": 1.0, "min_faithfulness": 0.90 }
   },
   {
     "eval_id": "EVAL-RETRO-002",
@@ -150,7 +154,8 @@
     "expected_domains": ["retro"],
     "expected_tool_calls": [{ "tool_name": "generate_sprint_retro" }],
     "is_rag_appropriate": false,
-    "success_criteria_gates": { "min_domain_precision": 1.0 }
+    "ground_truth_answer": "### 🔄 Recurring Multi-Sprint Patterns & Chronic Gaps\nFlags chronic CI flakiness across consecutive sprints.\n### 🎯 SMART Continuous Improvement Action Plan\nAssigns flaky test quarantine action item.",
+    "success_criteria_gates": { "min_domain_precision": 1.0, "min_faithfulness": 0.90 }
   },
   {
     "eval_id": "EVAL-RETRO-003",
@@ -159,7 +164,8 @@
     "expected_domains": ["retro"],
     "expected_tool_calls": [{ "tool_name": "generate_sprint_retro" }],
     "is_rag_appropriate": false,
-    "success_criteria_gates": { "min_domain_precision": 1.0 }
+    "ground_truth_answer": "### 🏆 Sprint Achievements & Team Kudos (What Went Well)\nHighlights team incident response speed.\n### 🔍 Friction Points & Thematic Clustering (What Didn't Go Well)\nBlameless systemic root cause breakdown.\n### 🎯 SMART Continuous Improvement Action Plan\nSystemic architecture guardrail action items.",
+    "success_criteria_gates": { "min_domain_precision": 1.0, "min_faithfulness": 0.90 }
   },
   {
     "eval_id": "EVAL-ROADMAP-001",

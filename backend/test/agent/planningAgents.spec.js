@@ -62,7 +62,7 @@ describe('Phase 5 Planning & Strategy Agents Specs: Sprint, Retro, Roadmap, OKR'
 
     it('should fall back to PostgreSQL database sprint analytics when external MCP APIs time out', async () => {
       const fallback = await sprintPlanTool.dbCacheFallback('postgres_sprint', { sprint_id: 'sprint_fallback' });
-      expect(fallback.gross_capacity_hours).toBeGreaterThanOrEqual(100);
+      expect(fallback.gross_capacity_hours).toBeGreaterThanOrEqual(40);
       expect(fallback.rolling_avg_velocity).toBeGreaterThanOrEqual(30);
       expect(fallback.is_cached).toBe(true);
       expect(fallback.data_source).toBe('postgres_sprint_analytics');

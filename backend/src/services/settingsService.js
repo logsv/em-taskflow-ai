@@ -5,6 +5,7 @@ import { info, warn, error } from '../utils/logger.js';
 import { closeJiraMcp } from '../mcp/jira.js';
 import { closeNotionMcp } from '../mcp/notion.js';
 import { closeGithubMcp } from '../mcp/github.js';
+import { closeSlackMcp } from '../mcp/slack.js';
 
 export function maskSecret(secret) {
   if (!secret || typeof secret !== 'string') return '';
@@ -22,6 +23,15 @@ export function maskSecret(secret) {
   }
   if (trimmed.startsWith('sk-')) {
     return `sk-******${trimmed.slice(-4)}`;
+  }
+  if (trimmed.startsWith('xoxb-')) {
+    return `xoxb-******${trimmed.slice(-4)}`;
+  }
+  if (trimmed.startsWith('xapp-')) {
+    return `xapp-******${trimmed.slice(-4)}`;
+  }
+  if (trimmed.startsWith('xoxp-')) {
+    return `xoxp-******${trimmed.slice(-4)}`;
   }
   return `${trimmed.slice(0, 3)}******${trimmed.slice(-4)}`;
 }
@@ -135,6 +145,14 @@ class SettingsService {
           clientId: process.env.GOOGLE_CLIENT_ID || '',
           enabled: true,
         },
+        slack: {
+          botToken: process.env.SLACK_BOT_TOKEN || '',
+          signingSecret: process.env.SLACK_SIGNING_SECRET || '',
+          appToken: process.env.SLACK_APP_TOKEN || '',
+          defaultChannel: process.env.SLACK_DEFAULT_CHANNEL || '#engineering-retro',
+          teamId: process.env.SLACK_TEAM_ID || '',
+          enabled: true,
+        },
       },
       metadata: {
         llmSource: 'migrated_env',
@@ -192,6 +210,13 @@ class SettingsService {
       if (rawSettings.mcp.notion) {
         if (rawSettings.mcp.notion.apiKey) process.env.NOTION_API_KEY = rawSettings.mcp.notion.apiKey;
         if (rawSettings.mcp.notion.mcpUrl) process.env.NOTION_MCP_URL = rawSettings.mcp.notion.mcpUrl;
+      }
+      if (rawSettings.mcp.slack) {
+        if (rawSettings.mcp.slack.botToken) process.env.SLACK_BOT_TOKEN = rawSettings.mcp.slack.botToken;
+        if (rawSettings.mcp.slack.signingSecret) process.env.SLACK_SIGNING_SECRET = rawSettings.mcp.slack.signingSecret;
+        if (rawSettings.mcp.slack.appToken) process.env.SLACK_APP_TOKEN = rawSettings.mcp.slack.appToken;
+        if (rawSettings.mcp.slack.defaultChannel) process.env.SLACK_DEFAULT_CHANNEL = rawSettings.mcp.slack.defaultChannel;
+        if (rawSettings.mcp.slack.teamId) process.env.SLACK_TEAM_ID = rawSettings.mcp.slack.teamId;
       }
     }
   }
@@ -256,6 +281,14 @@ class SettingsService {
           calendarId: raw.mcp.googleCalendar?.calendarId || 'primary',
           clientId: raw.mcp.googleCalendar?.clientId || '',
           enabled: raw.mcp.googleCalendar?.enabled ?? true,
+        },
+        slack: {
+          botToken: maskSecret(raw.mcp.slack?.botToken),
+          signingSecret: maskSecret(raw.mcp.slack?.signingSecret),
+          appToken: maskSecret(raw.mcp.slack?.appToken),
+          defaultChannel: raw.mcp.slack?.defaultChannel || '#engineering-retro',
+          teamId: raw.mcp.slack?.teamId || '',
+          enabled: raw.mcp.slack?.enabled ?? true,
         },
       },
       metadata: raw.metadata || {
@@ -334,6 +367,20 @@ class SettingsService {
         clientId: incoming.mcp?.googleCalendar?.clientId || current.mcp.googleCalendar?.clientId || '',
         enabled: incoming.mcp?.googleCalendar?.enabled ?? current.mcp.googleCalendar?.enabled ?? true,
       },
+      slack: {
+        botToken: isMasked(incoming.mcp?.slack?.botToken)
+          ? current.mcp.slack?.botToken
+          : incoming.mcp?.slack?.botToken ?? current.mcp.slack?.botToken ?? '',
+        signingSecret: isMasked(incoming.mcp?.slack?.signingSecret)
+          ? current.mcp.slack?.signingSecret
+          : incoming.mcp?.slack?.signingSecret ?? current.mcp.slack?.signingSecret ?? '',
+        appToken: isMasked(incoming.mcp?.slack?.appToken)
+          ? current.mcp.slack?.appToken
+          : incoming.mcp?.slack?.appToken ?? current.mcp.slack?.appToken ?? '',
+        defaultChannel: incoming.mcp?.slack?.defaultChannel || current.mcp.slack?.defaultChannel || '#engineering-retro',
+        teamId: incoming.mcp?.slack?.teamId || current.mcp.slack?.teamId || '',
+        enabled: incoming.mcp?.slack?.enabled ?? current.mcp.slack?.enabled ?? true,
+      },
     };
 
     // Save to Database
@@ -358,6 +405,7 @@ class SettingsService {
     await closeJiraMcp().catch(() => {});
     await closeNotionMcp().catch(() => {});
     await closeGithubMcp().catch(() => {});
+    await closeSlackMcp().catch(() => {});
 
     info('✅ Settings saved to database and hot-reloaded into active runtime');
     return this.getMaskedSettings();
@@ -383,6 +431,7 @@ class SettingsService {
     await closeJiraMcp().catch(() => {});
     await closeNotionMcp().catch(() => {});
     await closeGithubMcp().catch(() => {});
+    await closeSlackMcp().catch(() => {});
 
     info('🔄 Restored settings to .env defaults');
     return this.getMaskedSettings();
@@ -540,6 +589,11 @@ class SettingsService {
           message: `Connected to Google Calendar (${items.length} upcoming event(s) found)`,
           events: items.map((ev) => ({ summary: ev.summary, start: ev.start?.dateTime || ev.start?.date })),
         };
+      }
+
+      if (type === 'slack') {
+        const { testSlackConnection } = await import('../mcp/slack.js');
+        return testSlackConnection(credentials);
       }
 
       return { success: false, latencyMs: 0, message: `Unknown connection test type: ${type}` };
