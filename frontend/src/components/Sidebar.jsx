@@ -75,12 +75,9 @@ function SessionItem({ session, isActive, onSwitch, onDelete, onArchive }) {
             {session.last_message.slice(0, 50)}{session.last_message.length > 50 ? '…' : ''}
           </p>
         )}
-        {(relTime || session.thread_count > 1) && (
+        {relTime && (
           <div className="session-item-meta">
-            {relTime && <span className="session-item-time">{relTime}</span>}
-            {session.thread_count > 1 && (
-              <span className="session-thread-badge">{session.thread_count} chats</span>
-            )}
+            <span className="session-item-time">{relTime}</span>
           </div>
         )}
       </button>

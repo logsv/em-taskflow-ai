@@ -38,6 +38,19 @@ export class FeedbackApplicationService {
           ? score 
           : (score === 'thumbs_up' || score === 'like' || score === 1 || score === '1' ? 1.0 : 0.0);
 
+        // Ensure parent trace is registered in Langfuse so trace/score navigation in UI never errors with Not Found
+        langfuse.trace({
+          id: targetTraceId,
+          name: 'user_conversation_feedback',
+          sessionId: sessionContext?.sessionId || threadId || undefined,
+          userId: sessionContext?.userId || 'user_logsv',
+          metadata: {
+            messageId,
+            threadId,
+            requestId,
+          },
+        });
+
         langfuse.score({
           traceId: targetTraceId,
           name: 'user_feedback',

@@ -15,6 +15,7 @@ from temporalio import activity
 from app.services.file_processor.pdf_extractor import FileUploadProcessor
 from app.services.rag_processor.chunker import RAGChunker
 from app.services.rag_processor.database import RAGDatabaseService
+from app.telemetry.tracer import log_rag_activity_telemetry
 
 logger = logging.getLogger(__name__)
 file_processor = FileUploadProcessor()
@@ -24,16 +25,19 @@ db_service = RAGDatabaseService()
 
 @activity.defn
 async def extract_text_activity(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Activity 1: Extract text from multi-format files (PDF, CSV, Word, Text)."""
+    """Activity 1: Extract text from multi-format files (PDF, CSV, Word, Text).
+    For scanned PDFs with 0 selectable text, delegates to _extract_pdf which
+    automatically attempts Ollama qwen3-vl OCR rasterization."""
+    start_time = time.time()
     file_path = params.get("file_path", "")
     filename = params.get("filename", "")
     try:
         activity.heartbeat("Extracting text from file")
     except Exception:
         pass
-    
+
     logger.info(f"📄 [Temporal Activity] Extracting text for {filename} ({file_path})")
-    
+
     target_path = file_path
     if not os.path.exists(target_path) and file_path:
         fallback_path = os.path.join("/app/data/pdfs", os.path.basename(file_path))
@@ -43,26 +47,57 @@ async def extract_text_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     if os.path.exists(target_path):
         with open(target_path, "rb") as f:
             file_bytes = f.read()
-        extracted_text = file_processor.extract_text(file_bytes, filename)
+        # Use extract_document which includes OCR fallback for scanned PDFs
+        result = file_processor.extract_document(file_bytes, filename)
+        extracted_text = result.get("extracted_text", "")
+        extraction_method = result.get("extraction_method", "unknown")
     else:
         logger.warning(f"⚠️ [Temporal Activity] File not found at path: {file_path} or target_path: {target_path}")
         extracted_text = params.get("text", "")
+        extraction_method = "inline_text"
+
+    duration_ms = round((time.time() - start_time) * 1000, 2)
 
     if not extracted_text or not extracted_text.strip():
-        err_msg = f"PDF '{filename}' is a scanned or image document containing 0 selectable text characters. Please run OCR or upload a text-readable PDF."
+        err_msg = (
+            f"PDF '{filename}' is a scanned or image document with 0 extractable text characters. "
+            f"Ollama qwen3-vl OCR was attempted. "
+            f"Ensure Ollama is running with 'qwen3-vl' pulled (run: ollama pull qwen3-vl), "
+            f"or upload a text-readable PDF."
+        )
         logger.error(f"❌ [Temporal Activity] {err_msg}")
+        log_rag_activity_telemetry(
+            activity_name="extract_text",
+            filename=filename,
+            duration_ms=duration_ms,
+            metadata={"error": err_msg, "extraction_method": extraction_method},
+            status="failed",
+        )
         raise ValueError(err_msg)
+
+    logger.info(f"✅ [Temporal Activity] Extracted {len(extracted_text)} chars via '{extraction_method}' for {filename} ({duration_ms}ms)")
+    
+    log_rag_activity_telemetry(
+        activity_name="extract_text",
+        filename=filename,
+        duration_ms=duration_ms,
+        metadata={"length": len(extracted_text), "extraction_method": extraction_method},
+        scores={"extract_success": 1.0, "extract_length": float(len(extracted_text))},
+    )
 
     return {
         "filename": filename,
         "text": extracted_text,
-        "length": len(extracted_text)
+        "length": len(extracted_text),
+        "extraction_method": extraction_method,
+        "duration_ms": duration_ms,
     }
 
 
 @activity.defn
 async def chunk_text_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     """Activity 2: Chunk extracted text into 512-token parent-child windows."""
+    start_time = time.time()
     filename = params.get("filename", "")
     text = params.get("text", "")
     try:
@@ -72,17 +107,28 @@ async def chunk_text_activity(params: Dict[str, Any]) -> Dict[str, Any]:
 
     logger.info(f"✂️ [Temporal Activity] Chunking text for {filename}")
     chunks = rag_chunker.chunk_text(text, filename)
-    
+    duration_ms = round((time.time() - start_time) * 1000, 2)
+
+    log_rag_activity_telemetry(
+        activity_name="chunk_text",
+        filename=filename,
+        duration_ms=duration_ms,
+        metadata={"total_chunks": len(chunks), "text_length": len(text)},
+        scores={"chunk_count": float(len(chunks)), "chunk_success": 1.0},
+    )
+
     return {
         "filename": filename,
         "chunks": chunks,
-        "total_chunks": len(chunks)
+        "total_chunks": len(chunks),
+        "duration_ms": duration_ms,
     }
 
 
 @activity.defn
 async def persist_and_embed_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     """Activity 3: Compute Ollama vector embeddings & upsert chunks into PostgreSQL."""
+    start_time = time.time()
     filename = params.get("filename", "")
     chunks = params.get("chunks", [])
     try:
@@ -92,14 +138,31 @@ async def persist_and_embed_activity(params: Dict[str, Any]) -> Dict[str, Any]:
 
     logger.info(f"🗄️ [Temporal Activity] Upserting {len(chunks)} chunks into PostgreSQL for {filename}")
     success = db_service.upsert_chunks(filename, chunks)
-    
+    duration_ms = round((time.time() - start_time) * 1000, 2)
+
     if not success:
+        log_rag_activity_telemetry(
+            activity_name="persist_and_embed",
+            filename=filename,
+            duration_ms=duration_ms,
+            metadata={"chunks_count": len(chunks)},
+            status="failed",
+        )
         raise RuntimeError(f"Failed to upsert chunks into PostgreSQL for {filename}")
+
+    log_rag_activity_telemetry(
+        activity_name="persist_and_embed",
+        filename=filename,
+        duration_ms=duration_ms,
+        metadata={"total_chunks": len(chunks), "model": "nomic-embed-text"},
+        scores={"persist_success": 1.0, "chunks_persisted": float(len(chunks))},
+    )
 
     return {
         "filename": filename,
         "total_chunks": len(chunks),
-        "status": "completed"
+        "status": "completed",
+        "duration_ms": duration_ms,
     }
 
 
@@ -159,30 +222,57 @@ async def inspect_file_activity(params: Dict[str, Any]) -> Dict[str, Any]:
 
 @activity.defn
 async def extract_pdf_activity(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Activity: Dedicated PyMuPDF text & page table extraction for PDF files."""
+    """Activity: Dedicated PyMuPDF text & page table extraction for PDF files.
+    Automatically falls back to Ollama qwen3-vl OCR for scanned/image PDFs."""
+    start_time = time.time()
     file_path = params.get("file_path", "")
     filename = params.get("filename", "")
     try:
-        activity.heartbeat("Extracting PDF text via PyMuPDF")
+        activity.heartbeat("Extracting PDF text via PyMuPDF (with OCR fallback for scanned PDFs)")
     except Exception:
         pass
 
     file_bytes = _resolve_file_bytes(file_path, filename)
     res = file_processor._extract_pdf(file_bytes, filename)
+    duration_ms = round((time.time() - start_time) * 1000, 2)
+
     if not res.get("success") or not res.get("extracted_text"):
-        err_msg = res.get("error_message") or f"PDF '{filename}' contains 0 selectable text characters. Please run OCR or upload a text-readable PDF."
+        err_msg = res.get("error_message") or (
+            f"PDF '{filename}' contains 0 selectable text characters and OCR via qwen3-vl failed. "
+            f"Ensure Ollama is running with 'qwen3-vl' pulled, or upload a text-readable PDF."
+        )
         logger.error(f"❌ [Temporal Activity] {err_msg}")
+        log_rag_activity_telemetry(
+            activity_name="extract_pdf",
+            filename=filename,
+            duration_ms=duration_ms,
+            metadata={"error": err_msg},
+            status="failed",
+        )
         raise ValueError(err_msg)
+
+    extraction_method = res.get("extraction_method", "pymupdf_fitz")
+    logger.info(f"✅ [Temporal Activity] PDF extracted via '{extraction_method}': {len(res['extracted_text'])} chars for {filename} ({duration_ms}ms)")
 
     if len(res["extracted_text"]) > 15000:
         logger.info(f"⚡ [Temporal Activity] Document {filename} exceeds 15,000 chars ({len(res['extracted_text'])} chars). Applying LangChain summarization compression...")
         res["extracted_text"] = file_processor.summarize_with_langchain(res["extracted_text"], filename)
+
+    log_rag_activity_telemetry(
+        activity_name="extract_pdf",
+        filename=filename,
+        duration_ms=duration_ms,
+        metadata={"length": len(res.get("extracted_text", "")), "extraction_method": extraction_method},
+        scores={"extract_pdf_success": 1.0, "chars_extracted": float(len(res.get("extracted_text", "")))},
+    )
+    res["duration_ms"] = duration_ms
     return res
 
 
 @activity.defn
 async def extract_tabular_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     """Activity: Dedicated Pandas Markdown table extraction for CSV/Excel files."""
+    start_time = time.time()
     file_path = params.get("file_path", "")
     filename = params.get("filename", "")
     try:
@@ -194,12 +284,23 @@ async def extract_tabular_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     res = file_processor._extract_csv(file_bytes, filename)
     if res.get("extracted_text") and len(res["extracted_text"]) > 15000:
         res["extracted_text"] = file_processor.summarize_with_langchain(res["extracted_text"], filename)
+
+    duration_ms = round((time.time() - start_time) * 1000, 2)
+    log_rag_activity_telemetry(
+        activity_name="extract_tabular",
+        filename=filename,
+        duration_ms=duration_ms,
+        metadata={"length": len(res.get("extracted_text", ""))},
+        scores={"extract_tabular_success": 1.0},
+    )
+    res["duration_ms"] = duration_ms
     return res
 
 
 @activity.defn
 async def extract_docx_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     """Activity: Dedicated python-docx structure extraction for Word documents."""
+    start_time = time.time()
     file_path = params.get("file_path", "")
     filename = params.get("filename", "")
     try:
@@ -211,12 +312,23 @@ async def extract_docx_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     res = file_processor._extract_docx(file_bytes, filename)
     if res.get("extracted_text") and len(res["extracted_text"]) > 15000:
         res["extracted_text"] = file_processor.summarize_with_langchain(res["extracted_text"], filename)
+
+    duration_ms = round((time.time() - start_time) * 1000, 2)
+    log_rag_activity_telemetry(
+        activity_name="extract_docx",
+        filename=filename,
+        duration_ms=duration_ms,
+        metadata={"length": len(res.get("extracted_text", ""))},
+        scores={"extract_docx_success": 1.0},
+    )
+    res["duration_ms"] = duration_ms
     return res
 
 
 @activity.defn
 async def extract_image_context_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     """Activity: Dedicated image metadata & vision context extraction."""
+    start_time = time.time()
     file_path = params.get("file_path", "")
     filename = params.get("filename", "")
     mime_type = params.get("mime_type", "")
@@ -227,12 +339,23 @@ async def extract_image_context_activity(params: Dict[str, Any]) -> Dict[str, An
 
     file_bytes = _resolve_file_bytes(file_path, filename)
     res = file_processor._extract_image(file_bytes, filename, mime_type)
+    duration_ms = round((time.time() - start_time) * 1000, 2)
+
+    log_rag_activity_telemetry(
+        activity_name="extract_image",
+        filename=filename,
+        duration_ms=duration_ms,
+        metadata={"mime_type": mime_type, "vision_length": len(res.get("extracted_text", ""))},
+        scores={"extract_image_success": 1.0},
+    )
+    res["duration_ms"] = duration_ms
     return res
 
 
 @activity.defn
 async def extract_text_fallback_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     """Activity: UTF-8 / Latin-1 text decoder for TXT, MD, JSON, and log files."""
+    start_time = time.time()
     file_path = params.get("file_path", "")
     filename = params.get("filename", "")
     try:
@@ -244,6 +367,16 @@ async def extract_text_fallback_activity(params: Dict[str, Any]) -> Dict[str, An
     res = file_processor._extract_text_fallback(file_bytes, filename)
     if res.get("extracted_text") and len(res["extracted_text"]) > 15000:
         res["extracted_text"] = file_processor.summarize_with_langchain(res["extracted_text"], filename)
+
+    duration_ms = round((time.time() - start_time) * 1000, 2)
+    log_rag_activity_telemetry(
+        activity_name="extract_text_fallback",
+        filename=filename,
+        duration_ms=duration_ms,
+        metadata={"length": len(res.get("extracted_text", ""))},
+        scores={"extract_text_success": 1.0},
+    )
+    res["duration_ms"] = duration_ms
     return res
 
 

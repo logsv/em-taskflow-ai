@@ -33,6 +33,7 @@ function AdminPage({ onBackToChat }) {
   const [loadingDocs, setLoadingDocs] = useState(true);
   const [evalActionMsg, setEvalActionMsg] = useState('');
   const [isLaunchingPromptfoo, setIsLaunchingPromptfoo] = useState(false);
+  const [isSyncingDatasets, setIsSyncingDatasets] = useState(false);
 
   // Settings & MCP Setup State
   const [adminSettings, setAdminSettings] = useState(null);
@@ -321,6 +322,25 @@ function AdminPage({ onBackToChat }) {
     } catch (err) {
       setEvalActionMsg('Trace replay error: ' + err.message);
       setIsRunningReplay(false);
+    }
+  };
+
+  const handleSyncDatasets = async () => {
+    setIsSyncingDatasets(true);
+    setEvalActionMsg('📦 Syncing Golden & Prompt Matrix Datasets to Langfuse (:3001)...');
+    try {
+      const res = await fetch('/api/admin/eval/sync-datasets', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setEvalActionMsg(`✅ ${data.message}`);
+      } else {
+        setEvalActionMsg('⚠️ ' + (data.error || 'Failed to sync datasets'));
+      }
+    } catch (err) {
+      setEvalActionMsg('Dataset sync error: ' + err.message);
+    } finally {
+      setIsSyncingDatasets(false);
+      setTimeout(() => setEvalActionMsg(''), 6000);
     }
   };
 
@@ -2316,6 +2336,36 @@ function AdminPage({ onBackToChat }) {
                   ) : (
                     <>
                       <span>🔄 Replay Failure Traces</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  className="sync-datasets-btn"
+                  onClick={handleSyncDatasets}
+                  disabled={isSyncingDatasets}
+                  title="Upload & synchronize golden dataset and prompt matrix cases to Langfuse Datasets"
+                  style={{
+                    padding: '8px 14px',
+                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                    color: '#34d399',
+                    border: '1px solid #10b981',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: isSyncingDatasets ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  {isSyncingDatasets ? (
+                    <>
+                      <span className="btn-spinner"></span>
+                      <span>Syncing Datasets...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>📦 Sync Datasets to Langfuse</span>
                     </>
                   )}
                 </button>

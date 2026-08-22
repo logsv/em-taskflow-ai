@@ -16,10 +16,10 @@
     "eval:promptfoo": "npx -y promptfoo@latest eval -c evaluation/promptfooconfig.yaml --share",
     "eval:promptfoo:login": "npx -y promptfoo@latest auth login --host https://www.promptfoo.app",
     "eval:promptfoo:view": "npx -y promptfoo@latest view",
-    "eval:deepeval": "cd ../services/python-ai-service && uv run pytest tests/test_deepeval_agent_trajectories.py",
-    "eval:ragas": "cd ../services/python-ai-service && uv run python evaluation/ragas_runner.py",
+    "eval:sync-datasets": "node evaluation/sync-datasets-to-langfuse.js",
+    "eval:sync-prompts": "node evaluation/sync-prompts-to-langfuse.js",
     "eval:nightly": "bash ../scripts/run-nightly-eval.sh",
-    "eval:enterprise": "npm run evaluate && npm run eval:deepeval && npm run eval:ragas",
+    "eval:enterprise": "npm run eval:sync-datasets && npm run eval:sync-prompts && npm run evaluate && npm run eval:deepeval && npm run eval:ragas",
     "start:google": "pnpm -C ../mcp-servers/google-workspace start",
     "start:mcp": "pnpm start:google"
   },

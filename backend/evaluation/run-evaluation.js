@@ -178,6 +178,59 @@ async function runEvaluation() {
     console.error('⚠️ Could not write composite_latest.json:', err.message);
   }
 
+  // Non-blocking sync to Langfuse dataset runs
+  if (process.env.LANGFUSE_PUBLIC_KEY && process.env.LANGFUSE_SECRET_KEY) {
+    try {
+      const { Langfuse } = await import('langfuse');
+      const langfuse = new Langfuse({
+        publicKey: process.env.LANGFUSE_PUBLIC_KEY,
+        secretKey: process.env.LANGFUSE_SECRET_KEY,
+        baseUrl: process.env.LANGFUSE_HOST || 'http://localhost:3001',
+        flushAt: 1,
+      });
+
+      const goldenDs = await langfuse.getDataset('golden-dataset');
+      const runName = `hermes3:8b-eval-${new Date().toISOString().slice(0, 10)}`;
+
+      if (goldenDs && Array.isArray(goldenDs.items)) {
+        for (const res of trajectoryResults) {
+          const item = goldenDs.items.find(i => (i.metadata?.eval_id === res.eval_id) || (i.input?.query === res.prompt));
+          if (item) {
+            const trace = langfuse.trace({
+              name: `eval-trajectory-${res.eval_id}`,
+              userId: 'evaluation_engine',
+              metadata: {
+                eval_id: res.eval_id,
+                exact_match: res.is_exact_match,
+                predicted_domains: res.predicted_domains,
+                expected_domains: res.expected_domains,
+              },
+            });
+
+            trace.score({
+              name: 'domain_accuracy',
+              value: res.is_exact_match ? 1.0 : 0.0,
+              comment: res.is_exact_match ? 'Exact match' : 'Domain mismatch',
+            });
+            trace.score({
+              name: 'tool_grounded',
+              value: res.predictedToolGrounded ? 1.0 : 0.0,
+              comment: res.predictedToolGrounded ? 'Tool grounded' : 'Unbounded',
+            });
+
+            await item.link(trace, runName, {
+              description: `Hermes3:8b Golden Dataset Evaluation Run`,
+            });
+          }
+        }
+        await langfuse.flushAsync();
+        console.log(`🚀 Synced ${trajectoryResults.length} items to Langfuse Dataset Run: '${runName}'!`);
+      }
+    } catch (err) {
+      console.warn('⚠️ Langfuse dataset run linking notice:', err.message);
+    }
+  }
+
   if (!allPassed) {
     console.error('\n❌ Evaluation failed success gate SLAs!');
     process.exitCode = 1;

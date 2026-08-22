@@ -270,6 +270,106 @@ router.get('/eval/prompt-matrix/status', async (req, res) => {
   }
 });
 
+// POST /eval/sync-datasets - Sync Golden & Prompt Matrix datasets into Langfuse Datasets
+router.post('/eval/sync-datasets', async (req, res) => {
+  try {
+    const { Langfuse } = await import('langfuse');
+    const path = await import('path');
+    const fs = await import('fs');
+
+    const host = process.env.LANGFUSE_HOST || 'http://localhost:3001';
+    const publicKey = process.env.LANGFUSE_PUBLIC_KEY;
+    const secretKey = process.env.LANGFUSE_SECRET_KEY;
+
+    if (!publicKey || !secretKey) {
+      return res.status(400).json({ error: 'Langfuse credentials missing in environment' });
+    }
+
+    const langfuse = new Langfuse({ publicKey, secretKey, baseUrl: host, flushAt: 1 });
+    const datasetsDir = path.resolve('../evaluations/datasets');
+
+    let goldenCount = 0;
+    const goldenPath = path.join(datasetsDir, 'golden-dataset.json');
+    if (fs.existsSync(goldenPath)) {
+      const items = JSON.parse(fs.readFileSync(goldenPath, 'utf8'));
+      try {
+        await langfuse.createDataset({
+          name: 'golden-dataset',
+          description: 'EM TaskFlow AI Golden Evaluation Benchmark Dataset across 10 Domain Micro-Agents, RAG, and Fast-Path.',
+          metadata: { version: '1.0.0', total_cases: items.length, system: 'EM TaskFlow AI' },
+        });
+      } catch (_) {}
+
+      for (const item of items) {
+        try {
+          await langfuse.createDatasetItem({
+            datasetName: 'golden-dataset',
+            input: { query: item.user_query || item.prompt || '', conversation_history: item.conversation_history || [] },
+            expectedOutput: { expected_domains: item.expected_domains || [], ground_truth_context: item.ground_truth_context || [] },
+            metadata: { eval_id: item.eval_id || '', domain_category: item.domain_category || '', is_rag_appropriate: item.is_rag_appropriate || false },
+          });
+          goldenCount++;
+        } catch (_) {}
+      }
+    }
+
+    let matrixCount = 0;
+    const matrixPath = path.join(datasetsDir, 'prompt-matrix-cases.json');
+    if (fs.existsSync(matrixPath)) {
+      const cases = JSON.parse(fs.readFileSync(matrixPath, 'utf8'));
+      try {
+        await langfuse.createDataset({
+          name: 'prompt-matrix-cases',
+          description: 'Multi-Turn Prompt Matrix Benchmark Cases for Durable Temporal Batch Evaluations.',
+          metadata: { version: '1.0.0', total_cases: cases.length, system: 'EM TaskFlow AI' },
+        });
+      } catch (_) {}
+
+      for (const item of cases) {
+        try {
+          await langfuse.createDatasetItem({
+            datasetName: 'prompt-matrix-cases',
+            input: { prompt: item.prompt || '' },
+            expectedOutput: { domain: item.domain || '', expected_tool: item.expected_tool || '' },
+            metadata: { case_id: item.id || '', domain: item.domain || '' },
+          });
+          matrixCount++;
+        } catch (_) {}
+      }
+    }
+
+    await langfuse.flushAsync();
+
+    res.json({
+      success: true,
+      message: `Successfully synchronized ${goldenCount} golden items and ${matrixCount} prompt matrix items to Langfuse Datasets!`,
+      goldenCount,
+      matrixCount,
+      host,
+      requestId: req.requestId,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to sync datasets to Langfuse', details: error.message, requestId: req.requestId });
+  }
+});
+
+// POST /eval/sync-prompts - Sync System Prompts into Langfuse Prompt Management
+router.post('/eval/sync-prompts', async (req, res) => {
+  try {
+    const { syncPromptsToLangfuse, PROMPTS_REGISTRY } = await import('../../evaluation/sync-prompts-to-langfuse.js');
+    const syncedCount = await syncPromptsToLangfuse();
+    res.json({
+      success: true,
+      message: `Successfully synchronized ${syncedCount}/${PROMPTS_REGISTRY.length} prompts to Langfuse Prompt Management!`,
+      syncedCount,
+      totalPrompts: PROMPTS_REGISTRY.length,
+      requestId: req.requestId,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to sync prompts to Langfuse', details: error.message, requestId: req.requestId });
+  }
+});
+
 // Legacy RAG Triad Sweep Route (maps cleanly to Prompt Matrix & RAG Triad evaluation)
 router.post('/eval/trulens/sweep', async (req, res) => {
   req.url = '/eval/prompt-matrix';

@@ -103,9 +103,14 @@ function App() {
         payload.threadId = sessionSummary.threadId;
       }
       
+      const headers = { 'Content-Type': 'application/json' };
+      if (sessionSummary?.sessionId) {
+        headers['x-session-id'] = sessionSummary.sessionId;
+      }
+
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload),
         signal: abortSignal,
       });
@@ -162,7 +167,9 @@ function App() {
       if (targetThreadId) params.set('threadId', targetThreadId);
 
       const url = params.toString() ? `/api/session?${params.toString()}` : '/api/session';
-      const response = await fetch(url);
+      const headers = {};
+      if (targetSessionId) headers['x-session-id'] = targetSessionId;
+      const response = await fetch(url, { headers });
       const data = await response.json();
 
       const resolvedSessionId = data?.sessionId || null;
@@ -216,25 +223,22 @@ function App() {
 
   const handleNewChat = async () => {
     try {
-      let targetSessionId = sessionSummary?.sessionId || null;
-      const res = await fetch('/api/threads', {
+      const res = await fetch('/api/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: 'New Chat' }),
       });
       const data = await res.json();
+      const newSessionId = data?.sessionId || null;
       const newThreadId = data?.threadId || null;
-      const newSessionId = data?.sessionId || targetSessionId;
 
-      if (newThreadId) {
-        setSessionSummary(prev => ({
-          ...prev,
+      if (newSessionId && newThreadId) {
+        setSessionSummary({
           sessionId: newSessionId,
           threadId: newThreadId,
-        }));
-        if (newSessionId) {
-          syncUrl(newSessionId, newThreadId);
-        }
+          created: true,
+        });
+        syncUrl(newSessionId, newThreadId);
       }
       setSourcesMap({});
       setTraceMap({});
@@ -243,6 +247,7 @@ function App() {
       }
       fetchSessions(1);
     } catch (err) {
+      logger.error('Failed to start new chat session', { error: err.message });
       window.location.reload();
     }
   };

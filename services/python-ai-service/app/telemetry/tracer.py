@@ -8,6 +8,7 @@ import json
 import logging
 import httpx
 from functools import wraps
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -127,4 +128,59 @@ def trace_observation(name: str):
                 raise err
         return wrapper
     return decorator
+
+
+def log_rag_activity_telemetry(
+    activity_name: str,
+    filename: str,
+    duration_ms: float,
+    metadata: Optional[Dict[str, Any]] = None,
+    scores: Optional[Dict[str, float]] = None,
+    status: str = "completed",
+):
+    """
+    Non-blocking telemetry logger for Temporal RAG ingestion activities.
+    Logs trace spans and metrics to Langfuse and Arize Phoenix without blocking workflow execution.
+    """
+    meta = metadata or {}
+    meta["duration_ms"] = duration_ms
+    meta["status"] = status
+    meta["filename"] = filename
+
+    # 1. Langfuse Trace & Scores
+    if langfuse_client:
+        try:
+            trace = langfuse_client.trace(
+                name=f"temporal_rag_{activity_name}",
+                user_id="temporal_rag_worker",
+                metadata=meta,
+                tags=["temporal", "rag_ingest", filename.split(".")[-1].lower() if "." in filename else "doc"],
+            )
+            if scores:
+                for score_name, score_val in scores.items():
+                    trace.score(
+                        name=score_name,
+                        value=float(score_val),
+                        comment=f"RAG Activity Metric: {score_name}",
+                    )
+            langfuse_client.flush()
+        except Exception as e:
+            logger.debug(f"Langfuse RAG activity telemetry warning: {str(e)}")
+
+    # 2. OpenTelemetry Span for Arize Phoenix
+    if otel_tracer:
+        try:
+            span = otel_tracer.start_span(
+                f"temporal.rag.{activity_name}",
+                attributes={
+                    "openinference.span.kind": "RETRIEVER",
+                    "rag.filename": filename,
+                    "rag.duration_ms": duration_ms,
+                    "rag.status": status,
+                },
+            )
+            span.end()
+        except Exception:
+            pass
+
 
