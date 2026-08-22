@@ -10,6 +10,10 @@ import { sbiFeedbackTool } from "../agent/sbiAgent.js";
 import { peopleGrowthTool } from "../agent/peopleAgent.js";
 import { sprintPlanTool } from "../agent/sprintAgent.js";
 import { sprintRetroTool } from "../agent/retroAgent.js";
+import { roadmapAlignmentTool } from "../agent/roadmapAgent.js";
+import { okrProgressTool } from "../agent/okrAgent.js";
+import { sopComplianceTool } from "../agent/sopAgent.js";
+import { auditReportTool } from "../agent/criticAgent.js";
 import { buildEmResponse } from "../utils/responseFormatter.js";
 import { getTracerCallbacks, createEndToEndTrace, createSpan } from "../utils/tracer.js";
 import { info, warn, error } from "../utils/logger.js";
@@ -428,6 +432,10 @@ export class LangGraphAgentService {
       people: { tool: peopleGrowthTool, input: { mode: "ANALYZE", engineer_id: String(query || "") } },
       sprint: { tool: sprintPlanTool, input: {} },
       retro: { tool: sprintRetroTool, input: { mode: "ANALYZE" } },
+      roadmap: { tool: roadmapAlignmentTool, input: { mode: "ANALYZE" } },
+      okr: { tool: okrProgressTool, input: { mode: "ANALYZE" } },
+      sop: { tool: sopComplianceTool, input: { mode: "ANALYZE" } },
+      critic: { tool: auditReportTool, input: { mode: "ANALYZE", draft_response: String(query || "") } },
     };
     const recoverable = domains.filter((domain) => recoveryTools[domain]);
     if (recoverable.length === 0) return null;

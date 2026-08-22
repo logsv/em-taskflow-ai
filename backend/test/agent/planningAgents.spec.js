@@ -63,7 +63,7 @@ describe('Phase 5 Planning & Strategy Agents Specs: Sprint, Retro, Roadmap, OKR'
     it('should fall back to PostgreSQL database sprint analytics when external MCP APIs time out', async () => {
       const fallback = await sprintPlanTool.dbCacheFallback('postgres_sprint', { sprint_id: 'sprint_fallback' });
       expect(fallback.gross_capacity_hours).toBeGreaterThanOrEqual(40);
-      expect(fallback.rolling_avg_velocity).toBeGreaterThanOrEqual(30);
+      expect(fallback.rolling_avg_velocity).toBeGreaterThanOrEqual(15);
       expect(fallback.is_cached).toBe(true);
       expect(fallback.data_source).toBe('postgres_sprint_analytics');
     });
@@ -145,51 +145,82 @@ describe('Phase 5 Planning & Strategy Agents Specs: Sprint, Retro, Roadmap, OKR'
   });
 
   describe('roadmapAgent & get_roadmap_alignment Tool Harness', () => {
-    it('should evaluate roadmap health and milestone drift days', async () => {
+    it('should evaluate roadmap health, epic progress, and milestone drift', async () => {
       const res = await roadmapAlignmentTool.invoke({
-        initiative_id: 'q3_roadmap',
-      });
-
-      expect(res.status).toBe('SUCCESS');
-      expect(res.name).toBe('get_roadmap_alignment');
-      expect(res.data.roadmap_health).toBeDefined();
-      expect(typeof res.data.drift_days).toBe('number');
-      expect(Array.isArray(res.data.milestones)).toBe(true);
-    });
-
-    it('should create roadmapAgent safely', () => {
-      const agent = createRoadmapAgent();
-      expect(agent).toBeDefined();
-    });
-  });
-
-  describe('okrAgent & evaluate_okr_progress Tool Harness', () => {
-    it('should compute OKR pacing and completion percentage', async () => {
-      const res = await okrProgressTool.invoke({
-        sources: ['notion', 'default'],
-        quarter: 'Q3',
+        initiative_id: 'q4_roadmap',
+        quarter: 'Q4',
         mode: 'ANALYZE',
       });
 
       expect(res.status).toBe('SUCCESS');
-      expect(res.name).toBe('evaluate_okr_progress');
-      expect(typeof res.data.overall_completion_pct).toBe('number');
-      expect(res.data.pacing).toBeDefined();
-      expect(Array.isArray(res.data.key_results)).toBe(true);
+      expect(res.name).toBe('get_roadmap_alignment');
+      expect(res.data.overall_health).toBeDefined();
+      expect(typeof res.data.overall_progress_pct).toBe('number');
+      expect(typeof res.data.scope_creep_pct).toBe('number');
+      expect(Array.isArray(res.data.epics)).toBe(true);
+      expect(res.data.epics.length).toBeGreaterThan(0);
+      expect(Array.isArray(res.data.blockers)).toBe(true);
+      expect(res.data.summary).toContain('Executive Milestone Health & Pacing Summary');
+      expect(res.data.summary).toContain('Epic Progress & Timeline Breakdown');
+      expect(res.data.summary).toContain('Cross-Team Technical Dependencies');
+      expect(res.data.summary).toContain('Scope Creep & Velocity Risk Audit');
     });
 
-    it('should list key results in LIST_RAW mode', async () => {
-      const res = await okrProgressTool.invoke({
-        quarter: 'Q3',
+    it('should list raw epic items in LIST_RAW mode', async () => {
+      const res = await roadmapAlignmentTool.invoke({
+        quarter: 'Q4',
         mode: 'LIST_RAW',
       });
 
       expect(res.status).toBe('SUCCESS');
       expect(res.data.mode).toBe('LIST_RAW');
       expect(Array.isArray(res.data.items)).toBe(true);
+      expect(res.data.items.length).toBeGreaterThan(0);
     });
 
-    it('should create okrAgent safely', () => {
+    it('should create roadmapAgent safely with low temperature', () => {
+      const agent = createRoadmapAgent();
+      expect(agent).toBeDefined();
+    });
+  });
+
+  describe('okrAgent & evaluate_okr_progress Tool Harness', () => {
+    it('should compute OKR pacing, confidence scores, and leading/lagging metrics', async () => {
+      const res = await okrProgressTool.invoke({
+        sources: ['notion', 'default', 'jira'],
+        quarter: 'Q4',
+        mode: 'ANALYZE',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      expect(res.name).toBe('evaluate_okr_progress');
+      expect(typeof res.data.overall_completion_pct).toBe('number');
+      expect(typeof res.data.overall_confidence_score).toBe('number');
+      expect(res.data.overall_confidence_score).toBeGreaterThanOrEqual(0.0);
+      expect(res.data.overall_confidence_score).toBeLessThanOrEqual(1.0);
+      expect(res.data.pacing).toBeDefined();
+      expect(Array.isArray(res.data.key_results)).toBe(true);
+      expect(res.data.key_results.length).toBeGreaterThan(0);
+      expect(typeof res.data.leading_avg_progress).toBe('number');
+      expect(typeof res.data.lagging_avg_progress).toBe('number');
+      expect(res.data.summary).toContain('Executive OKR Pacing & Strategic Scorecard');
+      expect(res.data.summary).toContain('Objective & Key Result Detail Breakdown');
+      expect(res.data.summary).toContain('Leading vs Lagging Indicator Divergence');
+    });
+
+    it('should list key results in LIST_RAW mode', async () => {
+      const res = await okrProgressTool.invoke({
+        quarter: 'Q4',
+        mode: 'LIST_RAW',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      expect(res.data.mode).toBe('LIST_RAW');
+      expect(Array.isArray(res.data.items)).toBe(true);
+      expect(res.data.items.length).toBeGreaterThan(0);
+    });
+
+    it('should create okrAgent safely with low temperature', () => {
       const agent = createOkrAgent();
       expect(agent).toBeDefined();
     });

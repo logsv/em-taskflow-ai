@@ -174,6 +174,7 @@
     "expected_domains": ["roadmap"],
     "expected_tool_calls": [{ "tool_name": "get_roadmap_alignment" }],
     "is_rag_appropriate": false,
+    "ground_truth_answer": "### 🎯 Executive Milestone Health & Pacing Summary\n- **Target Release Horizon**: Q4 Initiative Roadmap\n- **Overall Strategic Health**: 🟡 AT RISK\n- **Active Critical Blockers**: 1 dependency bottleneck(s)\n\n### 📊 Epic Progress & Timeline Breakdown\n- ENG-201 Core Auth v2: 68% progress\n- ENG-205 Mobile Biometrics: 35% progress (Blocked)\n- ENG-210 Database Partitioning: 82% progress (On Track)\n\n### 🔗 Cross-Team Technical Dependencies & Critical Path Blockers\n- ENG-205 blocked by ENG-201 API token exchange endpoint.",
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
@@ -183,6 +184,7 @@
     "expected_domains": ["roadmap"],
     "expected_tool_calls": [{ "tool_name": "get_roadmap_alignment" }],
     "is_rag_appropriate": false,
+    "ground_truth_answer": "### 📈 Scope Creep & Velocity Risk Audit\n- Mobile Biometrics initiative (ENG-205) has experienced +40% scope expansion due to passkey polyfills.\n- Projected Slip: ~8 days slip into early December unless unblocked by Nov 10.",
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
@@ -192,6 +194,7 @@
     "expected_domains": ["roadmap"],
     "expected_tool_calls": [{ "tool_name": "get_roadmap_alignment" }],
     "is_rag_appropriate": false,
+    "ground_truth_answer": "### 🔗 Cross-Team Technical Dependencies & Critical Path Blockers\n- Core Auth v2 migration serves as upstream dependency for downstream client authentication and billing session tokens.",
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
@@ -201,6 +204,7 @@
     "expected_domains": ["okr"],
     "expected_tool_calls": [{ "tool_name": "evaluate_okr_progress" }],
     "is_rag_appropriate": false,
+    "ground_truth_answer": "### 🎯 Executive OKR Pacing & Strategic Scorecard\n- **Quarterly Target Cycle**: Q4 Engineering Objectives\n- **Overall Execution Pacing**: 🟢 ON TRACK\n- **Key Results**: Uptime 99.95%, Test Coverage 78% (At Risk), Latency 138ms (On Track).\n\n### 📊 Objective & Key Result Detail Breakdown\n- KR1: >99.9% Uptime: 100% progress\n- KR3: >=85% Test Coverage: 78% current (At Risk)\n\n### 🛠️ Actionable Gap Remediation Proposals\n- Dedicate 20% sprint debt budget toward unit and integration test coverage.",
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
@@ -210,6 +214,7 @@
     "expected_domains": ["okr"],
     "expected_tool_calls": [{ "tool_name": "evaluate_okr_progress" }],
     "is_rag_appropriate": false,
+    "ground_truth_answer": "### 📊 Objective & Key Result Detail Breakdown\n- Reduce P95 API response latency to <150ms: Current 138ms (100% progress, Confidence: 1.00, Leading Indicator).\n- Pacing: ON TRACK.",
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
@@ -219,6 +224,7 @@
     "expected_domains": ["okr"],
     "expected_tool_calls": [{ "tool_name": "evaluate_okr_progress" }],
     "is_rag_appropriate": false,
+    "ground_truth_answer": "### ⚠️ Lagging Key Results & Root Cause Diagnosis\n- PR code review turnaround (14.5h vs 12h target, At Risk)\n- Test coverage (78% vs 85% target, At Risk)\n\n### 🛠️ Actionable Gap Remediation Proposals\n- Enforce PR size thresholds (<300 lines) and daily review SLAs.",
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
@@ -240,6 +246,7 @@
     "expected_tool_calls": [{ "tool_name": "query_sop_compliance" }],
     "is_rag_appropriate": true,
     "ground_truth_context": ["ADR-008: Database Per-Service Isolation Architecture"],
+    "ground_truth_answer": "### 📄 Executive Summary\n- Dedicated database per microservice (taskflow_backend, taskflow_ai, temporal, langfuse_db).\n- Cross-service database joins and direct queries are strictly prohibited.\n### 📌 Source Citations\n[ADR-008: Database Per-Service Isolation Architecture, Section 2]",
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
@@ -250,6 +257,7 @@
     "expected_tool_calls": [{ "tool_name": "query_sop_compliance" }],
     "is_rag_appropriate": true,
     "ground_truth_context": ["Engineering Excellence Code Review Checklist and SLA Policy"],
+    "ground_truth_answer": "### 📄 Executive Summary\n- Minimum 2 peer approvals required prior to merging.\n- PR size recommended <300 lines.\n- Code review turnaround SLA is <12 hours.\n### 📌 Source Citations\n[SOP-01: Engineering Handbook, Section 1.4]",
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
@@ -259,6 +267,7 @@
     "expected_domains": ["critic"],
     "expected_tool_calls": [{ "tool_name": "audit_em_report" }],
     "is_rag_appropriate": false,
+    "ground_truth_answer": "### 📋 Audit Verdict & Executive Quality Summary\n- **Audit Verdict**: 🟢 APPROVED\n- **Policy Checks**: Tone neutrality PASS, mathematical consistency PASS, citation backing PASS, zero vanity metrics PASS.\n\n### 🛡️ Policy & Guardrail Check Matrix\n- Zero Vanity Metrics: PASS\n- Tone Neutrality & Blameless Empathy: PASS\n- Mathematical Calculation Integrity: PASS",
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
@@ -268,6 +277,7 @@
     "expected_domains": ["critic"],
     "expected_tool_calls": [{ "tool_name": "audit_em_report" }],
     "is_rag_appropriate": false,
+    "ground_truth_answer": "### 📋 Audit Verdict & Executive Quality Summary\n- **Audit Verdict**: 🟢 APPROVED\n- **Check Summary**: Empathy check passed, numerical percentages valid, zero accusatory phrasing.",
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
@@ -277,6 +287,7 @@
     "expected_domains": ["critic"],
     "expected_tool_calls": [{ "tool_name": "audit_em_report" }],
     "is_rag_appropriate": false,
+    "ground_truth_answer": "### 📋 Audit Verdict & Executive Quality Summary\n- **Audit Verdict**: 🟢 APPROVED\n- **Evidence Integrity**: All impact claims backed by verifiable delivery citations and objective metrics.",
     "success_criteria_gates": { "min_domain_precision": 1.0 }
   },
   {
