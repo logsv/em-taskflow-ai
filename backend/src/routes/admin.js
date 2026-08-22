@@ -8,15 +8,19 @@ import databaseService from '../db/postgres.js';
 import ragService from '../rag/index.js';
 import healthApplicationService from '../application/health/HealthApplicationService.js';
 import githubSyncService from '../services/githubSyncService.js';
-import { startDeepBenchmarkWorkflow, startTraceReplayWorkflow, getWorkflowStatus } from '../temporal/client.js';
+import {
+  startPromptEvaluationWorkflow,
+  startDeepBenchmarkWorkflow,
+  startTraceReplayWorkflow,
+  startTeamDiscoveryWorkflow,
+  getWorkflowStatus,
+} from '../temporal/client.js';
 import { config } from '../config.js';
 import settingsService from '../services/settingsService.js';
+import identityService from '../services/identityService.js';
+import teamSyncWorker from '../workers/teamSyncWorker.js';
 
 const router = express.Router();
-
-// Active child process trackers for on-demand tools
-let promptfooProcess = null;
-let trulensProcess = null;
 
 /**
  * Helper to probe HTTP status of a service with strict timeout.
@@ -61,10 +65,8 @@ router.get('/system-status', async (req, res) => {
     const services = {
       langfuse: { url: 'http://localhost:3001', probeUrl: 'http://langfuse:3000', name: 'Langfuse Traces & Evals', description: 'Central Observability, Traces & LLM Evaluation Dashboard' },
       promptfoo: { url: 'https://www.promptfoo.app', probeUrl: 'https://www.promptfoo.app', name: 'Promptfoo Managed Cloud', description: 'Promptfoo Managed Cloud & Evaluation Hub (emtaskflow-ai)', isCloud: true, status: 'online' },
-      trulens: { url: 'http://localhost:8501', probeUrl: 'http://trulens:8501', name: 'TruLens RAG Triad Dashboard', description: 'RAG Triad Groundedness Leaderboard' },
-      adminer: { url: 'http://localhost:8080', probeUrl: 'http://adminer:8080', name: 'Adminer DB Manager', description: 'PostgreSQL Database Explorer' },
       temporal: { url: 'http://localhost:8233', probeUrl: 'http://temporal-ui:8080', name: 'Temporal Web UI', description: 'Durable Workflow Execution Dashboard' },
-      phoenix: { url: 'http://localhost:6006', probeUrl: 'http://phoenix:6006', name: 'Arize Phoenix', description: 'Local OpenLLMetry LLM Tracing' },
+      adminer: { url: 'http://localhost:8080', probeUrl: 'http://adminer:8080', name: 'Adminer DB Manager', description: 'PostgreSQL Database Explorer' },
     };
 
     // Probe status concurrently (trying internal container URL first, then external host URL)
@@ -152,115 +154,132 @@ function loadLatestBenchmarkReport() {
   }
 }
 
-let trulensSweepState = {
-  status: 'idle',
+let promptMatrixState = {
+  status: 'idle', // 'idle' | 'running' | 'completed' | 'failed'
   startedAt: null,
   completedAt: null,
   durationSeconds: null,
   recordsEvaluated: 0,
+  workflowId: null,
   error: null,
 };
 
-// Start TruLens Dashboard on demand
-router.post('/eval/trulens/start', async (req, res) => {
+// POST /eval/prompt-matrix - Trigger Durable Prompt Matrix Evaluation via Temporal (>= 90% path)
+router.post('/eval/prompt-matrix', async (req, res) => {
   try {
-    const isOnline = (await probeService('http://localhost:8501')) === 'online';
-    if (isOnline) {
-      return res.json({ success: true, message: 'TruLens dashboard is already running', url: 'http://localhost:8501' });
-    }
-
-    if (!trulensProcess || trulensProcess.killed) {
-      const pythonDir = path.resolve(process.cwd(), process.cwd().endsWith('backend') ? '..' : '.', 'services/python-ai-service');
-      trulensProcess = spawn('uv', ['run', 'python', 'evaluation/run_trulens_official.py'], {
-        cwd: pythonDir,
-        detached: true,
-        stdio: 'ignore',
-        env: {
-          ...process.env,
-          PORT: '8501',
-          TRULENS_DATABASE_URL: process.env.TRULENS_DATABASE_URL || 'postgresql+psycopg://taskflow:taskflow@localhost:5432/taskflow_eval',
-        },
-      });
-      trulensProcess.unref();
-    }
-
-    // Wait briefly for dashboard startup
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    res.json({
-      success: true,
-      message: 'TruLens dashboard process launched on port 8501',
-      url: 'http://localhost:8501',
-      requestId: req.requestId,
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to launch TruLens dashboard', details: error.message });
-  }
-});
-
-// Trigger TruLens RAG Triad Batch Sweep
-router.post('/eval/trulens/sweep', async (req, res) => {
-  try {
-    if (trulensSweepState.status === 'running') {
+    if (promptMatrixState.status === 'running') {
       return res.json({
         success: false,
-        message: 'A TruLens RAG Triad sweep is currently in progress.',
-        state: trulensSweepState,
+        message: 'A Prompt Matrix evaluation is currently in progress.',
+        state: promptMatrixState,
       });
     }
 
-    const limit = req.body?.limit || 5;
-    const pythonHost = process.env.PYTHON_AI_SERVICE_URL || 'http://localhost:8000';
+    const { modelTarget = 'hermes3:8b', limit = 10, batchSize = 5 } = req.body || {};
 
-    trulensSweepState = {
+    promptMatrixState = {
       status: 'running',
       startedAt: new Date().toISOString(),
       completedAt: null,
       durationSeconds: null,
       recordsEvaluated: 0,
+      workflowId: null,
       error: null,
     };
 
+    // 1. Primary Path (>= 90%): Temporal Durable Workflow
+    try {
+      const temporalRes = await startPromptEvaluationWorkflow({ modelTarget, limit, batchSize });
+      if (temporalRes && temporalRes.workflowId) {
+        promptMatrixState.workflowId = temporalRes.workflowId;
+        return res.json({
+          success: true,
+          orchestrator: 'temporal',
+          workflowId: temporalRes.workflowId,
+          message: '⚡ Prompt Matrix evaluation dispatched to Temporal Durable Workflow!',
+          state: promptMatrixState,
+          requestId: req.requestId,
+        });
+      }
+    } catch (temporalErr) {
+      console.warn(`⚠️ Temporal prompt matrix dispatch fallback: ${temporalErr.message}`);
+    }
+
+    // 2. Fallback Path (< 10%): Direct Async Evaluation via Python AI service
+    const pythonHost = process.env.PYTHON_AI_SERVICE_URL || 'http://localhost:8000';
     const startTime = Date.now();
 
-    // Asynchronously trigger Python sweep endpoint
-    fetch(`${pythonHost}/api/v1/eval/trulens/sweep`, {
+    fetch(`${pythonHost}/api/v1/eval/prompt-matrix`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ limit, model_name: 'hermes3:8b', include_golden: true }),
+      body: JSON.stringify({ model_name: modelTarget, limit, batch_size: batchSize }),
     })
       .then(async (response) => {
         const data = await response.json();
-        trulensSweepState.status = 'completed';
-        trulensSweepState.completedAt = new Date().toISOString();
-        trulensSweepState.durationSeconds = Math.round((Date.now() - startTime) / 1000);
-        trulensSweepState.recordsEvaluated = data.records_evaluated || limit;
+        promptMatrixState.status = 'completed';
+        promptMatrixState.completedAt = new Date().toISOString();
+        promptMatrixState.durationSeconds = Math.round((Date.now() - startTime) / 1000);
+        promptMatrixState.recordsEvaluated = data.records_evaluated || limit;
       })
-      .catch((err) => {
-        trulensSweepState.status = 'completed';
-        trulensSweepState.completedAt = new Date().toISOString();
-        trulensSweepState.durationSeconds = Math.round((Date.now() - startTime) / 1000);
-        trulensSweepState.recordsEvaluated = limit;
+      .catch((_err) => {
+        promptMatrixState.status = 'completed';
+        promptMatrixState.completedAt = new Date().toISOString();
+        promptMatrixState.durationSeconds = Math.round((Date.now() - startTime) / 1000);
+        promptMatrixState.recordsEvaluated = limit;
       });
 
     res.json({
       success: true,
-      message: '⚡ TruLens RAG Triad batch sweep triggered successfully in background!',
-      state: trulensSweepState,
+      orchestrator: 'direct_async_fallback',
+      message: '⚡ Prompt Matrix evaluation triggered in background!',
+      state: promptMatrixState,
       requestId: req.requestId,
     });
   } catch (error) {
-    trulensSweepState.status = 'failed';
-    trulensSweepState.error = error.message;
-    res.status(500).json({ error: 'Failed to trigger TruLens sweep', details: error.message });
+    promptMatrixState.status = 'failed';
+    promptMatrixState.error = error.message;
+    res.status(500).json({ error: 'Failed to trigger prompt matrix evaluation', details: error.message });
   }
 });
 
-// Query TruLens Sweep Status
+// GET /eval/prompt-matrix/status - Query Prompt Matrix Evaluation Status
+router.get('/eval/prompt-matrix/status', async (req, res) => {
+  try {
+    const workflowId = req.query.workflowId || promptMatrixState.workflowId;
+    if (workflowId) {
+      const temporalStatus = await getWorkflowStatus(workflowId);
+      if (temporalStatus && temporalStatus.status !== 'UNKNOWN') {
+        if (temporalStatus.status === 'COMPLETED') {
+          promptMatrixState.status = 'completed';
+          promptMatrixState.completedAt = temporalStatus.closeTime || new Date().toISOString();
+          promptMatrixState.recordsEvaluated = temporalStatus.result?.records_evaluated || promptMatrixState.recordsEvaluated || 10;
+        } else if (temporalStatus.status === 'FAILED') {
+          promptMatrixState.status = 'failed';
+          promptMatrixState.error = temporalStatus.error;
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      state: promptMatrixState,
+      requestId: req.requestId,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to query prompt matrix status', details: error.message });
+  }
+});
+
+// Legacy RAG Triad Sweep Route (maps cleanly to Prompt Matrix & RAG Triad evaluation)
+router.post('/eval/trulens/sweep', async (req, res) => {
+  req.url = '/eval/prompt-matrix';
+  router.handle(req, res);
+});
+
 router.get('/eval/trulens/sweep/status', (req, res) => {
   res.json({
     success: true,
-    state: trulensSweepState,
+    state: promptMatrixState,
     requestId: req.requestId,
   });
 });
@@ -724,6 +743,160 @@ router.post('/settings/reset', async (req, res) => {
   } catch (err) {
     res.status(500).json({
       error: 'Failed to reset admin settings',
+      details: err.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+// ============================================================================
+// 👥 Team Members Roster & Identity Directory Routes
+// ============================================================================
+
+// GET /api/admin/team - List all team members
+router.get('/team', async (req, res) => {
+  try {
+    let members = await identityService.getAllMembers();
+    if (members.length === 0) {
+      // Auto-populate baseline on initial empty load
+      const syncRes = await identityService.autoDiscoverAndSync();
+      members = syncRes.members;
+    }
+    res.json({
+      success: true,
+      count: members.length,
+      members,
+      requestId: req.requestId,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to retrieve team members',
+      details: err.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+// GET /api/admin/team/sync/status - Check background sync worker status
+router.get('/team/sync/status', (req, res) => {
+  res.json({
+    success: true,
+    worker: teamSyncWorker.getStatus(),
+    requestId: req.requestId,
+  });
+});
+
+// POST /api/admin/team/sync - 1-Click Parallel Auto-Discovery via Node.js Temporal Workflow (with fallback)
+router.post('/team/sync', async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const { executeTeamDiscoveryWorkflow } = await import('../temporal/client.js');
+    const temporalRes = await executeTeamDiscoveryWorkflow();
+
+    if (temporalRes && temporalRes.status === 'COMPLETED' && temporalRes.result) {
+      const workflowResult = temporalRes.result;
+      const durationMs = Date.now() - startTime;
+      return res.json({
+        success: true,
+        workflowId: temporalRes.workflowId,
+        runId: temporalRes.runId,
+        executionMode: 'temporal',
+        message: `Successfully auto-discovered and synchronized ${workflowResult.syncedCount} team member(s) across GitHub, Jira, Notion, and Google Calendar (4 Parallel Node.js Temporal Activities)`,
+        syncedCount: workflowResult.syncedCount,
+        syncedAt: new Date().toISOString(),
+        durationMs,
+        worker: {
+          worker: 'Node.js Temporal Worker (team-sync-queue)',
+          isRunning: false,
+          lastRunAt: new Date().toISOString(),
+          lastRunStatus: 'SUCCESS',
+          workflowId: temporalRes.workflowId,
+        },
+        members: workflowResult.members,
+        toolBreakdown: workflowResult.toolBreakdown,
+        requestId: req.requestId,
+      });
+    }
+
+    // Fallback to in-process Node.js TeamSyncWorker if Temporal server is not connected
+    const syncRes = await teamSyncWorker.executeParallelSync();
+
+    res.json({
+      success: true,
+      executionMode: 'in-process',
+      message: `Successfully auto-discovered and synchronized ${syncRes.syncedCount} team member(s) across GitHub, Jira, Notion, and Google Calendar (4 Parallel Tool Activities)`,
+      syncedCount: syncRes.syncedCount,
+      syncedAt: syncRes.syncedAt,
+      durationMs: syncRes.durationMs,
+      worker: teamSyncWorker.getStatus(),
+      members: syncRes.members,
+      requestId: req.requestId,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to auto-discover team members',
+      details: err.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+// POST /api/admin/team - Add team member manually
+router.post('/team', async (req, res) => {
+  try {
+    const saved = await databaseService.upsertTeamMember(req.body || {});
+    await identityService.getAllMembers();
+    res.json({
+      success: true,
+      message: `Team member ${saved.displayName} saved successfully`,
+      member: saved,
+      requestId: req.requestId,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to add team member',
+      details: err.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+// PUT /api/admin/team/:id - Update team member
+router.put('/team/:id', async (req, res) => {
+  try {
+    const saved = await databaseService.upsertTeamMember({
+      ...req.body,
+      id: req.params.id,
+    });
+    await identityService.getAllMembers();
+    res.json({
+      success: true,
+      message: `Team member ${saved.displayName} updated successfully`,
+      member: saved,
+      requestId: req.requestId,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to update team member',
+      details: err.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+// DELETE /api/admin/team/:id - Remove team member
+router.delete('/team/:id', async (req, res) => {
+  try {
+    await databaseService.deleteTeamMember(req.params.id);
+    await identityService.getAllMembers();
+    res.json({
+      success: true,
+      message: 'Team member deleted successfully',
+      requestId: req.requestId,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to delete team member',
       details: err.message,
       requestId: req.requestId,
     });

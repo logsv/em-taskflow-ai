@@ -12,6 +12,7 @@ from temporalio.worker import Worker
 from app.temporal.workflow import (
     RAGIngestWorkflow,
     ChatFileExtractWorkflow,
+    PromptEvaluationWorkflow,
     TruLensBatchEvaluationWorkflow,
     DeepEvaluationBenchmarkWorkflow,
     TraceReplayWorkflow,
@@ -28,9 +29,8 @@ from app.temporal.activities import (
     extract_text_fallback_activity,
     fetch_evaluation_queries_activity,
     evaluate_single_rag_triad_query_activity,
-    sync_trulens_leaderboard_activity,
-    execute_trulens_rag_triad_sweep_activity,
-    evaluate_ingested_document_trulens_activity,
+    evaluate_prompt_batch_activity,
+    sync_evaluation_leaderboard_activity,
     run_ragas_evaluation_activity,
     run_pairwise_arena_activity,
     export_benchmark_report_activity,
@@ -74,9 +74,11 @@ async def start_temporal_worker():
     worker = Worker(
         client,
         task_queue=TASK_QUEUE,
+        identity=f"em-taskflow-python-ai-worker@{os.uname().nodename}",
         workflows=[
             RAGIngestWorkflow,
             ChatFileExtractWorkflow,
+            PromptEvaluationWorkflow,
             TruLensBatchEvaluationWorkflow,
             DeepEvaluationBenchmarkWorkflow,
             TraceReplayWorkflow,
@@ -93,9 +95,8 @@ async def start_temporal_worker():
             extract_text_fallback_activity,
             fetch_evaluation_queries_activity,
             evaluate_single_rag_triad_query_activity,
-            sync_trulens_leaderboard_activity,
-            execute_trulens_rag_triad_sweep_activity,
-            evaluate_ingested_document_trulens_activity,
+            evaluate_prompt_batch_activity,
+            sync_evaluation_leaderboard_activity,
             run_ragas_evaluation_activity,
             run_pairwise_arena_activity,
             export_benchmark_report_activity,
@@ -105,3 +106,4 @@ async def start_temporal_worker():
 
     logger.info(f"🚀 Temporal Worker listening on Task Queue: '{TASK_QUEUE}'")
     await worker.run()
+

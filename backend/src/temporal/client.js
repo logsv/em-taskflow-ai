@@ -163,3 +163,76 @@ export async function startTraceReplayWorkflow(options = {}) {
   }
 }
 
+export async function startTeamDiscoveryWorkflow(params = {}) {
+  const client = await getTemporalClient();
+  if (!client) return null;
+
+  const workflowId = `team-discovery-sync-${Date.now()}`;
+  try {
+    const handle = await client.workflow.start('teamAutoDiscoveryWorkflow', {
+      taskQueue: 'team-sync-queue',
+      args: [params],
+      workflowId,
+    });
+    console.log(`🚀 Started Node.js Temporal Team Discovery Workflow: ${handle.workflowId}`);
+    return {
+      workflowId: handle.workflowId,
+      runId: handle.firstExecutionRunId,
+      status: 'RUNNING',
+    };
+  } catch (err) {
+    console.warn(`⚠️ Failed to start Node.js Temporal Team Discovery Workflow (${err.message})`);
+    return null;
+  }
+}
+
+export async function executeTeamDiscoveryWorkflow(params = {}) {
+  const client = await getTemporalClient();
+  if (!client) return null;
+
+  const workflowId = `team-discovery-sync-${Date.now()}`;
+  try {
+    const handle = await client.workflow.start('teamAutoDiscoveryWorkflow', {
+      taskQueue: 'team-sync-queue',
+      args: [params],
+      workflowId,
+    });
+    console.log(`🚀 Executing Node.js Temporal Team Discovery Workflow: ${handle.workflowId}`);
+    const result = await handle.result();
+    return {
+      workflowId: handle.workflowId,
+      runId: handle.firstExecutionRunId,
+      status: 'COMPLETED',
+      result,
+    };
+  } catch (err) {
+    console.warn(`⚠️ Failed executing Node.js Temporal Team Discovery Workflow (${err.message})`);
+    return null;
+  }
+}
+
+export async function startPromptEvaluationWorkflow(options = {}) {
+  const client = await getTemporalClient();
+  if (!client) return null;
+
+  const evalTaskQueue = process.env.TEMPORAL_EVAL_TASK_QUEUE || 'eval-task-queue';
+  try {
+    const handle = await client.workflow.start('PromptEvaluationWorkflow', {
+      taskQueue: evalTaskQueue,
+      args: [{ model_name: modelTarget, limit, batch_size: batchSize }],
+      workflowId,
+    });
+    console.log(`🚀 Started Temporal Prompt Evaluation Workflow: ${handle.workflowId}`);
+    return {
+      workflowId: handle.workflowId,
+      runId: handle.firstExecutionRunId,
+      status: 'RUNNING',
+    };
+  } catch (err) {
+    console.warn(`⚠️ Failed to start Temporal Prompt Evaluation Workflow (${err.message})`);
+    return null;
+  }
+}
+
+
+

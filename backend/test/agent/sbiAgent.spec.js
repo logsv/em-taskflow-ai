@@ -90,6 +90,26 @@ describe('sbiAgent & format_sbi_feedback Tool Harness', () => {
     expect(Array.isArray(listRes.data.items)).toBe(true);
   });
 
+  it('should execute multi-source executors including GitHub, Jira, and Notion context', async () => {
+    const res = await sbiFeedbackTool.invoke({
+      sources: ['default', 'github', 'jira', 'notion'],
+      engineer_id: 'Alex Williams',
+      raw_draft: 'Alex turned around PR reviews quickly on PR #402 and resolved incident ENG-104',
+      feedback_type: 'POSITIVE_PRAISE',
+    });
+
+    expect(res.status).toBe('SUCCESS');
+    expect(res.data.summary).toContain('[PR #402](https://github.com/logsv/em-taskflow-ai/pull/402)');
+    expect(res.data.summary).toContain('[ENG-104](https://jira.atlassian.net/browse/ENG-104)');
+  });
+
+  it('should fall back to PostgreSQL database profile when external MCP APIs time out', async () => {
+    const fallback = await sbiFeedbackTool.dbCacheFallback('postgres_sbi', { engineer_id: 'eng_alex' });
+    expect(fallback.situation).toBeDefined();
+    expect(fallback.is_cached).toBe(true);
+    expect(fallback.data_source).toContain('postgres');
+  });
+
   it('should create sbiAgent with custom or default tools', () => {
     const agent = createSbiAgent();
     expect(agent).toBeDefined();

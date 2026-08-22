@@ -69,6 +69,13 @@ class SettingsService {
     }
   }
 
+  getCachedSettings() {
+    if (!this.cachedRawSettings) {
+      this.cachedRawSettings = this.getDefaultEnvSettings();
+    }
+    return this.cachedRawSettings;
+  }
+
   getDefaultEnvSettings() {
     return {
       llm: {
@@ -107,6 +114,7 @@ class SettingsService {
             clientId: process.env.JIRA_OAUTH_CLIENT_ID || '',
             clientSecret: process.env.JIRA_OAUTH_CLIENT_SECRET || '',
             redirectUrl: process.env.JIRA_OAUTH_REDIRECT_URL || 'http://localhost:5001/api/mcp/jira/oauth/callback',
+            scope: 'read:jira-work read:jira-user offline_access',
           },
           enabled: true,
         },

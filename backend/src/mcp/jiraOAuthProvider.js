@@ -23,7 +23,7 @@ export class JiraOAuthProvider {
       clientId: cached.clientId || process.env.JIRA_OAUTH_CLIENT_ID || mcpConfig.clientId || '',
       clientSecret: cached.clientSecret || process.env.JIRA_OAUTH_CLIENT_SECRET || mcpConfig.clientSecret || '',
       redirectUrl: cached.redirectUrl || process.env.JIRA_OAUTH_REDIRECT_URL || mcpConfig.redirectUrl || 'http://localhost:5001/api/mcp/jira/oauth/callback',
-      scope: cached.scope || mcpConfig.scope || 'read:jira-work read:jira-user read:sprint:jira-software offline_access read:me',
+      scope: cached.scope || mcpConfig.scope || 'read:jira-work read:jira-user offline_access',
     };
   }
 
@@ -115,7 +115,7 @@ export class JiraOAuthProvider {
     const authUrl = new URL('https://auth.atlassian.com/authorize');
     authUrl.searchParams.set('audience', 'api.atlassian.com');
     authUrl.searchParams.set('client_id', clientId);
-    authUrl.searchParams.set('scope', this.oauthConfig.scope || 'read:jira-work read:jira-user read:sprint:jira-software offline_access read:me');
+    authUrl.searchParams.set('scope', this.oauthConfig.scope || 'read:jira-work read:jira-user offline_access');
     authUrl.searchParams.set('redirect_uri', this.redirectUrl);
     authUrl.searchParams.set('state', state);
     authUrl.searchParams.set('response_type', 'code');

@@ -18,10 +18,8 @@
     "eval:promptfoo:view": "npx -y promptfoo@latest view",
     "eval:deepeval": "cd ../services/python-ai-service && uv run pytest tests/test_deepeval_agent_trajectories.py",
     "eval:ragas": "cd ../services/python-ai-service && uv run python evaluation/ragas_runner.py",
-    "eval:trulens": "cd ../services/python-ai-service && uv run python evaluation/trulens_rag_triad.py",
-    "eval:trulens:dashboard": "cd ../services/python-ai-service && uv run trulens-eval run dashboard --port 8501",
     "eval:nightly": "bash ../scripts/run-nightly-eval.sh",
-    "eval:enterprise": "npm run evaluate && npm run eval:deepeval && npm run eval:ragas && npm run eval:trulens",
+    "eval:enterprise": "npm run evaluate && npm run eval:deepeval && npm run eval:ragas",
     "start:google": "pnpm -C ../mcp-servers/google-workspace start",
     "start:mcp": "pnpm start:google"
   },
@@ -58,8 +56,6 @@
     ]
   },
   "dependencies": {
-    "@arizeai/openinference-instrumentation-langchain": "^4.0.17",
-    "@arizeai/phoenix-otel": "^2.2.0",
     "@axiomhq/pino": "^2.0.0",
     "@cocal/google-calendar-mcp": "1.4.8",
     "@huggingface/inference": "4.0.5",
@@ -77,8 +73,10 @@
     "@opentelemetry/exporter-trace-otlp-grpc": "^0.221.0",
     "@opentelemetry/sdk-node": "^0.221.0",
     "@sentry/node": "^10.69.0",
+    "@temporalio/activity": "^1.22.0",
     "@temporalio/client": "^1.11.0",
-    "@traceloop/node-server-sdk": "^0.27.0",
+    "@temporalio/worker": "^1.22.0",
+    "@temporalio/workflow": "^1.22.0",
     "axios": "1.6.0",
     "bottleneck": "2.19.5",
     "chalk": "4.1.2",

@@ -7,6 +7,7 @@ import { getGithubMCPTools, getGoogleMCPTools, getJiraMCPTools, getNotionMCPTool
 import { doraMetricsTool } from "../agent/doraAgent.js";
 import { deliveryBottlenecksTool } from "../agent/deliveryAgent.js";
 import { sbiFeedbackTool } from "../agent/sbiAgent.js";
+import { peopleGrowthTool } from "../agent/peopleAgent.js";
 import { sprintPlanTool } from "../agent/sprintAgent.js";
 import { buildEmResponse } from "../utils/responseFormatter.js";
 import { getTracerCallbacks, createEndToEndTrace, createSpan } from "../utils/tracer.js";
@@ -423,6 +424,7 @@ export class LangGraphAgentService {
           context_type: "coaching_request",
         },
       },
+      people: { tool: peopleGrowthTool, input: { mode: "ANALYZE", engineer_id: String(query || "") } },
       sprint: { tool: sprintPlanTool, input: {} },
     };
     const recoverable = domains.filter((domain) => recoveryTools[domain]);

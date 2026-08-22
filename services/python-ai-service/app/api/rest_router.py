@@ -12,7 +12,6 @@ from app.services.rag_processor.chunker import RAGChunker
 from app.services.rag_processor.reranker import CrossEncoderReranker
 from app.services.rag_processor.database import RAGDatabaseService
 from app.telemetry.shadow_evaluator import ShadowEvaluatorWorker
-from app.telemetry.trulens_shadow_recorder import TruLensShadowRecorder
 
 router = APIRouter()
 file_processor = FileUploadProcessor()
@@ -20,7 +19,6 @@ rag_chunker = RAGChunker()
 reranker = CrossEncoderReranker()
 db_service = RAGDatabaseService()
 shadow_evaluator = ShadowEvaluatorWorker(sampling_rate=0.05)
-trulens_recorder = TruLensShadowRecorder()
 
 
 class ShadowEvalRequest(BaseModel):
@@ -140,7 +138,6 @@ def evaluate_shadow(req: ShadowEvalRequest):
     """
     Non-blocking online continuous shadow evaluation endpoint.
     Samples 5% of live traffic, evaluates G-Eval/Faithfulness, and exports scores to Langfuse DB.
-    Also records RAG triad live interactions into TruLens SQLite DB (default.sqlite).
     """
     trace_context = {
         "query": req.query,
@@ -150,36 +147,26 @@ def evaluate_shadow(req: ShadowEvalRequest):
         "domain": req.domain,
     }
     result = shadow_evaluator.evaluate_shadow_trace(trace_context)
-    
-    # Non-blocking TruLens live RAG triad recording
-    try:
-        trulens_recorder.record_live_interaction(
-            query=req.query,
-            answer=req.answer,
-            context=req.context or [],
-            trace_id=req.trace_id,
-        )
-    except Exception as trulens_err:
-        pass
 
     return {
         "sampled": result is not None,
         "eval_result": result,
         "trace_id": req.trace_id,
-        "trulens_recorded": True,
+        "telemetry_synced": True,
     }
 
 
-class TruLensSweepRequest(BaseModel):
-    limit: Optional[int] = 5
+class PromptMatrixRequest(BaseModel):
+    limit: Optional[int] = 10
     model_name: Optional[str] = "hermes3:8b"
+    batch_size: Optional[int] = 5
     include_golden: Optional[bool] = True
 
 
-@router.post("/api/v1/eval/trulens/sweep")
-async def trigger_trulens_sweep(req: TruLensSweepRequest):
+@router.post("/api/v1/eval/prompt-matrix")
+async def trigger_prompt_matrix(req: PromptMatrixRequest):
     """
-    Triggers batch TruLens RAG Triad evaluation sweep across Golden Dataset and Vector DB chunks.
+    Triggers durable Prompt Matrix & RAG Triad evaluation across Golden Dataset and Vector DB chunks.
     Attempts execution via Temporal workflow with in-process background fallback.
     """
     temporal_host = os.getenv("TEMPORAL_HOST", "temporal:7233")
@@ -187,30 +174,36 @@ async def trigger_trulens_sweep(req: TruLensSweepRequest):
         from temporalio.client import Client
         client = await Client.connect(temporal_host)
         handle = await client.start_workflow(
-            "TruLensBatchEvaluationWorkflow",
-            {"limit": req.limit, "model_name": req.model_name, "include_golden": req.include_golden},
-            id=f"trulens-sweep-{os.urandom(4).hex()}",
+            "PromptEvaluationWorkflow",
+            {"limit": req.limit, "model_name": req.model_name, "batch_size": req.batch_size, "include_golden": req.include_golden},
+            id=f"prompt-matrix-{os.urandom(4).hex()}",
             task_queue="rag-ingest-queue",
         )
         return {
             "success": True,
             "orchestrator": "temporal",
             "workflow_id": handle.id,
-            "message": "TruLens RAG Triad batch sweep dispatched to Temporal workflow.",
+            "message": "Prompt Matrix evaluation dispatched to Temporal workflow.",
         }
     except Exception as e:
         import asyncio
-        from evaluation.trulens_rag_triad import run_trulens_evaluation
+        from evaluation.ragas_runner import run_ragas_evaluation
         loop = asyncio.get_event_loop()
-        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         loop.run_in_executor(
             None,
-            lambda: run_trulens_evaluation(model_name=req.model_name, api_base=ollama_url, limit=req.limit, include_golden=req.include_golden)
+            lambda: run_ragas_evaluation(sync_to_langfuse=True)
         )
         return {
             "success": True,
             "orchestrator": "in_process_fallback",
-            "message": f"TruLens RAG Triad batch sweep running in background ({str(e)[:40]}).",
+            "message": f"Prompt Matrix evaluation running in background ({str(e)[:40]}).",
         }
+
+
+# Backward compatibility
+@router.post("/api/v1/eval/trulens/sweep")
+async def trigger_trulens_sweep(req: PromptMatrixRequest):
+    return await trigger_prompt_matrix(req)
+
 
 

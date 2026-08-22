@@ -4,6 +4,7 @@ import { getChatModel } from '../llm/index.js';
 import { deliveryAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
+import identityService from '../services/identityService.js';
 
 export const deliveryBottlenecksTool = createDeterministicToolHarness({
   name: 'analyze_delivery_bottlenecks',
@@ -16,6 +17,8 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
     sprint_id: z.string().default('active_sprint'),
     board_id: z.string().default('main_board'),
     time_window: z.enum(['7d', '30d', '90d']).default('30d'),
+    author: z.string().optional(),
+    assignee: z.string().optional(),
     fetch_fresh_data: z.boolean().default(true),
   }),
   // Tier 1: Model Context Protocol (MCP) Multi-Source Executors
@@ -23,9 +26,16 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
     github: async (inputArgs) => {
       try {
         const { executeMCPTool } = await import('../mcp/index.js');
+        let authorFilter = '';
+        if (inputArgs?.author || inputArgs?.assignee) {
+          const ghUser = await identityService.getToolUsernameForMember(inputArgs.author || inputArgs.assignee, 'github');
+          if (ghUser) {
+            authorFilter = ` author:${ghUser}`;
+          }
+        }
         const q = inputArgs?.repo_id && inputArgs.repo_id !== 'default'
-          ? `repo:${inputArgs.repo_id} is:issue state:open`
-          : `is:issue is:open`;
+          ? `repo:${inputArgs.repo_id} is:issue state:open${authorFilter}`
+          : `is:issue is:open${authorFilter}`;
         const res = await Promise.race([
           executeMCPTool('search_issues', { query: q }),
           new Promise((_, reject) => setTimeout(() => reject(new Error('MCP GitHub search timed out')), 2500)),
@@ -87,11 +97,18 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
       }
       return null;
     },
-    jira: async () => {
+    jira: async (inputArgs) => {
       try {
         const { executeMCPTool } = await import('../mcp/index.js');
+        let jql = 'status in ("In Progress", "Blocked")';
+        if (inputArgs?.assignee || inputArgs?.author) {
+          const jiraUser = await identityService.getToolUsernameForMember(inputArgs.assignee || inputArgs.author, 'jira');
+          if (jiraUser) {
+            jql += ` AND assignee = "${jiraUser}"`;
+          }
+        }
         const res = await Promise.race([
-          executeMCPTool('jira_search', { jql: 'status in ("In Progress", "Blocked")' }),
+          executeMCPTool('jira_search', { jql }),
           new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Jira search timed out')), 2500)),
         ]).catch(() => null);
 

@@ -13,6 +13,7 @@ class DatabaseService {
     this.inMemorySprintAnalytics = [];
     this.inMemoryOkrTracker = [];
     this.inMemoryAppSettings = {};
+    this.inMemoryTeamMembers = [];
   }
 
   async initialize() {
@@ -255,6 +256,25 @@ class DatabaseService {
         key TEXT PRIMARY KEY,
         value JSONB NOT NULL,
         source TEXT DEFAULT 'database',
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS team_members (
+        id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        email TEXT UNIQUE,
+        aliases JSONB DEFAULT '[]',
+        github_username TEXT,
+        jira_email TEXT,
+        jira_account_id TEXT,
+        gcal_email TEXT,
+        notion_name TEXT,
+        current_level TEXT DEFAULT 'L4_MID',
+        target_level TEXT DEFAULT 'L5_SENIOR',
+        track TEXT DEFAULT 'INDIVIDUAL_CONTRIBUTOR',
+        tenure_months INT DEFAULT 12,
+        skills JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
     `);
@@ -1223,6 +1243,163 @@ class DatabaseService {
       return true;
     } catch (err) {
       delete this.inMemoryAppSettings[key];
+      return true;
+    }
+  }
+
+  async getTeamMembers() {
+    try {
+      await this.ensureInitialized();
+      const res = await this.pool.query('SELECT * FROM team_members ORDER BY display_name ASC');
+      return res.rows.map((row) => ({
+        id: row.id,
+        displayName: row.display_name,
+        email: row.email,
+        aliases: typeof row.aliases === 'string' ? safeJsonParse(row.aliases) : row.aliases || [],
+        githubUsername: row.github_username,
+        jiraEmail: row.jira_email,
+        jiraAccountId: row.jira_account_id,
+        gcalEmail: row.gcal_email,
+        notionName: row.notion_name,
+        currentLevel: row.current_level,
+        targetLevel: row.target_level,
+        track: row.track,
+        tenureMonths: row.tenure_months,
+        skills: typeof row.skills === 'string' ? safeJsonParse(row.skills) : row.skills || {},
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }));
+    } catch (err) {
+      warn('PostgreSQL getTeamMembers failed, using in-memory fallback', { err: err.message });
+      return [...this.inMemoryTeamMembers];
+    }
+  }
+
+  async getTeamMemberById(id) {
+    try {
+      await this.ensureInitialized();
+      const res = await this.pool.query('SELECT * FROM team_members WHERE id = $1', [id]);
+      if (res.rows.length === 0) return null;
+      const row = res.rows[0];
+      return {
+        id: row.id,
+        displayName: row.display_name,
+        email: row.email,
+        aliases: typeof row.aliases === 'string' ? safeJsonParse(row.aliases) : row.aliases || [],
+        githubUsername: row.github_username,
+        jiraEmail: row.jira_email,
+        jiraAccountId: row.jira_account_id,
+        gcalEmail: row.gcal_email,
+        notionName: row.notion_name,
+        currentLevel: row.current_level,
+        targetLevel: row.target_level,
+        track: row.track,
+        tenureMonths: row.tenure_months,
+        skills: typeof row.skills === 'string' ? safeJsonParse(row.skills) : row.skills || {},
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      };
+    } catch (err) {
+      return this.inMemoryTeamMembers.find((m) => m.id === id) || null;
+    }
+  }
+
+  async upsertTeamMember(memberData) {
+    const id = memberData.id || createOpaqueId('mem');
+    const displayName = memberData.displayName || memberData.display_name || 'Team Member';
+    const email = memberData.email || `${id}@company.internal`;
+    const aliases = JSON.stringify(memberData.aliases || [displayName]);
+    const githubUsername = memberData.githubUsername || memberData.github_username || null;
+    const jiraEmail = memberData.jiraEmail || memberData.jira_email || email;
+    const jiraAccountId = memberData.jiraAccountId || memberData.jira_account_id || null;
+    const gcalEmail = memberData.gcalEmail || memberData.gcal_email || email;
+    const notionName = memberData.notionName || memberData.notion_name || displayName;
+    const currentLevel = memberData.currentLevel || memberData.current_level || 'L4_MID';
+    const targetLevel = memberData.targetLevel || memberData.target_level || 'L5_SENIOR';
+    const track = memberData.track || 'INDIVIDUAL_CONTRIBUTOR';
+    const tenureMonths = Number(memberData.tenureMonths || memberData.tenure_months || 12);
+    const skills = JSON.stringify(memberData.skills || {});
+
+    try {
+      await this.ensureInitialized();
+      const res = await this.pool.query(
+        `
+        INSERT INTO team_members (
+          id, display_name, email, aliases, github_username, jira_email,
+          jira_account_id, gcal_email, notion_name, current_level, target_level,
+          track, tenure_months, skills, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+        ON CONFLICT (id) DO UPDATE SET
+          display_name = EXCLUDED.display_name,
+          email = EXCLUDED.email,
+          aliases = EXCLUDED.aliases,
+          github_username = COALESCE(EXCLUDED.github_username, team_members.github_username),
+          jira_email = COALESCE(EXCLUDED.jira_email, team_members.jira_email),
+          jira_account_id = COALESCE(EXCLUDED.jira_account_id, team_members.jira_account_id),
+          gcal_email = COALESCE(EXCLUDED.gcal_email, team_members.gcal_email),
+          notion_name = COALESCE(EXCLUDED.notion_name, team_members.notion_name),
+          current_level = EXCLUDED.current_level,
+          target_level = EXCLUDED.target_level,
+          track = EXCLUDED.track,
+          tenure_months = EXCLUDED.tenure_months,
+          skills = EXCLUDED.skills,
+          updated_at = NOW()
+        RETURNING *;
+        `,
+        [
+          id, displayName, email, aliases, githubUsername, jiraEmail,
+          jiraAccountId, gcalEmail, notionName, currentLevel, targetLevel,
+          track, tenureMonths, skills
+        ]
+      );
+      const row = res.rows[0];
+      const member = {
+        id: row.id,
+        displayName: row.display_name,
+        email: row.email,
+        aliases: typeof row.aliases === 'string' ? safeJsonParse(row.aliases) : row.aliases || [],
+        githubUsername: row.github_username,
+        jiraEmail: row.jira_email,
+        jiraAccountId: row.jira_account_id,
+        gcalEmail: row.gcal_email,
+        notionName: row.notion_name,
+        currentLevel: row.current_level,
+        targetLevel: row.target_level,
+        track: row.track,
+        tenureMonths: row.tenure_months,
+        skills: typeof row.skills === 'string' ? safeJsonParse(row.skills) : row.skills || {},
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      };
+      // Keep in-memory in sync
+      const idx = this.inMemoryTeamMembers.findIndex((m) => m.id === id);
+      if (idx >= 0) this.inMemoryTeamMembers[idx] = member;
+      else this.inMemoryTeamMembers.push(member);
+      return member;
+    } catch (err) {
+      warn('PostgreSQL upsertTeamMember failed, saving to in-memory fallback', { err: err.message });
+      const member = {
+        id, displayName, email, aliases: safeJsonParse(aliases),
+        githubUsername, jiraEmail, jiraAccountId, gcalEmail,
+        notionName, currentLevel, targetLevel, track,
+        tenureMonths, skills: safeJsonParse(skills),
+        updatedAt: new Date().toISOString(),
+      };
+      const idx = this.inMemoryTeamMembers.findIndex((m) => m.id === id);
+      if (idx >= 0) this.inMemoryTeamMembers[idx] = member;
+      else this.inMemoryTeamMembers.push(member);
+      return member;
+    }
+  }
+
+  async deleteTeamMember(id) {
+    try {
+      await this.ensureInitialized();
+      await this.pool.query('DELETE FROM team_members WHERE id = $1', [id]);
+      this.inMemoryTeamMembers = this.inMemoryTeamMembers.filter((m) => m.id !== id);
+      return true;
+    } catch (err) {
+      this.inMemoryTeamMembers = this.inMemoryTeamMembers.filter((m) => m.id !== id);
       return true;
     }
   }

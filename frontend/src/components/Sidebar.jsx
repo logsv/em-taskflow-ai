@@ -3,16 +3,20 @@ import { useGithubSync } from '../hooks/useGithubSync.js';
 import logger from '../utils/logger.js';
 import './Sidebar.css';
 
-function Sidebar({ sessionSummary, isOpen, setIsOpen, onOpenAdmin }) {
+function Sidebar({ sessionSummary, isOpen, setIsOpen, onOpenAdmin, onNewChat }) {
   const { syncStatus, syncMessage } = useGithubSync();
 
   const toggleSidebar = () => {
     setIsOpen(!isOpen);
   };
 
-  const startNewChat = () => {
+  const startNewChat = async () => {
     logger.info('Starting new chat...');
-    window.location.reload();
+    if (typeof onNewChat === 'function') {
+      await onNewChat();
+    } else {
+      window.location.reload();
+    }
   };
 
   return (

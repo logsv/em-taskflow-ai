@@ -27,7 +27,6 @@ if service_dir not in sys.path:
 
 # Import evaluation engines
 from evaluation.ragas_runner import run_ragas_evaluation
-from evaluation.trulens_rag_triad import run_trulens_evaluation
 from evaluation.llm_judge import LLMJudgeFactory
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -55,17 +54,12 @@ def run_scheduled_deep_benchmark(
     logger.info("================================================================================")
 
     # 1. Run Official Ragas Multi-Metric Evaluation
-    logger.info("📊 [1/3] Executing Official Ragas Multi-Metric Evaluation...")
+    logger.info("📊 [1/2] Executing Official Ragas Multi-Metric Evaluation (Full RAG Triad)...")
     ragas_scores = run_ragas_evaluation(sync_to_langfuse=True)
     logger.info(f"✅ Ragas Completed: {ragas_scores}")
 
-    # 2. Run Official TruLens RAG Triad Recording
-    logger.info("📈 [2/3] Executing Official TruLens RAG Triad Recording...")
-    trulens_res = run_trulens_evaluation(model_name=model_name)
-    logger.info(f"✅ TruLens Completed: {trulens_res}")
-
-    # 3. Run Pairwise Arena Calibration
-    logger.info("⚔️ [3/3] Executing Pairwise Arena Calibration (Position-Bias Mitigated)...")
+    # 2. Run Pairwise Arena Calibration
+    logger.info("⚔️ [2/2] Executing Pairwise Arena Calibration (Position-Bias Mitigated)...")
     pairwise_judge = LLMJudgeFactory.create_judge("pairwise", model_name=model_name)
     arena_test_context = {
         "candidate_a": "### 📄 Executive Summary\nFor P0 incidents, the on-call EM must acknowledge within 5 minutes, launch an incident bridge, and broadcast updates to Slack every 15 minutes.",
@@ -76,7 +70,7 @@ def run_scheduled_deep_benchmark(
 
     duration_seconds = round(time.time() - start_time, 2)
 
-    # 4. Sync Aggregate Benchmark Scores to Langfuse
+    # 3. Sync Aggregate Benchmark Scores to Langfuse
     try:
         from langfuse import Langfuse
         host = os.getenv("LANGFUSE_HOST", "http://localhost:3001")
@@ -104,26 +98,18 @@ def run_scheduled_deep_benchmark(
                 comment="Scheduled Deep Benchmark Ragas Metric",
             )
 
-        langfuse.score(
-            trace_id=trace.id,
-            name="nightly_trulens_records",
-            value=float(trulens_res.get("records_evaluated", 2)),
-            comment="Scheduled Deep Benchmark TruLens Records",
-        )
-
         langfuse.flush()
         logger.info("🚀 Flushed Scheduled Benchmark summary trace to Langfuse DB!")
     except Exception as e:
         logger.warning(f"⚠️ Langfuse sync skipped: {e}")
 
-    # 5. Generate Daily Markdown and JSON Artifacts
+    # 4. Generate Daily Markdown and JSON Artifacts
     report_data = {
         "date": date_str,
         "timestamp": timestamp_str,
         "model": model_name,
         "duration_seconds": duration_seconds,
         "ragas_metrics": ragas_scores,
-        "trulens_status": trulens_res,
         "pairwise_arena": arena_res,
         "status": "PASS",
     }
@@ -147,20 +133,13 @@ def run_scheduled_deep_benchmark(
 
 ---
 
-## 📊 Ragas Multi-Metric Scores (100% Local Inference)
+## 📊 Ragas Multi-Metric Scores (100% Local Inference & Langfuse Sync)
 | Metric | Score | SLA Target | Status |
 | :--- | :--- | :--- | :--- |
 | **Faithfulness** | `{ragas_scores.get('faithfulness', 1.0):.4f}` | &ge; 0.9000 | ✅ PASS |
 | **Answer Relevancy** | `{ragas_scores.get('answer_relevancy', 1.0):.4f}` | &ge; 0.9000 | ✅ PASS |
 | **Context Precision** | `{ragas_scores.get('context_precision', 1.0):.4f}` | &ge; 0.9000 | ✅ PASS |
 | **Context Recall** | `{ragas_scores.get('context_recall', 1.0):.4f}` | &ge; 0.9000 | ✅ PASS |
-
----
-
-## 📈 TruLens RAG Triad & Leaderboard
-- **Evaluated Records:** `{trulens_res.get('records_evaluated', 2)}`
-- **Leaderboard SQLite/Postgres:** `Recorded and Synced`
-- **Dashboard Command:** `npm run eval:trulens:dashboard` (Port `8501`)
 
 ---
 

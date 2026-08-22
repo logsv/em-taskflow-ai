@@ -51,7 +51,7 @@ export function getLangfuseClient() {
 }
 
 /**
- * Creates an End-to-End Root Request Trace across Langfuse & OpenInference (Phoenix)
+ * Creates an End-to-End Root Request Trace across Langfuse
  * and returns the root trace alongside bound LangChain CallbackHandlers.
  * 
  * @param {Object} options Options containing name, query, sessionId, userId, tags, metadata
@@ -66,7 +66,7 @@ export function createEndToEndTrace(options = {}) {
   const userId = options.userId || 'user_logsv';
   const queryStr = typeof options.query === 'string' ? options.query : (options.input ? JSON.stringify(options.input) : '');
 
-  // 1. Initialize Langfuse Root Trace
+  // Initialize Langfuse Root Trace
   if (client) {
     try {
       trace = client.trace({
@@ -87,30 +87,11 @@ export function createEndToEndTrace(options = {}) {
     }
   }
 
-  // 2. Initialize Arize Phoenix OpenInference Span if active
-  try {
-    const tracer = otelTrace.getTracer('emtaskflow-agent', '1.0.0');
-    if (tracer) {
-      const span = tracer.startSpan(options.name || 'Chat Request', {
-        attributes: {
-          'openinference.span.kind': 'AGENT',
-          'input.value': queryStr,
-          'input.mime_type': 'text/plain',
-          'session.id': sessionId ? String(sessionId) : 'default_session',
-          'user.id': userId,
-        },
-      });
-      options.otelSpan = span;
-    }
-  } catch (_err) {
-    // Non-blocking OpenTelemetry span initialization
-  }
-
   return { trace, callbacks };
 }
 
 /**
- * Safely creates a child span on a parent trace or span for both Langfuse and OpenInference.
+ * Safely creates a child span on a parent trace or span for Langfuse.
  * Returns a dummy span object if tracing is inactive to ensure calling code remains clean.
  * 
  * @param {Object|null} parent Trace or Span object
@@ -120,49 +101,19 @@ export function createEndToEndTrace(options = {}) {
  */
 export function createSpan(parent, name, input = {}) {
   let langfuseSpan = null;
-  let otelChildSpan = null;
 
-  // 1. Langfuse Child Span
   if (parent && typeof parent.span === 'function') {
     try {
       langfuseSpan = parent.span({ name, input });
     } catch (_err) {}
   }
 
-  // 2. OpenInference / Phoenix Child Span
-  try {
-    const tracer = otelTrace.getTracer('emtaskflow-agent', '1.0.0');
-    if (tracer) {
-      const inputValue = typeof input === 'string' ? input : JSON.stringify(input);
-      otelChildSpan = tracer.startSpan(name, {
-        attributes: {
-          'openinference.span.kind': name.toLowerCase().includes('tool') ? 'TOOL' : (name.toLowerCase().includes('rag') ? 'RETRIEVER' : 'CHAIN'),
-          'input.value': inputValue,
-        },
-      });
-    }
-  } catch (_err) {}
-
   return {
     span: langfuseSpan,
-    otelSpan: otelChildSpan,
     end: (data = {}) => {
       try {
         if (langfuseSpan && typeof langfuseSpan.end === 'function') {
           langfuseSpan.end({ output: data.output, metadata: data.metadata });
-        }
-      } catch (_err) {}
-
-      try {
-        if (otelChildSpan && typeof otelChildSpan.end === 'function') {
-          if (data.output !== undefined) {
-            const outputValue = typeof data.output === 'string' ? data.output : JSON.stringify(data.output);
-            otelChildSpan.setAttribute('output.value', outputValue);
-          }
-          if (data.metadata) {
-            otelChildSpan.setAttribute('metadata', JSON.stringify(data.metadata));
-          }
-          otelChildSpan.end();
         }
       } catch (_err) {}
     },

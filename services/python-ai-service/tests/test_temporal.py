@@ -5,10 +5,10 @@ from app.temporal.activities import (
     persist_and_embed_activity,
     run_pairwise_arena_activity,
     export_benchmark_report_activity,
-    evaluate_ingested_document_trulens_activity,
     fetch_evaluation_queries_activity,
     evaluate_single_rag_triad_query_activity,
-    sync_trulens_leaderboard_activity,
+    evaluate_prompt_batch_activity,
+    sync_evaluation_leaderboard_activity,
 )
 
 
@@ -37,27 +37,22 @@ async def test_temporal_activities():
     })
     assert "winner" in arena_res
 
-    # Test activity 5: Ingestion TruLens Evaluator (non-blocking)
-    eval_doc_res = await evaluate_ingested_document_trulens_activity({"filename": "test_sop.pdf"})
-    assert eval_doc_res["filename"] == "test_sop.pdf"
-
-    # Test activity 6: Export Benchmark Report
+    # Test activity 5: Export Benchmark Report
     report_res = await export_benchmark_report_activity({
         "model_name": "hermes3:8b",
         "ragas_scores": {"faithfulness": 1.0, "answer_relevance": 1.0},
-        "trulens_res": {"records_evaluated": 2},
         "arena_res": arena_res,
         "duration_seconds": 12.5,
     })
     assert report_res["status"] == "SUCCESS"
     assert "report_path" in report_res
 
-    # Test activity 7: Granular Query Fetch Activity
+    # Test activity 6: Granular Query Fetch Activity
     fetch_res = await fetch_evaluation_queries_activity({"limit": 2, "include_golden": True})
     assert fetch_res["status"] == "SUCCESS"
     assert len(fetch_res["queries"]) > 0
 
-    # Test activity 8: Granular Single Query Evaluation Activity
+    # Test activity 7: Granular Single Query Evaluation Activity
     eval_single_res = await evaluate_single_rag_triad_query_activity({
         "query": "What is the engineering escalation protocol for P0 incidents?",
         "query_index": 1,
@@ -66,10 +61,20 @@ async def test_temporal_activities():
     })
     assert eval_single_res["status"] == "SUCCESS"
     assert "feedbacks" in eval_single_res
-    assert "groundedness" in eval_single_res["feedbacks"]
+    assert "faithfulness" in eval_single_res["feedbacks"]
 
-    # Test activity 9: Granular Leaderboard Sync Activity
-    sync_res = await sync_trulens_leaderboard_activity({
+    # Test activity 8: Prompt Batch Evaluation Activity
+    eval_batch_res = await evaluate_prompt_batch_activity({
+        "queries": ["What is the SLA for P0 incidents?"],
+        "batch_index": 1,
+        "total_batches": 1,
+        "model_name": "hermes3:8b",
+    })
+    assert eval_batch_res["status"] == "SUCCESS"
+    assert eval_batch_res["evaluated_count"] == 1
+
+    # Test activity 9: Leaderboard Sync Activity
+    sync_res = await sync_evaluation_leaderboard_activity({
         "results": [eval_single_res],
         "model_name": "hermes3:8b",
     })

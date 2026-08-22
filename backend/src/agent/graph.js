@@ -56,6 +56,10 @@ export const SupervisorState = Annotation.Root({
     reducer: (x, y) => ({ ...x, ...y }),
     default: () => ({}),
   }),
+  contextEntities: Annotation({
+    reducer: (x, y) => ({ ...x, ...y }),
+    default: () => ({}),
+  }),
 });
 
 let compiledGraph = null;
@@ -308,32 +312,46 @@ function createSupervisorLlmWrapper(baseLlm) {
       });
     }
 
-    // Turn 1 Fallback Handoff: Only dispatch to workspace agent if prompt text specifically matches that domain
+    // Turn 1 Fallback Handoff: Dispatch to workspace agent if LLM omitted tool call
     if (inputArr.length > 0 && !hasWorkerRun && (!res || !Array.isArray(res.tool_calls) || res.tool_calls.length === 0)) {
       const lastHuman = [...inputArr].reverse().find(isHumanMsg);
       const text = getMessageText(lastHuman).toLowerCase();
-      const isDora = text.includes("dora") || text.includes("lead time") || text.includes("mttr") || text.includes("deployment frequency");
-      const isDelivery = text.includes("delivery") || text.includes("wip") || text.includes("throughput") || text.includes("cycle time");
-      const isSbi = text.includes("sbi") || text.includes("feedback") || text.includes("coaching") || text.includes("situation");
-      const isPeople = text.includes("people") || text.includes("career") || text.includes("burnout") || text.includes("1-on-1") || text.includes("agenda");
-      const isSprint = text.includes("sprint plan") || text.includes("velocity") || text.includes("capacity");
-      const isRetro = text.includes("retro") || text.includes("retrospective") || text.includes("action items");
-      const isSop = text.includes("sop") || text.includes("adr") || text.includes("compliance") || text.includes("guidelines");
-      const isRoadmap = text.includes("roadmap") || text.includes("milestone") || text.includes("drift");
-      const isOkr = text.includes("okr") || text.includes("kpi") || text.includes("key result");
-      const isGithub = text.includes("github") || text.includes("issue") || text.includes("repo") || text.includes("pr") || text.includes("bug");
-      const isJira = text.includes("jira") || text.includes("blocker");
+
+      // Check for active routing plan policy in system message
+      const systemMsg = inputArr.find(isSystemMsg);
+      const systemText = getMessageText(systemMsg);
+      const authorizedMatch = systemText.match(/Authorized worker domains for this query:\s*([a-z0-9_, ]+)/i);
+      const authorizedDomains = authorizedMatch
+        ? authorizedMatch[1].split(',').map((d) => d.trim().toLowerCase()).filter((d) => d !== 'none')
+        : [];
 
       let targetAgent = null;
-      if (isDora) targetAgent = "transfer_to_dora_agent";
-      else if (isDelivery || isGithub || isJira) targetAgent = "transfer_to_delivery_agent";
-      else if (isSbi) targetAgent = "transfer_to_sbi_agent";
-      else if (isPeople) targetAgent = "transfer_to_people_agent";
-      else if (isSprint) targetAgent = "transfer_to_sprint_agent";
-      else if (isRetro) targetAgent = "transfer_to_retro_agent";
-      else if (isSop) targetAgent = "transfer_to_sop_agent";
-      else if (isRoadmap) targetAgent = "transfer_to_roadmap_agent";
-      else if (isOkr) targetAgent = "transfer_to_okr_agent";
+      if (authorizedDomains.length === 1 && authorizedDomains[0] !== 'rag') {
+        const domain = authorizedDomains[0];
+        targetAgent = `transfer_to_${domain}_agent`;
+      } else {
+        const isDora = text.includes("dora") || text.includes("lead time") || text.includes("mttr") || text.includes("deployment frequency");
+        const isDelivery = text.includes("delivery") || text.includes("wip") || text.includes("throughput") || text.includes("cycle time");
+        const isSbi = text.includes("sbi") || text.includes("feedback") || text.includes("coaching") || text.includes("situation");
+        const isPeople = text.includes("people") || text.includes("career") || text.includes("burnout") || text.includes("1-on-1") || text.includes("1:1") || text.includes("agenda") || text.includes("promotion") || text.includes("growth");
+        const isSprint = text.includes("sprint plan") || text.includes("velocity") || text.includes("capacity");
+        const isRetro = text.includes("retro") || text.includes("retrospective") || text.includes("action items");
+        const isSop = text.includes("sop") || text.includes("adr") || text.includes("compliance") || text.includes("guidelines");
+        const isRoadmap = text.includes("roadmap") || text.includes("milestone") || text.includes("drift");
+        const isOkr = text.includes("okr") || text.includes("kpi") || text.includes("key result");
+        const isGithub = text.includes("github") || text.includes("issue") || text.includes("repo") || text.includes("pr") || text.includes("bug");
+        const isJira = text.includes("jira") || text.includes("blocker");
+
+        if (isDora) targetAgent = "transfer_to_dora_agent";
+        else if (isDelivery || isGithub || isJira) targetAgent = "transfer_to_delivery_agent";
+        else if (isSbi) targetAgent = "transfer_to_sbi_agent";
+        else if (isPeople) targetAgent = "transfer_to_people_agent";
+        else if (isSprint) targetAgent = "transfer_to_sprint_agent";
+        else if (isRetro) targetAgent = "transfer_to_retro_agent";
+        else if (isSop) targetAgent = "transfer_to_sop_agent";
+        else if (isRoadmap) targetAgent = "transfer_to_roadmap_agent";
+        else if (isOkr) targetAgent = "transfer_to_okr_agent";
+      }
 
       if (targetAgent) {
         info(`Supervisor fallback handoff: Local LLM omitted handoff call, dispatching to ${targetAgent}.`);
@@ -457,6 +475,7 @@ export async function executeAgentQuery(query, options = {}) {
       ],
       routingPlan: routingPlan || null,
       evidence: {},
+      contextEntities: options.entities || {},
     };
 
     const runId = threadId || `thread_${Date.now()}`;

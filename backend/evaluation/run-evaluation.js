@@ -7,6 +7,8 @@ import { getRuntimeConfig } from '../src/config.js';
 import { MultiAgentTrajectoryStrategy } from './evaluators/multi-agent-eval.js';
 import { RAGPipelineStrategy } from './evaluators/rag-eval.js';
 import { PreLLMProcessorChain } from './evaluators/pre-llm-eval.js';
+import { ContextualResolutionStrategy } from './evaluators/context-eval.js';
+import preRouterRewriter from '../src/services/preRouterRewriter.js';
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
@@ -26,7 +28,7 @@ class GoldenDatasetRepository {
 
 /**
  * Composite Evaluation Runner
- * Executes evaluation strategies (Multi-Agent Trajectory, RAG, Pre-LLM SLA) using hermes3:8b.
+ * Executes evaluation strategies (Multi-Agent Trajectory, RAG, Context Resolution, Pre-LLM SLA) using hermes3:8b.
  */
 async function runEvaluation() {
   console.log('🧪 Initializing Evaluation Suite (Model: hermes3:8b)...');
@@ -58,27 +60,39 @@ async function runEvaluation() {
   const trajectoryStrategy = new MultiAgentTrajectoryStrategy();
   const ragStrategy = new RAGPipelineStrategy();
   const preLlmChain = new PreLLMProcessorChain();
+  const contextStrategy = new ContextualResolutionStrategy();
 
   const trajectoryResults = [];
   const ragResults = [];
   const slaResults = [];
+  const contextResults = [];
 
   console.log(`📋 Running evaluation across ${totalPrompts} benchmark items...\n`);
 
   for (const testCase of dataset) {
     try {
+      const rawQuery = testCase.user_query || testCase.prompt;
+      const { rewrittenQuery, wasRewritten } = preRouterRewriter.resolveQuery(rawQuery, testCase.conversation_history || []);
+      const queryToRoute = wasRewritten ? rewrittenQuery : rawQuery;
+
       // 1. Evaluate Multi-Agent Trajectory Strategy
-      const plan = await router.invoke({ query: testCase.user_query || testCase.prompt });
+      const plan = await router.invoke({ query: queryToRoute });
       const trajEval = await trajectoryStrategy.evaluate(testCase, plan);
       trajectoryResults.push(trajEval);
 
-      // 2. Evaluate RAG Pipeline Strategy if appropriate
+      // 2. Evaluate Multi-Turn Context & Memory Strategy
+      if (testCase.domain_category === 'multi_turn_context') {
+        const contextEval = await contextStrategy.evaluate(testCase, plan);
+        contextResults.push(contextEval);
+      }
+
+      // 3. Evaluate RAG Pipeline Strategy if appropriate
       if (testCase.is_rag_appropriate || testCase.domain_category === 'rag_sop') {
         const ragEval = await ragStrategy.evaluate(testCase, testCase.ground_truth_answer || '### 📄 Executive Summary\nSample response');
         ragResults.push(ragEval);
       }
 
-      // 3. Evaluate Fast-Path Latency SLA Strategy
+      // 4. Evaluate Fast-Path Latency SLA Strategy
       if (testCase.domain_category === 'fast_path_edge') {
         const slaEval = await preLlmChain.evaluateFastPathSLA((q) => router.invoke({ query: q }), testCase);
         slaResults.push(slaEval);
@@ -105,15 +119,18 @@ async function runEvaluation() {
   // Aggregate metrics across strategies
   const trajAgg = trajectoryStrategy.aggregate(trajectoryResults);
   const ragAgg = ragStrategy.aggregate(ragResults);
+  const contextAgg = contextStrategy.aggregate(contextResults);
 
   const domainSelectionAccuracy = trajAgg.domainSelectionAccuracy;
   const unwantedRagRate = trajAgg.unwantedRagRate;
   const toolGroundedRate = trajAgg.toolGroundedRate;
+  const coreferenceRate = contextAgg.coreferenceResolutionRate;
 
   const gateResults = {
     domainSelectionAccuracy: domainSelectionAccuracy >= (gates.domainSelectionAccuracyMin ?? 0.90),
     unwantedRagRate: unwantedRagRate <= (gates.unwantedRagRateMax ?? 0.05),
     toolGroundedRate: toolGroundedRate >= (gates.toolGroundedRateMin ?? 0.95),
+    coreferenceRate: contextResults.length === 0 || coreferenceRate >= 0.85,
   };
 
   const allPassed = Object.values(gateResults).every(Boolean);
@@ -132,6 +149,9 @@ async function runEvaluation() {
   console.log(`  - Domain Selection Accuracy (>= 90%): ${(domainSelectionAccuracy * 100).toFixed(2)}% [${gateResults.domainSelectionAccuracy ? 'PASS' : 'FAIL'}]`);
   console.log(`  - Unwanted RAG Rate (<= 5%): ${(unwantedRagRate * 100).toFixed(2)}% [${gateResults.unwantedRagRate ? 'PASS' : 'FAIL'}]`);
   console.log(`  - Tool Grounded Rate (>= 95%): ${(toolGroundedRate * 100).toFixed(2)}% [${gateResults.toolGroundedRate ? 'PASS' : 'FAIL'}]`);
+  if (contextResults.length > 0) {
+    console.log(`  - Coreference Resolution Rate (>= 85%): ${(coreferenceRate * 100).toFixed(2)}% [${gateResults.coreferenceRate ? 'PASS' : 'FAIL'}]`);
+  }
 
   // Persist latest evaluated composite metrics for Admin Portal & CI
   try {
@@ -147,6 +167,7 @@ async function runEvaluation() {
       domain_selection_accuracy: domainSelectionAccuracy,
       unwanted_rag_rate: unwantedRagRate,
       tool_grounded_rate: toolGroundedRate,
+      coreference_resolution_rate: coreferenceRate,
       fast_path_latency_ms: slaResults.length > 0 ? Math.round(slaResults[0].latency_ms || 185) : 185,
       rag_faithfulness: ragResults.length > 0 ? (ragResults[0].faithfulness || 0.95) : 0.95,
       status: allPassed ? 'PASS' : 'FAIL',

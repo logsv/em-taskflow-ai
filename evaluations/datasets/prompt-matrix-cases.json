@@ -1,0 +1,72 @@
+[
+  {
+    "id": "PM-001",
+    "domain": "dora",
+    "prompt": "Calculate our team's deployment frequency and change failure rate for the last 30 days.",
+    "expected_tool": "calculate_dora_metrics",
+    "must_contain": ["Deployment Frequency", "Change Failure Rate"]
+  },
+  {
+    "id": "PM-002",
+    "domain": "delivery",
+    "prompt": "Which pull requests are currently blocked or exceeding our 48-hour cycle time threshold?",
+    "expected_tool": "analyze_delivery_bottlenecks",
+    "must_contain": ["Cycle Time", "Bottleneck"]
+  },
+  {
+    "id": "PM-003",
+    "domain": "sbi",
+    "prompt": "Draft constructive SBI feedback for an engineer who missed deployment deadlines twice this sprint without communication.",
+    "expected_tool": "format_sbi_feedback",
+    "must_contain": ["Situation", "Behavior", "Impact"]
+  },
+  {
+    "id": "PM-004",
+    "domain": "people",
+    "prompt": "Generate a 1-on-1 career growth and skills radar for Alex Williams based on recent PR velocity.",
+    "expected_tool": "analyze_personnel_growth",
+    "must_contain": ["Skills Radar", "Growth"]
+  },
+  {
+    "id": "PM-005",
+    "domain": "sprint",
+    "prompt": "Calculate our sprint plan capacity given a team of 5 engineers with 1 on vacation.",
+    "expected_tool": "calculate_sprint_plan",
+    "must_contain": ["Velocity", "Capacity"]
+  },
+  {
+    "id": "PM-006",
+    "domain": "retro",
+    "prompt": "Generate a sprint retrospective summary highlighting what went well and action items.",
+    "expected_tool": "generate_sprint_retro",
+    "must_contain": ["Retrospective", "Action Items"]
+  },
+  {
+    "id": "PM-007",
+    "domain": "roadmap",
+    "prompt": "Check alignment between Q3 roadmap milestones and current sprint commitments.",
+    "expected_tool": "get_roadmap_alignment",
+    "must_contain": ["Roadmap", "Milestone"]
+  },
+  {
+    "id": "PM-008",
+    "domain": "okr",
+    "prompt": "Evaluate our OKR progress for Objective: Improve Service Reliability to 99.9%.",
+    "expected_tool": "evaluate_okr_progress",
+    "must_contain": ["Key Result", "Progress"]
+  },
+  {
+    "id": "PM-009",
+    "domain": "sop",
+    "prompt": "What is the engineering escalation protocol for P0 production incidents?",
+    "expected_tool": "query_sop_compliance",
+    "must_contain": ["Incident", "Escalation"]
+  },
+  {
+    "id": "PM-010",
+    "domain": "rag",
+    "prompt": "Summarize the key architectural guidelines and performance rubrics from our uploaded technical specs.",
+    "expected_tool": "rag_search",
+    "must_contain": ["Executive Summary", "Guidelines"]
+  }
+]

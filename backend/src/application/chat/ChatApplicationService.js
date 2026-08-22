@@ -10,6 +10,9 @@ import {
   getGithubOAuthStatus,
 } from '../../mcp/githubOAuth.js';
 
+import preRouterRewriter from '../../services/preRouterRewriter.js';
+import episodicMemoryService from '../../services/episodicMemory.js';
+
 export class ChatApplicationService {
   constructor({
     threadRepo = null,
@@ -62,13 +65,22 @@ export class ChatApplicationService {
       : [];
     const historyContext = optimizeChatHistory(existingMessages, 8);
 
-    const result = await this.agentService.processQuery(query, {
+    // Tier 1: Non-invasive Coreference & Follow-Up Context Resolution
+    const { rewrittenQuery, wasRewritten, entities: extractedEntities } = preRouterRewriter.resolveQuery(query, existingMessages);
+    const queryToProcess = wasRewritten ? rewrittenQuery : query;
+
+    // Tier 4: Episodic Memory Retrieval for past references outside active window
+    const episodicPastContext = await episodicMemoryService.retrieveRelevantPastContext(queryToProcess, ensuredThread?.id, 2).catch(() => []);
+
+    const result = await this.agentService.processQuery(queryToProcess, {
       threadId: ensuredThread.id,
       sessionId: sessionContext?.sessionId || null,
       userId: sessionContext?.userId || 'user_logsv',
       ragMode,
       attachments: normalizedAttachments,
       history: historyContext,
+      entities: extractedEntities,
+      episodicContext: episodicPastContext,
     });
 
     const decision = result.meta?.decision || {};

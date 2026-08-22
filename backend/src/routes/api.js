@@ -50,15 +50,62 @@ router.get('/health', async (req, res) => {
 
 router.get('/session', attachSessionContext, async (req, res) => {
   try {
+    const threadId = req.sessionContext?.threadId;
+    const messages = threadId ? await databaseService.getThreadMessages(threadId, 100).catch(() => []) : [];
     res.json({
       sessionId: req.sessionContext.sessionId,
       threadId: req.sessionContext.threadId,
       created: !!req.sessionContext.created,
+      messages: Array.isArray(messages) ? messages : [],
       requestId: req.requestId,
     });
   } catch (error) {
     res.status(500).json({
       error: 'Failed to resolve session',
+      details: error.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+router.post('/threads', attachSessionContext, async (req, res) => {
+  try {
+    const title = req.body?.title || 'New Chat';
+    const sessionId = req.sessionContext?.sessionId || null;
+    const newThread = await databaseService.createThreadForSession(sessionId, title);
+    if (sessionId && newThread?.id) {
+      await databaseService.setActiveThread(sessionId, newThread.id).catch(() => {});
+    }
+    res.status(201).json({
+      success: true,
+      threadId: newThread.id,
+      title: newThread.title,
+      sessionId,
+      requestId: req.requestId,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to create thread',
+      details: error.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+router.get('/threads/:threadId/messages', attachSessionContext, async (req, res) => {
+  try {
+    const threadId = req.params.threadId;
+    const limit = Number(req.query.limit) || 100;
+    const messages = await databaseService.getThreadMessages(threadId, limit).catch(() => []);
+    res.json({
+      threadId,
+      messages: Array.isArray(messages) ? messages : [],
+      count: messages.length,
+      requestId: req.requestId,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch thread messages',
       details: error.message,
       requestId: req.requestId,
     });

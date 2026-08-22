@@ -19,11 +19,10 @@ with workflow.unsafe.imports_passed_through():
         extract_docx_activity,
         extract_image_context_activity,
         extract_text_fallback_activity,
-        execute_trulens_rag_triad_sweep_activity,
         fetch_evaluation_queries_activity,
         evaluate_single_rag_triad_query_activity,
-        sync_trulens_leaderboard_activity,
-        evaluate_ingested_document_trulens_activity,
+        evaluate_prompt_batch_activity,
+        sync_evaluation_leaderboard_activity,
         run_ragas_evaluation_activity,
         run_pairwise_arena_activity,
         export_benchmark_report_activity,
@@ -75,24 +74,10 @@ class RAGIngestWorkflow:
             retry_policy=retry_policy,
         )
 
-        # Step 4: Non-blocking TruLens Auto-Ingestion RAG Triad Evaluator
-        trulens_eval_res = {}
-        try:
-            trulens_eval_res = await workflow.execute_activity(
-                evaluate_ingested_document_trulens_activity,
-                {"filename": persist_result["filename"]},
-                start_to_close_timeout=timedelta(minutes=3),
-                heartbeat_timeout=timedelta(seconds=45),
-                retry_policy=RetryPolicy(initial_interval=timedelta(seconds=2), maximum_attempts=2),
-            )
-        except Exception:
-            pass
-
         return {
             "status": "completed",
             "filename": persist_result["filename"],
             "total_chunks": persist_result["total_chunks"],
-            "trulens_evaluated": trulens_eval_res.get("success", False),
         }
 
 
@@ -172,8 +157,8 @@ class ChatFileExtractWorkflow:
 
 
 @workflow.defn
-class TruLensBatchEvaluationWorkflow:
-    """Durable Batch TruLens RAG Triad Evaluation Workflow with Granular Step Activities."""
+class PromptEvaluationWorkflow:
+    """Durable Prompt Matrix & RAG Triad Evaluation Workflow with Micro-Batching (5-10 items)."""
 
     def __init__(self):
         self._current_step = "initialized"
@@ -189,8 +174,9 @@ class TruLensBatchEvaluationWorkflow:
 
     @workflow.run
     async def run(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        limit = params.get("limit", 5)
+        limit = params.get("limit", 10)
         model_name = params.get("model_name", "hermes3:8b")
+        batch_size = params.get("batch_size", 5)
 
         retry_policy = RetryPolicy(
             initial_interval=timedelta(seconds=2),
@@ -198,7 +184,7 @@ class TruLensBatchEvaluationWorkflow:
             maximum_attempts=3,
         )
 
-        # Step 1: Discover evaluation queries
+        # Step 1: Fetch evaluation queries
         self._current_step = "fetching_queries"
         fetch_res = await workflow.execute_activity(
             fetch_evaluation_queries_activity,
@@ -209,29 +195,33 @@ class TruLensBatchEvaluationWorkflow:
         queries = fetch_res.get("queries", [])
         total_queries = len(queries)
 
-        # Step 2: Granular per-query evaluation activities
-        self._current_step = "evaluating_queries"
+        # Step 2: Micro-batched evaluation (5-10 items per chunk)
+        self._current_step = "evaluating_micro_batches"
         query_results = []
-        for i, q in enumerate(queries):
-            query_res = await workflow.execute_activity(
-                evaluate_single_rag_triad_query_activity,
+        for i in range(0, total_queries, batch_size):
+            batch_slice = queries[i : i + batch_size]
+            batch_idx = (i // batch_size) + 1
+            total_batches = (total_queries + batch_size - 1) // batch_size
+            
+            batch_res = await workflow.execute_activity(
+                evaluate_prompt_batch_activity,
                 {
-                    "query": q,
-                    "query_index": i + 1,
-                    "total_queries": total_queries,
+                    "queries": batch_slice,
+                    "batch_index": batch_idx,
+                    "total_batches": total_batches,
                     "model_name": model_name,
                 },
                 start_to_close_timeout=timedelta(minutes=5),
                 heartbeat_timeout=timedelta(seconds=60),
                 retry_policy=retry_policy,
             )
-            query_results.append(query_res)
-            self._evaluated_queries.append(query_res)
+            query_results.append(batch_res)
+            self._evaluated_queries.extend(batch_slice)
 
-        # Step 3: Aggregate & Sync Leaderboard
+        # Step 3: Aggregate & Sync Langfuse Leaderboard
         self._current_step = "syncing_leaderboard"
         summary = await workflow.execute_activity(
-            sync_trulens_leaderboard_activity,
+            sync_evaluation_leaderboard_activity,
             {"results": query_results, "model_name": model_name},
             start_to_close_timeout=timedelta(seconds=30),
             retry_policy=retry_policy,
@@ -240,18 +230,22 @@ class TruLensBatchEvaluationWorkflow:
 
         return {
             "status": "SUCCESS",
-            "records_evaluated": len(query_results),
-            "app_id": "em-taskflow-rag-pipeline",
+            "records_evaluated": total_queries,
+            "app_id": "em-taskflow-prompt-eval",
             "model_name": model_name,
-            "feedbacks": ["Context Relevance", "Groundedness", "Answer Relevance"],
+            "feedbacks": ["Faithfulness", "Answer Relevance", "Context Precision", "Context Recall"],
             "summary": summary,
             "results": query_results,
         }
 
 
+# Backward-compatible alias for TruLensBatchEvaluationWorkflow
+TruLensBatchEvaluationWorkflow = PromptEvaluationWorkflow
+
+
 @workflow.defn
 class DeepEvaluationBenchmarkWorkflow:
-    """Durable Multi-Metric Deep Evaluation Benchmark Workflow (Ragas + Granular TruLens + Arena + Langfuse)."""
+    """Durable Multi-Metric Deep Evaluation Benchmark Workflow (Ragas + Pairwise Arena + Langfuse)."""
 
     def __init__(self):
         self._current_phase = "initialized"
@@ -284,48 +278,7 @@ class DeepEvaluationBenchmarkWorkflow:
         )
         self._phase_progress["ragas"] = ragas_scores
 
-        # Phase 2: Granular TruLens RAG Triad Suite
-        self._current_phase = "trulens_rag_triad"
-        trulens_limit = params.get("trulens_limit", 5)
-        fetch_res = await workflow.execute_activity(
-            fetch_evaluation_queries_activity,
-            {"limit": trulens_limit, "include_golden": True},
-            start_to_close_timeout=timedelta(seconds=30),
-            retry_policy=retry_policy,
-        )
-        queries = fetch_res.get("queries", [])
-        total_queries = len(queries)
-        trulens_results = []
-        for i, q in enumerate(queries):
-            q_res = await workflow.execute_activity(
-                evaluate_single_rag_triad_query_activity,
-                {
-                    "query": q,
-                    "query_index": i + 1,
-                    "total_queries": total_queries,
-                    "model_name": model_name,
-                },
-                start_to_close_timeout=timedelta(minutes=5),
-                heartbeat_timeout=timedelta(seconds=60),
-                retry_policy=retry_policy,
-            )
-            trulens_results.append(q_res)
-
-        trulens_summary = await workflow.execute_activity(
-            sync_trulens_leaderboard_activity,
-            {"results": trulens_results, "model_name": model_name},
-            start_to_close_timeout=timedelta(seconds=30),
-            retry_policy=retry_policy,
-        )
-        trulens_res = {
-            "status": "SUCCESS",
-            "records_evaluated": len(trulens_results),
-            "summary": trulens_summary,
-            "results": trulens_results,
-        }
-        self._phase_progress["trulens"] = trulens_res
-
-        # Phase 3: Pairwise Arena Calibration
+        # Phase 2: Pairwise Arena Calibration
         self._current_phase = "pairwise_arena"
         arena_res = await workflow.execute_activity(
             run_pairwise_arena_activity,
@@ -336,14 +289,13 @@ class DeepEvaluationBenchmarkWorkflow:
         )
         self._phase_progress["arena"] = arena_res
 
-        # Phase 4: Report Generation & Telemetry Export
+        # Phase 3: Report Generation & Telemetry Export
         self._current_phase = "report_export"
         report_res = await workflow.execute_activity(
             export_benchmark_report_activity,
             {
                 "model_name": model_name,
                 "ragas_scores": ragas_scores,
-                "trulens_res": trulens_res,
                 "arena_res": arena_res,
             },
             start_to_close_timeout=timedelta(minutes=2),
@@ -355,10 +307,10 @@ class DeepEvaluationBenchmarkWorkflow:
             "status": "COMPLETED",
             "model": model_name,
             "ragas_metrics": ragas_scores,
-            "trulens_status": trulens_res,
             "pairwise_arena": arena_res,
             "report": report_res,
         }
+
 
 
 @workflow.defn
@@ -382,6 +334,7 @@ class TraceReplayWorkflow:
         )
 
         return res
+
 
 
 

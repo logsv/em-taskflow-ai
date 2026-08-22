@@ -4,6 +4,7 @@ import { getChatModel } from '../llm/index.js';
 import { doraAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
+import identityService from '../services/identityService.js';
 
 export const doraMetricsTool = createDeterministicToolHarness({
   name: 'calculate_dora_metrics',
@@ -15,6 +16,7 @@ export const doraMetricsTool = createDeterministicToolHarness({
     mode: z.enum(['ANALYZE', 'LIST_RAW', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
     repo_id: z.string().optional(),
     team_id: z.string().optional(),
+    author: z.string().optional(),
     fetch_fresh_data: z.boolean().default(true),
   }),
   // Tier 1: Model Context Protocol (MCP) tool execution for GitHub Live Events
