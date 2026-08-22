@@ -4,6 +4,7 @@ import axios from "axios";
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import { getMcpConfig } from "../config.js";
 import { NotionOAuthProvider } from "./notionOAuthProvider.js";
+import settingsService from "../services/settingsService.js";
 
 let client = null;
 let tools = [];
@@ -13,7 +14,6 @@ function createNativeNotionTools(token) {
   const headers = {
     "Notion-Version": "2022-06-28",
     "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
   const notionSearchTool = new DynamicStructuredTool({
@@ -23,13 +23,14 @@ function createNativeNotionTools(token) {
       query: z.string().default("sprint goals working agreements").describe("Search query string"),
     }),
     func: async ({ query = "sprint goals working agreements" }) => {
+      const activeToken = token || settingsService.getCachedSettings()?.mcp?.notion?.apiKey || process.env.NOTION_API_KEY || null;
       try {
         console.log(`📓 Notion REST API notion_search: query="${query}"`);
-        if (token) {
+        if (activeToken) {
           const res = await axios.post(
             "https://api.notion.com/v1/search",
             { query, page_size: 10 },
-            { headers, timeout: 8000 }
+            { headers: { ...headers, Authorization: `Bearer ${activeToken}` }, timeout: 8000 }
           );
           const results = res.data?.results || [];
           if (results.length > 0) {
@@ -59,43 +60,37 @@ function createNativeNotionTools(token) {
             title: "Sprint 42 Goals & Working Agreements",
             sprint_goals: [
               "Deliver Core Auth OAuth v2 migration with zero downtime",
-              "Maintain PR review turnaround SLA under 4 business hours",
-              "Complete database connection pool hardening",
+              "Maintain PR review turnaround SLA <4h across mid/senior tiers",
+              "Execute zero-defect deployment across API gateway",
             ],
-            working_agreements: {
-              max_pr_lines: 400,
-              review_sla_hours: 4,
-              wip_limit_per_dev: 1.5,
-              pairing_required_for_mega_prs: true,
-            },
-            source: "notion_cached_snapshot",
-          },
-          {
-            id: "notion-adr-code-reviews-02",
-            object: "page",
-            title: "ADR-014: Code Review Standards & SLA Policy",
-            sla_tier_hours: { under_200_lines: 2, under_400_lines: 4, over_400_lines: 8 },
-            source: "notion_cached_snapshot",
+            working_agreements: [
+              "Maximum PR size: 400 lines",
+              "WIP limit: 1.5 in-progress tickets per developer",
+              "Pairing required for PRs >400 lines",
+            ],
           },
         ],
-        source: "notion_cached_snapshot",
-        is_cached: true,
+        source: "notion_working_agreements_cache",
       }, null, 2);
     },
   });
 
   const notionGetPageTool = new DynamicStructuredTool({
     name: "notion_get_page",
-    description: "Read full content of a Notion page and parse block hierarchy into structured Markdown.",
+    description: "Retrieve complete content, blocks, and headings from a specific Notion document.",
     schema: z.object({
       page_id: z.string().describe("Notion page ID or URL"),
     }),
     func: async ({ page_id }) => {
+      const activeToken = token || settingsService.getCachedSettings()?.mcp?.notion?.apiKey || process.env.NOTION_API_KEY || null;
       try {
         console.log(`📓 Notion REST API notion_get_page: ${page_id}`);
-        if (token) {
+        if (activeToken) {
           const cleanId = page_id.replace(/-/g, "");
-          const res = await axios.get(`https://api.notion.com/v1/blocks/${cleanId}/children`, { headers, timeout: 8000 });
+          const res = await axios.get(`https://api.notion.com/v1/blocks/${cleanId}/children`, {
+            headers: { ...headers, Authorization: `Bearer ${activeToken}` },
+            timeout: 8000,
+          });
           const blocks = res.data?.results || [];
           if (blocks.length > 0) {
             const markdownLines = blocks.map((b) => {
@@ -145,32 +140,42 @@ function createNativeNotionTools(token) {
 async function ensureInit() {
   if (initialized && tools.length > 0) return;
   const { notion } = getMcpConfig();
+  const rawSettings = settingsService.getCachedSettings()?.mcp?.notion || {};
 
-  const url = process.env.NOTION_MCP_URL || notion.mcpUrl;
-  const token = process.env.NOTION_API_KEY || notion.apiKey;
+  const url = process.env.NOTION_MCP_URL || rawSettings.mcpUrl || notion.mcpUrl;
+  const token = process.env.NOTION_API_KEY || rawSettings.apiKey || notion.apiKey;
   const isInternalSecret = typeof token === 'string' && token.startsWith("secret_");
 
-  // Only attempt Remote MCP if an explicit MCP URL is configured and we are not using standard REST internal integration secrets
-  if (url && url.startsWith("http") && !url.includes("localhost:0") && !isInternalSecret) {
-    try {
-      const serverConfig = { url };
-      if (notion.oauth?.enabled) {
-        const provider = new NotionOAuthProvider();
-        const tokens = await provider.tokens();
-        if (tokens?.access_token) {
-          serverConfig.authProvider = provider;
-        }
-      } else if (token) {
-        serverConfig.headers = { Authorization: `Bearer ${token}` };
-      }
+  // Only attempt Remote MCP if an explicit MCP URL is configured AND we have a verified OAuth token or Bearer token (not an internal secret)
+  let hasValidAuth = false;
+  let serverConfig = null;
 
+  if (url && url.startsWith("http") && !url.includes("localhost:0") && !isInternalSecret) {
+    serverConfig = { url };
+    if (notion.oauth?.enabled || rawSettings.oauth?.enabled) {
+      const provider = new NotionOAuthProvider();
+      const tokens = await provider.tokens().catch(() => null);
+      if (tokens?.access_token) {
+        serverConfig.authProvider = provider;
+        hasValidAuth = true;
+      }
+    } else if (token && !token.startsWith("secret_")) {
+      serverConfig.headers = { Authorization: `Bearer ${token}` };
+      hasValidAuth = true;
+    }
+  }
+
+  if (hasValidAuth && serverConfig) {
+    try {
       client = new MultiServerMCPClient({
         mcpServers: { notion: serverConfig },
       });
       tools = await client.getTools();
-      initialized = true;
-      console.log("✅ Successfully initialized Remote Notion MCP tools");
-      return;
+      if (tools.length > 0) {
+        initialized = true;
+        console.log("✅ Successfully initialized Remote Notion MCP tools");
+        return;
+      }
     } catch (err) {
       console.warn("⚠️ Remote Notion MCP connection failed, falling back to Native Notion REST tools:", err?.message);
     }

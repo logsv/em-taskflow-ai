@@ -473,7 +473,9 @@ function Chat({
       <div className="chat-messages">
         {messages.map((msg, idx) => {
           const role = msg.role;
-          const textContent = msg.content.map(c => c.text || '').join('\n');
+          const textContent = Array.isArray(msg.content)
+            ? msg.content.map(c => (typeof c === 'string' ? c : c?.text || '')).join('\n')
+            : (typeof msg.content === 'string' ? msg.content : (msg.content?.text || ''));
           const sources = sourcesMap[idx] || [];
           
           const isLastMessage = idx === messages.length - 1;
@@ -486,7 +488,7 @@ function Chat({
           }
           
           return (
-            <div key={idx} className={`message-wrapper ${role}`}>
+            <div key={msg.id || idx} className={`message-wrapper ${role}`}>
               <div className="message-content">
                 <div className="message-avatar">
                   {role === 'user' ? '👤' : role === 'assistant' ? '🤖' : '⚙️'}

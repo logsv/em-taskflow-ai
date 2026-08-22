@@ -350,6 +350,196 @@ class DatabaseService {
     );
   }
 
+  async listSessions({ limit = 10, page = 1, offset = null } = {}) {
+    await this.ensureInitialized();
+    const safeLimit = Math.max(1, Math.min(50, Number(limit) || 10));
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeOffset = offset != null ? Math.max(0, Number(offset)) : (safePage - 1) * safeLimit;
+
+    if (!this.pool) {
+      const allSessions = Array.from(inMemorySessions.values()).sort(
+        (a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)
+      );
+      const total = allSessions.length;
+      const sliced = allSessions.slice(safeOffset, safeOffset + safeLimit);
+      return {
+        sessions: sliced.map((s) => ({
+          id: s.id,
+          active_thread_id: s.active_thread_id,
+          active_thread_title: 'New Chat',
+          created_at: s.created_at,
+          updated_at: s.updated_at,
+          last_active_at: s.last_active_at || s.updated_at || s.created_at,
+          thread_count: Array.from(inMemoryThreads.values()).filter((t) => t.session_id === s.id).length,
+          last_message: null,
+        })),
+        pagination: {
+          total,
+          page: safePage,
+          limit: safeLimit,
+          totalPages: Math.ceil(total / safeLimit) || 1,
+          hasNext: safeOffset + safeLimit < total,
+          hasPrev: safePage > 1,
+        },
+      };
+    }
+
+    try {
+      const result = await this.pool.query(
+        `
+          WITH session_agg AS (
+            SELECT
+              s.id,
+              s.active_thread_id,
+              s.client_info,
+              s.created_at,
+              s.updated_at,
+              s.last_active_at,
+              COUNT(t.id)::int AS thread_count,
+              (
+                SELECT m.content
+                FROM chat_messages m
+                JOIN chat_threads ct ON m.thread_id = ct.id
+                WHERE ct.session_id = s.id
+                ORDER BY m.created_at DESC
+                LIMIT 1
+              ) AS last_message,
+              (
+                SELECT ct.title
+                FROM chat_threads ct
+                WHERE ct.id = s.active_thread_id
+                LIMIT 1
+              ) AS active_thread_title,
+              COUNT(*) OVER() AS full_count
+            FROM sessions s
+            LEFT JOIN chat_threads t ON t.session_id = s.id
+            GROUP BY s.id
+            ORDER BY COALESCE(s.last_active_at, s.updated_at, s.created_at) DESC
+            LIMIT $1 OFFSET $2
+          )
+          SELECT * FROM session_agg
+        `,
+        [safeLimit, safeOffset],
+      );
+
+      const total = result.rows.length > 0 ? Number(result.rows[0].full_count) : 0;
+      const sessions = result.rows.map((row) => ({
+        id: row.id,
+        active_thread_id: row.active_thread_id,
+        active_thread_title: row.active_thread_title || 'New Chat',
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        last_active_at: row.last_active_at || row.updated_at || row.created_at,
+        thread_count: Number(row.thread_count) || 0,
+        last_message: row.last_message || null,
+      }));
+
+      return {
+        sessions,
+        pagination: {
+          total,
+          page: safePage,
+          limit: safeLimit,
+          totalPages: Math.ceil(total / safeLimit) || 1,
+          hasNext: safeOffset + safeLimit < total,
+          hasPrev: safePage > 1,
+        },
+      };
+    } catch (err) {
+      warn('PostgreSQL listSessions failed, using fallback', { err: err.message });
+      return {
+        sessions: [],
+        pagination: { total: 0, page: safePage, limit: safeLimit, totalPages: 1, hasNext: false, hasPrev: false },
+      };
+    }
+  }
+
+  async listThreadsForSession(sessionId, { limit = 10, page = 1, offset = null } = {}) {
+    await this.ensureInitialized();
+    const safeLimit = Math.max(1, Math.min(50, Number(limit) || 10));
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeOffset = offset != null ? Math.max(0, Number(offset)) : (safePage - 1) * safeLimit;
+
+    if (!this.pool) {
+      const allThreads = Array.from(inMemoryThreads.values())
+        .filter((t) => !sessionId || t.session_id === sessionId)
+        .sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
+      const total = allThreads.length;
+      const sliced = allThreads.slice(safeOffset, safeOffset + safeLimit);
+      return {
+        threads: sliced,
+        pagination: {
+          total,
+          page: safePage,
+          limit: safeLimit,
+          totalPages: Math.ceil(total / safeLimit) || 1,
+          hasNext: safeOffset + safeLimit < total,
+          hasPrev: safePage > 1,
+        },
+      };
+    }
+
+    try {
+      const result = await this.pool.query(
+        `
+          SELECT
+            t.id,
+            t.session_id,
+            t.title,
+            t.created_at,
+            t.updated_at,
+            (
+              SELECT m.content
+              FROM chat_messages m
+              WHERE m.thread_id = t.id
+              ORDER BY m.created_at DESC
+              LIMIT 1
+            ) AS last_message,
+            (
+              SELECT COUNT(*)::int
+              FROM chat_messages m
+              WHERE m.thread_id = t.id
+            ) AS message_count,
+            COUNT(*) OVER() AS full_count
+          FROM chat_threads t
+          WHERE t.session_id = $1 OR ($1 IS NULL AND t.session_id IS NULL)
+          ORDER BY t.updated_at DESC
+          LIMIT $2 OFFSET $3
+        `,
+        [sessionId, safeLimit, safeOffset],
+      );
+
+      const total = result.rows.length > 0 ? Number(result.rows[0].full_count) : 0;
+      const threads = result.rows.map((row) => ({
+        id: row.id,
+        session_id: row.session_id,
+        title: row.title,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        last_message: row.last_message || null,
+        message_count: Number(row.message_count) || 0,
+      }));
+
+      return {
+        threads,
+        pagination: {
+          total,
+          page: safePage,
+          limit: safeLimit,
+          totalPages: Math.ceil(total / safeLimit) || 1,
+          hasNext: safeOffset + safeLimit < total,
+          hasPrev: safePage > 1,
+        },
+      };
+    } catch (err) {
+      warn('PostgreSQL listThreadsForSession failed, using fallback', { err: err.message });
+      return {
+        threads: [],
+        pagination: { total: 0, page: safePage, limit: safeLimit, totalPages: 1, hasNext: false, hasPrev: false },
+      };
+    }
+  }
+
   async purgeInactiveSessions(ttlDays = 7, batchSize = 500) {
     await this.ensureInitialized();
     const effectiveTtl = Math.max(1, Number(ttlDays) || 7);

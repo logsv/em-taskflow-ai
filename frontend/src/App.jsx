@@ -110,7 +110,9 @@ function App() {
       }
       setSourcesMap({});
       setTraceMap({});
-      window.location.href = '/';
+      if (typeof runtime?.thread?.reset === 'function') {
+        runtime.thread.reset([]);
+      }
     } catch (err) {
       window.location.reload();
     }
@@ -133,17 +135,15 @@ function App() {
         if (Array.isArray(data?.messages) && data.messages.length > 0) {
           const newSourcesMap = {};
           const newTraceMap = {};
+          const threadMessages = [];
 
           data.messages.forEach((msg, index) => {
             const role = msg.role === 'user' ? 'user' : msg.role === 'assistant' ? 'assistant' : 'system';
-            try {
-              runtime.thread.append({
-                role,
-                content: [{ type: 'text', text: msg.content || '' }],
-              });
-            } catch (e) {
-              // Ignore append issues
-            }
+            threadMessages.push({
+              id: msg.id || `msg_${index}`,
+              role,
+              content: [{ type: 'text', text: msg.content || '' }],
+            });
 
             if (msg.citations && Array.isArray(msg.citations) && msg.citations.length > 0) {
               newSourcesMap[index] = msg.citations;
@@ -156,12 +156,9 @@ function App() {
             }
           });
 
-          if (Object.keys(newSourcesMap).length > 0) {
-            setSourcesMap(newSourcesMap);
-          }
-          if (Object.keys(newTraceMap).length > 0) {
-            setTraceMap(newTraceMap);
-          }
+          runtime.thread.reset(threadMessages);
+          setSourcesMap(newSourcesMap);
+          setTraceMap(newTraceMap);
         }
       } catch (error) {
         logger.error('Failed to fetch session', { error: error.message });
