@@ -9,6 +9,7 @@ import { deliveryBottlenecksTool } from "../agent/deliveryAgent.js";
 import { sbiFeedbackTool } from "../agent/sbiAgent.js";
 import { peopleGrowthTool } from "../agent/peopleAgent.js";
 import { sprintPlanTool } from "../agent/sprintAgent.js";
+import { sprintRetroTool } from "../agent/retroAgent.js";
 import { buildEmResponse } from "../utils/responseFormatter.js";
 import { getTracerCallbacks, createEndToEndTrace, createSpan } from "../utils/tracer.js";
 import { info, warn, error } from "../utils/logger.js";
@@ -426,6 +427,7 @@ export class LangGraphAgentService {
       },
       people: { tool: peopleGrowthTool, input: { mode: "ANALYZE", engineer_id: String(query || "") } },
       sprint: { tool: sprintPlanTool, input: {} },
+      retro: { tool: sprintRetroTool, input: { mode: "ANALYZE" } },
     };
     const recoverable = domains.filter((domain) => recoveryTools[domain]);
     if (recoverable.length === 0) return null;

@@ -83,7 +83,59 @@ describe('Phase 5 Planning & Strategy Agents Specs: Sprint, Retro, Roadmap, OKR'
       expect(res.status).toBe('SUCCESS');
       expect(res.name).toBe('generate_sprint_retro');
       expect(Array.isArray(res.data.what_went_well)).toBe(true);
+      expect(Array.isArray(res.data.what_needs_improvement)).toBe(true);
+      expect(Array.isArray(res.data.recurring_patterns)).toBe(true);
       expect(Array.isArray(res.data.extracted_action_items)).toBe(true);
+      expect(res.data.extracted_action_items.length).toBeGreaterThanOrEqual(2);
+      expect(res.data.summary).toContain('Sprint Achievements & Team Kudos');
+    });
+
+    it('should parse custom raw retro notes into wins and friction', async () => {
+      const res = await sprintRetroTool.invoke({
+        sprint_id: 'sprint_102',
+        retro_notes: '- Great kudos to team on zero-downtime deployment\n- Flaky auth integration tests blocked our releases',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      expect(res.data.what_went_well.some((w) => w.includes('zero-downtime'))).toBe(true);
+      expect(res.data.what_needs_improvement.some((f) => f.includes('Flaky auth integration tests'))).toBe(true);
+    });
+
+    it('should formulate SMART action items with real team owners', async () => {
+      const res = await sprintRetroTool.invoke({
+        sprint_id: 'sprint_103',
+        mode: 'ANALYZE',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      const items = res.data.extracted_action_items;
+      expect(items.length).toBeGreaterThanOrEqual(3);
+      items.forEach((item) => {
+        expect(item.task).toBeDefined();
+        expect(item.owner).toBeDefined();
+        expect(item.success_metric).toBeDefined();
+        expect(item.target_sprint).toBeDefined();
+      });
+    });
+
+    it('should support LIST_RAW mode for action items', async () => {
+      const res = await sprintRetroTool.invoke({
+        sprint_id: 'sprint_104',
+        mode: 'LIST_RAW',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      expect(res.data.mode).toBe('LIST_RAW');
+      expect(Array.isArray(res.data.items)).toBe(true);
+      expect(res.data.total_items).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should fall back to PostgreSQL database when external MCPs time out', async () => {
+      const fallback = await sprintRetroTool.dbCacheFallback('postgres_retro', { sprint_id: 'sprint_fallback' });
+      expect(fallback.sprint_id).toBe('sprint_fallback');
+      expect(Array.isArray(fallback.past_retro_items)).toBe(true);
+      expect(fallback.is_cached).toBe(true);
+      expect(fallback.data_source).toBe('postgres_sprint_analytics');
     });
 
     it('should create retroAgent safely', () => {
