@@ -8,11 +8,13 @@ export class SessionApplicationService {
     this.sessionRepo = sessionRepo || createSessionRepoAdapter(dbService);
   }
 
-  async resolveSession({ headers = {}, ip = null, protocol = 'http', secure = false, socket = null }) {
+  async resolveSession({ headers = {}, query = {}, ip = null, protocol = 'http', secure = false, socket = null }) {
     const cookies = parseCookies(headers.cookie);
     const cookieSessionId = cookies[SESSION_COOKIE_NAME] || null;
     const headerSessionId = getHeaderSessionId(headers['x-session-id']);
-    const requestedSessionId = cookieSessionId || headerSessionId || null;
+    const querySessionId = query?.sessionId || query?.session || null;
+    const queryThreadId = query?.threadId || query?.thread || null;
+    const requestedSessionId = querySessionId || headerSessionId || cookieSessionId || null;
     const clientInfo = {
       ip: ip || socket?.remoteAddress || null,
       userAgent: typeof headers['user-agent'] === 'string' ? headers['user-agent'] : null,
@@ -32,7 +34,22 @@ export class SessionApplicationService {
       await this.sessionRepo.touchSession(session.id);
     }
 
-    const thread = await this.sessionRepo.getOrCreateActiveThread(session.id);
+    let thread = null;
+    if (queryThreadId && typeof this.sessionRepo.ensureThread === 'function') {
+      try {
+        thread = await this.sessionRepo.ensureThread(queryThreadId, 'Chat', session.id);
+        if (session.id && thread?.id && typeof this.sessionRepo.setActiveThread === 'function') {
+          await this.sessionRepo.setActiveThread(session.id, thread.id).catch(() => {});
+        }
+      } catch (e) {
+        // Fallback to active thread
+      }
+    }
+
+    if (!thread) {
+      thread = await this.sessionRepo.getOrCreateActiveThread(session.id);
+    }
+
     const cookieValue =
       cookieSessionId !== session.id
         ? buildSessionCookie(session.id, secure || protocol === 'https')
@@ -60,6 +77,8 @@ function createSessionRepoAdapter(dbService) {
     createSession: (...args) => dbService.createSession(...args),
     touchSession: (...args) => dbService.touchSession(...args),
     getOrCreateActiveThread: (...args) => dbService.getOrCreateActiveThread(...args),
+    ensureThread: (...args) => dbService.ensureThread(...args),
+    setActiveThread: (...args) => dbService.setActiveThread(...args),
   };
 }
 

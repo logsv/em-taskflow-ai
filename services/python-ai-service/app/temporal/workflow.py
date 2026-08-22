@@ -239,8 +239,86 @@ class PromptEvaluationWorkflow:
         }
 
 
-# Backward-compatible alias for TruLensBatchEvaluationWorkflow
-TruLensBatchEvaluationWorkflow = PromptEvaluationWorkflow
+
+@workflow.defn(name="TruLensBatchEvaluationWorkflow")
+class TruLensBatchEvaluationWorkflow:
+    """Backward-compatible TruLens Batch Evaluation Workflow (delegates to PromptEvaluation logic)."""
+
+    def __init__(self):
+        self._current_step = "initialized"
+        self._evaluated_queries = []
+
+    @workflow.query
+    def get_status(self) -> Dict[str, Any]:
+        return {
+            "current_step": self._current_step,
+            "evaluated_count": len(self._evaluated_queries),
+            "records": self._evaluated_queries,
+        }
+
+    @workflow.run
+    async def run(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        limit = params.get("limit", 10)
+        model_name = params.get("model_name", "hermes3:8b")
+        batch_size = params.get("batch_size", 5)
+
+        retry_policy = RetryPolicy(
+            initial_interval=timedelta(seconds=2),
+            maximum_interval=timedelta(seconds=15),
+            maximum_attempts=3,
+        )
+
+        self._current_step = "fetching_queries"
+        fetch_res = await workflow.execute_activity(
+            fetch_evaluation_queries_activity,
+            {"limit": limit, "include_golden": params.get("include_golden", True)},
+            start_to_close_timeout=timedelta(seconds=30),
+            retry_policy=retry_policy,
+        )
+        queries = fetch_res.get("queries", [])
+        total_queries = len(queries)
+
+        self._current_step = "evaluating_micro_batches"
+        query_results = []
+        for i in range(0, total_queries, batch_size):
+            batch_slice = queries[i : i + batch_size]
+            batch_idx = (i // batch_size) + 1
+            total_batches = (total_queries + batch_size - 1) // batch_size
+
+            batch_res = await workflow.execute_activity(
+                evaluate_prompt_batch_activity,
+                {
+                    "queries": batch_slice,
+                    "batch_index": batch_idx,
+                    "total_batches": total_batches,
+                    "model_name": model_name,
+                },
+                start_to_close_timeout=timedelta(minutes=5),
+                heartbeat_timeout=timedelta(seconds=60),
+                retry_policy=retry_policy,
+            )
+            query_results.append(batch_res)
+            self._evaluated_queries.extend(batch_slice)
+
+        self._current_step = "syncing_leaderboard"
+        summary = await workflow.execute_activity(
+            sync_evaluation_leaderboard_activity,
+            {"results": query_results, "model_name": model_name},
+            start_to_close_timeout=timedelta(seconds=30),
+            retry_policy=retry_policy,
+        )
+        self._current_step = "completed"
+
+        return {
+            "status": "SUCCESS",
+            "records_evaluated": total_queries,
+            "app_id": "em-taskflow-trulens-eval",
+            "model_name": model_name,
+            "feedbacks": ["Faithfulness", "Answer Relevance", "Context Precision", "Context Recall"],
+            "summary": summary,
+            "results": query_results,
+        }
+
 
 
 @workflow.defn

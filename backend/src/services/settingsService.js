@@ -551,6 +551,35 @@ class SettingsService {
       };
     }
   }
+
+  /**
+   * Get OAuth tokens for a specific provider from DB preferences
+   */
+  async getOAuthTokens(provider) {
+    try {
+      const prefKey = `mcp.${provider}.oauth.tokens`;
+      const pref = await databaseService.getPreference(prefKey);
+      if (pref?.value) {
+        return typeof pref.value === 'string' ? JSON.parse(pref.value) : pref.value;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Save OAuth tokens for a specific provider into DB preferences
+   */
+  async saveOAuthTokens(provider, tokens) {
+    try {
+      const prefKey = `mcp.${provider}.oauth.tokens`;
+      await databaseService.setPreference(prefKey, tokens);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 }
 
 const settingsService = new SettingsService();

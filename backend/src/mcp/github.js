@@ -14,6 +14,7 @@ function createNativeGithubTools(token) {
   const getActiveHeaders = () => {
     const activeToken = token || settingsService.getCachedSettings()?.mcp?.github?.token || process.env.GITHUB_TOKEN || null;
     const cleanToken = activeToken ? activeToken.trim().replace(/^Bearer\s+Bearer\s+/i, 'Bearer ').replace(/^token\s+token\s+/i, 'token ') : null;
+    const isTest = process.env.NODE_ENV === 'test' || process.argv.some(a => a.includes('jasmine'));
     return {
       headers: {
         Accept: "application/vnd.github+json",
@@ -21,7 +22,7 @@ function createNativeGithubTools(token) {
         "X-GitHub-Api-Version": "2022-11-28",
         ...(cleanToken ? { Authorization: cleanToken.startsWith("Bearer ") || cleanToken.startsWith("token ") ? cleanToken : `Bearer ${cleanToken}` } : {}),
       },
-      hasToken: Boolean(cleanToken && !cleanToken.includes("placeholder") && !cleanToken.includes("dummy")),
+      hasToken: Boolean(cleanToken && !cleanToken.includes("placeholder") && !cleanToken.includes("dummy") && (!isTest || process.env.GITHUB_LIVE_TEST === 'true')),
     };
   };
 
@@ -224,6 +225,7 @@ function createNativeGithubTools(token) {
       time_window: z.enum(["7d", "30d", "90d"]).default("30d").describe("Time window for DORA analysis"),
     }),
     func: async ({ owner = "logsv", repo = "em-taskflow-ai", time_window = "30d" }) => {
+      const { headers } = getActiveHeaders();
       try {
         console.log(`🐙 GitHub REST API get_dora_events: ${owner}/${repo} (${time_window})`);
         const days = time_window === "7d" ? 7 : time_window === "90d" ? 90 : 30;

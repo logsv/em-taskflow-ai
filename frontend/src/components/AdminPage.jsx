@@ -290,7 +290,7 @@ function AdminPage({ onBackToChat }) {
 
   const handleRunDeepBenchmark = async () => {
     setIsRunningBenchmark(true);
-    setEvalActionMsg('🌙 Starting Deep Evaluation Benchmark (Ragas + TruLens + Arena) against local Ollama hermes3:8b...');
+    setEvalActionMsg('🌙 Starting Deep Evaluation Benchmark (Ragas + DeepEval + Arena) against local Ollama hermes3:8b...');
     try {
       const res = await fetch('/api/admin/eval/run-deep-benchmark', { method: 'POST' });
       const data = await res.json();
@@ -959,9 +959,6 @@ function AdminPage({ onBackToChat }) {
                 <div className="dropdown-divider"></div>
                 <button type="button" className="dropdown-item" onClick={() => { setMenuOpen(false); handleManualSync(); }}>
                   <span>🐙</span> Sync GitHub Cache Now
-                </button>
-                <button type="button" className="dropdown-item" onClick={() => { setMenuOpen(false); handleSweepTrulens(); }}>
-                  <span>⚡</span> Run TruLens Triad Sweep
                 </button>
                 <button type="button" className="dropdown-item" onClick={() => { setMenuOpen(false); handleRunDeepBenchmark(); }}>
                   <span>🌙</span> Run Deep Eval Benchmark
@@ -2101,7 +2098,7 @@ function AdminPage({ onBackToChat }) {
                 <h2>🚀 Readymade External Service Hub</h2>
                 <p className="section-subdesc">One-click external observability, database, and telemetry services for EM TaskFlow AI.</p>
               </div>
-              <span className="section-badge">9 Portals Active</span>
+              <span className="section-badge">7 Portals Active</span>
             </div>
             <div className="service-grid">
               <div className="service-card card-langfuse">
@@ -2146,35 +2143,6 @@ function AdminPage({ onBackToChat }) {
                 </div>
               </div>
 
-              <div className="service-card card-trulens">
-                <div className="card-top">
-                  <span className="service-icon">📈</span>
-                  <span className={`status-dot ${systemStatus?.services?.trulens?.status === 'online' ? 'status-online' : 'status-offline'}`}></span>
-                </div>
-                <h3>TruLens RAG Triad</h3>
-                <p className="service-url">http://127.0.0.1:8501</p>
-                <p className="service-desc">
-                  RAG Triad Leaderboard tracking Groundedness, Context Relevance, and Answer Relevance against local Ollama.
-                </p>
-                <div className="card-btn-group">
-                  <button
-                    onClick={systemStatus?.services?.trulens?.status === 'online' ? () => window.open('http://127.0.0.1:8501', '_blank') : handleStartTrulens}
-                    disabled={isLaunchingTrulens}
-                    className="launch-btn"
-                  >
-                    {isLaunchingTrulens ? 'Starting...' : 'Launch Leaderboard ↗'}
-                  </button>
-                  <button
-                    onClick={handleSweepTrulens}
-                    disabled={isSweepingTrulens}
-                    className="action-btn secondary-btn"
-                    title="Run RAG Triad Batch Evaluation Sweep across Golden Dataset & Vector DB"
-                  >
-                    {isSweepingTrulens ? 'Sweeping...' : '⚡ Run RAG Triad Sweep'}
-                  </button>
-                </div>
-              </div>
-
               <div className="service-card card-db">
                 <div className="card-top">
                   <span className="service-icon">🗄️</span>
@@ -2212,26 +2180,6 @@ function AdminPage({ onBackToChat }) {
                   className="launch-btn"
                 >
                   Launch Temporal UI ↗
-                </a>
-              </div>
-
-              <div className="service-card card-phoenix">
-                <div className="card-top">
-                  <span className="service-icon">🔥</span>
-                  <span className={`status-dot ${systemStatus?.services?.phoenix?.status === 'online' ? 'status-online' : 'status-offline'}`}></span>
-                </div>
-                <h3>Arize Phoenix (100% Local LLM Tracing)</h3>
-                <p className="service-url">http://127.0.0.1:6006</p>
-                <p className="service-desc">
-                  Local OpenLLMetry tracing dashboard for Ollama requests, RAG retrieval chunks, and multi-agent execution traces.
-                </p>
-                <a
-                  href="http://127.0.0.1:6006"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="launch-btn"
-                >
-                  Launch Phoenix Dashboard ↗
                 </a>
               </div>
 

@@ -540,6 +540,56 @@ class DatabaseService {
     }
   }
 
+  async deleteSession(sessionId) {
+    await this.ensureInitialized();
+    if (!sessionId) throw new Error('sessionId is required');
+
+    if (!this.pool) {
+      inMemorySessions.delete(sessionId);
+      for (const [tid, thread] of inMemoryThreads.entries()) {
+        if (thread.session_id === sessionId) inMemoryThreads.delete(tid);
+      }
+      return { deleted: true };
+    }
+
+    try {
+      await this.pool.query(
+        `DELETE FROM sessions WHERE id = $1`,
+        [sessionId],
+      );
+      return { deleted: true };
+    } catch (err) {
+      warn('PostgreSQL deleteSession failed', { err: err.message });
+      throw err;
+    }
+  }
+
+  async archiveSession(sessionId) {
+    await this.ensureInitialized();
+    if (!sessionId) throw new Error('sessionId is required');
+
+    if (!this.pool) {
+      const s = inMemorySessions.get(sessionId);
+      if (s) { s.archived = true; s.updated_at = new Date().toISOString(); }
+      return { archived: true };
+    }
+
+    try {
+      // Add archived column if it doesn't exist (safe migration)
+      await this.pool.query(
+        `ALTER TABLE sessions ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE`,
+      ).catch(() => {});
+      await this.pool.query(
+        `UPDATE sessions SET archived = TRUE, updated_at = NOW() WHERE id = $1`,
+        [sessionId],
+      );
+      return { archived: true };
+    } catch (err) {
+      warn('PostgreSQL archiveSession failed', { err: err.message });
+      throw err;
+    }
+  }
+
   async purgeInactiveSessions(ttlDays = 7, batchSize = 500) {
     await this.ensureInitialized();
     const effectiveTtl = Math.max(1, Number(ttlDays) || 7);

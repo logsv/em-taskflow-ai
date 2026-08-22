@@ -362,7 +362,7 @@ router.post('/eval/run-deep-benchmark', async (req, res) => {
     res.json({
       success: true,
       orchestrator: 'subprocess_fallback',
-      message: '🌙 Deep Benchmark Suite (Ragas + TruLens + Arena) triggered successfully in background!',
+      message: '🌙 Deep Benchmark Suite (Ragas + DeepEval + Arena) triggered successfully in background!',
       state: deepBenchmarkState,
       requestId: req.requestId,
     });
@@ -585,7 +585,7 @@ router.get('/eval/metrics', async (req, res) => {
 
     res.json({
       success: true,
-      model: config.ollama.defaultModel || 'hermes3:8b',
+      model: config.llm?.defaultModel || config.llm?.providers?.ollama?.model || process.env.LLM_DEFAULT_MODEL || 'hermes3:8b',
       metrics: {
         domainAccuracyPct: domainAccuracy,
         toolGroundedPct: toolGrounded,

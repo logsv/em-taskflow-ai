@@ -6,25 +6,41 @@
 import { Connection, Client } from '@temporalio/client';
 
 let temporalClient = null;
+let hasLoggedTestWarning = false;
 
 export async function getTemporalClient() {
   if (temporalClient) return temporalClient;
 
-  const temporalHost = process.env.TEMPORAL_HOST || 'temporal:7233';
-  const timeoutMs = process.env.NODE_ENV === 'test' || process.argv.some(a => a.includes('jasmine')) ? 300 : 5000;
-  try {
-    const connectPromise = Connection.connect({ address: temporalHost });
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(`Connection timeout (${timeoutMs}ms)`)), timeoutMs)
-    );
-    const connection = await Promise.race([connectPromise, timeoutPromise]);
-    temporalClient = new Client({ connection });
-    console.log(`✅ Node.js connected to Temporal Server at ${temporalHost}`);
-    return temporalClient;
-  } catch (err) {
-    console.warn(`⚠️ Node.js failed to connect to Temporal Server at ${temporalHost}: ${err.message}`);
+  const isTest = process.env.NODE_ENV === 'test' || process.argv.some(a => a.includes('jasmine'));
+  if (isTest && process.env.TEMPORAL_TEST_ENABLED !== 'true') {
     return null;
   }
+
+  const hostsToTry = process.env.TEMPORAL_HOST ? [process.env.TEMPORAL_HOST] : ['temporal:7233', '127.0.0.1:7233'];
+  const timeoutMs = isTest ? 150 : 3000;
+
+  for (const host of hostsToTry) {
+    try {
+      const connectPromise = Connection.connect({ address: host });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Connection timeout (${timeoutMs}ms)`)), timeoutMs)
+      );
+      const connection = await Promise.race([connectPromise, timeoutPromise]);
+      temporalClient = new Client({ connection });
+      console.log(`✅ Node.js connected to Temporal Server at ${host}`);
+      return temporalClient;
+    } catch {
+      // Continue to next host candidate
+    }
+  }
+
+  if (!isTest || !hasLoggedTestWarning) {
+    if (!isTest) {
+      console.warn(`⚠️ Node.js failed to connect to Temporal Server at ${hostsToTry.join(', ')}`);
+    }
+    hasLoggedTestWarning = true;
+  }
+  return null;
 }
 
 export async function startRAGIngestWorkflow(filePath, filename) {
