@@ -22,12 +22,31 @@ function formatRelativeTime(dateInput) {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+function deriveShortHeader(text) {
+  if (!text || typeof text !== 'string') return 'New Chat';
+  const clean = text
+    .replace(/^#+\s+/gm, '')
+    .replace(/[*_`~>]/g, '')
+    .replace(/\[Attachment:\s*[^\]]+\]/gi, '')
+    .replace(/# Document Executive Context:[^\n]+/gi, '')
+    .trim();
+  if (!clean) return 'New Chat';
+  const firstLine = clean.split('\n')[0].trim();
+  if (firstLine.length > 36) {
+    return firstLine.slice(0, 34).trim() + '…';
+  }
+  return firstLine;
+}
+
 function SessionItem({ session, isActive, onSwitch, onDelete, onArchive }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
-  const displayTitle = session.active_thread_title ||
-    (session.last_message ? session.last_message.slice(0, 36) + '…' : 'New Chat');
+  const rawTitle = session.active_thread_title;
+  const isDefaultTitle = !rawTitle || rawTitle === 'New Chat' || rawTitle === 'Chat';
+  const displayTitle = !isDefaultTitle
+    ? rawTitle
+    : (session.last_message ? deriveShortHeader(session.last_message) : 'New Chat');
   const lastActivity = session.last_active_at || session.updated_at || session.created_at;
   const relTime = formatRelativeTime(lastActivity);
 

@@ -7,6 +7,8 @@ description: Procedures for managing local Ollama SLM inference, model parameter
 
 Use this skill when configuring, testing, or troubleshooting local Ollama Small Language Models (`hermes3:8b`, `nomic-embed-text`), zero-cloud key policies, and model parameters.
 
+---
+
 ## 📌 Architecture Overview
 
 1. **Local Ollama Inference Engine**:
@@ -16,6 +18,8 @@ Use this skill when configuring, testing, or troubleshooting local Ollama Small 
 
 2. **Fast-Path & Router Parameters**:
    - Model parameter tuning (temperature, context window length `num_ctx`, top_k) initialized via `src/llm/index.js`.
+
+---
 
 ## 🧪 Verification Commands
 
@@ -29,7 +33,8 @@ curl -s http://localhost:11434/api/tags
 curl -X POST http://localhost:11434/api/generate -d '{"model": "hermes3:8b", "prompt": "hi", "stream": false}'
 ```
 
-### Run Full Backend Test Suite
+### Run Full Backend Test Suite (233 Specs)
 ```bash
+cd backend
 npm test
 ```

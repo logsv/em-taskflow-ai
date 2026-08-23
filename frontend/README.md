@@ -16,11 +16,11 @@
 
 ## 🎯 Overview & UI Capabilities
 
-The **EM TaskFlow AI Frontend** provides an interactive, space-dark cockpit for multi-agent chat interactions, PDF document ingestion, session management, and a dedicated **Standalone Admin Portal (`/admin`)**.
+The **EM TaskFlow AI Frontend** provides an interactive, space-dark cockpit for multi-agent chat interactions, document ingestion, session management, and a dedicated **Standalone Admin Portal (`/admin`)**.
 
 - **Framework**: React 18 + Vite
 - **Chat Runtime**: `@assistant-ui/react` state management runtime
-- **Design System**: Vanilla CSS tokens with glassmorphism, Outfit typography, and custom micro-animations
+- **Design System**: Vanilla CSS tokens with glassmorphism, responsive breakpoints, Outfit typography, and custom micro-animations
 - **Routing**: Dual view navigation (`/` for Chat Cockpit, `/admin` for Standalone Admin Portal)
 
 ---
@@ -29,15 +29,17 @@ The **EM TaskFlow AI Frontend** provides an interactive, space-dark cockpit for 
 
 ### 1. Multi-Agent Chat Cockpit
 - Powered by `@assistant-ui/react` for smooth streaming response rendering.
-- Supports structured markdown blocks, executive summary cards, and source citations.
+- Supports structured markdown blocks, GFM tables, executive summary cards, and source citations.
 - Built-in `mode` switcher (`baseline` vs `advanced` multi-agent routing).
 
-### 2. Collapsible PDF Upload Drawer
-- Sidebar collapsible interface for uploading PDF documents to `/api/rag/upload`.
+### 2. Collapsible Document Ingestion Drawer
+- Sidebar collapsible interface for uploading documents (PDF, CSV, TXT, PNG/JPG) to `/api/rag/upload`.
 - Displays real-time ingestion status, chunk metrics, and document processing feedback.
 
 ### 3. Session & Thread Management
-- Sidebar displaying active session metadata and chat thread history.
+- Sidebar displaying paginated active sessions (`/api/sessions`) with activity timestamps.
+- Context menu actions: inline thread renaming (`updateThreadTitle`), delete, and archive.
+- Dynamic thread title derivation (`deriveShortHeader`) formatting clean, concise chat titles from raw user prompts.
 - Prominent **⚙️ Admin Portal ↗** footer link opening the standalone management hub in a new browser tab (`target="_blank"`).
 
 ### 4. Telemetry Feedback Controls
@@ -52,17 +54,15 @@ The Standalone Admin Portal (`components/AdminPage.jsx`) provides a unified oper
 
 ### 1. 🚀 Readymade External Service Hub
 - **📊 Langfuse AI Telemetry** (`http://127.0.0.1:3001`): One-click launch to multi-agent execution traces, prompt cost metrics, and user feedback logs.
-- **🔥 Arize Phoenix Tracing** (`http://127.0.0.1:6006`): Local OpenLLMetry LLM tracing, chunk retrieval spans, and evaluation traces.
-- **🎯 Promptfoo Managed Cloud** (`https://www.promptfoo.app`): Cloud prompt matrix comparison, automated red-teaming, and shared evaluation workspace (`emtaskflow-ai`).
-- **⚖️ TruLens RAG Triad Leaderboard** (`http://127.0.0.1:8501`): RAG triad evaluation (groundedness, context relevance, answer relevance) dashboard.
+- **🎯 Promptfoo Matrix Server** (`http://127.0.0.1:15500` & `https://www.promptfoo.app`): Matrix comparison, automated red-teaming, and shared evaluation workspace (`emtaskflow-ai`).
 - **🗄️ Adminer Postgres Explorer** (`http://127.0.0.1:8080`): Pre-configured database explorer for `taskflow_backend`, `taskflow_ai`, and `langfuse_db`.
 - **⏳ Temporal Web UI** (`http://127.0.0.1:8233`): Durable workflow execution dashboard for RAG pipelines.
 
 ### 2. 🛠️ Native System Control Panels
-- **📄 RAG Vector Store Management**: Document inventory table with single-click PDF chunk deletion and **PDF Chunk Inspector Modal** (`🔍 View`).
-- **🔄 GitHub Sync & Cache**: Trigger manual GitHub repository issue synchronization and monitor cache freshness.
-- **⚡ System Health & Ollama Status**: Real-time status indicators for local Ollama (`llama3.2`), Primary DB (5432), and Analytics DB (5433).
-- **📈 EM DORA & Sprint Metrics**: Visual snapshot of Deployment Frequency, Lead Time, Failure Rate, MTTR, and Sprint Health.
+- **📄 RAG Vector Store Management**: Document inventory table with single-click chunk deletion and **Chunk Inspector Modal** (`🔍 View`).
+- **🔄 GitHub & MCP Sync & Cache**: Trigger manual GitHub repository issue synchronization and monitor cache freshness.
+- **⚡ System Health & Ollama Status**: Real-time status indicators for local Ollama (`hermes3:8b`), Primary DB (5432), and Analytics DB (5433).
+- **📈 EM DORA & Sprint Metrics**: Production tier ratings (*Elite*, *High*, *Medium*, *Low*), Lead Time, Failure Rate, MTTR, and Sprint Health.
 
 ---
 

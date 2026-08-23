@@ -138,6 +138,14 @@ export class ChatApplicationService {
       },
     });
 
+    // Update thread title from default 'New Chat' to concise query-derived title
+    const shortTitle = generateShortChatTitle(query, routedDomains);
+    if (ensuredThread?.id && (!ensuredThread.title || ensuredThread.title === 'New Chat' || ensuredThread.title === 'Chat')) {
+      if (typeof this.threadRepo?.updateThreadTitle === 'function') {
+        await Promise.resolve(this.threadRepo.updateThreadTitle(ensuredThread.id, shortTitle)).catch(() => {});
+      }
+    }
+
     // Trigger Non-Blocking Online Continuous Shadow Evaluation Worker (5% Traffic Sampling)
     this.triggerShadowEvaluation({
       query,
@@ -150,6 +158,7 @@ export class ChatApplicationService {
     return {
       messageId: assistantMessageRecord.id,
       threadId: ensuredThread.id,
+      threadTitle: shortTitle,
       sessionId: sessionContext?.sessionId || null,
       answer: result.answer,
       sources,
@@ -181,15 +190,15 @@ export class ChatApplicationService {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query,
-            answer,
-            context,
+            user_query: query,
+            model_response: answer,
+            retrieved_chunks: context,
             trace_id: traceId,
-            domain,
+            domain_category: domain,
           }),
-        }).catch(() => null);
-      } catch (_err) {
-        // Silently swallow to preserve zero downtime
+        });
+      } catch (err) {
+        // Non-blocking catch
       }
     });
   }
@@ -268,6 +277,7 @@ function createThreadRepoAdapter(dbService) {
 
   return {
     ensureThread: (...args) => dbService.ensureThread(...args),
+    updateThreadTitle: (...args) => (typeof dbService.updateThreadTitle === 'function' ? dbService.updateThreadTitle(...args) : null),
   };
 }
 
@@ -307,3 +317,59 @@ export function optimizeChatHistory(messages = [], maxActiveTurns = 8) {
 
   return [summaryAnchor, ...activeMessages];
 }
+
+/**
+ * Derives a clean, concise short chat header (<=40 chars) from the user query or domain intent.
+ */
+export function generateShortChatTitle(query, domains = []) {
+  if (!query || typeof query !== 'string') return 'New Chat';
+
+  // Strip file executive summaries, attachments, or system markdown
+  let clean = query
+    .replace(/\[Attachment:\s*[^\]]+\]/gi, '')
+    .replace(/# Document Executive Context:[^\n]+/gi, '')
+    .replace(/^#+\s+/gm, '')
+    .replace(/[*_`~>]/g, '')
+    .trim();
+
+  // Strip conversational filler prefixes
+  clean = clean
+    .replace(/^(can\s+you\s+(please\s+)?(tell\s+me\s+about|provide|give|generate|show|analyze|summarize|evaluate|draft|create|help\s+me\s+with)\s+)/i, '')
+    .replace(/^(please\s+(provide|give|generate|show|analyze|summarize|evaluate|draft|create|help\s+me\s+with)\s+)/i, '')
+    .replace(/^(what\s+is\s+the|what\s+are\s+the|how\s+to|how\s+do\s+I|tell\s+me\s+about|give\s+me\s+(the\s+)?|i\s+need\s+(to\s+)?|i\s+want\s+(to\s+)?)\s+/i, '')
+    .trim();
+
+  // If empty after stripping filler, fallback to domains or initial slice
+  if (!clean) {
+    if (Array.isArray(domains) && domains.length > 0) {
+      const d = domains[0];
+      const domainLabels = {
+        dora: 'DORA Metrics Audit',
+        delivery: 'Delivery Bottlenecks',
+        sbi: 'SBI Feedback Generator',
+        people: 'Personnel Growth & 1-on-1s',
+        sprint: 'Sprint Capacity Planning',
+        retro: 'Sprint Retrospective',
+        roadmap: 'Roadmap Alignment',
+        okr: 'OKR Progress Review',
+        sop: 'SOP Compliance & On-Call',
+        critic: 'Executive Report Audit',
+      };
+      if (domainLabels[d]) return domainLabels[d];
+    }
+    return query.slice(0, 36).trim() || 'New Chat';
+  }
+
+  // Capitalize the first letter
+  clean = clean.charAt(0).toUpperCase() + clean.slice(1);
+
+  // Truncate cleanly at word boundary up to 40 chars
+  if (clean.length > 40) {
+    const cut = clean.slice(0, 38);
+    const lastSpace = cut.lastIndexOf(' ');
+    clean = (lastSpace > 20 ? cut.slice(0, lastSpace) : cut).trim() + '…';
+  }
+
+  return clean;
+}
+

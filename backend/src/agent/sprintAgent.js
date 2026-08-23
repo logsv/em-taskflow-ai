@@ -69,9 +69,11 @@ export const sprintPlanTool = createDeterministicToolHarness({
         const future = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
         const res = await Promise.race([
-          executeMCPTool('calendar_list_events', {
+          executeMCPTool('get_calendar_events', {
+            calendarId: 'primary',
             timeMin: now.toISOString(),
             timeMax: future.toISOString(),
+            time_window: '14d',
           }),
           new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Google Calendar search timed out')), 2500)),
         ]).catch(() => null);

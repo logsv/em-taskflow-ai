@@ -22,8 +22,9 @@ function createNativeGoogleCalendarTools(apiKey) {
       max_results: z.number().default(10).describe("Maximum number of events to return"),
     }),
     func: async ({ calendarId = "primary", user, time_window = "7d", timeMin, timeMax, max_results = 10 }) => {
-      const effectiveCalId = user || calendarId || "primary";
       const cachedSettings = settingsService.getCachedSettings()?.mcp?.googleCalendar || {};
+      const configuredCalId = cachedSettings.calendarId || process.env.GOOGLE_CALENDAR_ID || null;
+      const effectiveCalId = user || (calendarId && calendarId !== "primary" ? calendarId : (configuredCalId || "primary"));
       const effectiveKey = apiKey || cachedSettings.apiKey || process.env.GOOGLE_CALENDAR_API_KEY || process.env.GOOGLE_API_KEY || null;
 
       try {
@@ -115,12 +116,14 @@ function createNativeGoogleCalendarTools(apiKey) {
     }),
     func: async ({ eventId, calendarId = "primary" }) => {
       const cachedSettings = settingsService.getCachedSettings()?.mcp?.googleCalendar || {};
+      const configuredCalId = cachedSettings.calendarId || process.env.GOOGLE_CALENDAR_ID || null;
+      const effectiveCalId = calendarId && calendarId !== "primary" ? calendarId : (configuredCalId || "primary");
       const effectiveKey = apiKey || cachedSettings.apiKey || process.env.GOOGLE_CALENDAR_API_KEY || process.env.GOOGLE_API_KEY || null;
 
       try {
         if (effectiveKey && eventId) {
           const res = await axios.get(
-            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(effectiveCalId)}/events/${encodeURIComponent(eventId)}`,
             {
               params: { key: effectiveKey },
               timeout: 4000,
@@ -159,12 +162,14 @@ function createNativeGoogleCalendarTools(apiKey) {
     }),
     func: async ({ summary, start_time, end_time, description = "", attendees = [], calendarId = "primary" }) => {
       const cachedSettings = settingsService.getCachedSettings()?.mcp?.googleCalendar || {};
+      const configuredCalId = cachedSettings.calendarId || process.env.GOOGLE_CALENDAR_ID || null;
+      const effectiveCalId = calendarId && calendarId !== "primary" ? calendarId : (configuredCalId || "primary");
       const effectiveKey = apiKey || cachedSettings.apiKey || process.env.GOOGLE_CALENDAR_API_KEY || process.env.GOOGLE_API_KEY || null;
 
       try {
         if (effectiveKey) {
           const res = await axios.post(
-            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
+            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(effectiveCalId)}/events`,
             {
               summary,
               description,

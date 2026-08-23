@@ -58,7 +58,7 @@ export class LangGraphAgentService {
       jira: new Set(["jira_search", "transfer_to_jira_agent"]),
       github: new Set(["search_issues", "list_pull_requests", "transfer_to_github_agent"]),
       notion: new Set(["notion_search", "transfer_to_notion_agent"]),
-      calendar: new Set(["calendar_list_events", "transfer_to_calendar_agent"]),
+      calendar: new Set(["get_calendar_events", "calendar_list_events", "transfer_to_calendar_agent"]),
       rag: new Set([RAG_TOOL_NAME]),
     };
     this.runtimeMetrics = {

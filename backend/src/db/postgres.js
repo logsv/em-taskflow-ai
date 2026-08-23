@@ -665,10 +665,65 @@ class DatabaseService {
     return { id: threadId, session_id: sessionId, title };
   }
 
+  async updateThreadTitle(threadId, title) {
+    await this.ensureInitialized();
+    if (!threadId || !title) return null;
+    const cleanTitle = String(title).trim().slice(0, 100);
+    if (!cleanTitle) return null;
+
+    if (!this.pool) {
+      const existing = inMemoryThreads.get(threadId);
+      if (existing) {
+        existing.title = cleanTitle;
+        existing.updated_at = new Date().toISOString();
+        return existing;
+      }
+      return null;
+    }
+
+    const result = await this.pool.query(
+      `
+        UPDATE chat_threads
+        SET title = $2, updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, session_id, title
+      `,
+      [threadId, cleanTitle],
+    );
+    return result.rows[0] || null;
+  }
+
   async ensureThread(threadId, title = 'New Chat', sessionId = null) {
     await this.ensureInitialized();
     if (!threadId) {
       return this.createThreadForSession(sessionId, title);
+    }
+
+    if (!this.pool) {
+      const existing = inMemoryThreads.get(threadId);
+      if (existing) {
+        if (title && title !== 'New Chat' && title !== 'Chat' && (!existing.title || existing.title === 'New Chat' || existing.title === 'Chat')) {
+          existing.title = title;
+          existing.updated_at = new Date().toISOString();
+        }
+        if (sessionId && !existing.session_id) {
+          existing.session_id = sessionId;
+          await this.setActiveThread(sessionId, threadId);
+        }
+        return existing;
+      }
+      const thread = {
+        id: threadId,
+        session_id: sessionId,
+        title,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      inMemoryThreads.set(threadId, thread);
+      if (sessionId) {
+        await this.setActiveThread(sessionId, threadId);
+      }
+      return thread;
     }
 
     const existing = await this.pool.query(
@@ -682,7 +737,19 @@ class DatabaseService {
     );
 
     if (existing.rowCount > 0) {
-      if (sessionId && !existing.rows[0].session_id) {
+      const existingThread = existing.rows[0];
+      if (title && title !== 'New Chat' && title !== 'Chat' && (!existingThread.title || existingThread.title === 'New Chat' || existingThread.title === 'Chat')) {
+        await this.pool.query(
+          `
+            UPDATE chat_threads
+            SET title = $2, updated_at = NOW()
+            WHERE id = $1
+          `,
+          [threadId, title],
+        );
+        existingThread.title = title;
+      }
+      if (sessionId && !existingThread.session_id) {
         await this.pool.query(
           `
             UPDATE chat_threads
@@ -692,9 +759,9 @@ class DatabaseService {
           [threadId, sessionId],
         );
         await this.setActiveThread(sessionId, threadId);
-        return { ...existing.rows[0], session_id: sessionId };
+        return { ...existingThread, session_id: sessionId };
       }
-      return existing.rows[0];
+      return existingThread;
     }
 
     await this.pool.query(
@@ -1400,6 +1467,10 @@ class DatabaseService {
       warn('PostgreSQL getOkrRecords failed, using in-memory fallback', { err: err.message });
       return quarter ? this.inMemoryOkrTracker.filter(r => r.quarter === quarter) : this.inMemoryOkrTracker;
     }
+  }
+
+  async getOkrsByQuarter(quarter = null) {
+    return this.getOkrRecords(quarter);
   }
 
   async getAppSetting(key, defaultValue = null) {

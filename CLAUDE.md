@@ -4,155 +4,108 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-EM TaskFlow is an AI-powered productivity platform that combines Retrieval-Augmented Generation (RAG), Model Context Protocol (MCP) integrations, and intelligent LLM routing. The system processes PDF documents, integrates with external services (Notion, Jira, Google Calendar), and uses sophisticated AI agents to provide contextual responses.
+**EM TaskFlow AI** is a full-stack, local-first enterprise productivity platform powered by **100% Local LLM Inference (Ollama)**, Hybrid RAG (HyDE + RRF + HNSW), Model Context Protocol (MCP) integrations (Jira OAuth 2.0 PKCE, Notion REST API, GitHub PAT/OAuth, Slack Web API, Google Calendar), a LangGraph Multi-Agent Supervisor, and isolated PostgreSQL databases.
 
 ## Architecture
 
-This is a full-stack TypeScript application with:
+This is a polyglot microservices system:
 
-- **Backend**: Node.js with TypeScript using ES modules (`"type": "module"`)
-- **Frontend**: React application with service worker support
-- **Vector Database**: ChromaDB for document embeddings and semantic search
-- **LLM Provider**: Ollama for local LLM and embedding models (`hermes3:8b`, `nomic-embed-text`)
-- **External Integrations**: MCP servers for Notion, Jira, Google Calendar via Model Context Protocol
+- **Backend**: Node.js 20+ with ES Modules (`"type": "module"`), Express, `@langchain/langgraph-supervisor`, and pg driver.
+- **Frontend**: React 18 SPA built with Vite, `@assistant-ui/react`, space-dark glassmorphism design system, and Standalone Admin Portal (`/admin`).
+- **Python AI Service**: Python 3.12 microservice (REST on port 8000 & gRPC on port 50051) for parent-child chunking, Cross-Encoder reranking, and `taskflow_ai` vector operations.
+- **Vector & Relational Storage**: PostgreSQL 16 (`pgvector/pgvector:pg16`) with per-service database isolation (`taskflow_backend`, `taskflow_ai`, `temporal`).
+- **Semantic Caching**: Redis 7 Alpine (`em-taskflow-redis:6379`) with vector similarity caching (0.95 cosine threshold, 1h TTL).
+- **Telemetry & Tracing**: Self-hosted Langfuse (port 3001) backed by isolated `langfuse_db` on port 5433 (`analytics-db`).
+- **Durable Orchestration**: Temporal Workflows on port 7233 (UI on port 8233).
 
-### Key Services
+### Key Services & Modules
 
-- **Agent Service**: Orchestrates intent analysis, data fetching, and response generation
-- **Enhanced LLM Router**: Production-ready router using local `hermes3:8b` Ollama inference with resilience patterns, metrics tracking, and multi-provider support
-- **RAG Service**: Processes PDFs and performs semantic search using vector embeddings
-- **MCP Service**: Connects to external tools via Model Context Protocol
-- **Database Service**: SQLite3 for chat history and metadata
+- **Agent Service (`backend/src/services/agentService.js`)**: Coordinates Fast-Path classifier, LLM router, and LangGraph multi-agent supervisor.
+- **10 Domain Micro-Agents (`backend/src/agent/`)**:
+  - `dora`: DORA metrics from GitHub, Jira, and PostgreSQL snapshots.
+  - `delivery`: Delivery bottlenecks, review cycle turnaround, and Jira blockers.
+  - `sbi`: Situation-Behavior-Impact coaching using Jira, 1-on-1 notes, and Slack.
+  - `people`: Career progression, 1-on-1s, Google Calendar frequency, Notion career ladders.
+  - `sprint`: Sprint capacity, story point velocity, Jira backlog, and calendar PTOs.
+  - `retro`: Retrospective generation with thematic clustering (Notion, Jira, GitHub, Slack).
+  - `roadmap`: Milestone alignment and drift detection across Jira, GitHub, Notion.
+  - `okr`: Quarterly OKR pacing scores and KPI progress evaluation.
+  - `sop`: SOP compliance, ADR governance, architecture decision records, review SLAs.
+  - `critic`: Audit and critique draft EM status reports, dossiers, and performance summaries.
+- **MCP Ecosystem (`backend/src/mcp/`)**:
+  - `jiraOAuth.js` & `jira.js`: Jira OAuth 2.0 PKCE flow, JQL search, and issue retrieval.
+  - `notion.js` & `notionOAuth.js`: Native Notion REST API and database query tools.
+  - `github.js` & `githubOAuth.js`: Repo-scoped PAT/OAuth, PR search, and DORA events.
+  - `slack.js`: Slack Web API channel search and messaging.
+  - `google.js`: Google Calendar REST API event listing and schedule inspection.
+  - `baseToolHarness.js`: Standardized circuit breaker, backoff, and execution logging.
+- **RAG Retriever (`backend/src/rag/retriever.js`)**: Single-pass answer synthesis with HyDE query transformation and Reciprocal Rank Fusion (RRF CTE).
+- **Database Layer (`backend/src/db/postgres.js`)**: Multi-session persistence, chat threads, messages, and MCP fallback caches.
 
-## Development Commands
+## Development & Test Commands
 
-### Backend (from /backend directory)
+### Backend (from `/backend`)
 ```bash
-# Build TypeScript
-npm run build
-
-# Start production server
-npm start
-
-# Development with auto-reload
+# Start development server with auto-reload
 npm run dev
 
-# Run tests with coverage (requires building first)
+# Build ESM JavaScript output
+npm run build
+
+# Run unit tests with Jasmine (233 specs, 0 failures)
 npm test
 
-# Run Enterprise Evaluation Suite
+# Run full evaluation suite (Model: hermes3:8b)
 npm run evaluate
 npm run eval:multi-agent
 npm run eval:rag
 npm run eval:pre-llm
-
-# Start MCP servers
-npm run start:mcp
-npm run start:google
-npm run start:atlassian
 ```
 
-### Frontend (from /frontend directory)
+### Python AI Service (from `/services/python-ai-service`)
 ```bash
-# Start development server (port 3000)
-npm start
-
-# Build for production
-npm build
-
-# Run tests
-npm test
+# Run Pytest suite (39 specs, 0 failures)
+uv run pytest
 ```
 
-### Full System Management (from project root)
+### Frontend (from `/frontend`)
 ```bash
-# Start all services (Chroma, Ollama, Backend, Frontend)
-./start.sh
+# Start Vite dev server (port 3000)
+npm run dev
 
-# Or use the full management script
-./manage-services.sh start
-./manage-services.sh stop
-./manage-services.sh restart
-./manage-services.sh status
-
-# Individual services
-./manage-services.sh ollama
-./manage-services.sh chroma
-./manage-services.sh backend
-./manage-services.sh frontend
+# Build production bundle
+npm run build
 ```
 
-## Service Dependencies
+### Full Container Management (from project root)
+```bash
+# Start all containers in background
+docker compose up -d --build
 
-1. **ChromaDB** (port 8000): Vector database - must start first
-2. **Ollama** (port 11434): Local LLM service with models mistral:latest and nomic-embed-text
-3. **Backend** (port 4000): Main API server
-4. **Frontend** (port 3000): React UI with proxy to backend
+# Check container status
+docker compose ps
 
-## Testing
+# View container logs
+docker compose logs -f backend python-ai-service postgres redis langfuse
+```
 
-- **Test Framework**: Jasmine with Sinon for mocking
-- **Coverage**: NYC (Istanbul) with minimum thresholds: 42% statements, 29% branches, 36% functions
-- **Test Structure**: Located in `backend/test/` with service, route, and utility tests
-- **CI/CD**: GitHub Actions workflow for automated testing
+## Service Topology & Ports
 
-## Configuration Files
+1. **Frontend Cockpit**: `http://localhost:3000` (Admin Portal at `http://localhost:3000/admin`)
+2. **Backend Express API**: `http://localhost:4000` (`/api/health`, `/api/chat`, `/api/sessions`, `/api/admin/*`)
+3. **Python AI Microservice**: Port 8000 (REST) and Port 50051 (gRPC)
+4. **PostgreSQL 16**: Port 5432 (`taskflow_backend`, `taskflow_ai`, `temporal`)
+5. **Analytics DB (Langfuse)**: Port 5433 (`langfuse_db`)
+6. **Langfuse UI**: `http://localhost:3001`
+7. **Promptfoo Matrix Server**: `http://localhost:15500`
+8. **Adminer Database Explorer**: `http://localhost:8080`
+9. **Temporal Web UI**: `http://localhost:8233`
+10. **Ollama Local LLM**: `http://localhost:11434` (`hermes3:8b`, `nomic-embed-text`)
 
-- `backend/src/config/local.json`: Single unified configuration file (NOT committed to git)
-- `backend/src/config/local.example.json`: Example configuration file
-- `backend/src/config/schema.ts`: Complete configuration schema with validation
-- `backend/src/config/index.ts`: Configuration loader and helper functions
-- `backend/tsconfig.json`: TypeScript compilation for source
-- `backend/tsconfig.test.json`: TypeScript compilation for tests
-- `backend/jasmine.json`: Test runner configuration
+## Architectural Guidelines & Rules
 
-## Important Patterns
-
-- **ES Modules**: All backend code uses ES module imports/exports
-- **Type Safety**: Strict TypeScript configuration
-- **Error Handling**: Comprehensive error handling with graceful fallbacks
-- **Service Pattern**: Business logic separated into service classes
-- **Repository Pattern**: Data access abstraction
-- **Circuit Breaker Pattern**: Resilient external service integration
-
-## Working with the Codebase
-
-When making changes:
-
-1. **Backend changes**: Always run `npm run build` before starting
-2. **Testing**: Use `npm test` for comprehensive testing with coverage
-3. **Dependencies**: The project uses both npm and pnpm - check package.json scripts for the correct package manager
-4. **Service Integration**: When working with RAG/MCP services, ensure external dependencies (Chroma, Ollama) are running
-5. **Environment Variables**: Check for required API keys for external services (Notion, Jira, Google)
-6. **LLM Router Testing**: Use the API endpoints to test the enhanced router:
-   - `GET /api/llm-status` - Check provider status and metrics
-   - `POST /api/llm-test` - Test completions with different providers and parameters
-   - `GET /api/health` - Overall system health including LLM router status
-
-## Common Development Tasks
-
-- **Adding new LLM providers**: Add providers to `backend/src/config/schema.ts` and update `backend/src/config/local.json`
-- **LLM Router Configuration**: Modify provider settings, circuit breakers, and retry policies in `backend/src/config/local.json`
-- **New MCP servers**: Add to `backend/src/services/mcpService.ts` configuration and enable in `backend/src/config/local.json`
-- **RAG enhancements**: Work with `backend/src/services/ragService.ts` for document processing
-- **Frontend components**: Located in `frontend/src/components/`
-
-## Configuration Management
-
-The project now uses a unified convict-powered configuration system:
-
-1. **Copy the example config**: `cp backend/src/config/local.example.json backend/src/config/local.json`
-2. **Edit your local settings**: Update `backend/src/config/local.json` with your API keys
-3. **Environment variables**: Override any setting using environment variables (e.g., `OPENAI_API_KEY`)
-4. **Single source**: One JSON file replaces all previous YAML files
-5. **Type safety**: Configuration is validated at startup with helpful error messages
-
-## File Structure Notes
-
-- Backend source: `backend/src/`
-- Frontend source: `frontend/src/`
-- Compiled backend: `backend/dist/`
-- Test files: `backend/test/`
-- MCP servers: `mcp-servers/` (separate workspace packages)
-- Data storage: `backend/data/` for SQLite and PDFs
-- Vector database: `chroma/` directory
+- **Zero Cloud LLM Requirement**: All inferences run locally against Ollama (`hermes3:8b`). External cloud LLMs are disabled.
+- **1-Tool Sub-Agent Bounding**: Sub-agents in LangGraph are bounded to maximum 1 tool per call for local SLM accuracy >95%.
+- **Zero Misleading Fallbacks**: Fallback responses return real PostgreSQL cached snapshots (`github_issues`, `dora_snapshots`, `sprint_analytics`, `okr_records`). Never output hardcoded dummy strings.
+- **Non-Blocking Telemetry**: Tracing calls to Langfuse must be non-blocking and never crash request lifecycles.
+- **Test Integrity**: Never push without running backend unit tests (`233 specs`) and Python unit tests (`39 specs`).

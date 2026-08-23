@@ -66,4 +66,19 @@ describe('API Routes (current contract)', () => {
       expect(response.body.error).toBe('Invalid request body');
     });
   });
+
+  describe('GET /api/docs', () => {
+    it('serves Swagger UI html page', async () => {
+      const response = await request(server).get('/api/docs');
+      expect(response.status).toBe(200);
+      expect(response.text).toContain('Swagger API Explorer');
+    });
+
+    it('serves OpenAPI 3.1 JSON specification', async () => {
+      const response = await request(server).get('/api/docs/openapi.json');
+      expect(response.status).toBe(200);
+      expect(response.body.openapi).toBe('3.1.0');
+      expect(response.body.info.title).toBeDefined();
+    });
+  });
 });

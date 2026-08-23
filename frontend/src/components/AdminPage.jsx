@@ -2376,6 +2376,26 @@ function AdminPage({ onBackToChat }) {
                   Launch Axiom Logs ↗
                 </a>
               </div>
+
+              <div className="service-card card-docs">
+                <div className="card-top">
+                  <span className="service-icon">⚡</span>
+                  <span className="status-dot status-online"></span>
+                </div>
+                <h3>Swagger API Explorer</h3>
+                <p className="service-url">http://127.0.0.1:4000/api/docs</p>
+                <p className="service-desc">
+                  Interactive OpenAPI 3.1 REST API test explorer for testing chat, sessions, DORA, and MCP integration endpoints.
+                </p>
+                <a
+                  href="/api/docs"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="launch-btn"
+                >
+                  Launch Swagger Explorer ↗
+                </a>
+              </div>
             </div>
           </section>
         )}

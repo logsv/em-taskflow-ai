@@ -118,12 +118,13 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
       };
     },
     default: async (inputArgs) => {
-      const okrs = await databaseService.getOkrsByQuarter(inputArgs.quarter || 'Q4').catch(() => []);
+      const q = inputArgs.quarter || 'Q4';
+      const okrs = (databaseService.getOkrsByQuarter ? await databaseService.getOkrsByQuarter(q).catch(() => []) : await databaseService.getOkrRecords(q).catch(() => [])) || [];
       const members = await identityService.getTeamMembers().catch(() => []);
 
       return {
         initiative_id: inputArgs.initiative_id || 'q4_roadmap',
-        quarter: inputArgs.quarter || 'Q4',
+        quarter: q,
         okrs_count: okrs.length,
         team_size: members.length,
         synced_at: new Date().toISOString(),
@@ -133,7 +134,7 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
   // Tier 2: PostgreSQL Database Snapshot Fallback
   dbCacheFallback: async (source, inputArgs) => {
     const quarter = inputArgs.quarter || 'Q4';
-    const okrs = await databaseService.getOkrsByQuarter(quarter).catch(() => []);
+    const okrs = (databaseService.getOkrsByQuarter ? await databaseService.getOkrsByQuarter(quarter).catch(() => []) : await databaseService.getOkrRecords(quarter).catch(() => [])) || [];
     
     return {
       initiative_id: inputArgs.initiative_id || 'q4_roadmap',

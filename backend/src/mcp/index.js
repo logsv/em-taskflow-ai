@@ -158,6 +158,11 @@ export async function executeMCPTool(toolName, parameters) {
         /search|jql|issue/.test(String(candidate?.name || "").toLowerCase()),
       );
     }
+    if (!tool && (/calendar/i.test(toolName) || toolName === "list_events")) {
+      tool = googleMcpTools.find((candidate) =>
+        candidate?.name === "get_calendar_events" || /calendar/i.test(String(candidate?.name || "").toLowerCase()),
+      );
+    }
     if (!tool) {
       const available = [...jiraMcpTools, ...notionMcpTools, ...githubMcpTools, ...googleMcpTools, ...slackMcpTools]
         .map((candidate) => candidate.name)

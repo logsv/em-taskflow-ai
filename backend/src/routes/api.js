@@ -576,9 +576,11 @@ router.post('/mcp/jira/oauth/disconnect', async (req, res) => {
 });
 
 import adminRouter from './admin.js';
+import docsRouter from './docs.js';
 
 router.use('/rag', ragRouter);
 router.use('/chat/upload', uploadRouter);
 router.use('/admin', adminRouter);
+router.use('/docs', docsRouter);
 
 export default router;
