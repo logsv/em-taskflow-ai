@@ -1,5 +1,6 @@
 import express from 'express';
 import http from 'http';
+import https from 'https';
 import fs from 'fs';
 import { spawn } from 'child_process';
 import path from 'path';
@@ -9,6 +10,7 @@ import healthApplicationService from '../application/health/HealthApplicationSer
 import githubSyncService from '../services/githubSyncService.js';
 import { startDeepBenchmarkWorkflow, startTraceReplayWorkflow, getWorkflowStatus } from '../temporal/client.js';
 import { config } from '../config.js';
+import settingsService from '../services/settingsService.js';
 
 const router = express.Router();
 
@@ -23,7 +25,8 @@ async function probeService(targetUrl, timeoutMs = 600) {
   return new Promise((resolve) => {
     try {
       const parsed = new URL(targetUrl);
-      const req = http.request(
+      const client = parsed.protocol === 'https:' ? https : http;
+      const req = client.request(
         {
           hostname: parsed.hostname,
           port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
@@ -32,6 +35,7 @@ async function probeService(targetUrl, timeoutMs = 600) {
           timeout: timeoutMs,
         },
         (res) => {
+          res.resume();
           resolve(res.statusCode < 500 ? 'online' : 'offline');
         }
       );
@@ -627,11 +631,7 @@ router.delete('/documents/:filename', async (req, res) => {
 router.get('/documents/:filename/chunks', async (req, res) => {
   try {
     const { filename } = req.params;
-    const chunks = await databaseService.hybridSearchPdfChunks({
-      query: '',
-      topK: 100,
-      metadataFilter: { filename },
-    });
+    const chunks = await databaseService.getPdfChunksByFilename(filename, 100);
     res.json({
       filename,
       chunks,
@@ -647,25 +647,84 @@ router.get('/documents/:filename/chunks', async (req, res) => {
   }
 });
 
-// Telemetry & Feedback Summary
-router.get('/telemetry', async (req, res) => {
+// ==============================================================================
+// Dynamic Admin Settings & Model/Tool Management
+// ==============================================================================
+
+// GET /api/admin/settings - Fetch current active settings with masked secrets
+router.get('/settings', async (req, res) => {
   try {
+    const settings = await settingsService.getMaskedSettings();
     res.json({
-      fastPathVsSupervisorRatio: {
-        fastPathPct: 45,
-        supervisorPct: 55,
-      },
-      userFeedback: {
-        thumbsUp: 18,
-        thumbsDown: 2,
-        satisfactionRatePct: 90,
-      },
+      success: true,
+      settings,
       requestId: req.requestId,
     });
-  } catch (error) {
+  } catch (err) {
     res.status(500).json({
-      error: 'Failed to fetch telemetry',
-      details: error.message,
+      error: 'Failed to fetch admin settings',
+      details: err.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+// PUT /api/admin/settings - Update model and tool integrations with hot-reload
+router.put('/settings', async (req, res) => {
+  try {
+    const incoming = req.body || {};
+    const updated = await settingsService.updateSettings(incoming);
+    res.json({
+      success: true,
+      message: 'Settings saved and hot-reloaded into active runtime',
+      settings: updated,
+      requestId: req.requestId,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to update admin settings',
+      details: err.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+// POST /api/admin/settings/test-connection - Test live connectivity to Ollama, Jira, GitHub, or Notion
+router.post('/settings/test-connection', async (req, res) => {
+  try {
+    const { type, credentials } = req.body || {};
+    if (!type) {
+      return res.status(400).json({ error: 'Missing connection test type (ollama, jira, github, notion)' });
+    }
+    const result = await settingsService.testConnection(type, credentials || {});
+    res.json({
+      ...result,
+      type,
+      requestId: req.requestId,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to run connection test',
+      details: err.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+// POST /api/admin/settings/reset - Reset settings to initial .env defaults
+router.post('/settings/reset', async (req, res) => {
+  try {
+    const resetSettings = await settingsService.resetToEnvDefaults();
+    res.json({
+      success: true,
+      message: 'Settings successfully restored to initial .env defaults',
+      settings: resetSettings,
+      requestId: req.requestId,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to reset admin settings',
+      details: err.message,
       requestId: req.requestId,
     });
   }

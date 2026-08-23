@@ -187,6 +187,49 @@ class RAGDatabaseService:
             logger.warning(f"Failed PostgreSQL upsert for {filename} ({str(e)}). Used in-memory fallback.")
             return True
 
+    def get_document_chunks(self, filename: str, top_k: int = 500) -> List[Dict[str, Any]]:
+        """Fetch all chunks for a specific document ordered by chunk_index."""
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT id, filename, chunk_index, content, COALESCE(parent_content, content) AS parent_content, COALESCE(token_count, 0) AS token_count
+                        FROM pdf_chunks
+                        WHERE filename = %s
+                        ORDER BY chunk_index ASC
+                        LIMIT %s;
+                    """, (filename, top_k))
+                    rows = cur.fetchall()
+                    if rows:
+                        return [{
+                            "id": r["id"],
+                            "filename": r["filename"],
+                            "chunk_index": r["chunk_index"],
+                            "content": r["content"],
+                            "parent_content": r["parent_content"] or "",
+                            "token_count": r["token_count"] or 0,
+                            "score": 1.0,
+                        } for r in rows]
+        except Exception as e:
+            logger.warning(f"PostgreSQL get_document_chunks failed ({str(e)}). Falling back to in-memory store.")
+
+        # In-memory fallback
+        matching = [
+            {
+                "id": item.get("id"),
+                "filename": item.get("filename"),
+                "chunk_index": item.get("chunk_index"),
+                "content": item.get("content", ""),
+                "parent_content": item.get("parent_content", ""),
+                "token_count": item.get("token_count", 0),
+                "score": 1.0,
+            }
+            for item in _in_memory_chunks
+            if item.get("filename") == filename
+        ]
+        matching.sort(key=lambda x: x.get("chunk_index", 0))
+        return matching[:top_k]
+
     @trace_observation("hybrid_search")
     def hybrid_search(self, query_text: str, top_k: int = 5, filter_filename: str = "") -> List[Dict[str, Any]]:
         """
@@ -194,6 +237,8 @@ class RAGDatabaseService:
         Falls back to in-memory term overlap if DB is unreachable.
         """
         if not query_text or not query_text.strip():
+            if filter_filename:
+                return self.get_document_chunks(filter_filename, top_k=top_k)
             return []
 
         try:

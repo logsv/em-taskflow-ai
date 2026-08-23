@@ -1,25 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React from 'react';
 import { useGithubSync } from '../hooks/useGithubSync.js';
-import { useRagDocuments } from '../hooks/useRagDocuments.js';
 import logger from '../utils/logger.js';
 import './Sidebar.css';
 
 function Sidebar({ sessionSummary, isOpen, setIsOpen, onOpenAdmin }) {
-  const { isSyncing, syncStatus, syncMessage, handleGithubSync } = useGithubSync();
-  const { documents, isLoading, isUploading, uploadStatus, uploadPdfFile, fetchDocuments } = useRagDocuments();
-  const [isRagSectionOpen, setIsRagSectionOpen] = useState(true);
-  const fileInputRef = useRef(null);
-
-  const handleSidebarFileUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      uploadPdfFile(file);
-    }
-  };
-
-  const triggerFileSelect = () => {
-    fileInputRef.current?.click();
-  };
+  const { syncStatus, syncMessage } = useGithubSync();
 
   const toggleSidebar = () => {
     setIsOpen(!isOpen);
@@ -54,61 +39,7 @@ function Sidebar({ sessionSummary, isOpen, setIsOpen, onOpenAdmin }) {
         )}
 
         <div className="chat-history">
-          {/* Collapsible RAG Uploaded PDF Files Section */}
-          <div className="history-header rag-history-header" onClick={() => setIsRagSectionOpen(!isRagSectionOpen)}>
-            <div className="rag-header-title">
-              <span className="collapse-arrow">{isRagSectionOpen ? '▼' : '►'}</span>
-              <h3>PDF Docs (RAG)</h3>
-            </div>
-            <button
-              className="sidebar-upload-btn"
-              onClick={(e) => { e.stopPropagation(); triggerFileSelect(); }}
-              title="Upload new PDF document"
-              disabled={isUploading}
-            >
-              {isUploading ? '⏳' : '+ PDF'}
-            </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleSidebarFileUpload}
-              accept="application/pdf"
-              style={{ display: 'none' }}
-            />
-          </div>
-
-          {uploadStatus && (
-            <div className="sync-toast rag-upload-toast">{uploadStatus}</div>
-          )}
-
-          {isRagSectionOpen && (
-            <div className="rag-doc-list">
-              {isLoading ? (
-                <div className="rag-doc-empty">Loading documents...</div>
-              ) : documents.length === 0 ? (
-                <div className="rag-doc-empty">
-                  <span>No PDFs uploaded yet.</span>
-                  <button className="upload-inline-link" onClick={triggerFileSelect}>
-                    Upload a PDF
-                  </button>
-                </div>
-              ) : (
-                documents.map((doc, idx) => (
-                  <div key={doc.id || idx} className="rag-doc-item" title={doc.filename}>
-                    <span className="rag-doc-icon">📄</span>
-                    <div className="rag-doc-info">
-                      <span className="rag-doc-name">{doc.filename}</span>
-                      <span className="rag-doc-meta">
-                        {doc.chunkCount || 1} chunk(s)
-                      </span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          <div className="history-header" style={{ marginTop: '16px' }}>
+          <div className="history-header">
             <h3>Session</h3>
           </div>
 
@@ -165,8 +96,10 @@ function Sidebar({ sessionSummary, isOpen, setIsOpen, onOpenAdmin }) {
           </div>
           <a
             href="/admin"
-            target="_blank"
-            rel="noopener noreferrer"
+            onClick={(e) => {
+              e.preventDefault();
+              if (onOpenAdmin) onOpenAdmin();
+            }}
             className="admin-portal-link-btn"
             style={{
               marginTop: '10px',
@@ -181,7 +114,7 @@ function Sidebar({ sessionSummary, isOpen, setIsOpen, onOpenAdmin }) {
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justify: 'center',
+              justifyContent: 'center',
               gap: '6px',
               textDecoration: 'none',
               boxSizing: 'border-box',
