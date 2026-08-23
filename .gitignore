@@ -129,11 +129,18 @@ temp/
 tmp/
 *.tmp
 *.temp
+data/
+data/pdfs/
 
 # PDF uploads
 *.pdf
 backend/uploads/
 frontend/public/uploads/
+
+# ===========================
+# API CLIENTS & TOOLS
+# ===========================
+bruno/
 
 # ===========================
 # PROCESS & SERVICE FILES
@@ -284,14 +291,10 @@ temp/
 promptfoo/
 
 # ===========================
-# EVALUATION RUN ARTIFACTS (Keep latest_*.json only)
+# EVALUATION RUN ARTIFACTS & REPORTS
 # ===========================
-reports/evaluations/benchmark_*.json
-reports/evaluations/benchmark_*.md
-reports/evaluations/replay_report_*.json
-reports/evaluations/replay_report_*.md
-services/reports/evaluations/benchmark_*.json
-services/reports/evaluations/benchmark_*.md
+reports/
+services/reports/
 
 # ===========================
 # VITEPRESS DOCUMENTATION ARTIFACTS
