@@ -13,6 +13,7 @@ class DatabaseService {
     this.inMemorySprintAnalytics = [];
     this.inMemoryOkrTracker = [];
     this.inMemoryAppSettings = {};
+    this.inMemoryTeamMembers = [];
   }
 
   async initialize() {
@@ -257,6 +258,25 @@ class DatabaseService {
         source TEXT DEFAULT 'database',
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS team_members (
+        id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        email TEXT UNIQUE,
+        aliases JSONB DEFAULT '[]',
+        github_username TEXT,
+        jira_email TEXT,
+        jira_account_id TEXT,
+        gcal_email TEXT,
+        notion_name TEXT,
+        current_level TEXT DEFAULT 'L4_MID',
+        target_level TEXT DEFAULT 'L5_SENIOR',
+        track TEXT DEFAULT 'INDIVIDUAL_CONTRIBUTOR',
+        tenure_months INT DEFAULT 12,
+        skills JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
     `);
   }
 
@@ -328,6 +348,246 @@ class DatabaseService {
       `,
       [sessionId],
     );
+  }
+
+  async listSessions({ limit = 10, page = 1, offset = null } = {}) {
+    await this.ensureInitialized();
+    const safeLimit = Math.max(1, Math.min(50, Number(limit) || 10));
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeOffset = offset != null ? Math.max(0, Number(offset)) : (safePage - 1) * safeLimit;
+
+    if (!this.pool) {
+      const allSessions = Array.from(inMemorySessions.values()).sort(
+        (a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)
+      );
+      const total = allSessions.length;
+      const sliced = allSessions.slice(safeOffset, safeOffset + safeLimit);
+      return {
+        sessions: sliced.map((s) => ({
+          id: s.id,
+          active_thread_id: s.active_thread_id,
+          active_thread_title: 'New Chat',
+          created_at: s.created_at,
+          updated_at: s.updated_at,
+          last_active_at: s.last_active_at || s.updated_at || s.created_at,
+          thread_count: Array.from(inMemoryThreads.values()).filter((t) => t.session_id === s.id).length,
+          last_message: null,
+        })),
+        pagination: {
+          total,
+          page: safePage,
+          limit: safeLimit,
+          totalPages: Math.ceil(total / safeLimit) || 1,
+          hasNext: safeOffset + safeLimit < total,
+          hasPrev: safePage > 1,
+        },
+      };
+    }
+
+    try {
+      const result = await this.pool.query(
+        `
+          WITH session_agg AS (
+            SELECT
+              s.id,
+              s.active_thread_id,
+              s.client_info,
+              s.created_at,
+              s.updated_at,
+              s.last_active_at,
+              COUNT(t.id)::int AS thread_count,
+              (
+                SELECT m.content
+                FROM chat_messages m
+                JOIN chat_threads ct ON m.thread_id = ct.id
+                WHERE ct.session_id = s.id
+                ORDER BY m.created_at DESC
+                LIMIT 1
+              ) AS last_message,
+              (
+                SELECT ct.title
+                FROM chat_threads ct
+                WHERE ct.id = s.active_thread_id
+                LIMIT 1
+              ) AS active_thread_title,
+              COUNT(*) OVER() AS full_count
+            FROM sessions s
+            LEFT JOIN chat_threads t ON t.session_id = s.id
+            GROUP BY s.id
+            ORDER BY COALESCE(s.last_active_at, s.updated_at, s.created_at) DESC
+            LIMIT $1 OFFSET $2
+          )
+          SELECT * FROM session_agg
+        `,
+        [safeLimit, safeOffset],
+      );
+
+      const total = result.rows.length > 0 ? Number(result.rows[0].full_count) : 0;
+      const sessions = result.rows.map((row) => ({
+        id: row.id,
+        active_thread_id: row.active_thread_id,
+        active_thread_title: row.active_thread_title || 'New Chat',
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        last_active_at: row.last_active_at || row.updated_at || row.created_at,
+        thread_count: Number(row.thread_count) || 0,
+        last_message: row.last_message || null,
+      }));
+
+      return {
+        sessions,
+        pagination: {
+          total,
+          page: safePage,
+          limit: safeLimit,
+          totalPages: Math.ceil(total / safeLimit) || 1,
+          hasNext: safeOffset + safeLimit < total,
+          hasPrev: safePage > 1,
+        },
+      };
+    } catch (err) {
+      warn('PostgreSQL listSessions failed, using fallback', { err: err.message });
+      return {
+        sessions: [],
+        pagination: { total: 0, page: safePage, limit: safeLimit, totalPages: 1, hasNext: false, hasPrev: false },
+      };
+    }
+  }
+
+  async listThreadsForSession(sessionId, { limit = 10, page = 1, offset = null } = {}) {
+    await this.ensureInitialized();
+    const safeLimit = Math.max(1, Math.min(50, Number(limit) || 10));
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeOffset = offset != null ? Math.max(0, Number(offset)) : (safePage - 1) * safeLimit;
+
+    if (!this.pool) {
+      const allThreads = Array.from(inMemoryThreads.values())
+        .filter((t) => !sessionId || t.session_id === sessionId)
+        .sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
+      const total = allThreads.length;
+      const sliced = allThreads.slice(safeOffset, safeOffset + safeLimit);
+      return {
+        threads: sliced,
+        pagination: {
+          total,
+          page: safePage,
+          limit: safeLimit,
+          totalPages: Math.ceil(total / safeLimit) || 1,
+          hasNext: safeOffset + safeLimit < total,
+          hasPrev: safePage > 1,
+        },
+      };
+    }
+
+    try {
+      const result = await this.pool.query(
+        `
+          SELECT
+            t.id,
+            t.session_id,
+            t.title,
+            t.created_at,
+            t.updated_at,
+            (
+              SELECT m.content
+              FROM chat_messages m
+              WHERE m.thread_id = t.id
+              ORDER BY m.created_at DESC
+              LIMIT 1
+            ) AS last_message,
+            (
+              SELECT COUNT(*)::int
+              FROM chat_messages m
+              WHERE m.thread_id = t.id
+            ) AS message_count,
+            COUNT(*) OVER() AS full_count
+          FROM chat_threads t
+          WHERE t.session_id = $1 OR ($1 IS NULL AND t.session_id IS NULL)
+          ORDER BY t.updated_at DESC
+          LIMIT $2 OFFSET $3
+        `,
+        [sessionId, safeLimit, safeOffset],
+      );
+
+      const total = result.rows.length > 0 ? Number(result.rows[0].full_count) : 0;
+      const threads = result.rows.map((row) => ({
+        id: row.id,
+        session_id: row.session_id,
+        title: row.title,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        last_message: row.last_message || null,
+        message_count: Number(row.message_count) || 0,
+      }));
+
+      return {
+        threads,
+        pagination: {
+          total,
+          page: safePage,
+          limit: safeLimit,
+          totalPages: Math.ceil(total / safeLimit) || 1,
+          hasNext: safeOffset + safeLimit < total,
+          hasPrev: safePage > 1,
+        },
+      };
+    } catch (err) {
+      warn('PostgreSQL listThreadsForSession failed, using fallback', { err: err.message });
+      return {
+        threads: [],
+        pagination: { total: 0, page: safePage, limit: safeLimit, totalPages: 1, hasNext: false, hasPrev: false },
+      };
+    }
+  }
+
+  async deleteSession(sessionId) {
+    await this.ensureInitialized();
+    if (!sessionId) throw new Error('sessionId is required');
+
+    if (!this.pool) {
+      inMemorySessions.delete(sessionId);
+      for (const [tid, thread] of inMemoryThreads.entries()) {
+        if (thread.session_id === sessionId) inMemoryThreads.delete(tid);
+      }
+      return { deleted: true };
+    }
+
+    try {
+      await this.pool.query(
+        `DELETE FROM sessions WHERE id = $1`,
+        [sessionId],
+      );
+      return { deleted: true };
+    } catch (err) {
+      warn('PostgreSQL deleteSession failed', { err: err.message });
+      throw err;
+    }
+  }
+
+  async archiveSession(sessionId) {
+    await this.ensureInitialized();
+    if (!sessionId) throw new Error('sessionId is required');
+
+    if (!this.pool) {
+      const s = inMemorySessions.get(sessionId);
+      if (s) { s.archived = true; s.updated_at = new Date().toISOString(); }
+      return { archived: true };
+    }
+
+    try {
+      // Add archived column if it doesn't exist (safe migration)
+      await this.pool.query(
+        `ALTER TABLE sessions ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE`,
+      ).catch(() => {});
+      await this.pool.query(
+        `UPDATE sessions SET archived = TRUE, updated_at = NOW() WHERE id = $1`,
+        [sessionId],
+      );
+      return { archived: true };
+    } catch (err) {
+      warn('PostgreSQL archiveSession failed', { err: err.message });
+      throw err;
+    }
   }
 
   async purgeInactiveSessions(ttlDays = 7, batchSize = 500) {
@@ -405,10 +665,65 @@ class DatabaseService {
     return { id: threadId, session_id: sessionId, title };
   }
 
+  async updateThreadTitle(threadId, title) {
+    await this.ensureInitialized();
+    if (!threadId || !title) return null;
+    const cleanTitle = String(title).trim().slice(0, 100);
+    if (!cleanTitle) return null;
+
+    if (!this.pool) {
+      const existing = inMemoryThreads.get(threadId);
+      if (existing) {
+        existing.title = cleanTitle;
+        existing.updated_at = new Date().toISOString();
+        return existing;
+      }
+      return null;
+    }
+
+    const result = await this.pool.query(
+      `
+        UPDATE chat_threads
+        SET title = $2, updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, session_id, title
+      `,
+      [threadId, cleanTitle],
+    );
+    return result.rows[0] || null;
+  }
+
   async ensureThread(threadId, title = 'New Chat', sessionId = null) {
     await this.ensureInitialized();
     if (!threadId) {
       return this.createThreadForSession(sessionId, title);
+    }
+
+    if (!this.pool) {
+      const existing = inMemoryThreads.get(threadId);
+      if (existing) {
+        if (title && title !== 'New Chat' && title !== 'Chat' && (!existing.title || existing.title === 'New Chat' || existing.title === 'Chat')) {
+          existing.title = title;
+          existing.updated_at = new Date().toISOString();
+        }
+        if (sessionId && !existing.session_id) {
+          existing.session_id = sessionId;
+          await this.setActiveThread(sessionId, threadId);
+        }
+        return existing;
+      }
+      const thread = {
+        id: threadId,
+        session_id: sessionId,
+        title,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      inMemoryThreads.set(threadId, thread);
+      if (sessionId) {
+        await this.setActiveThread(sessionId, threadId);
+      }
+      return thread;
     }
 
     const existing = await this.pool.query(
@@ -422,7 +737,19 @@ class DatabaseService {
     );
 
     if (existing.rowCount > 0) {
-      if (sessionId && !existing.rows[0].session_id) {
+      const existingThread = existing.rows[0];
+      if (title && title !== 'New Chat' && title !== 'Chat' && (!existingThread.title || existingThread.title === 'New Chat' || existingThread.title === 'Chat')) {
+        await this.pool.query(
+          `
+            UPDATE chat_threads
+            SET title = $2, updated_at = NOW()
+            WHERE id = $1
+          `,
+          [threadId, title],
+        );
+        existingThread.title = title;
+      }
+      if (sessionId && !existingThread.session_id) {
         await this.pool.query(
           `
             UPDATE chat_threads
@@ -432,9 +759,9 @@ class DatabaseService {
           [threadId, sessionId],
         );
         await this.setActiveThread(sessionId, threadId);
-        return { ...existing.rows[0], session_id: sessionId };
+        return { ...existingThread, session_id: sessionId };
       }
-      return existing.rows[0];
+      return existingThread;
     }
 
     await this.pool.query(
@@ -1142,6 +1469,10 @@ class DatabaseService {
     }
   }
 
+  async getOkrsByQuarter(quarter = null) {
+    return this.getOkrRecords(quarter);
+  }
+
   async getAppSetting(key, defaultValue = null) {
     try {
       await this.ensureInitialized();
@@ -1223,6 +1554,163 @@ class DatabaseService {
       return true;
     } catch (err) {
       delete this.inMemoryAppSettings[key];
+      return true;
+    }
+  }
+
+  async getTeamMembers() {
+    try {
+      await this.ensureInitialized();
+      const res = await this.pool.query('SELECT * FROM team_members ORDER BY display_name ASC');
+      return res.rows.map((row) => ({
+        id: row.id,
+        displayName: row.display_name,
+        email: row.email,
+        aliases: typeof row.aliases === 'string' ? safeJsonParse(row.aliases) : row.aliases || [],
+        githubUsername: row.github_username,
+        jiraEmail: row.jira_email,
+        jiraAccountId: row.jira_account_id,
+        gcalEmail: row.gcal_email,
+        notionName: row.notion_name,
+        currentLevel: row.current_level,
+        targetLevel: row.target_level,
+        track: row.track,
+        tenureMonths: row.tenure_months,
+        skills: typeof row.skills === 'string' ? safeJsonParse(row.skills) : row.skills || {},
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }));
+    } catch (err) {
+      warn('PostgreSQL getTeamMembers failed, using in-memory fallback', { err: err.message });
+      return [...this.inMemoryTeamMembers];
+    }
+  }
+
+  async getTeamMemberById(id) {
+    try {
+      await this.ensureInitialized();
+      const res = await this.pool.query('SELECT * FROM team_members WHERE id = $1', [id]);
+      if (res.rows.length === 0) return null;
+      const row = res.rows[0];
+      return {
+        id: row.id,
+        displayName: row.display_name,
+        email: row.email,
+        aliases: typeof row.aliases === 'string' ? safeJsonParse(row.aliases) : row.aliases || [],
+        githubUsername: row.github_username,
+        jiraEmail: row.jira_email,
+        jiraAccountId: row.jira_account_id,
+        gcalEmail: row.gcal_email,
+        notionName: row.notion_name,
+        currentLevel: row.current_level,
+        targetLevel: row.target_level,
+        track: row.track,
+        tenureMonths: row.tenure_months,
+        skills: typeof row.skills === 'string' ? safeJsonParse(row.skills) : row.skills || {},
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      };
+    } catch (err) {
+      return this.inMemoryTeamMembers.find((m) => m.id === id) || null;
+    }
+  }
+
+  async upsertTeamMember(memberData) {
+    const id = memberData.id || createOpaqueId('mem');
+    const displayName = memberData.displayName || memberData.display_name || 'Team Member';
+    const email = memberData.email || `${id}@company.internal`;
+    const aliases = JSON.stringify(memberData.aliases || [displayName]);
+    const githubUsername = memberData.githubUsername || memberData.github_username || null;
+    const jiraEmail = memberData.jiraEmail || memberData.jira_email || email;
+    const jiraAccountId = memberData.jiraAccountId || memberData.jira_account_id || null;
+    const gcalEmail = memberData.gcalEmail || memberData.gcal_email || email;
+    const notionName = memberData.notionName || memberData.notion_name || displayName;
+    const currentLevel = memberData.currentLevel || memberData.current_level || 'L4_MID';
+    const targetLevel = memberData.targetLevel || memberData.target_level || 'L5_SENIOR';
+    const track = memberData.track || 'INDIVIDUAL_CONTRIBUTOR';
+    const tenureMonths = Number(memberData.tenureMonths || memberData.tenure_months || 12);
+    const skills = JSON.stringify(memberData.skills || {});
+
+    try {
+      await this.ensureInitialized();
+      const res = await this.pool.query(
+        `
+        INSERT INTO team_members (
+          id, display_name, email, aliases, github_username, jira_email,
+          jira_account_id, gcal_email, notion_name, current_level, target_level,
+          track, tenure_months, skills, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+        ON CONFLICT (id) DO UPDATE SET
+          display_name = EXCLUDED.display_name,
+          email = EXCLUDED.email,
+          aliases = EXCLUDED.aliases,
+          github_username = COALESCE(EXCLUDED.github_username, team_members.github_username),
+          jira_email = COALESCE(EXCLUDED.jira_email, team_members.jira_email),
+          jira_account_id = COALESCE(EXCLUDED.jira_account_id, team_members.jira_account_id),
+          gcal_email = COALESCE(EXCLUDED.gcal_email, team_members.gcal_email),
+          notion_name = COALESCE(EXCLUDED.notion_name, team_members.notion_name),
+          current_level = EXCLUDED.current_level,
+          target_level = EXCLUDED.target_level,
+          track = EXCLUDED.track,
+          tenure_months = EXCLUDED.tenure_months,
+          skills = EXCLUDED.skills,
+          updated_at = NOW()
+        RETURNING *;
+        `,
+        [
+          id, displayName, email, aliases, githubUsername, jiraEmail,
+          jiraAccountId, gcalEmail, notionName, currentLevel, targetLevel,
+          track, tenureMonths, skills
+        ]
+      );
+      const row = res.rows[0];
+      const member = {
+        id: row.id,
+        displayName: row.display_name,
+        email: row.email,
+        aliases: typeof row.aliases === 'string' ? safeJsonParse(row.aliases) : row.aliases || [],
+        githubUsername: row.github_username,
+        jiraEmail: row.jira_email,
+        jiraAccountId: row.jira_account_id,
+        gcalEmail: row.gcal_email,
+        notionName: row.notion_name,
+        currentLevel: row.current_level,
+        targetLevel: row.target_level,
+        track: row.track,
+        tenureMonths: row.tenure_months,
+        skills: typeof row.skills === 'string' ? safeJsonParse(row.skills) : row.skills || {},
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      };
+      // Keep in-memory in sync
+      const idx = this.inMemoryTeamMembers.findIndex((m) => m.id === id);
+      if (idx >= 0) this.inMemoryTeamMembers[idx] = member;
+      else this.inMemoryTeamMembers.push(member);
+      return member;
+    } catch (err) {
+      warn('PostgreSQL upsertTeamMember failed, saving to in-memory fallback', { err: err.message });
+      const member = {
+        id, displayName, email, aliases: safeJsonParse(aliases),
+        githubUsername, jiraEmail, jiraAccountId, gcalEmail,
+        notionName, currentLevel, targetLevel, track,
+        tenureMonths, skills: safeJsonParse(skills),
+        updatedAt: new Date().toISOString(),
+      };
+      const idx = this.inMemoryTeamMembers.findIndex((m) => m.id === id);
+      if (idx >= 0) this.inMemoryTeamMembers[idx] = member;
+      else this.inMemoryTeamMembers.push(member);
+      return member;
+    }
+  }
+
+  async deleteTeamMember(id) {
+    try {
+      await this.ensureInitialized();
+      await this.pool.query('DELETE FROM team_members WHERE id = $1', [id]);
+      this.inMemoryTeamMembers = this.inMemoryTeamMembers.filter((m) => m.id !== id);
+      return true;
+    } catch (err) {
+      this.inMemoryTeamMembers = this.inMemoryTeamMembers.filter((m) => m.id !== id);
       return true;
     }
   }

@@ -7,6 +7,8 @@ description: Procedures for testing PDF ingestion, HyDE query transformation, CT
 
 Use this skill when developing, testing, or troubleshooting multi-format document uploads (PDF, CSV, Images, Text), HyDE query expansion, Reciprocal Rank Fusion (RRF) search, Redis semantic caching, or vector chunk inspection.
 
+---
+
 ## 📌 Architecture Overview
 
 1. **Document Ingestion**:
@@ -32,6 +34,8 @@ Use this skill when developing, testing, or troubleshooting multi-format documen
 5. **Single-Pass Answer Synthesis**:
    - `generateAnswer()` in `backend/src/rag/retriever.js` generates structured markdown sections (`### 📄 Executive Summary`, `### 🔍 Key Document Analysis`, `### 📌 Source Citations`) directly in 1 LLM pass.
 
+---
+
 ## 🧪 Verification Commands
 
 ### Test Document Chunk Inspection via Admin API
@@ -39,13 +43,13 @@ Use this skill when developing, testing, or troubleshooting multi-format documen
 curl -s http://localhost:4000/api/admin/documents/sample.pdf/chunks
 ```
 
-### Run Python AI RAG Test Suite
+### Run Python AI RAG Test Suite (39 Specs)
 ```bash
 cd services/python-ai-service
 uv run pytest
 ```
 
-### Run Backend RAG Test Suite
+### Run Backend RAG Test Suite (233 Specs)
 ```bash
 cd backend
 npm test

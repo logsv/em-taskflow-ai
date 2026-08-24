@@ -1,0 +1,11 @@
+# Temporal Server Dynamic Configuration
+# Enables worker heartbeats and health metrics in Temporal Web UI (/namespaces/default/workers)
+
+frontend.workerHeartbeatsEnabled:
+  - value: true
+
+system.workerHeartbeatsEnabled:
+  - value: true
+
+matching.workerHeartbeatsEnabled:
+  - value: true

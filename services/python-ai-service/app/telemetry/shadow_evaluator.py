@@ -65,6 +65,20 @@ class ShadowEvaluatorWorker:
                         value=float(faithfulness),
                         comment=f"Shadow Evaluator Faithfulness metric ({self.model_name})",
                     )
+                    if "blameless_tone" in result:
+                        langfuse.score(
+                            trace_id=trace_id,
+                            name="shadow_blameless_tone",
+                            value=float(result["blameless_tone"]),
+                            comment=f"Shadow Evaluator Blameless Tone metric ({self.model_name})",
+                        )
+                    if "smart_actionability" in result:
+                        langfuse.score(
+                            trace_id=trace_id,
+                            name="shadow_smart_action_adherence",
+                            value=float(result["smart_actionability"]),
+                            comment=f"Shadow Evaluator SMART Action Adherence ({self.model_name})",
+                        )
                     langfuse.flush()
                 except Exception as sync_err:
                     logger.debug(f"Shadow Langfuse score skipped: {sync_err}")

@@ -5,77 +5,102 @@ from app.temporal.activities import (
     persist_and_embed_activity,
     run_pairwise_arena_activity,
     export_benchmark_report_activity,
-    evaluate_ingested_document_trulens_activity,
     fetch_evaluation_queries_activity,
     evaluate_single_rag_triad_query_activity,
-    sync_trulens_leaderboard_activity,
+    evaluate_prompt_batch_activity,
+    sync_evaluation_leaderboard_activity,
 )
 
 
+from unittest.mock import patch, MagicMock
+
 @pytest.mark.asyncio
 async def test_temporal_activities():
-    # Test activity 1: Extract Text (direct text parameter)
-    extract_res = await extract_text_activity({"filename": "test.txt", "text": "Sample temporal text content"})
-    assert extract_res["filename"] == "test.txt"
-    assert extract_res["text"] == "Sample temporal text content"
+    with patch("evaluation.ragas_runner.run_ragas_evaluation") as mock_ragas, \
+         patch("evaluation.llm_judge.LLMJudgeFactory.create_judge") as mock_judge:
 
-    # Test activity 2: Chunk Text
-    chunk_res = await chunk_text_activity({"filename": "test.txt", "text": extract_res["text"]})
-    assert chunk_res["filename"] == "test.txt"
-    assert chunk_res["total_chunks"] > 0
+        mock_ragas.return_value = {
+            "faithfulness": 0.9650,
+            "answer_relevancy": 0.8920,
+            "context_precision": 0.9500,
+            "context_recall": 0.9250,
+        }
 
-    # Test activity 3: Persist & Embed
-    persist_res = await persist_and_embed_activity({"filename": "test.txt", "chunks": chunk_res["chunks"]})
-    assert persist_res["status"] == "completed"
-    assert persist_res["total_chunks"] == chunk_res["total_chunks"]
+        mock_judge_instance = MagicMock()
+        mock_judge_instance.evaluate.return_value = {
+            "winner": "candidate_a",
+            "confidence": 0.95,
+            "rationale": "Candidate A provides structured markdown and comprehensive SOP timeline.",
+        }
+        mock_judge.return_value = mock_judge_instance
 
-    # Test activity 4: Pairwise Arena Activity
-    arena_res = await run_pairwise_arena_activity({
-        "model_name": "hermes3:8b",
-        "candidate_a": "### 📄 Executive Summary\nP0 SLA is 5 mins.",
-        "candidate_b": "Acknowledge in 5m.",
-    })
-    assert "winner" in arena_res
+        # Test activity 1: Extract Text (direct text parameter)
+        extract_res = await extract_text_activity({"filename": "test.txt", "text": "Sample temporal text content"})
+        assert extract_res["filename"] == "test.txt"
+        assert extract_res["text"] == "Sample temporal text content"
 
-    # Test activity 5: Ingestion TruLens Evaluator (non-blocking)
-    eval_doc_res = await evaluate_ingested_document_trulens_activity({"filename": "test_sop.pdf"})
-    assert eval_doc_res["filename"] == "test_sop.pdf"
+        # Test activity 2: Chunk Text
+        chunk_res = await chunk_text_activity({"filename": "test.txt", "text": extract_res["text"]})
+        assert chunk_res["filename"] == "test.txt"
+        assert chunk_res["total_chunks"] > 0
 
-    # Test activity 6: Export Benchmark Report
-    report_res = await export_benchmark_report_activity({
-        "model_name": "hermes3:8b",
-        "ragas_scores": {"faithfulness": 1.0, "answer_relevance": 1.0},
-        "trulens_res": {"records_evaluated": 2},
-        "arena_res": arena_res,
-        "duration_seconds": 12.5,
-    })
-    assert report_res["status"] == "SUCCESS"
-    assert "report_path" in report_res
+        # Test activity 3: Persist & Embed
+        persist_res = await persist_and_embed_activity({"filename": "test.txt", "chunks": chunk_res["chunks"]})
+        assert persist_res["status"] == "completed"
+        assert persist_res["total_chunks"] == chunk_res["total_chunks"]
 
-    # Test activity 7: Granular Query Fetch Activity
-    fetch_res = await fetch_evaluation_queries_activity({"limit": 2, "include_golden": True})
-    assert fetch_res["status"] == "SUCCESS"
-    assert len(fetch_res["queries"]) > 0
+        # Test activity 4: Pairwise Arena Activity
+        arena_res = await run_pairwise_arena_activity({
+            "model_name": "hermes3:8b",
+            "candidate_a": "### 📄 Executive Summary\nP0 SLA is 5 mins.",
+            "candidate_b": "Acknowledge in 5m.",
+        })
+        assert "winner" in arena_res
 
-    # Test activity 8: Granular Single Query Evaluation Activity
-    eval_single_res = await evaluate_single_rag_triad_query_activity({
-        "query": "What is the engineering escalation protocol for P0 incidents?",
-        "query_index": 1,
-        "total_queries": 1,
-        "model_name": "hermes3:8b",
-    })
-    assert eval_single_res["status"] == "SUCCESS"
-    assert "feedbacks" in eval_single_res
-    assert "groundedness" in eval_single_res["feedbacks"]
+        # Test activity 5: Export Benchmark Report
+        report_res = await export_benchmark_report_activity({
+            "model_name": "hermes3:8b",
+            "ragas_scores": {"faithfulness": 1.0, "answer_relevance": 1.0},
+            "arena_res": arena_res,
+            "duration_seconds": 12.5,
+        })
+        assert report_res["status"] == "SUCCESS"
+        assert "report_path" in report_res
 
-    # Test activity 9: Granular Leaderboard Sync Activity
-    sync_res = await sync_trulens_leaderboard_activity({
-        "results": [eval_single_res],
-        "model_name": "hermes3:8b",
-    })
-    assert sync_res["status"] == "SUCCESS"
-    assert sync_res["total_evaluated"] == 1
-    assert "mean_scores" in sync_res
+        # Test activity 6: Granular Query Fetch Activity
+        fetch_res = await fetch_evaluation_queries_activity({"limit": 2, "include_golden": True})
+        assert fetch_res["status"] == "SUCCESS"
+        assert len(fetch_res["queries"]) > 0
+
+        # Test activity 7: Granular Single Query Evaluation Activity
+        eval_single_res = await evaluate_single_rag_triad_query_activity({
+            "query": "What is the engineering escalation protocol for P0 incidents?",
+            "query_index": 1,
+            "total_queries": 1,
+            "model_name": "hermes3:8b",
+        })
+        assert eval_single_res["status"] == "SUCCESS"
+        assert "feedbacks" in eval_single_res
+        assert "faithfulness" in eval_single_res["feedbacks"]
+
+        # Test activity 8: Prompt Batch Evaluation Activity
+        eval_batch_res = await evaluate_prompt_batch_activity({
+            "queries": ["What is the SLA for P0 incidents?"],
+            "batch_index": 1,
+            "total_batches": 1,
+            "model_name": "hermes3:8b",
+        })
+        assert eval_batch_res["status"] == "SUCCESS"
+        assert eval_batch_res["evaluated_count"] == 1
+
+        # Test activity 9: Leaderboard Sync Activity
+        sync_res = await sync_evaluation_leaderboard_activity({
+            "results": [eval_single_res],
+            "model_name": "hermes3:8b",
+        })
+        assert sync_res["status"] == "SUCCESS"
+        assert sync_res["total_evaluated"] == 1
+        assert "mean_scores" in sync_res
 
 
 @pytest.mark.asyncio

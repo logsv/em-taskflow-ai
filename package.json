@@ -19,6 +19,9 @@
     "eval:promptfoo:view": "cd backend && npm run eval:promptfoo:view",
     "eval:nightly": "bash scripts/run-nightly-eval.sh",
     "eval:setup-daemon": "bash scripts/setup-nightly-eval-daemon.sh",
-    "eval:enterprise": "npm run eval && npm run eval:deepeval && npm run eval:ragas && npm run eval:trulens"
+    "eval:enterprise": "npm run eval && npm run eval:deepeval && npm run eval:ragas && npm run eval:trulens",
+    "docs:dev": "cd docs && npm run docs:dev",
+    "docs:build": "cd docs && npm run docs:build",
+    "docs:preview": "cd docs && npm run docs:preview"
   }
 }

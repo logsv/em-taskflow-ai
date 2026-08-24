@@ -25,7 +25,7 @@ export function createDeterministicToolHarness({
   dbCacheFallback = async () => ({}),
   computeMath = async (sourceResults) => sourceResults,
 }) {
-  return tool(
+  const createdTool = tool(
     async (inputArgs) => {
       const toolSpan = createSpan(null, `tool_${name}`, inputArgs);
       const startTime = Date.now();
@@ -151,4 +151,10 @@ export function createDeterministicToolHarness({
       schema,
     },
   );
+
+  createdTool.dbCacheFallback = dbCacheFallback;
+  createdTool.mcpExecutors = mcpExecutors;
+  createdTool.directApiExecutors = directApiExecutors;
+
+  return createdTool;
 }

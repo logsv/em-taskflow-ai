@@ -55,7 +55,9 @@ class FileUploadProcessor:
         return self._extract_text_fallback(file_bytes, filename)
 
     def _extract_pdf(self, file_bytes: bytes, filename: str) -> dict:
-        """Extract pages and tables from PDF bytes using PyMuPDF (fitz)."""
+        """Extract pages and tables from PDF bytes using PyMuPDF (fitz).
+        For scanned/image PDFs with 0 selectable text, automatically falls back
+        to Ollama qwen3-vl OCR via page rasterization."""
         try:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
             page_count = len(doc)
@@ -71,13 +73,25 @@ class FileUploadProcessor:
             full_text = "\n\n".join(extracted_pages).strip()
 
             if not full_text:
+                # Scanned/image PDF — attempt Ollama qwen3-vl OCR
+                ocr_text = self._ocr_pdf_with_ollama(doc, filename)
+                if ocr_text:
+                    return {
+                        "success": True,
+                        "filename": filename,
+                        "extracted_text": ocr_text,
+                        "page_count": page_count,
+                        "extraction_method": "ollama_qwen3vl_ocr",
+                        "error_message": "",
+                    }
+                # OCR unavailable — return soft failure (no raise, let caller decide)
                 return {
                     "success": False,
                     "filename": filename,
                     "extracted_text": "",
                     "page_count": page_count,
                     "extraction_method": "pymupdf_empty",
-                    "error_message": f"PDF '{filename}' is a scanned or image document containing 0 selectable text characters. Please run OCR or upload a text-readable PDF.",
+                    "error_message": f"PDF '{filename}' is a scanned or image document containing 0 selectable text characters. OCR via qwen3-vl was attempted but Ollama is unavailable. Please ensure Ollama is running with 'qwen3-vl' model pulled, or upload a text-readable PDF.",
                 }
 
             return {
@@ -97,6 +111,58 @@ class FileUploadProcessor:
                 "extraction_method": "pymupdf_error",
                 "error_message": f"PDF parsing error: {str(e)}",
             }
+
+    def _ocr_pdf_with_ollama(self, doc: "fitz.Document", filename: str) -> str:
+        """Rasterize PDF pages to PNG and run OCR via Ollama qwen3-vl vision model.
+        Returns extracted text on success, empty string if Ollama is unavailable."""
+        import base64
+        import requests
+        import os
+
+        ollama_host = os.environ.get("OLLAMA_HOST", "http://host.docker.internal:11434")
+        ocr_model = os.environ.get("OLLAMA_OCR_MODEL", "qwen3-vl")
+
+        ocr_pages = []
+        # Rasterize up to 10 pages (300 DPI) to keep payload manageable
+        max_pages = min(len(doc), 10)
+        for page_num in range(max_pages):
+            page = doc[page_num]
+            mat = fitz.Matrix(300 / 72, 300 / 72)  # 300 DPI rasterization
+            pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
+            img_bytes = pix.tobytes("png")
+            img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+
+            try:
+                resp = requests.post(
+                    f"{ollama_host}/api/generate",
+                    json={
+                        "model": ocr_model,
+                        "prompt": (
+                            f"You are an OCR engine. Extract ALL visible text from page {page_num + 1} "
+                            f"of the PDF document '{filename}'. Output ONLY the extracted text with "
+                            "no commentary, no markdown formatting headers — just the raw text content "
+                            "exactly as it appears on the page."
+                        ),
+                        "images": [img_b64],
+                        "stream": False,
+                    },
+                    timeout=120,
+                )
+                resp.raise_for_status()
+                page_text = resp.json().get("response", "").strip()
+                if page_text:
+                    ocr_pages.append(f"--- Page {page_num + 1} (OCR) ---\n{page_text}")
+            except Exception as ocr_err:
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"⚠️ Ollama OCR failed for page {page_num + 1} of '{filename}': {ocr_err}"
+                )
+                # Do not raise — try remaining pages and return partial result
+                continue
+
+        return "\n\n".join(ocr_pages).strip()
+
+
 
     def _extract_csv(self, file_bytes: bytes, filename: str) -> dict:
         """Extract CSV/Excel data into clean LLM-friendly Markdown tables using pandas."""

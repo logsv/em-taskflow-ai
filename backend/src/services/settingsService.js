@@ -5,6 +5,7 @@ import { info, warn, error } from '../utils/logger.js';
 import { closeJiraMcp } from '../mcp/jira.js';
 import { closeNotionMcp } from '../mcp/notion.js';
 import { closeGithubMcp } from '../mcp/github.js';
+import { closeSlackMcp } from '../mcp/slack.js';
 
 export function maskSecret(secret) {
   if (!secret || typeof secret !== 'string') return '';
@@ -22,6 +23,15 @@ export function maskSecret(secret) {
   }
   if (trimmed.startsWith('sk-')) {
     return `sk-******${trimmed.slice(-4)}`;
+  }
+  if (trimmed.startsWith('xoxb-')) {
+    return `xoxb-******${trimmed.slice(-4)}`;
+  }
+  if (trimmed.startsWith('xapp-')) {
+    return `xapp-******${trimmed.slice(-4)}`;
+  }
+  if (trimmed.startsWith('xoxp-')) {
+    return `xoxp-******${trimmed.slice(-4)}`;
   }
   return `${trimmed.slice(0, 3)}******${trimmed.slice(-4)}`;
 }
@@ -69,6 +79,13 @@ class SettingsService {
     }
   }
 
+  getCachedSettings() {
+    if (!this.cachedRawSettings) {
+      this.cachedRawSettings = this.getDefaultEnvSettings();
+    }
+    return this.cachedRawSettings;
+  }
+
   getDefaultEnvSettings() {
     return {
       llm: {
@@ -98,10 +115,17 @@ class SettingsService {
       },
       mcp: {
         jira: {
-          url: process.env.JIRA_BASE_URL || process.env.JIRA_MCP_URL || 'https://example.jira.com',
-          email: process.env.JIRA_USER_EMAIL || '',
+          url: process.env.JIRA_BASE_URL || process.env.JIRA_URL || 'https://your-company.atlassian.net',
+          email: process.env.JIRA_USER_EMAIL || process.env.JIRA_USERNAME || '',
           apiToken: process.env.JIRA_API_TOKEN || process.env.JIRA_MCP_TOKEN || '',
-          mcpUrl: process.env.JIRA_MCP_URL || '',
+          mcpUrl: process.env.JIRA_MCP_URL || 'https://mcp.atlassian.com/v1/mcp/authv2',
+          projectKey: process.env.JIRA_PROJECT_KEY || '',
+          oauth: {
+            clientId: process.env.JIRA_OAUTH_CLIENT_ID || '',
+            clientSecret: process.env.JIRA_OAUTH_CLIENT_SECRET || '',
+            redirectUrl: process.env.JIRA_OAUTH_REDIRECT_URL || 'http://localhost:5001/api/mcp/jira/oauth/callback',
+            scope: 'read:jira-work read:jira-user offline_access',
+          },
           enabled: true,
         },
         github: {
@@ -119,6 +143,14 @@ class SettingsService {
           apiKey: process.env.GOOGLE_CALENDAR_API_KEY || '',
           calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
           clientId: process.env.GOOGLE_CLIENT_ID || '',
+          enabled: true,
+        },
+        slack: {
+          botToken: process.env.SLACK_BOT_TOKEN || '',
+          signingSecret: process.env.SLACK_SIGNING_SECRET || '',
+          appToken: process.env.SLACK_APP_TOKEN || '',
+          defaultChannel: process.env.SLACK_DEFAULT_CHANNEL || '#engineering-retro',
+          teamId: process.env.SLACK_TEAM_ID || '',
           enabled: true,
         },
       },
@@ -164,7 +196,11 @@ class SettingsService {
           process.env.JIRA_API_TOKEN = rawSettings.mcp.jira.apiToken;
           process.env.JIRA_MCP_TOKEN = rawSettings.mcp.jira.apiToken;
         }
+        if (rawSettings.mcp.jira.projectKey) process.env.JIRA_PROJECT_KEY = rawSettings.mcp.jira.projectKey;
         if (rawSettings.mcp.jira.mcpUrl) process.env.JIRA_MCP_URL = rawSettings.mcp.jira.mcpUrl;
+        if (rawSettings.mcp.jira.oauth?.clientId) process.env.JIRA_OAUTH_CLIENT_ID = rawSettings.mcp.jira.oauth.clientId;
+        if (rawSettings.mcp.jira.oauth?.clientSecret) process.env.JIRA_OAUTH_CLIENT_SECRET = rawSettings.mcp.jira.oauth.clientSecret;
+        if (rawSettings.mcp.jira.oauth?.redirectUrl) process.env.JIRA_OAUTH_REDIRECT_URL = rawSettings.mcp.jira.oauth.redirectUrl;
       }
       if (rawSettings.mcp.github) {
         if (rawSettings.mcp.github.token) process.env.GITHUB_TOKEN = rawSettings.mcp.github.token;
@@ -174,6 +210,13 @@ class SettingsService {
       if (rawSettings.mcp.notion) {
         if (rawSettings.mcp.notion.apiKey) process.env.NOTION_API_KEY = rawSettings.mcp.notion.apiKey;
         if (rawSettings.mcp.notion.mcpUrl) process.env.NOTION_MCP_URL = rawSettings.mcp.notion.mcpUrl;
+      }
+      if (rawSettings.mcp.slack) {
+        if (rawSettings.mcp.slack.botToken) process.env.SLACK_BOT_TOKEN = rawSettings.mcp.slack.botToken;
+        if (rawSettings.mcp.slack.signingSecret) process.env.SLACK_SIGNING_SECRET = rawSettings.mcp.slack.signingSecret;
+        if (rawSettings.mcp.slack.appToken) process.env.SLACK_APP_TOKEN = rawSettings.mcp.slack.appToken;
+        if (rawSettings.mcp.slack.defaultChannel) process.env.SLACK_DEFAULT_CHANNEL = rawSettings.mcp.slack.defaultChannel;
+        if (rawSettings.mcp.slack.teamId) process.env.SLACK_TEAM_ID = rawSettings.mcp.slack.teamId;
       }
     }
   }
@@ -212,8 +255,14 @@ class SettingsService {
         jira: {
           url: raw.mcp.jira?.url || '',
           email: raw.mcp.jira?.email || '',
+          projectKey: raw.mcp.jira?.projectKey || '',
           apiToken: maskSecret(raw.mcp.jira?.apiToken),
           mcpUrl: raw.mcp.jira?.mcpUrl || '',
+          oauth: {
+            clientId: raw.mcp.jira?.oauth?.clientId || '',
+            clientSecret: maskSecret(raw.mcp.jira?.oauth?.clientSecret),
+            redirectUrl: raw.mcp.jira?.oauth?.redirectUrl || 'http://localhost:5001/api/mcp/jira/oauth/callback',
+          },
           enabled: raw.mcp.jira?.enabled ?? true,
         },
         github: {
@@ -232,6 +281,14 @@ class SettingsService {
           calendarId: raw.mcp.googleCalendar?.calendarId || 'primary',
           clientId: raw.mcp.googleCalendar?.clientId || '',
           enabled: raw.mcp.googleCalendar?.enabled ?? true,
+        },
+        slack: {
+          botToken: maskSecret(raw.mcp.slack?.botToken),
+          signingSecret: maskSecret(raw.mcp.slack?.signingSecret),
+          appToken: maskSecret(raw.mcp.slack?.appToken),
+          defaultChannel: raw.mcp.slack?.defaultChannel || '#engineering-retro',
+          teamId: raw.mcp.slack?.teamId || '',
+          enabled: raw.mcp.slack?.enabled ?? true,
         },
       },
       metadata: raw.metadata || {
@@ -279,8 +336,16 @@ class SettingsService {
       jira: {
         url: incoming.mcp?.jira?.url || current.mcp.jira?.url || '',
         email: incoming.mcp?.jira?.email || current.mcp.jira?.email || '',
+        projectKey: incoming.mcp?.jira?.projectKey || current.mcp.jira?.projectKey || '',
         apiToken: isMasked(incoming.mcp?.jira?.apiToken) ? current.mcp.jira?.apiToken : incoming.mcp?.jira?.apiToken ?? current.mcp.jira?.apiToken,
         mcpUrl: incoming.mcp?.jira?.mcpUrl || current.mcp.jira?.mcpUrl || '',
+        oauth: {
+          clientId: incoming.mcp?.jira?.oauth?.clientId ?? current.mcp.jira?.oauth?.clientId ?? '',
+          clientSecret: isMasked(incoming.mcp?.jira?.oauth?.clientSecret)
+            ? current.mcp.jira?.oauth?.clientSecret
+            : incoming.mcp?.jira?.oauth?.clientSecret ?? current.mcp.jira?.oauth?.clientSecret ?? '',
+          redirectUrl: incoming.mcp?.jira?.oauth?.redirectUrl || current.mcp.jira?.oauth?.redirectUrl || 'http://localhost:5001/api/mcp/jira/oauth/callback',
+        },
         enabled: incoming.mcp?.jira?.enabled ?? current.mcp.jira?.enabled ?? true,
       },
       github: {
@@ -301,6 +366,20 @@ class SettingsService {
         calendarId: incoming.mcp?.googleCalendar?.calendarId || current.mcp.googleCalendar?.calendarId || 'primary',
         clientId: incoming.mcp?.googleCalendar?.clientId || current.mcp.googleCalendar?.clientId || '',
         enabled: incoming.mcp?.googleCalendar?.enabled ?? current.mcp.googleCalendar?.enabled ?? true,
+      },
+      slack: {
+        botToken: isMasked(incoming.mcp?.slack?.botToken)
+          ? current.mcp.slack?.botToken
+          : incoming.mcp?.slack?.botToken ?? current.mcp.slack?.botToken ?? '',
+        signingSecret: isMasked(incoming.mcp?.slack?.signingSecret)
+          ? current.mcp.slack?.signingSecret
+          : incoming.mcp?.slack?.signingSecret ?? current.mcp.slack?.signingSecret ?? '',
+        appToken: isMasked(incoming.mcp?.slack?.appToken)
+          ? current.mcp.slack?.appToken
+          : incoming.mcp?.slack?.appToken ?? current.mcp.slack?.appToken ?? '',
+        defaultChannel: incoming.mcp?.slack?.defaultChannel || current.mcp.slack?.defaultChannel || '#engineering-retro',
+        teamId: incoming.mcp?.slack?.teamId || current.mcp.slack?.teamId || '',
+        enabled: incoming.mcp?.slack?.enabled ?? current.mcp.slack?.enabled ?? true,
       },
     };
 
@@ -326,6 +405,7 @@ class SettingsService {
     await closeJiraMcp().catch(() => {});
     await closeNotionMcp().catch(() => {});
     await closeGithubMcp().catch(() => {});
+    await closeSlackMcp().catch(() => {});
 
     info('✅ Settings saved to database and hot-reloaded into active runtime');
     return this.getMaskedSettings();
@@ -351,6 +431,7 @@ class SettingsService {
     await closeJiraMcp().catch(() => {});
     await closeNotionMcp().catch(() => {});
     await closeGithubMcp().catch(() => {});
+    await closeSlackMcp().catch(() => {});
 
     info('🔄 Restored settings to .env defaults');
     return this.getMaskedSettings();
@@ -375,19 +456,58 @@ class SettingsService {
       }
 
       if (type === 'jira') {
-        const url = credentials.url !== undefined ? credentials.url : raw.mcp.jira?.url;
+        const url = (credentials.url !== undefined ? credentials.url : raw.mcp.jira?.url) || process.env.JIRA_URL || '';
+        const mcpUrl = (credentials.mcpUrl !== undefined ? credentials.mcpUrl : raw.mcp.jira?.mcpUrl) || 'https://mcp.atlassian.com/v1/mcp/authv2';
         const email = credentials.email !== undefined ? credentials.email : raw.mcp.jira?.email;
         const token = isMasked(credentials.apiToken)
           ? raw.mcp.jira?.apiToken
           : credentials.apiToken !== undefined ? credentials.apiToken : raw.mcp.jira?.apiToken;
 
+        // If user explicitly testing Atlassian Remote MCP Cloud (OAuth 2.1)
+        if (credentials.mode === 'mcp' || (url.includes('mcp.atlassian.com') && token)) {
+          const mcpTarget = url.includes('mcp.atlassian.com') ? url : mcpUrl;
+          try {
+            const mcpRes = await axios.post(
+              mcpTarget,
+              {
+                jsonrpc: '2.0',
+                method: 'initialize',
+                params: {
+                  protocolVersion: '2024-11-05',
+                  capabilities: {},
+                  clientInfo: { name: 'EM-TaskFlow-AI', version: '1.0.0' },
+                },
+                id: 1,
+              },
+              {
+                headers: {
+                  Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                },
+                timeout: 4500,
+              }
+            );
+            return {
+              success: true,
+              latencyMs: Date.now() - startTime,
+              message: `Connected to Official Atlassian Remote MCP (${mcpTarget})`,
+            };
+          } catch (mcpErr) {
+            return {
+              success: false,
+              latencyMs: Date.now() - startTime,
+              message: `Remote Atlassian MCP error: ${mcpErr.response?.data?.error || mcpErr.message}`,
+            };
+          }
+        }
+
         if (!url || !url.startsWith('http')) {
-          return { success: false, latencyMs: 0, message: 'Invalid Jira URL provided' };
+          return { success: false, latencyMs: 0, message: 'Invalid Jira URL provided (e.g. https://your-company.atlassian.net)' };
         }
 
         const authHeader = email && token
           ? `Basic ${Buffer.from(`${email}:${token}`).toString('base64')}`
-          : token ? `Bearer ${token}` : null;
+          : token ? (token.startsWith('Basic ') || token.startsWith('Bearer ') ? token : `Bearer ${token}`) : null;
 
         const res = await axios.get(`${url.replace(/\/$/, '')}/rest/api/3/myself`, {
           headers: authHeader ? { Authorization: authHeader, Accept: 'application/json' } : { Accept: 'application/json' },
@@ -397,7 +517,7 @@ class SettingsService {
         return {
           success: true,
           latencyMs: Date.now() - startTime,
-          message: `Connected as ${res.data?.displayName || res.data?.emailAddress || 'Jira User'}`,
+          message: `Connected as ${res.data?.displayName || res.data?.emailAddress || 'Jira User'} (${res.data?.emailAddress || url})`,
         };
       }
 
@@ -471,6 +591,11 @@ class SettingsService {
         };
       }
 
+      if (type === 'slack') {
+        const { testSlackConnection } = await import('../mcp/slack.js');
+        return testSlackConnection(credentials);
+      }
+
       return { success: false, latencyMs: 0, message: `Unknown connection test type: ${type}` };
     } catch (err) {
       return {
@@ -478,6 +603,35 @@ class SettingsService {
         latencyMs: Date.now() - startTime,
         message: err?.response?.data?.message || err?.message || 'Connection test failed',
       };
+    }
+  }
+
+  /**
+   * Get OAuth tokens for a specific provider from DB preferences
+   */
+  async getOAuthTokens(provider) {
+    try {
+      const prefKey = `mcp.${provider}.oauth.tokens`;
+      const pref = await databaseService.getPreference(prefKey);
+      if (pref?.value) {
+        return typeof pref.value === 'string' ? JSON.parse(pref.value) : pref.value;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Save OAuth tokens for a specific provider into DB preferences
+   */
+  async saveOAuthTokens(provider, tokens) {
+    try {
+      const prefKey = `mcp.${provider}.oauth.tokens`;
+      await databaseService.setPreference(prefKey, tokens);
+      return true;
+    } catch {
+      return false;
     }
   }
 }

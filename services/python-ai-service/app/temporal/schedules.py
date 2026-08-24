@@ -39,7 +39,7 @@ async def ensure_nightly_benchmark_schedule(
                 "sync_to_langfuse": True,
                 "trulens_limit": 5,
             },
-            id=f"nightly-deep-benchmark-run",
+            id="nightly-deep-benchmark-run",
             task_queue=TASK_QUEUE,
         ),
         spec=ScheduleSpec(

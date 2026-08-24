@@ -1,0 +1,42 @@
+[
+  {
+    "prompt": "What are the current blockers for the 'phoenix' project in Jira?",
+    "expected_domains": ["jira"],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Review the latest PRs for the backend repository, are there any that have been open for more than 3 days?",
+    "expected_domains": ["github"],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Summarize the project plan in the 'Project Phoenix' document.",
+    "expected_domains": ["rag"],
+    "is_rag_appropriate": true
+  },
+  {
+    "prompt": "What are the key risks for the current release, considering both Jira tickets and recent PRs?",
+    "expected_domains": ["jira", "github"],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "What's on my calendar for today?",
+    "expected_domains": ["calendar"],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Find the project status update for 'Project Apollo' in Notion.",
+    "expected_domains": ["notion"],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Can you give me a summary of the latest engineering all-hands meeting? The notes should be in the shared drive.",
+    "expected_domains": ["rag"],
+    "is_rag_appropriate": true
+  },
+  {
+    "prompt": "Who is working on the UI redesign? Check Jira.",
+    "expected_domains": ["jira"],
+    "is_rag_appropriate": false
+  }
+]

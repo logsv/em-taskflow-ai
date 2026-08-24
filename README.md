@@ -1,17 +1,22 @@
 # ⚡ EM TaskFlow AI
 
-> **Full-Stack, Local-First Enterprise Productivity Platform powered by 100% Local LLM Inference (Ollama), Production Hybrid RAG (HyDE + RRF + HNSW Vector + Redis Cache), Model Context Protocol (MCP), a LangGraph Multi-Agent Supervisor, and Per-Service Database Isolation.**
+> **Full-Stack, Local-First Enterprise Productivity Platform powered by 100% Local LLM Inference (Ollama), Production Hybrid RAG (HyDE + RRF + HNSW Vector + Redis Cache), Multi-Source Model Context Protocol (MCP) integrations (Jira OAuth 2.0 PKCE, Notion REST, GitHub PAT/OAuth, Slack Web API, Google Calendar), a LangGraph Multi-Agent Supervisor, and Per-Service Database Isolation.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-brightgreen.svg)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20pgvector-blue.svg)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7.0-red.svg)](https://redis.io/)
 [![Ollama](https://img.shields.io/badge/LLM-100%25%20Local%20(Ollama)-orange.svg)](https://ollama.ai)
-[![Docker Compose](https://img.shields.io/badge/Deployment-Docker%20Compose-2496ED.svg)](https://www.docker.com/)
+[![Documentation](https://img.shields.io/badge/Docs-VitePress-brightgreen.svg)](docs)
+[![API Explorer](https://img.shields.io/badge/API%20Docs-Swagger%20OpenAPI%203.1-38bdf8.svg)](http://localhost:4000/api/docs)
+[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-235%20passed-success.svg)](backend)
+[![Python AI Tests](https://img.shields.io/badge/Python%20AI%20Tests-39%20passed-success.svg)](services/python-ai-service)
+[![Docker Compose](https://img.shields.io/badge/Deployment-Docker%20Compose-2496ED.svg)](docker-compose.yml)
 
 ---
 
 ## 📑 Table of Contents
+- [📖 Documentation Portal & Swagger Explorer](#-documentation-portal--swagger-explorer)
 - [💡 Why EM TaskFlow AI?](#-why-em-taskflow-ai)
 - [🎯 What is EM TaskFlow AI?](#-what-is-em-taskflow-ai)
 - [⚙️ Standalone Admin Portal & Service Hub](#️-standalone-admin-portal--service-hub)
@@ -25,23 +30,35 @@
 
 ---
 
+## 📖 Documentation Portal & Swagger Explorer
+
+- **📚 VitePress Documentation Portal**: Full developer documentation, architecture deep dives, ADRs, and SRE playbooks under [`/docs`](docs).
+  ```bash
+  npm run docs:dev     # Start local VitePress docs on http://localhost:5173
+  npm run docs:build   # Build static documentation bundle
+  ```
+- **⚡ Interactive Swagger API Explorer**: Test Express REST endpoints interactively at [`http://localhost:4000/api/docs`](http://localhost:4000/api/docs) (OpenAPI 3.1 schema at `/api/docs/openapi.json`).
+
+---
+
 ## 💡 Why EM TaskFlow AI?
 
 Modern enterprise productivity tools often require sending sensitive internal workflows, documents, and tool calls to third-party cloud LLM APIs. **EM TaskFlow AI** was built to deliver enterprise-grade multi-agent productivity with **100% data sovereignty and local inference**.
 
 1. **🔒 100% Privacy & Zero Cloud Dependency**: Operates entirely locally via Ollama (`hermes3:8b`, `mistral`, `nomic-embed-text`). No external cloud API keys required, ensuring zero data leaves your local network.
-2. **🗄️ Database Per-Service Isolation**: Schema separation into dedicated databases (`taskflow_backend`, `taskflow_ai`, `temporal`, `langfuse_db`) ensuring zero noise, strict domain boundaries, and high security.
+2. **🗄️ Database Per-Service Isolation**: Strict schema separation into dedicated databases (`taskflow_backend`, `taskflow_ai`, `temporal`, `langfuse_db`) ensuring zero noise, strict domain boundaries, and high security.
 3. **🔍 Production RAG Engine (HyDE + RRF + Redis Cache)**: Features Dense Cosine Vector Search (HNSW) + Sparse BM25 Keyword Search (`pg_trgm`) merged via Reciprocal Rank Fusion (RRF), enriched by HyDE query expansion and Redis semantic caching (0.95 similarity threshold).
 4. **🎯 Bounded Tool Scoping for High SLM Accuracy**: Small Language Models (3B-7B parameters) often degrade when presented with multiple tools simultaneously. EM TaskFlow AI enforces a **single-tool restriction per sub-agent**, boosting execution accuracy past **95%**.
-5. **⚡ Fast-Path Pre-Classification (<300ms)**: Conversational, coding, and mathematical queries bypass agent routing overhead entirely via an ultra-fast pre-classifier, delivering near-instant responses.
+5. **⚡ Fast-Path Pre-Classification (<300ms)**: Conversational, coding, mathematical, and attachment queries bypass agent routing overhead entirely via an ultra-fast pre-classifier, delivering near-instant responses.
+6. **🔌 Multi-Source Model Context Protocol (MCP) Ecosystem**: Native integration with Jira OAuth 2.0 PKCE, Notion REST, GitHub PAT/OAuth, Slack Web API, and Google Calendar.
 
 ---
 
 ## 🎯 What is EM TaskFlow AI?
 
-**EM TaskFlow AI** integrates multi-agent AI orchestration, local vector search, multi-format document ingestion (PDF, CSV, Images, Text), and developer workflow tools (GitHub, Jira, Notion, Calendar) into a single cohesive cockpit.
+**EM TaskFlow AI** integrates multi-agent AI orchestration, local vector search, multi-format document ingestion (PDF, CSV, Images, Text), and developer workflow tools into a single cohesive cockpit.
 
-- **Frontend**: Responsive React UI built with Vite, `@assistant-ui/react`, glassmorphism space-dark styling, and a Standalone Admin Portal (`/admin`).
+- **Frontend**: Responsive React UI built with Vite, `@assistant-ui/react`, glassmorphism space-dark styling, multi-session management with sidebar pagination and context menus, and a Standalone Admin Portal (`/admin`).
 - **Backend Services**: Node.js microservices platform powered by LangChain, `@langchain/langgraph-supervisor`, Redis semantic cache, and Ollama (`hermes3:8b`).
 - **Python AI RAG Service**: Dedicated Python gRPC/REST service managing parent-child chunking, Cross-Encoder reranking, and `taskflow_ai` vector persistence.
 - **Multi-Agent Orchestrator**: LangGraph supervisor routing queries across specialized micro-agents with bounded execution scopes.
@@ -54,23 +71,21 @@ Access the Admin Portal by clicking **⚙️ Admin Portal ↗** in the main side
 
 ### 1. 🚀 One-Click Service Launch Hub
 - **📊 Langfuse AI Telemetry** (`http://127.0.0.1:3001`): Multi-agent execution traces, token costs, LLM response latency, and user feedback logs.
-- **🔥 Arize Phoenix Tracing** (`http://127.0.0.1:6006`): Local OpenLLMetry LLM tracing & spans.
-- **🎯 Promptfoo Managed Cloud** (`https://www.promptfoo.app`): Cloud prompt matrix comparison, security red-teaming, and shared LLM evaluation dashboard (`emtaskflow-ai`).
-- **⚖️ TruLens RAG Triad Leaderboard** (`http://127.0.0.1:8501`): Triad evaluation (groundedness, context relevance, answer relevance).
+- **🎯 Promptfoo Matrix Server** (`http://127.0.0.1:15500` & `https://www.promptfoo.app`): Matrix comparison, security red-teaming, and shared evaluation dashboard (`emtaskflow-ai`).
 - **🗄️ Adminer Postgres Explorer** (`http://127.0.0.1:8080`): Database GUI pre-configured for `taskflow_backend`, `taskflow_ai`, and `langfuse_db` (port 5433).
 - **⏳ Temporal Web UI** (`http://127.0.0.1:8233`): Durable workflow execution dashboard for RAG pipelines.
 
 ### 2. 🛠️ Native System Control Features
-- **📄 RAG Vector Store Manager**: View uploaded PDFs, inspect extracted text chunks in an interactive modal, or delete document embeddings.
-- **🔄 GitHub Sync & Cache**: Trigger manual backend sync for GitHub repository issues and monitor cache status.
+- **📄 RAG Vector Store Manager**: View uploaded documents, inspect extracted text chunks in an interactive modal, or delete document embeddings.
+- **🔄 GitHub & MCP Sync & Cache**: Trigger manual backend sync for repository issues and monitor cache status.
 - **⚡ System Health & Ollama Status**: Real-time status for Ollama (`hermes3:8b`), primary DB (5432), and analytics DB (5433).
-- **📈 EM DORA & Sprint Metrics**: Real-time snapshot of Deployment Frequency, Lead Time, Failure Rate, MTTR, and Sprint Health.
+- **📈 EM DORA & Sprint Metrics**: Production tier ratings (*Elite*, *High*, *Medium*, *Low*), Lead Time, Failure Rate, MTTR, and Sprint Health.
 
 ---
 
 ## 🏗️ High-Level System Architecture (HLD)
 
-The system utilizes a **6-stage hybrid architecture** optimized for local Small Language Models:
+The system utilizes an **8-stage hybrid architecture** optimized for local Small Language Models:
 
 ```mermaid
 flowchart TD
@@ -79,7 +94,7 @@ flowchart TD
     RedisCache -- "Cache Hit" --> CachedResp[🚀 Instant Response\n<50ms]
     RedisCache -- "Cache Miss" --> FastPath{⚡ Fast-Path Classifier\n<300ms}
     
-    FastPath -- "Direct Query (Math/Code/Chat)" --> DirectLLM[🤖 Local Ollama Inference\nhermes3:8b]
+    FastPath -- "Direct Query (Math/Code/Chat/Attachment)" --> DirectLLM[🤖 Local Ollama Inference\nhermes3:8b]
     FastPath -- "Complex / Tool / RAG Intent" --> Router[🧩 LLM Router\nDomain & Intent Classifier]
     
     Router -- "RAG Search Intent" --> PythonAI[🐍 Python AI RAG Service\nHyDE + RRF Hybrid Search]
@@ -87,16 +102,16 @@ flowchart TD
     
     Router -- "Multi-Domain Intent" --> Supervisor[👑 LangGraph Supervisor]
     
-    Supervisor --> DORA[📊 DORA Micro-Agent\n1 Tool: calculate_dora_metrics]
-    Supervisor --> Delivery[🚀 Delivery Micro-Agent\n1 Tool: analyze_delivery_bottlenecks]
-    Supervisor --> SBI[💬 SBI Micro-Agent\n1 Tool: format_sbi_feedback]
-    Supervisor --> People[👥 People Micro-Agent\n1 Tool: analyze_personnel_growth]
-    Supervisor --> Sprint[⚡ Sprint Micro-Agent\n1 Tool: calculate_sprint_plan]
-    Supervisor --> Retro[🔄 Retro Micro-Agent\n1 Tool: generate_sprint_retro]
-    Supervisor --> Roadmap[🗺️ Roadmap Micro-Agent\n1 Tool: get_roadmap_alignment]
-    Supervisor --> OKR[🎯 OKR Micro-Agent\n1 Tool: evaluate_okr_progress]
-    Supervisor --> SOP[📜 SOP Micro-Agent\n1 Tool: query_sop_compliance]
-    Supervisor --> Critic[🕵️ Critic Micro-Agent\n1 Tool: audit_em_report]
+    Supervisor --> DORA[📊 DORA Micro-Agent\nGitHub + Jira + DB Fallback]
+    Supervisor --> Delivery[🚀 Delivery Micro-Agent\nJira Blockers + PR Cycle Time]
+    Supervisor --> SBI[💬 SBI Micro-Agent\n1-on-1s + Jira + Slack]
+    Supervisor --> People[👥 People Micro-Agent\nCalendar 1-on-1s + Notion Ladders]
+    Supervisor --> Sprint[⚡ Sprint Micro-Agent\nJira Backlog + Calendar PTOs]
+    Supervisor --> Retro[🔄 Retro Micro-Agent\nThematic: Notion + Jira + Slack + GitHub]
+    Supervisor --> Roadmap[🗺️ Roadmap Micro-Agent\nJira Epics + GitHub Milestones]
+    Supervisor --> OKR[🎯 OKR Micro-Agent\nNotion OKRs + Jira + Commits]
+    Supervisor --> SOP[📜 SOP Micro-Agent\nNotion Policies + ADR Governance]
+    Supervisor --> Critic[🕵️ Critic Micro-Agent\nDraft EM Report Audit]
     
     SinglePass --> Formatter[✨ Response Formatter]
     DORA --> Formatter
@@ -132,10 +147,11 @@ flowchart TD
 
 ## ✨ Key Features & Innovations
 
-- **👑 LangGraph Multi-Agent Supervisor (`@langchain/langgraph-supervisor`)**: Orchestrates handoffs across 10 specialized domain micro-agents (`dora`, `delivery`, `sbi`, `people`, `sprint`, `retro`, `roadmap`, `okr`, `sop`, `critic`) while preventing routing loops.
+- **👑 LangGraph Multi-Agent Supervisor (`@langchain/langgraph-supervisor`)**: Orchestrates handoffs across 10 specialized domain micro-agents (`dora`, `delivery`, `sbi`, `people`, `sprint`, `retro`, `roadmap`, `okr`, `sop`, `critic`) with loop prevention.
 - **🎯 Bounded Tool Scoping (1-Tool Rule)**: Each sub-agent is restricted to maximum 1 tool definition per invocation, maintaining 95%+ execution accuracy on local Small Language Models (3B-7B).
+- **🔌 Multi-Source Model Context Protocol Suite**: Jira OAuth 2.0 PKCE, Notion REST, GitHub PAT/OAuth with repo scoping, Slack Web API, and Google Calendar.
 - **🐍 100% Python AI RAG Service Delegation**: All document processing, embeddings, vector search, and RAG operations execute exclusively through the dedicated Python AI service (`pythonAIServiceClient` in `grpc/client.js`).
-- **🛡️ Clean Response Formatting & 99% DB Resiliency**: Eliminates misleading fake fallback text. If live APIs return 0 items or fail, system falls back directly to PostgreSQL cached snapshots (`github_issues`, `dora_snapshots`, `sprint_analytics`).
+- **🛡️ Clean Response Formatting & 99% DB Resiliency**: If live APIs return 0 items or fail, system falls back directly to PostgreSQL cached snapshots (`github_issues`, `dora_snapshots`, `sprint_analytics`, `okr_records`, `team_members`).
 - **⚙️ Database Per-Service Isolation**: Microservice database separation into `taskflow_backend`, `taskflow_ai`, `temporal`, and `langfuse_db`.
 - **🔍 Production Hybrid RAG (HyDE + RRF + HNSW)**: HNSW vector search + `pg_trgm` BM25 full-text search combined via Reciprocal Rank Fusion CTE query.
 - **⚡ Redis Semantic Caching**: High-speed vector similarity cache (`redis:7-alpine`) with 0.95 similarity threshold and SHA-256 keying.
@@ -167,9 +183,7 @@ flowchart TD
    - **Frontend Chat UI**: `http://localhost:3000`
    - **Standalone Admin Portal**: `http://localhost:3000/admin`
    - **Langfuse AI Telemetry**: `http://localhost:3001`
-   - **Arize Phoenix Tracing**: `http://localhost:6006`
-   - **Promptfoo Managed Cloud**: `https://www.promptfoo.app`
-   - **TruLens Dashboard**: `http://localhost:8501`
+   - **Promptfoo Matrix Server**: `http://localhost:15500`
    - **Adminer Postgres Explorer**: `http://localhost:8080`
    - **Temporal Web UI**: `http://localhost:8233`
    - **Backend API**: `http://localhost:4000/api/health`
@@ -249,19 +263,19 @@ curl -X POST http://localhost:4000/api/chat \
   -d '{"message":"Summarize the uploaded document","mode":"baseline"}'
 ```
 
-### 5. Automated Backend Unit Tests & Enterprise Evaluation
-Run Jasmine unit tests (155 specs) and evaluation suite (`hermes3:8b`):
+### 5. Automated Backend Unit Tests (233 Specs)
+Run Jasmine unit tests and evaluation suite (`hermes3:8b`):
 ```bash
 cd backend
-npm test            # Unit tests
+npm test            # 233 unit tests, 0 failures
 npm run evaluate    # Enterprise evaluation suite
 ```
 
-### 6. Automated Python AI Service Tests
-Run the Pytest suite (28 specs):
+### 6. Automated Python AI Service Tests (39 Specs)
+Run the Pytest suite:
 ```bash
 cd services/python-ai-service
-uv run pytest
+uv run pytest       # 39 specs, 0 failures
 ```
 
 ---
@@ -270,7 +284,7 @@ uv run pytest
 
 ### CLI Container Logs
 ```bash
-docker compose logs -f backend python-ai-service postgres redis langfuse phoenix
+docker compose logs -f backend python-ai-service postgres redis langfuse
 ```
 
 ### Clean Teardown (Remove Volumes)
@@ -284,11 +298,11 @@ docker compose down -v
 
 ```
 em-taskflow-ai/
-├── backend/            # Express API, LangGraph supervisor, Admin routes, Jasmine tests (155 specs)
+├── backend/            # Express API, LangGraph supervisor, Admin routes, Jasmine tests (233 specs)
 │   └── README.md       # Backend internal docs & API endpoints
 ├── frontend/           # React, Vite, Cockpit, Standalone Admin Portal (/admin)
 │   └── README.md       # Frontend UI architecture & build guide
-├── services/           # Python AI Service (gRPC/REST RAG processor, Pytest 16 specs)
+├── services/           # Python AI Service (gRPC/REST RAG processor, Pytest 39 specs)
 ├── docker/             # Postgres init-databases.sql and container assets
 ├── data/               # Vector storage & database seeds
 ├── docker-compose.yml  # Production multi-container composition
@@ -297,7 +311,9 @@ em-taskflow-ai/
 
 - **Backend Internals**: See [`backend/README.md`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/README.md)
 - **Frontend Internals**: See [`frontend/README.md`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/frontend/README.md)
-- **Agent Guidelines**: See [`AGENTS.md`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/AGENTS.md) and [`GEMINI.md`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/GEMINI.md)
+- **Python AI Service Internals**: See [`services/python-ai-service/README.md`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/README.md)
+- **Agent Guidelines**: See [`AGENTS.md`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/AGENTS.md), [`GEMINI.md`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/GEMINI.md), and [`CLAUDE.md`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/CLAUDE.md)
+- **Skills Index**: See [`SKILLS.md`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/SKILLS.md)
 
 ---
 

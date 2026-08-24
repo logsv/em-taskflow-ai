@@ -107,7 +107,7 @@ ORDER BY rrf_score DESC LIMIT %s;
 ### 4. Cross-Encoder Reranker (`app/services/rag_processor/reranker.py`)
 - Reranks candidate document chunks retrieved by RRF using a lightweight local Transformer cross-encoder model to maximize contextual precision.
 
-### 5. Durable Temporal Activities (`app/temporal/activities.py`)
+### 5. Durable Temporal Ingestion Activities (`app/temporal/activities.py`)
 - Registers durable activity handlers on task queue `rag-ingest-queue` for background document ingestion, chunking, and vector persistence.
 
 ---
@@ -172,7 +172,7 @@ services/python-ai-service/
 │   │   └── rag_processor/          # Chunker, Reranker, & DB Service (SQL CTE RRF)
 │   ├── temporal/                   # Temporal durable activities & worker setup
 │   └── telemetry/                  # OpenTelemetry & JSON logging formatters
-├── tests/                          # Pytest integration & unit test suite (16 specs)
+├── tests/                          # Pytest integration & unit test suite (39 specs)
 ├── pyproject.toml                  # Python dependencies (uv / pip)
 ├── pytest.ini                      # Pytest configuration
 ├── Dockerfile                      # Production Docker build container
@@ -183,7 +183,7 @@ services/python-ai-service/
 
 ## 🧪 Testing & Verification
 
-Run the full **16 pytest specs**:
+Run the full **39 pytest specs**:
 ```bash
 cd services/python-ai-service
 uv run pytest

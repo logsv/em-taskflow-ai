@@ -1,17 +1,19 @@
 ---
 name: em-dora-productivity-ops
-description: Procedures for tracking, testing, and managing Engineering Manager (EM) DORA productivity metrics, Sprint health analytics, OKRs, and SBI feedback records in EM TaskFlow AI.
+description: Procedures for tracking, testing, and managing Engineering Manager (EM) DORA productivity metrics (tier ratings), Sprint health analytics, OKRs, and SBI feedback records in EM TaskFlow AI.
 ---
 
 # EM DORA & Productivity Metrics Skill
 
 Use this skill when developing, testing, or auditing Engineering Manager (EM) productivity features, DORA metrics APIs, Sprint health calculations, or Situation-Behavior-Impact (SBI) feedback logs.
 
+---
+
 ## 📌 Architecture Overview
 
 1. **DORA Productivity Metrics**:
    - Endpoint: `GET /api/em/dora`
-   - Tracks 4 core DORA metrics: Deployment Frequency, Lead Time to Changes, Change Failure Rate, and Mean Time to Recovery (MTTR).
+   - Tracks 4 core DORA metrics: Deployment Frequency, Lead Time to Changes, Change Failure Rate, and Mean Time to Recovery (MTTR) with production tier ratings (*Elite*, *High*, *Medium*, *Low*).
    - Data stored in PostgreSQL table `dora_snapshots`.
 
 2. **Sprint Health & WIP Analytics**:
@@ -25,6 +27,8 @@ Use this skill when developing, testing, or auditing Engineering Manager (EM) pr
 4. **Situation-Behavior-Impact (SBI) Feedback**:
    - Endpoint: `GET /api/em/sbi`
    - Structure for capture and review of structured engineer feedback (`sbi_feedback_records` table).
+
+---
 
 ## 🧪 Verification Commands
 
@@ -43,7 +47,8 @@ curl -s http://localhost:4000/api/em/sprints
 node -e "import('./src/db/postgres.js').then(async (m) => { const db = m.default; console.log('Stats:', await db.getStats()); });"
 ```
 
-### Run Full Test Suite
+### Run Full Test Suite (233 Specs)
 ```bash
+cd backend
 npm test
 ```

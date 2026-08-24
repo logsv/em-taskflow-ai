@@ -129,11 +129,18 @@ temp/
 tmp/
 *.tmp
 *.temp
+data/
+data/pdfs/
 
 # PDF uploads
 *.pdf
 backend/uploads/
 frontend/public/uploads/
+
+# ===========================
+# API CLIENTS & TOOLS
+# ===========================
+bruno/
 
 # ===========================
 # PROCESS & SERVICE FILES
@@ -282,3 +289,23 @@ temp/
 .deepeval_telemetry.txt
 .promptfoo/
 promptfoo/
+
+# ===========================
+# EVALUATION RUN ARTIFACTS & REPORTS
+# ===========================
+reports/
+services/reports/
+
+# ===========================
+# VITEPRESS DOCUMENTATION ARTIFACTS
+# ===========================
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+docs/node_modules/
+
+# ===========================
+# PYTHON TEST & LINT CACHES
+# ===========================
+.ruff_cache/
+.mypy_cache/
+.coverage.*

@@ -1,0 +1,382 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "EM TaskFlow AI - API Reference",
+    "version": "1.0.0",
+    "description": "Interactive API specification for the EM TaskFlow AI polyglot microservices platform. Powers local multi-agent supervisor reasoning (Ollama hermes3:8b), Hybrid RAG (HyDE + RRF), multi-source MCP integrations (Jira OAuth PKCE, Notion, GitHub, Slack, Google Calendar), and multi-session persistence."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4000",
+      "description": "Local Development Server"
+    }
+  ],
+  "tags": [
+    { "name": "System & Health", "description": "Core system status, health checks, and metrics" },
+    { "name": "Chat & Multi-Agent", "description": "Multi-agent conversational reasoning, RAG inference, and fast-path execution" },
+    { "name": "Session & Thread", "description": "Multi-session persistence, chat threads, and message history" },
+    { "name": "MCP OAuth & Integrations", "description": "Atlassian Jira OAuth 2.0 PKCE, Notion, GitHub, Slack, and Google Calendar tool management" },
+    { "name": "Engineering Management (EM)", "description": "DORA tier metrics, sprint velocity, OKR progress, and SBI feedback" },
+    { "name": "RAG & Documents", "description": "Document ingestion, chunk inspection, and vector store management" },
+    { "name": "Administration", "description": "Standalone Admin Portal endpoints and system telemetry" }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": ["System & Health"],
+        "summary": "System Health Status",
+        "description": "Aggregates operational status of PostgreSQL pools, Ollama LLM provider, and active services.",
+        "responses": {
+          "200": {
+            "description": "System is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "healthy" },
+                    "timestamp": { "type": "string", "format": "date-time" },
+                    "database": { "type": "string", "example": "connected" },
+                    "llm": { "type": "string", "example": "ready" },
+                    "rag": { "type": "string", "example": "available" }
+                  }
+                }
+              }
+            }
+          },
+          "503": { "description": "Service unhealthy" }
+        }
+      }
+    },
+    "/api/chat": {
+      "post": {
+        "tags": ["Chat & Multi-Agent"],
+        "summary": "Execute Chat Inference",
+        "description": "Processes user query via Redis semantic cache, Fast-Path (<300ms), single-pass RAG synthesizer, or LangGraph multi-agent supervisor.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["message"],
+                "properties": {
+                  "message": { "type": "string", "example": "Summarize Q3 sprint blockers and DORA deployment frequency" },
+                  "threadId": { "type": "string", "example": "th_9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d" },
+                  "mode": { "type": "string", "enum": ["baseline", "advanced"], "default": "baseline" },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "filename": { "type": "string", "example": "sprint_review.pdf" },
+                        "content": { "type": "string" },
+                        "mimeType": { "type": "string", "example": "application/pdf" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Structured Markdown response generated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "response": { "type": "string", "example": "### 📄 Executive Summary\n..." },
+                    "threadId": { "type": "string" },
+                    "domains": { "type": "array", "items": { "type": "string" } },
+                    "cached": { "type": "boolean" },
+                    "latencyMs": { "type": "number" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Invalid chat payload" }
+        }
+      }
+    },
+    "/api/sessions": {
+      "get": {
+        "tags": ["Session & Thread"],
+        "summary": "List Paginated Sessions",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of active client sessions with thread titles and timestamps"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Session & Thread"],
+        "summary": "Create New Session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string", "default": "New Chat" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Session created successfully" }
+        }
+      }
+    },
+    "/api/session": {
+      "get": {
+        "tags": ["Session & Thread"],
+        "summary": "Resolve Current Session Context",
+        "description": "Retrieves or initializes session and active thread from cookie or header.",
+        "responses": {
+          "200": { "description": "Session context resolved" }
+        }
+      }
+    },
+    "/api/threads": {
+      "post": {
+        "tags": ["Session & Thread"],
+        "summary": "Create Thread in Current Session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string", "default": "New Chat" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Thread created" }
+        }
+      }
+    },
+    "/api/sessions/{sessionId}/switch": {
+      "post": {
+        "tags": ["Session & Thread"],
+        "summary": "Switch Active Session Thread",
+        "parameters": [
+          { "name": "sessionId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["threadId"],
+                "properties": {
+                  "threadId": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Active thread switched" }
+        }
+      }
+    },
+    "/api/threads/{threadId}/messages": {
+      "get": {
+        "tags": ["Session & Thread"],
+        "summary": "Get Thread Message History",
+        "parameters": [
+          { "name": "threadId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "responses": {
+          "200": { "description": "Chronological messages list" }
+        }
+      }
+    },
+    "/api/oauth/jira/authorize": {
+      "get": {
+        "tags": ["MCP OAuth & Integrations"],
+        "summary": "Initiate Jira OAuth 2.0 PKCE Flow",
+        "description": "Generates PKCE code challenge and redirects user to Atlassian authorization consent screen.",
+        "responses": {
+          "302": { "description": "Redirects to auth.atlassian.com" }
+        }
+      }
+    },
+    "/api/oauth/jira/callback": {
+      "get": {
+        "tags": ["MCP OAuth & Integrations"],
+        "summary": "Jira OAuth Callback",
+        "parameters": [
+          { "name": "code", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "state", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Token exchanged and persisted" }
+        }
+      }
+    },
+    "/api/oauth/jira/status": {
+      "get": {
+        "tags": ["MCP OAuth & Integrations"],
+        "summary": "Get Jira OAuth Status",
+        "responses": {
+          "200": {
+            "description": "Current connection status, workspace details, and token expiration"
+          }
+        }
+      }
+    },
+    "/api/oauth/jira/disconnect": {
+      "post": {
+        "tags": ["MCP OAuth & Integrations"],
+        "summary": "Disconnect Jira OAuth",
+        "responses": {
+          "200": { "description": "Jira credentials purged" }
+        }
+      }
+    },
+    "/api/em/dora": {
+      "get": {
+        "tags": ["Engineering Management (EM)"],
+        "summary": "Get DORA Productivity Metrics",
+        "description": "Calculates Deployment Frequency, Lead Time for Changes, Change Failure Rate, and MTTR with tier ratings (Elite, High, Medium, Low).",
+        "responses": {
+          "200": { "description": "DORA metrics and tier ratings snapshot" }
+        }
+      }
+    },
+    "/api/em/sprints": {
+      "get": {
+        "tags": ["Engineering Management (EM)"],
+        "summary": "Get Sprint Health & Velocity",
+        "responses": {
+          "200": { "description": "Sprint velocity, capacity, and WIP metrics" }
+        }
+      }
+    },
+    "/api/em/okrs": {
+      "get": {
+        "tags": ["Engineering Management (EM)"],
+        "summary": "Get OKR Progress & Pacing",
+        "responses": {
+          "200": { "description": "Quarterly OKR pacing and deliverable status" }
+        }
+      }
+    },
+    "/api/em/sbi": {
+      "get": {
+        "tags": ["Engineering Management (EM)"],
+        "summary": "Get Situation-Behavior-Impact Logs",
+        "responses": {
+          "200": { "description": "Structured feedback records" }
+        }
+      }
+    },
+    "/api/rag/upload": {
+      "post": {
+        "tags": ["RAG & Documents"],
+        "summary": "Upload Document for Ingestion",
+        "description": "Processes document (PDF, CSV, TXT, PNG/JPG), extracts text, generates parent-child chunks, and persists embeddings to taskflow_ai.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "pdf": { "type": "string", "format": "binary" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Document ingested and tokenized" },
+          "400": { "description": "Missing file or invalid format" }
+        }
+      }
+    },
+    "/api/admin/documents": {
+      "get": {
+        "tags": ["Administration", "RAG & Documents"],
+        "summary": "List Ingested Documents",
+        "responses": {
+          "200": { "description": "List of documents and chunk counts" }
+        }
+      }
+    },
+    "/api/admin/documents/{filename}/chunks": {
+      "get": {
+        "tags": ["Administration", "RAG & Documents"],
+        "summary": "Get Document Chunks",
+        "parameters": [
+          { "name": "filename", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "List of text chunks for inspection modal" }
+        }
+      }
+    },
+    "/api/admin/documents/{filename}": {
+      "delete": {
+        "tags": ["Administration", "RAG & Documents"],
+        "summary": "Delete Document & Embeddings",
+        "parameters": [
+          { "name": "filename", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Document and chunks purged" }
+        }
+      }
+    },
+    "/api/admin/system-status": {
+      "get": {
+        "tags": ["Administration"],
+        "summary": "System Health & Uptime Status",
+        "responses": {
+          "200": { "description": "Aggregated process, DB, and Ollama status" }
+        }
+      }
+    },
+    "/api/feedback": {
+      "post": {
+        "tags": ["Chat & Multi-Agent"],
+        "summary": "Submit User Feedback",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["score"],
+                "properties": {
+                  "score": { "type": "string", "enum": ["thumbs_up", "thumbs_down"] },
+                  "threadId": { "type": "string" },
+                  "traceId": { "type": "string" },
+                  "comment": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Feedback submitted asynchronously" }
+        }
+      }
+    }
+  }
+}

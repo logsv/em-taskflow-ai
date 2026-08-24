@@ -12,6 +12,13 @@ export class ThreadRepository {
   listThreads(limit = 50) {
     return this.db.listThreads(limit);
   }
+
+  updateThreadTitle(threadId, title) {
+    if (typeof this.db?.updateThreadTitle === 'function') {
+      return this.db.updateThreadTitle(threadId, title);
+    }
+    return null;
+  }
 }
 
 const threadRepository = new ThreadRepository();

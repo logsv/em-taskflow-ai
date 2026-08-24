@@ -4,6 +4,7 @@ export async function attachSessionContext(req, res, next) {
   try {
     const sessionContext = await sessionApplicationService.resolveSession({
       headers: req.headers,
+      query: req.query,
       ip: req.ip,
       protocol: req.protocol,
       secure: req.secure,

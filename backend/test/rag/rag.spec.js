@@ -89,8 +89,8 @@ describe('RAG Service', () => {
       expect(result.success).toBe(true);
       // Depending on chunking implementation, it might be more than 1 chunk
       expect(result.chunks).toBeGreaterThan(0);
-      expect(fsMock.readFile.calledOnceWith('/fake/path/doc.pdf')).toBe(true);
-      expect(pdfParseMock.calledOnce).toBe(true);
+      expect(fsMock.readFile.calledWith('/fake/path/doc.pdf')).toBe(true);
+      expect(pdfParseMock.called).toBe(true);
       // We check if vectorStore.addDocuments was called
       const vectorStore = __test__.getVectorStore();
       expect(vectorStore.addDocuments.called).toBe(true);

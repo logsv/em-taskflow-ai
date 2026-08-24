@@ -179,20 +179,26 @@ function createNativeJiraTools(token, baseUrl, email = "") {
   return [jiraSearchTool, jiraGetIssueTool, jiraGetSprintReportTool];
 }
 
+import { JiraOAuthProvider } from "./jiraOAuthProvider.js";
+
 async function ensureInit() {
   if (initialized && tools.length > 0) return;
   const { jira } = getMcpConfig();
 
-  const url = process.env.JIRA_MCP_URL || jira.mcpUrl;
-  const token = process.env.JIRA_MCP_TOKEN || process.env.JIRA_API_TOKEN || jira.apiToken;
+  const oauthProvider = new JiraOAuthProvider();
+  const oauthTokens = await oauthProvider.tokens().catch(() => null);
+  const oauthToken = oauthTokens?.access_token || null;
+
+  const url = process.env.JIRA_MCP_URL || jira.mcpUrl || 'https://mcp.atlassian.com/v1/mcp/authv2';
+  const token = oauthToken || process.env.JIRA_MCP_TOKEN || process.env.JIRA_API_TOKEN || jira.apiToken;
   const email = process.env.JIRA_USER_EMAIL || process.env.JIRA_USERNAME || jira.email || jira.username;
   const baseUrl = process.env.JIRA_BASE_URL || jira.url;
 
-  // Only attempt Remote MCP if an explicit, valid remote MCP endpoint is provided (e.g. mcp.atlassian.com)
-  if (url && url.startsWith("http") && !url.includes("example.jira.com") && !url.includes("localhost:0") && !url.includes("atlassian.net")) {
+  // Only attempt Remote MCP if an explicit, valid remote MCP endpoint is provided (e.g. mcp.atlassian.com) or OAuth is active
+  if (url && url.startsWith("http") && !url.includes("example.jira.com") && !url.includes("localhost:0") && !url.includes("atlassian.net") && (oauthToken || process.env.JIRA_MCP_TOKEN)) {
     try {
       const headers = {};
-      if (token) headers.Authorization = `Bearer ${token}`;
+      if (token) headers.Authorization = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
       client = new MultiServerMCPClient({
         mcpServers: {
           atlassian: { url, headers },

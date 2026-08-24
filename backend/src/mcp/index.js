@@ -7,6 +7,7 @@ let jiraMcpTools = [];
 let notionMcpTools = [];
 let githubMcpTools = [];
 let googleMcpTools = [];
+let slackMcpTools = [];
 let llm = null;
 let isInitialized = false;
 
@@ -18,9 +19,10 @@ export async function initializeMCP() {
 
     const mcpConfig = getMcpConfig();
     info("MCP Configuration", {
-      notion: mcpConfig.notion.enabled ? "Enabled" : "Disabled",
-      jira: mcpConfig.jira.enabled ? "Enabled" : "Disabled",
-      google: mcpConfig.google.enabled ? "Enabled" : "Disabled",
+      notion: mcpConfig?.notion?.enabled ? "Enabled" : "Disabled",
+      jira: mcpConfig?.jira?.enabled ? "Enabled" : "Disabled",
+      google: mcpConfig?.google?.enabled ? "Enabled" : "Disabled",
+      slack: mcpConfig?.slack?.enabled ? "Enabled" : "Disabled",
     });
 
     const jiraModule = await import("./jira.js").catch((error) => {
@@ -39,12 +41,17 @@ export async function initializeMCP() {
       warn("Failed to load Google MCP module", { err: error?.message || error });
       return null;
     });
+    const slackModule = await import("./slack.js").catch((error) => {
+      warn("Failed to load Slack MCP module", { err: error?.message || error });
+      return null;
+    });
 
     jiraMcpTools = jiraModule ? await loadTools("Jira", jiraModule.getJiraTools) : [];
     notionMcpTools = notionModule ? await loadTools("Notion", notionModule.getNotionTools) : [];
     githubMcpTools = githubModule ? await loadTools("GitHub", githubModule.getGithubTools) : [];
     googleMcpTools = googleModule ? await loadTools("Google", googleModule.getGoogleTools) : [];
-    mcpTools = [...jiraMcpTools, ...notionMcpTools, ...githubMcpTools, ...googleMcpTools];
+    slackMcpTools = slackModule ? await loadTools("Slack", slackModule.getSlackTools) : [];
+    mcpTools = [...jiraMcpTools, ...notionMcpTools, ...githubMcpTools, ...googleMcpTools, ...slackMcpTools];
 
     info(`Loaded MCP tools`, {
       total: mcpTools.length,
@@ -52,6 +59,7 @@ export async function initializeMCP() {
       github: githubMcpTools.length,
       notion: notionMcpTools.length,
       calendar: googleMcpTools.length,
+      slack: slackMcpTools.length,
     });
 
     const llmConfig = config.llm;
@@ -140,7 +148,8 @@ export async function executeMCPTool(toolName, parameters) {
       jiraMcpTools.find((t) => t.name === toolName) ||
       notionMcpTools.find((t) => t.name === toolName) ||
       githubMcpTools.find((t) => t.name === toolName) ||
-      googleMcpTools.find((t) => t.name === toolName);
+      googleMcpTools.find((t) => t.name === toolName) ||
+      slackMcpTools.find((t) => t.name === toolName);
 
     // Atlassian MCP servers do not share one stable search-tool name. Resolve
     // the Delivery harness capability within its server group, never globally.
@@ -149,8 +158,13 @@ export async function executeMCPTool(toolName, parameters) {
         /search|jql|issue/.test(String(candidate?.name || "").toLowerCase()),
       );
     }
+    if (!tool && (/calendar/i.test(toolName) || toolName === "list_events")) {
+      tool = googleMcpTools.find((candidate) =>
+        candidate?.name === "get_calendar_events" || /calendar/i.test(String(candidate?.name || "").toLowerCase()),
+      );
+    }
     if (!tool) {
-      const available = [...jiraMcpTools, ...notionMcpTools, ...githubMcpTools, ...googleMcpTools]
+      const available = [...jiraMcpTools, ...notionMcpTools, ...githubMcpTools, ...googleMcpTools, ...slackMcpTools]
         .map((candidate) => candidate.name)
         .filter(Boolean);
       throw new Error(`Tool '${toolName}' not found. Available tools: ${available.join(", ") || "none"}`);
@@ -172,6 +186,10 @@ export function getGoogleMCPTools() {
   return googleMcpTools;
 }
 
+export function getSlackMCPTools() {
+  return slackMcpTools;
+}
+
 export function isMCPReady() {
   return isInitialized && mcpTools.length > 0;
 }
@@ -182,6 +200,7 @@ export async function getMCPServerStatus() {
     github: { connected: githubMcpTools.length > 0, toolCount: githubMcpTools.length },
     atlassian: { connected: jiraMcpTools.length > 0, toolCount: jiraMcpTools.length },
     google: { connected: googleMcpTools.length > 0, toolCount: googleMcpTools.length },
+    slack: { connected: slackMcpTools.length > 0, toolCount: slackMcpTools.length },
   };
 }
 
@@ -211,12 +230,14 @@ export async function closeMCP() {
   const notionModule = await import("./notion.js").catch(() => null);
   const githubModule = await import("./github.js").catch(() => null);
   const googleModule = await import("./google.js").catch(() => null);
+  const slackModule = await import("./slack.js").catch(() => null);
 
   const closers = [];
   if (jiraModule?.closeJiraMcp) closers.push(jiraModule.closeJiraMcp());
   if (notionModule?.closeNotionMcp) closers.push(notionModule.closeNotionMcp());
   if (githubModule?.closeGithubMcp) closers.push(githubModule.closeGithubMcp());
   if (googleModule?.closeGoogleMcp) closers.push(googleModule.closeGoogleMcp());
+  if (slackModule?.closeSlackMcp) closers.push(slackModule.closeSlackMcp());
   if (closers.length) {
     await Promise.all(closers);
   }
@@ -227,6 +248,7 @@ export async function closeMCP() {
   notionMcpTools = [];
   githubMcpTools = [];
   googleMcpTools = [];
+  slackMcpTools = [];
   llm = null;
 }
 

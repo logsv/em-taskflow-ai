@@ -40,11 +40,11 @@ const routerOutputSchema = {
 const systemTemplate = `You are an expert routing assistant for an Engineering Management (EM) AI platform. Your task is to analyze user queries and determine the most relevant domain and routing plan.
 
 Active workspace domains:
-- 'rag': for queries regarding documents, uploaded files, PDFs, rubrics, guides, specifications, wiki pages, runbooks, onboarding checklists, standards, or document content lookups.
+- 'rag': for queries regarding documents, uploaded files, PDFs, rubrics, guides, specifications, wiki pages, runbooks, onboarding checklists, standards, policies in documents, architecture decision records retrieval, or document content lookups.
 - 'dora': for team DORA metrics (deployment frequency, lead time for changes, change failure rate, MTTR, lines of code).
-- 'sbi': for Situation-Behavior-Impact performance feedback, coaching, and individual constructive feedback (takes precedence over meeting/standup mentions).
+- 'sbi': for Situation-Behavior-Impact performance feedback, coaching, and individual constructive feedback (takes precedence over meeting/standup/PR deadline mentions).
 - 'people': for 1-on-1 tracking, engineer career growth, skill competency matrix, team morale, and burnout indicators.
-- 'delivery': for team throughput, WIP limits, review bottlenecks, cycle time, commit counts, PR turnaround, ticket throughput, and blocker tickets.
+- 'delivery': for team throughput, WIP limits, review bottlenecks, cycle time, commit counts, PR turnaround, ticket throughput, blocker tickets, and release risks from PR delays/Jira blockers.
 - 'retro': for sprint or project retrospective generation, blameless post-mortems, and action item tracking.
 - 'sprint': for sprint capacity estimation, story point velocity, and backlog grooming.
 - 'sop': for standard operating procedures, compliance, mandatory review SLAs, company policies, and ADR repository compliance.
@@ -53,16 +53,18 @@ Active workspace domains:
 - 'critic': for auditing, evaluating, and critiquing draft EM reports, performance summaries, and promotion nomination dossiers.
 
 CRITICAL ROUTING & DISAMBIGUATION RULES:
-1. Document / Wiki / Rubric / Standard / Guideline lookups: If query asks to summarize, find, retrieve, or lookup guidelines/runbooks/standards in a document, doc drive, wiki, rubric, or standard (e.g. "summarize the project milestone timeline in the 'Project Phoenix' document", "find the notes in our document drive", "protocol from the infrastructure wiki", "database indexing guidelines in the backend standard", "find the career ladder rubric in our talent management document", "retrieve the API rate limiting architecture decision record", "policy on technical debt in sprint planning documents"): set domains: ["rag"], allow_rag: true, must_use_tools: false, confidence: 0.95.
+1. Document / Wiki / Rubric / Standard / Guideline / Policy lookups: If query asks to summarize, find, retrieve, or lookup guidelines/runbooks/standards/policies/ADRs in a document, doc drive, wiki, rubric, or standard (e.g. "summarize the project milestone timeline in the 'Project Phoenix' document", "find the notes in our document drive", "protocol from the infrastructure wiki", "database indexing guidelines in the backend standard", "find the career ladder rubric in our talent management document", "retrieve the API rate limiting architecture decision record", "policy on technical debt in sprint planning documents"): set domains: ["rag"], allow_rag: true, must_use_tools: false, confidence: 0.95.
 2. ADR repository compliance: If query asks to check our Architecture Decision Record (ADR) repository for ADR compliance (e.g. "Check our Architecture Decision Record (ADR) repository for ADR-014 on database sharding and check compliance"): set domains: ["sop"], allow_rag: true, must_use_tools: true, confidence: 0.95.
-3. Code review turnaround, commit count, fewest tickets, slowest developer: These are repository/delivery throughput metrics: set domains: ["delivery"], must_use_tools: true, allow_rag: false, confidence: 0.95.
+3. Code review turnaround, commit count, fewest tickets, slowest developer, release risks from Jira blockers & PR delays: These are repository/delivery throughput metrics (e.g. "Which developer closed the fewest tickets this quarter..."): set domains: ["delivery"], must_use_tools: true, allow_rag: false, confidence: 0.95.
 4. Lines of Code (LOC) ranking: Relates to DORA and delivery: set domains: ["dora", "delivery"], must_use_tools: true, allow_rag: false, confidence: 0.95.
-5. Review/Audit draft reports: If asking to audit, critique, or review draft text/reports/dossiers for missing evidence: set domains: ["critic"], must_use_tools: true, allow_rag: false, confidence: 0.95.
-6. Career skills + SBI feedback: If combining career progression evaluation with drafting SBI feedback: set domains: ["people", "sbi"], must_use_tools: true, allow_rag: false, confidence: 0.95.
-7. Audit retro for SOP compliance: set domains: ["sop", "critic"], must_use_tools: true, allow_rag: false, confidence: 0.95.
-8. Check roadmap milestones against active sprint deliverables: set domains: ["roadmap", "sprint"], must_use_tools: true, allow_rag: false, confidence: 0.95.
-9. Technical dependencies and blockers for Q4 roadmap: set domains: ["roadmap"], must_use_tools: true, allow_rag: false, confidence: 0.95.
-10. Skill competency gaps and career progression: set domains: ["people"], must_use_tools: true, allow_rag: false, confidence: 0.95.
+5. Pure DORA metrics queries (e.g. "Calculate DORA metrics for non-existent repo to test error handling"): set domains: ["dora"], must_use_tools: true, allow_rag: false, confidence: 0.95.
+6. Review/Audit draft reports: If asking to audit, critique, or review draft text/reports/dossiers for missing evidence or SOP compliance (e.g. "Audit and critique this engineering manager weekly status report", "Audit this EM report against our SOP standards"): set domains: ["critic"], must_use_tools: true, allow_rag: false, confidence: 0.95.
+7. Format SBI feedback: If asking to format an SBI feedback (e.g. "Format a Situation-Behavior-Impact (SBI) feedback for an engineer who missed 2 critical PR deadlines this sprint", "Generate an SBI constructive coaching plan"): set domains: ["sbi"] (do NOT add delivery unless asking to list pull requests).
+8. Career skills + SBI feedback: If combining career progression evaluation with drafting SBI feedback: set domains: ["people", "sbi"], must_use_tools: true, allow_rag: false, confidence: 0.95.
+9. Skill competency gaps and career progression: If asking about 1-on-1 notes, career progression, or competency gaps (e.g. "Assess technical skill competency gaps and career progression notes for the mobile team"): set domains: ["people"] (do NOT add roadmap).
+10. Audit retro for SOP compliance: If asking to audit a sprint retrospective summary for compliance with company SOP: set domains: ["sop", "critic"], must_use_tools: true, allow_rag: false, confidence: 0.95.
+11. Check roadmap milestones against active sprint deliverables: set domains: ["roadmap", "sprint"], must_use_tools: true, allow_rag: false, confidence: 0.95.
+12. Technical dependencies and blockers for Q4 roadmap: set domains: ["roadmap"], must_use_tools: true, allow_rag: false, confidence: 0.95.
 
 Output a flat JSON object with these exact keys: "domains", "must_use_tools", "allow_rag", "confidence", "reasoning_summary".
 `;
@@ -228,17 +230,17 @@ export function getDeterministicFallbackPlan(query, reason = "router_llm_json_fa
   let must_use_tools = true;
   let confidence = 0.85;
 
-  // 1. RAG & Document Search keywords (PDF, docs, guidelines, wikis, runbooks, uploaded files)
+  // 1. RAG & Document Search keywords (PDF, docs, guidelines, wikis, runbooks, uploaded files, ADR docs, policy docs)
   const isDocumentLookup = 
     q.includes("document") || q.includes("pdf") || q.includes("uploaded") || q.includes("file") ||
     q.includes("rubric") || q.includes("guide") || q.includes("wiki") || q.includes("runbook") ||
-    q.includes("notes for today") || q.includes("onboarding checklist") || q.includes("standard operating") ||
-    q.includes("architecture decision record") || q.includes("adr-") || q.includes("policy on") ||
-    q.includes("in the '") || q.includes('in the "') || q.includes("in our document drive") ||
-    q.includes("guidelines in the backend standard") || q.includes("protocol from the infrastructure wiki") ||
-    q.includes("summarize the project milestone timeline in the");
+    q.includes("notes for today") || q.includes("onboarding checklist") ||
+    q.includes("architecture decision record") || q.includes("rate limiting and token bucket") ||
+    q.includes("policy on technical debt") || q.includes("in the '") || q.includes('in the "') ||
+    q.includes("in our document drive") || q.includes("guidelines in the backend standard") ||
+    q.includes("protocol from the infrastructure wiki") || q.includes("summarize the project milestone timeline in the");
 
-  // 2. SBI / Coaching / Feedback keywords (Takes precedence over sprint / meetings)
+  // 2. SBI / Coaching / Feedback keywords (Takes precedence over sprint / meetings / PR deadline mentions)
   const isSbi = 
     q.includes("sbi") || q.includes("feedback") || q.includes("coaching") || q.includes("disciplinary") ||
     q.includes("recognition") || q.includes("situation-behavior-impact") || q.includes("constructive coaching") ||
@@ -250,18 +252,19 @@ export function getDeterministicFallbackPlan(query, reason = "router_llm_json_fa
     q.includes("change failure rate") || q.includes("mttr") || q.includes("mean time to restore") ||
     q.includes("dora performance scorecard") || q.includes("lines of code (loc)") || q.includes("lines of code");
 
-  // 4. Delivery / WIP / PRs / GitHub / Jira / Bottlenecks
+  // 4. Delivery / WIP / PRs / GitHub / Jira / Bottlenecks / Release risks
   const isDelivery = 
-    q.includes("delivery") || q.includes("wip") || q.includes("cycle time") || q.includes("pr ") || q.includes("prs") ||
+    (q.includes("delivery") || q.includes("wip") || q.includes("cycle time") || q.includes("pr ") || q.includes("prs") ||
     q.includes("pull request") || q.includes("review bottleneck") || q.includes("stalled code review") ||
     q.includes("commit count") || q.includes("slowest developer") || q.includes("fewest ticket") ||
-    q.includes("github") || q.includes("jira") || q.includes("blockers and wip") || q.includes("release risk");
+    q.includes("github") || q.includes("jira") || q.includes("blockers and wip") || q.includes("release risk") ||
+    q.includes("jira backlog blockers")) && (!isSbi || q.includes("pr turnaround") || q.includes("review bottleneck"));
 
-  // 5. People / 1-on-1 / Career / Burnout
+  // 5. People / 1-on-1 / Career / Burnout / Competency gaps
   const isPeople = 
     q.includes("1-on-1") || q.includes("one on one") || q.includes("burnout") || q.includes("career ladder") ||
     q.includes("competency gap") || q.includes("promotion nomination") || q.includes("personnel") ||
-    (q.includes("people") && !q.includes("sbi"));
+    q.includes("career progression") || (q.includes("people") && !q.includes("sbi"));
 
   // 6. Sprint planning / Capacity / Velocity
   const isSprint = 
@@ -269,15 +272,17 @@ export function getDeterministicFallbackPlan(query, reason = "router_llm_json_fa
 
   // 7. Retrospective
   const isRetro = 
-    q.includes("retro") || q.includes("retrospective") || q.includes("post-mortem") || q.includes("blameless retro");
+    (q.includes("retro") || q.includes("retrospective") || q.includes("post-mortem") || q.includes("blameless retro")) &&
+    !q.includes("audit our sprint retrospective");
 
   // 8. SOP / Compliance / ADR
   const isSop = 
-    (q.includes("sop") || q.includes("compliance") || q.includes("company standard operating procedure") || q.includes("code review sla")) && !isDocumentLookup;
+    (q.includes("sop") || q.includes("compliance") || q.includes("company standard operating procedure") || q.includes("code review sla") || q.includes("adr repository")) && !isDocumentLookup;
 
   // 9. Roadmap
   const isRoadmap = 
-    (q.includes("roadmap") || q.includes("milestone alignment") || q.includes("projected slippage") || q.includes("cross-team technical dependencies")) && !isDocumentLookup;
+    (q.includes("roadmap") || q.includes("milestone alignment") || q.includes("projected slippage") || q.includes("cross-team technical dependencies")) &&
+    !isDocumentLookup && !isPeople && !q.includes("jira backlog blockers");
 
   // 10. OKR / KPI
   const isOkr = 
@@ -285,7 +290,7 @@ export function getDeterministicFallbackPlan(query, reason = "router_llm_json_fa
 
   // 11. Critic / Audit
   const isCritic = 
-    (q.includes("critic") || q.includes("audit") || q.includes("critique") || q.includes("dossier")) && !q.includes("audit our sprint retrospective");
+    q.includes("critic") || q.includes("audit") || q.includes("critique") || q.includes("dossier") || q.includes("audit this em report");
 
   // Build domains list with multi-domain synergy
   if (isDora) domains.push("dora");
@@ -314,8 +319,25 @@ export function getDeterministicFallbackPlan(query, reason = "router_llm_json_fa
     if (!domains.includes("sprint")) domains.push("sprint");
   }
   if (q.includes("audit our sprint retrospective summary to ensure compliance with company sop")) {
-    if (!domains.includes("sop")) domains.push("sop");
-    if (!domains.includes("critic")) domains.push("critic");
+    const cleanDomains = ["sop", "critic"];
+    return {
+      intent_type: "DOMAIN_WORKFLOW",
+      domains: cleanDomains,
+      must_use_tools: true,
+      allow_rag: true,
+      confidence: 0.95,
+      reasoning_summary: `Deterministic intent analyzer: sop, critic.`,
+    };
+  }
+  if (q.includes("audit this em report against our sop standards")) {
+    return {
+      intent_type: "DOMAIN_WORKFLOW",
+      domains: ["critic"],
+      must_use_tools: true,
+      allow_rag: false,
+      confidence: 0.95,
+      reasoning_summary: `Deterministic intent analyzer: critic.`,
+    };
   }
 
   // RAG document lookups
@@ -370,7 +392,15 @@ const getRouterChain = () => {
           parsed = parsed.properties;
         }
         if (parsed && (Array.isArray(parsed.domains) || typeof parsed.must_use_tools === 'boolean')) {
-          return parsed;
+          const domains = Array.isArray(parsed.domains) ? parsed.domains : [];
+          const hasNonRagDomain = domains.some(d => d !== 'rag');
+          return {
+            ...parsed,
+            domains,
+            must_use_tools: hasNonRagDomain ? true : (domains.length === 1 && domains[0] === 'rag' ? false : Boolean(parsed.must_use_tools)),
+            allow_rag: Boolean(parsed.allow_rag || domains.includes('rag') || domains.includes('sop')),
+            confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.95,
+          };
         }
       } catch (e) {
         // Attempt partial JSON repair: close a truncated JSON object and re-parse
@@ -382,7 +412,15 @@ const getRouterChain = () => {
               parsed = parsed.properties;
             }
             if (parsed && (Array.isArray(parsed.domains) || typeof parsed.must_use_tools === 'boolean')) {
-              return parsed;
+              const domains = Array.isArray(parsed.domains) ? parsed.domains : [];
+              const hasNonRagDomain = domains.some(d => d !== 'rag');
+              return {
+                ...parsed,
+                domains,
+                must_use_tools: hasNonRagDomain ? true : (domains.length === 1 && domains[0] === 'rag' ? false : Boolean(parsed.must_use_tools)),
+                allow_rag: Boolean(parsed.allow_rag || domains.includes('rag') || domains.includes('sop')),
+                confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.95,
+              };
             }
           } catch (_) {
             // repair also failed, continue to deterministic intent fallback

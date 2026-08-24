@@ -11,6 +11,7 @@ import { initSemanticCache } from './cache/semanticCache.js';
 import db from './db/index.js';
 import { attachRequestContext, createRateLimiter } from './middleware/hardening.js';
 import { info, warn, error } from './utils/logger.js';
+import teamSyncWorker from './workers/teamSyncWorker.js';
 
 dotenv.config();
 
@@ -140,6 +141,15 @@ async function startServer() {
       }
     } else {
       info('Runtime mode is rag_only, skipping MCP and agent initialization');
+    }
+
+    // Start Node.js background team sync worker & Temporal Node Worker
+    try {
+      teamSyncWorker.start();
+      const { startTemporalNodeWorker } = await import('./temporal/worker.js');
+      await startTemporalNodeWorker();
+    } catch (workerErr) {
+      warn('Background workers start warning', { err: workerErr.message });
     }
 
     const databaseConfig = getDatabaseConfig();

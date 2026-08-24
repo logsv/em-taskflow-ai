@@ -1,0 +1,85 @@
+import identityService from '../../src/services/identityService.js';
+import databaseService from '../../src/db/postgres.js';
+
+describe('IdentityService & Cross-Platform Team Auto-Discovery', () => {
+  beforeEach(async () => {
+    databaseService.inMemoryTeamMembers = [];
+  });
+
+  it('should auto-discover and seed initial team members when external APIs return baseline', async () => {
+    const syncRes = await identityService.autoDiscoverAndSync();
+
+    expect(syncRes).toBeDefined();
+    expect(syncRes.syncedCount).toBeGreaterThanOrEqual(3);
+    expect(syncRes.members.length).toBeGreaterThanOrEqual(3);
+
+    const alex = syncRes.members.find((m) => m.displayName.includes('Alex'));
+    expect(alex).toBeDefined();
+    expect(alex.githubUsername).toBe('alex-dev99');
+    expect(alex.currentLevel).toBe('L4_MID');
+  });
+
+  it('should resolve a member by exact nickname alias', async () => {
+    await identityService.autoDiscoverAndSync();
+
+    const resolved = await identityService.resolveMember('alexw');
+    expect(resolved).toBeDefined();
+    expect(resolved.displayName).toBe('Alex Williams');
+    expect(resolved.githubUsername).toBe('alex-dev99');
+  });
+
+  it('should resolve a member by first name substring', async () => {
+    await identityService.autoDiscoverAndSync();
+
+    const resolved = await identityService.resolveMember('Sarah');
+    expect(resolved).toBeDefined();
+    expect(resolved.displayName).toBe('Sarah Chen');
+    expect(resolved.track).toBe('ENGINEERING_MANAGEMENT');
+  });
+
+  it('should resolve a member by GitHub handle with @ prefix', async () => {
+    await identityService.autoDiscoverAndSync();
+
+    const resolved = await identityService.resolveMember('@logsv');
+    expect(resolved).toBeDefined();
+    expect(resolved.displayName).toBe('Vikas Kumar');
+    expect(resolved.githubUsername).toBe('logsv');
+  });
+
+  it('should return null when querying an unknown member', async () => {
+    await identityService.autoDiscoverAndSync();
+
+    const resolved = await identityService.resolveMember('non_existent_engineer_999');
+    expect(resolved).toBeNull();
+  });
+
+  it('should resolve tool specific username from database for GitHub, Jira, Notion, and GCal', async () => {
+    await identityService.autoDiscoverAndSync();
+
+    const ghUser = await identityService.getToolUsernameForMember('Alex', 'github');
+    expect(ghUser).toBe('alex-dev99');
+
+    const jiraUser = await identityService.getToolUsernameForMember('Sarah', 'jira');
+    expect(jiraUser).toBe('sarah.chen@company.internal');
+
+    const gcalUser = await identityService.getToolUsernameForMember('Vikas', 'gcal');
+    expect(gcalUser).toBe('vikas.mca.jnu@gmail.com');
+  });
+
+  it('should extract and resolve member from natural language text query', async () => {
+    await identityService.autoDiscoverAndSync();
+
+    const member = await identityService.resolveMemberFromText("Please review Alex's recent open pull requests");
+    expect(member).toBeDefined();
+    expect(member.displayName).toBe('Alex Williams');
+    expect(member.githubUsername).toBe('alex-dev99');
+  });
+
+  it('should retrieve default Engineering Manager / Lead from database', async () => {
+    await identityService.autoDiscoverAndSync();
+
+    const manager = await identityService.getDefaultManagerOrAdmin();
+    expect(manager).toBeDefined();
+    expect(['Sarah Chen', 'Vikas Kumar']).toContain(manager.displayName);
+  });
+});

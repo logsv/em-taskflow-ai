@@ -78,6 +78,25 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
     expect(res.data.totalEvents).toBeGreaterThanOrEqual(1);
   });
 
+  it('should execute multi-source executors including Notion notes and Google Calendar', async () => {
+    const res = await peopleGrowthTool.invoke({
+      sources: ['default', 'googleCalendar', 'notion'],
+      mode: 'ANALYZE',
+      engineer_id: 'Alex Williams',
+    });
+
+    expect(res.status).toBe('SUCCESS');
+    expect(res.data.summary).toBeDefined();
+    expect(res.data.summary).toContain('Google Calendar 1-on-1 Sync');
+  });
+
+  it('should fall back to PostgreSQL database profile when external MCP APIs time out', async () => {
+    const fallback = await peopleGrowthTool.dbCacheFallback('notion');
+    expect(fallback.career_notes_count).toBeGreaterThanOrEqual(1);
+    expect(fallback.is_cached).toBe(true);
+    expect(fallback.data_source).toBe('postgres_team_members_notion_fallback');
+  });
+
   it('should instantiate createPeopleAgent graph', () => {
     const agent = createPeopleAgent();
     expect(agent).toBeDefined();

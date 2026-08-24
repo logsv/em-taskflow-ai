@@ -7,6 +7,8 @@ description: Operational procedures for Pre-LLM Preprocessing & Compression Suit
 
 Use this skill when developing, testing, or troubleshooting token compression and pre-LLM optimizations in EM TaskFlow AI.
 
+---
+
 ## 📌 Architecture Overview
 
 1. **File Attachment LangChain Compression**:
@@ -23,10 +25,13 @@ Use this skill when developing, testing, or troubleshooting token compression an
    - Backend Service: `optimizeChatHistory()` in `backend/src/application/chat/ChatApplicationService.js`.
    - When conversation history exceeds 10 turns, keeps the latest 8 active turns verbatim and compresses older turns into a 2-line `[System Memory: Conversation Summary Anchor]` block.
 
+---
+
 ## 🧪 Verification Commands
 
 ### Test Chat History Optimization Spec
 ```bash
+cd backend
 npx jasmine test/application/chatHistoryOptimization.spec.js
 ```
 
@@ -39,5 +44,6 @@ curl -X POST http://localhost:8000/api/v1/rag/search \
 
 ### Run Full Backend Upload & Search Specs
 ```bash
+cd backend
 npx jasmine test/routes/uploadRoute.spec.js test/application/uploadPdfApplicationService.spec.js
 ```

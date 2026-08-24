@@ -55,6 +55,8 @@ The Enterprise Evaluation Framework provides deterministic, automated SLA testin
    - Python Evaluator: [`services/python-ai-service/evaluation/rag_evaluator.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/evaluation/rag_evaluator.py)
    - LLM Judge Factory: [`services/python-ai-service/evaluation/llm_judge.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/evaluation/llm_judge.py)
    - Shadow Telemetry Worker: [`services/python-ai-service/app/telemetry/shadow_evaluator.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/app/telemetry/shadow_evaluator.py)
+   - DeepEval Trajectory Runner: [`services/python-ai-service/evaluation/deepeval_hermes.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/evaluation/deepeval_hermes.py)
+   - Ragas Evaluator: [`services/python-ai-service/evaluation/ragas_runner.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/evaluation/ragas_runner.py)
 4. **Git Pre-Push Hook & CI Workflows**:
    - Local Hook: [`.git/hooks/pre-push`](file://.git/hooks/pre-push)
    - Backend CI Workflow: [`.github/workflows/backend-ci.yml`](file://.github/workflows/backend-ci.yml)
@@ -66,10 +68,10 @@ The Enterprise Evaluation Framework provides deterministic, automated SLA testin
 
 ### 1. Run Complete Evaluation Suite
 ```bash
-npm run eval:enterprise    # Runs Node evaluate, DeepEval, Ragas, and TruLens
+npm run eval:enterprise    # Runs Node evaluate, DeepEval, and Ragas
 ```
 
-### 2. Run Official Framework Evaluation Sub-Suites
+### 2. Run Evaluation Sub-Suites
 ```bash
 # DeepEval Agent Trajectory Tests (Pytest)
 npm run eval:deepeval
@@ -77,17 +79,8 @@ npm run eval:deepeval
 # Ragas Hybrid RAG Evaluation (Faithfulness, Precision, Recall)
 npm run eval:ragas
 
-# TruLens RAG Triad Evaluation (Groundedness, Context Relevance)
-npm run eval:trulens
-
-# Launch TruLens Streamlit Leaderboard Dashboard (Port 8501)
-npm run eval:trulens:dashboard
-
-# Promptfoo Prompt Matrix & Red-Teaming (Synced to Promptfoo Managed Cloud)
+# Promptfoo Prompt Matrix & Red-Teaming (Port 15500 & Promptfoo Cloud)
 npm run eval:promptfoo
-
-# Log in to Promptfoo Managed Cloud CLI
-npm run eval:promptfoo:login
 ```
 
 ### 3. Run Node.js Strategy Evaluators & Pytests
@@ -97,11 +90,10 @@ cd services/python-ai-service && uv run pytest
 ```
 
 ### 4. Admin Portal Hub Links
-- **Langfuse Unified Evaluation Dashboard**: `http://localhost:3000`
-- **Promptfoo Managed Cloud**: `https://www.promptfoo.app` (Organization: `emtaskflow-ai`)
-- **TruLens Leaderboard**: `http://localhost:8501`
+- **Langfuse Unified Evaluation Dashboard**: `http://localhost:3001`
+- **Promptfoo Matrix Server**: `http://localhost:15500` & `https://www.promptfoo.app` (Organization: `emtaskflow-ai`)
 - **Adminer DB Explorer**: `http://localhost:8080`
-- **Open WebUI**: `http://localhost:3080`
+- **Temporal Web UI**: `http://localhost:8233`
 
 ---
 
