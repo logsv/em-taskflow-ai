@@ -89,31 +89,31 @@ The system utilizes an **8-stage hybrid architecture** optimized for local Small
 
 ```mermaid
 flowchart TD
-    User([👤 User Query]) --> RedisCache{⚡ Redis Semantic Cache\nCosine Sim >= 0.95}
+    User(["👤 User Query"]) --> RedisCache{"⚡ Redis Semantic Cache<br/>Cosine Sim >= 0.95"}
     
-    RedisCache -- "Cache Hit" --> CachedResp[🚀 Instant Response\n<50ms]
-    RedisCache -- "Cache Miss" --> FastPath{⚡ Fast-Path Classifier\n<300ms}
+    RedisCache -->|"Cache Hit"| CachedResp["🚀 Instant Response<br/>&lt;50ms"]
+    RedisCache -->|"Cache Miss"| FastPath{"⚡ Fast-Path Classifier<br/>&lt;300ms"}
     
-    FastPath -- "Direct Query (Math/Code/Chat/Attachment)" --> DirectLLM[🤖 Local Ollama Inference\nhermes3:8b]
-    FastPath -- "Complex / Tool / RAG Intent" --> Router[🧩 LLM Router\nDomain & Intent Classifier]
+    FastPath -->|"Direct Query (Math/Code/Chat/Attachment)"| DirectLLM["🤖 Local Ollama Inference<br/>hermes3:8b"]
+    FastPath -->|"Complex / Tool / RAG Intent"| Router["🧩 LLM Router<br/>Domain & Intent Classifier"]
     
-    Router -- "RAG Search Intent" --> PythonAI[🐍 Python AI RAG Service\nHyDE + RRF Hybrid Search]
-    PythonAI --> SinglePass[📄 Single-Pass RAG Synthesizer]
+    Router -->|"RAG Search Intent"| PythonAI["🐍 Python AI RAG Service<br/>HyDE + RRF Hybrid Search"]
+    PythonAI --> SinglePass["📄 Single-Pass RAG Synthesizer"]
     
-    Router -- "Multi-Domain Intent" --> Supervisor[👑 LangGraph Supervisor]
+    Router -->|"Multi-Domain Intent"| Supervisor["👑 LangGraph Supervisor"]
     
-    Supervisor --> DORA[📊 DORA Micro-Agent\nGitHub + Jira + DB Fallback]
-    Supervisor --> Delivery[🚀 Delivery Micro-Agent\nJira Blockers + PR Cycle Time]
-    Supervisor --> SBI[💬 SBI Micro-Agent\n1-on-1s + Jira + Slack]
-    Supervisor --> People[👥 People Micro-Agent\nCalendar 1-on-1s + Notion Ladders]
-    Supervisor --> Sprint[⚡ Sprint Micro-Agent\nJira Backlog + Calendar PTOs]
-    Supervisor --> Retro[🔄 Retro Micro-Agent\nThematic: Notion + Jira + Slack + GitHub]
-    Supervisor --> Roadmap[🗺️ Roadmap Micro-Agent\nJira Epics + GitHub Milestones]
-    Supervisor --> OKR[🎯 OKR Micro-Agent\nNotion OKRs + Jira + Commits]
-    Supervisor --> SOP[📜 SOP Micro-Agent\nNotion Policies + ADR Governance]
-    Supervisor --> Critic[🕵️ Critic Micro-Agent\nDraft EM Report Audit]
+    Supervisor --> DORA["📊 DORA Micro-Agent<br/>GitHub + Jira + DB Fallback"]
+    Supervisor --> Delivery["🚀 Delivery Micro-Agent<br/>Jira Blockers + PR Cycle Time"]
+    Supervisor --> SBI["💬 SBI Micro-Agent<br/>1-on-1s + Jira + Slack"]
+    Supervisor --> People["👥 People Micro-Agent<br/>Calendar 1-on-1s + Notion Ladders"]
+    Supervisor --> Sprint["⚡ Sprint Micro-Agent<br/>Jira Backlog + Calendar PTOs"]
+    Supervisor --> Retro["🔄 Retro Micro-Agent<br/>Thematic: Notion + Jira + Slack + GitHub"]
+    Supervisor --> Roadmap["🗺️ Roadmap Micro-Agent<br/>Jira Epics + GitHub Milestones"]
+    Supervisor --> OKR["🎯 OKR Micro-Agent<br/>Notion OKRs + Jira + Commits"]
+    Supervisor --> SOP["📜 SOP Micro-Agent<br/>Notion Policies + ADR Governance"]
+    Supervisor --> Critic["🕵️ Critic Micro-Agent<br/>Draft EM Report Audit"]
     
-    SinglePass --> Formatter[✨ Response Formatter]
+    SinglePass --> Formatter["✨ Response Formatter"]
     DORA --> Formatter
     Delivery --> Formatter
     SBI --> Formatter
@@ -125,22 +125,22 @@ flowchart TD
     SOP --> Formatter
     Critic --> Formatter
     
-    DirectLLM --> UICockpit
+    DirectLLM --> UICockpit["💻 React Cockpit / Standalone Admin Portal"]
     CachedResp --> UICockpit
-    Formatter --> UICockpit[💻 React Cockpit / Standalone Admin Portal]
+    Formatter --> UICockpit
     
-    subgraph Data & Telemetry Services (Isolated DBs)
-        BackendDB[(🗄️ taskflow_backend\nPort 5432)]
-        AIDB[(🤖 taskflow_ai\nPort 5432)]
-        TemporalDB[(⏳ temporal\nPort 5432)]
-        Redis[(⚡ Redis Cache\nPort 6379)]
-        Langfuse[(📊 langfuse_db\nPort 5433)]
+    subgraph DataStorage ["Data & Telemetry Services (Isolated DBs)"]
+        BackendDB[("🗄️ taskflow_backend<br/>Port 5432")]
+        AIDB[("🤖 taskflow_ai<br/>Port 5432")]
+        TemporalDB[("⏳ temporal<br/>Port 5432")]
+        Redis[("⚡ Redis Cache<br/>Port 6379")]
+        Langfuse[("📊 langfuse_db<br/>Port 5433")]
     end
     
-    PythonAI -. RRF Search .-> AIDB
-    Supervisor -. Session & DB Fallbacks .-> BackendDB
-    PythonAI -. Cache Set .-> Redis
-    Formatter -. Non-Blocking Tracing .-> Langfuse
+    PythonAI -.->|"RRF Search"| AIDB
+    Supervisor -.->|"Session & DB Fallbacks"| BackendDB
+    PythonAI -.->|"Cache Set"| Redis
+    Formatter -.->|"Non-Blocking Tracing"| Langfuse
 ```
 
 ---

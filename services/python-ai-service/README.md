@@ -21,24 +21,24 @@ The Python AI Service operates as a dual-protocol microservice listening on **Po
 
 ```mermaid
 flowchart TD
-    Client[Node.js Backend / Temporal Worker] -->|REST HTTP :8000| REST[FastAPI Router\napp/main.py]
-    Client -->|gRPC Protobuf :50051| gRPC[gRPC Servicer\napp/grpc_server/servicer.py]
+    Client["Node.js Backend / Temporal Worker"] -->|"REST HTTP :8000"| REST["FastAPI Router<br/>app/main.py"]
+    Client -->|"gRPC Protobuf :50051"| gRPC["gRPC Servicer<br/>app/grpc_server/servicer.py"]
 
-    subgraph Python AI Core Processor
-        REST --> Extractor[📄 File Processor & Extractors\nPDF, CSV, TXT, Image/OCR]
+    subgraph CoreProcessor ["Python AI Core Processor"]
+        REST --> Extractor["📄 File Processor & Extractors<br/>PDF, CSV, TXT, Image/OCR"]
         gRPC --> Extractor
         
-        Extractor --> Chunker[🔪 Token Chunker\nParent-Child Windowing]
-        Chunker --> Reranker[⚡ Cross-Encoder Reranker\nFlashRank / TinyBERT]
+        Extractor --> Chunker["🔪 Token Chunker<br/>Parent-Child Windowing"]
+        Chunker --> Reranker["⚡ Cross-Encoder Reranker<br/>FlashRank / TinyBERT"]
         
-        Temporal[⏳ Temporal Activity Worker\nrag-ingest-queue] --> Extractor
+        Temporal["⏳ Temporal Activity Worker<br/>rag-ingest-queue"] --> Extractor
     end
 
-    subgraph Database Service & Storage
-        Chunker --> DBService[🗄️ RAG Database Service\napp/services/rag_processor/database.py]
+    subgraph Storage ["Database Service & Storage"]
+        Chunker --> DBService["🗄️ RAG Database Service<br/>app/services/rag_processor/database.py"]
         REST --> DBService
         
-        DBService -->|Dense HNSW + Sparse BM25 + RRF| Postgres[(🐘 PostgreSQL 16: taskflow_ai\nTable: pdf_chunks)]
+        DBService -->|"Dense HNSW + Sparse BM25 + RRF"| Postgres[("🐘 PostgreSQL 16: taskflow_ai<br/>Table: pdf_chunks")]
     end
 ```
 
