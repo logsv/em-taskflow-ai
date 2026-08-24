@@ -8,58 +8,68 @@ EM TaskFlow AI utilizes an **8-stage hybrid multi-agent pipeline** optimized for
 
 ```mermaid
 flowchart TD
-    User(["👤 User Query"]) --> RedisCache{"⚡ Redis Semantic Cache<br/>Cosine Sim >= 0.95"}
+    classDef primary fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef fast fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#f8fafc;
+    classDef core fill:#312e81,stroke:#818cf8,stroke-width:1.5px,color:#f8fafc;
+    classDef agent fill:#1e1b4b,stroke:#a5b4fc,stroke-width:1px,color:#f8fafc;
+    classDef storage fill:#0f172a,stroke:#64748b,stroke-width:1px,color:#94a3b8;
+
+    User(["👤 User Query & Context"]):::primary --> RedisCache{"⚡ Redis Semantic Cache<br/>(Sim >= 0.95)"}:::fast
     
-    RedisCache -->|"Cache Hit"| CachedResp["🚀 Instant Response<br/>&lt;50ms"]
-    RedisCache -->|"Cache Miss"| FastPath{"⚡ Fast-Path Classifier<br/>&lt;300ms"}
-    
-    FastPath -->|"Direct Query (Math/Code/Chat/Attachment)"| DirectLLM["🤖 Local Ollama Inference<br/>hermes3:8b"]
-    FastPath -->|"Complex / Tool / RAG Intent"| Router["🧩 LLM Router<br/>Domain & Intent Classifier"]
-    
-    Router -->|"RAG Search Intent"| PythonAI["🐍 Python AI RAG Service<br/>HyDE + RRF Hybrid Search"]
-    PythonAI --> SinglePass["📄 Single-Pass RAG Synthesizer"]
-    
-    Router -->|"Multi-Domain Intent"| Supervisor["👑 LangGraph Supervisor"]
-    
-    Supervisor --> DORA["📊 DORA Micro-Agent<br/>GitHub + Jira + DB Fallback"]
-    Supervisor --> Delivery["🚀 Delivery Micro-Agent<br/>Jira Blockers + PR Cycle Time"]
-    Supervisor --> SBI["💬 SBI Micro-Agent<br/>1-on-1s + Jira + Slack"]
-    Supervisor --> People["👥 People Micro-Agent<br/>Calendar 1-on-1s + Notion Ladders"]
-    Supervisor --> Sprint["⚡ Sprint Micro-Agent<br/>Jira Backlog + Calendar PTOs"]
-    Supervisor --> Retro["🔄 Retro Micro-Agent<br/>Thematic: Notion + Jira + Slack + GitHub"]
-    Supervisor --> Roadmap["🗺️ Roadmap Micro-Agent<br/>Jira Epics + GitHub Milestones"]
-    Supervisor --> OKR["🎯 OKR Micro-Agent<br/>Notion OKRs + Jira + Commits"]
-    Supervisor --> SOP["📜 SOP Micro-Agent<br/>Notion Policies + ADR Governance"]
-    Supervisor --> Critic["🕵️ Critic Micro-Agent<br/>Draft EM Report Audit"]
-    
-    SinglePass --> Formatter["✨ Response Formatter"]
-    DORA --> Formatter
-    Delivery --> Formatter
-    SBI --> Formatter
-    People --> Formatter
-    Sprint --> Formatter
-    Retro --> Formatter
-    Roadmap --> Formatter
-    OKR --> Formatter
-    SOP --> Formatter
-    Critic --> Formatter
-    
-    DirectLLM --> UICockpit["💻 React Cockpit / Standalone Admin Portal"]
-    CachedResp --> UICockpit
-    Formatter --> UICockpit
-    
-    subgraph DataStorage ["Data & Telemetry Services (Isolated DBs)"]
-        BackendDB[("🗄️ taskflow_backend<br/>Port 5432")]
-        AIDB[("🤖 taskflow_ai<br/>Port 5432")]
-        TemporalDB[("⏳ temporal<br/>Port 5432")]
-        Redis[("⚡ Redis Cache<br/>Port 6379")]
-        Langfuse[("📊 langfuse_db<br/>Port 5433")]
+    RedisCache -->|"Cache Hit (<50ms)"| FastResp["🚀 Instant Response"]:::fast
+    RedisCache -->|"Cache Miss"| FastPath{"⚡ Fast-Path Pre-Classifier<br/>(<300ms SLA)"}:::primary
+
+    FastPath -->|"Chat / Code / Math"| DirectLLM["🤖 Local Ollama SLM (hermes3:8b)"]:::fast
+    FastPath -->|"Tool / RAG Intent"| Router["🧩 LLM Router & Fallback Parser"]:::primary
+
+    Router -->|"Document Search Intent"| RAGService["🐍 Python AI RAG Engine<br/>(HyDE + RRF Hybrid Search)"]:::core
+    Router -->|"Management & Workflow Intent"| Supervisor["👑 LangGraph Multi-Agent Supervisor"]:::core
+
+    RAGService --> Synthesizer["📄 Single-Pass RAG Synthesizer"]:::core
+
+    subgraph AgentsGroup ["🤖 10 Specialized Domain Micro-Agents (1-Tool Constraint)"]
+        direction TB
+        subgraph OpsCluster ["🚀 Delivery & Engineering Operations"]
+            direction LR
+            DORA["📊 DORA Metrics"]:::agent
+            Delivery["⚡ Delivery Bottlenecks"]:::agent
+            Sprint["🏃 Sprint Capacity"]:::agent
+            Roadmap["🗺️ Roadmap Alignment"]:::agent
+        end
+        subgraph PeopleCluster ["👥 People, Growth & Governance"]
+            direction LR
+            SBI["💬 SBI Feedback"]:::agent
+            People["🌱 Career & 1-on-1s"]:::agent
+            OKR["🎯 OKR Pacing"]:::agent
+            SOP["📜 SOP & ADRs"]:::agent
+        end
+        subgraph AuditCluster ["🕵️ Retrospectives & Dossier Audits"]
+            direction LR
+            Retro["🔄 Sprint Retro"]:::agent
+            Critic["🔍 Report Critic"]:::agent
+        end
     end
-    
-    PythonAI -.->|"RRF Search"| AIDB
-    Supervisor -.->|"Session & DB Fallbacks"| BackendDB
-    PythonAI -.->|"Cache Set"| Redis
-    Formatter -.->|"Non-Blocking Tracing"| Langfuse
+
+    Supervisor --> OpsCluster
+    Supervisor --> PeopleCluster
+    Supervisor --> AuditCluster
+
+    Synthesizer --> Formatter["✨ Single-Pass Response Formatter & Telemetry Tracing"]:::core
+    OpsCluster --> Formatter
+    PeopleCluster --> Formatter
+    AuditCluster --> Formatter
+
+    DirectLLM --> UICockpit["💻 React Chat Cockpit & Admin Portal"]:::primary
+    FastResp --> UICockpit
+    Formatter --> UICockpit
+
+    subgraph DBCluster ["🗄️ Isolated Database-Per-Service Topology"]
+        direction LR
+        DB_Backend[("🐘 taskflow_backend<br/>Port 5432")]:::storage
+        DB_AI[("🤖 taskflow_ai (HNSW)<br/>Port 5432")]:::storage
+        DB_Temporal[("⏳ temporal<br/>Port 5432")]:::storage
+        DB_Langfuse[("📊 langfuse_db<br/>Port 5433")]:::storage
+    end
 ```
 
 ---
