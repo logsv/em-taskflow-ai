@@ -40,7 +40,9 @@ jobs:
 
       - name: Build VitePress documentation
         working-directory: docs
-        run: npm run docs:build
+        run: |
+          npm run docs:build
+          touch .vitepress/dist/.nojekyll
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3
