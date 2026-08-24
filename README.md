@@ -7,7 +7,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20pgvector-blue.svg)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7.0-red.svg)](https://redis.io/)
 [![Ollama](https://img.shields.io/badge/LLM-100%25%20Local%20(Ollama)-orange.svg)](https://ollama.ai)
-[![Documentation](https://img.shields.io/badge/Docs-VitePress-brightgreen.svg)](docs)
+[![Documentation](https://img.shields.io/badge/Docs-VitePress-brightgreen.svg)](https://logsv.github.io/em-taskflow-ai/)
 [![API Explorer](https://img.shields.io/badge/API%20Docs-Swagger%20OpenAPI%203.1-38bdf8.svg)](http://localhost:4000/api/docs)
 [![Backend Tests](https://img.shields.io/badge/Backend%20Tests-235%20passed-success.svg)](backend)
 [![Python AI Tests](https://img.shields.io/badge/Python%20AI%20Tests-39%20passed-success.svg)](services/python-ai-service)
@@ -32,7 +32,7 @@
 
 ## 📖 Documentation Portal & Swagger Explorer
 
-- **📚 VitePress Documentation Portal**: Full developer documentation, architecture deep dives, ADRs, and SRE playbooks under [`/docs`](docs).
+- **📚 VitePress Documentation Portal**: Full developer documentation, architecture deep dives, ADRs, and SRE playbooks live at [**https://logsv.github.io/em-taskflow-ai/**](https://logsv.github.io/em-taskflow-ai/) (source in [`/docs`](docs)).
   ```bash
   npm run docs:dev     # Start local VitePress docs on http://localhost:5173
   npm run docs:build   # Build static documentation bundle
