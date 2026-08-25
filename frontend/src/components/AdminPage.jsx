@@ -1717,8 +1717,40 @@ function AdminPage({ onBackToChat }) {
                         className="settings-input"
                         value={adminSettings?.llm?.defaultModel || ''}
                         onChange={(e) => updateLlmField('defaultModel', e.target.value)}
-                        placeholder="hermes3:8b, mistral:latest, llama3.1:8b"
+                        placeholder="hermes3:8b, qwen2.5:14b, mistral-small:24b, qwen2.5:32b, command-r:35b, llama3.3:70b"
                       />
+                      <div style={{ marginTop: '0.4rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #888)' }}>Presets:</span>
+                        {[
+                          'hermes3:8b',
+                          'qwen2.5:14b',
+                          'mistral-small:24b',
+                          'qwen2.5:32b',
+                          'command-r:35b',
+                          'llama3.3:70b',
+                          'gpt-oss:20b',
+                        ].map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => updateLlmField('defaultModel', m)}
+                            style={{
+                              fontSize: '0.72rem',
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              border: adminSettings?.llm?.defaultModel === m ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.15)',
+                              background: adminSettings?.llm?.defaultModel === m ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.05)',
+                              color: adminSettings?.llm?.defaultModel === m ? '#60a5fa' : 'inherit',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                      <span className="input-hint" style={{ marginTop: '0.3rem', display: 'block', fontSize: '0.75rem' }}>
+                        Manual pull required before first use: <code>ollama pull {adminSettings?.llm?.defaultModel || 'hermes3:8b'}</code>
+                      </span>
                     </div>
                     <div className="form-group flex-1">
                       <label>Inference Temperature</label>

@@ -6,6 +6,7 @@ import { closeJiraMcp } from '../mcp/jira.js';
 import { closeNotionMcp } from '../mcp/notion.js';
 import { closeGithubMcp } from '../mcp/github.js';
 import { closeSlackMcp } from '../mcp/slack.js';
+import { resetChatModel } from '../llm/index.js';
 
 export function maskSecret(secret) {
   if (!secret || typeof secret !== 'string') return '';
@@ -91,7 +92,18 @@ class SettingsService {
       llm: {
         defaultProvider: process.env.LLM_DEFAULT_PROVIDER || 'ollama',
         defaultModel: process.env.LLM_DEFAULT_MODEL || 'hermes3:8b',
-        availableModels: ['hermes3:8b', 'mistral:latest', 'llama3.1:8b', 'qwen2.5:7b', 'nomic-embed-text'],
+        availableModels: [
+          'hermes3:8b',
+          'qwen2.5:14b',
+          'mistral-small:24b',
+          'qwen2.5:32b',
+          'command-r:35b',
+          'llama3.3:70b',
+          'gpt-oss:20b',
+          'mistral:latest',
+          'llama3.1:8b',
+          'nomic-embed-text'
+        ],
         temperature: 0.2,
         ollama: {
           baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
@@ -398,8 +410,9 @@ class SettingsService {
       },
     };
 
-    // Hot reload runtime config
+    // Hot reload runtime config and reset active LLM model singleton
     this.applyToRuntimeConfig(this.cachedRawSettings);
+    resetChatModel();
 
     // Reset MCP cached clients so the next call picks up the new credentials
     await closeJiraMcp().catch(() => {});
@@ -428,6 +441,7 @@ class SettingsService {
     };
 
     this.applyToRuntimeConfig(this.cachedRawSettings);
+    resetChatModel();
     await closeJiraMcp().catch(() => {});
     await closeNotionMcp().catch(() => {});
     await closeGithubMcp().catch(() => {});

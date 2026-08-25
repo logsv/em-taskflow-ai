@@ -444,7 +444,7 @@ async def evaluate_single_rag_triad_query_activity(params: Dict[str, Any]) -> Di
     query = params.get("query", "")
     query_index = params.get("query_index", 1)
     total_queries = params.get("total_queries", 1)
-    model_name = params.get("model_name", "hermes3:8b")
+    model_name = params.get("model_name", os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b"))
 
     stop_event = asyncio.Event()
 
@@ -505,7 +505,7 @@ async def evaluate_single_rag_triad_query_activity(params: Dict[str, Any]) -> Di
 async def evaluate_prompt_batch_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     """Activity: Evaluates a micro-batch of prompts (5-10 items) with heartbeats & Langfuse score flusher."""
     queries = params.get("queries", [])
-    model_name = params.get("model_name", "hermes3:8b")
+    model_name = params.get("model_name", os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b"))
     batch_index = params.get("batch_index", 1)
     total_batches = params.get("total_batches", 1)
 
@@ -549,7 +549,7 @@ async def evaluate_prompt_batch_activity(params: Dict[str, Any]) -> Dict[str, An
 async def sync_evaluation_leaderboard_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     """Activity: Aggregates query metrics and confirms Langfuse leaderboard sync."""
     results = params.get("results", [])
-    model_name = params.get("model_name", "hermes3:8b")
+    model_name = params.get("model_name", os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b"))
     total_queries = len(results)
 
     try:
@@ -622,7 +622,7 @@ async def run_pairwise_arena_activity(params: Dict[str, Any]) -> Dict[str, Any]:
 
     try:
         from evaluation.llm_judge import LLMJudgeFactory
-        model_name = params.get("model_name", "hermes3:8b")
+        model_name = params.get("model_name", os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b"))
         pairwise_judge = LLMJudgeFactory.create_judge("pairwise", model_name=model_name)
         arena_test_context = {
             "candidate_a": params.get(
@@ -648,7 +648,7 @@ async def export_benchmark_report_activity(params: Dict[str, Any]) -> Dict[str, 
     from datetime import datetime
     import time
     
-    model_name = params.get("model_name", "hermes3:8b")
+    model_name = params.get("model_name", os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b"))
     ragas_scores = params.get("ragas_scores", {})
     trulens_res = params.get("trulens_res", {})
     arena_res = params.get("arena_res", {})
@@ -697,8 +697,8 @@ async def run_trace_replay_activity(params: Dict[str, Any]) -> Dict[str, Any]:
         pass
 
     from evaluation.replay_langfuse_traces import replay_and_evaluate_traces
-    baseline_model = params.get("baseline_model", "hermes3:8b")
-    candidate_model = params.get("candidate_model", "hermes3:8b")
+    baseline_model = params.get("baseline_model", os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b"))
+    candidate_model = params.get("candidate_model", os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b"))
     res = replay_and_evaluate_traces(baseline_model=baseline_model, candidate_model=candidate_model)
     return res
 
