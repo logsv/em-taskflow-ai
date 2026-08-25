@@ -378,25 +378,33 @@ ${provenanceNotice}
 | **Cycle Time (P80)** | **${formatWaitTime(cycleTimeP80Hours)}** | $\\le 48.0$ hours | ${cycleTimeP80Hours <= 48.0 ? '🟢 Rapid' : '🟡 Review Delays'} |
 | **Blocked Dependency Count**| **${blockedTickets.length} tickets** | 0 tickets | ${blockedTickets.length > 0 ? '🔴 Blocked' : '🟢 None'} |
 
----
+> 💡 **Executive Bottom Line**: ${riskIndex === 'HIGH' ? `Delivery flow is **HIGH RISK** due to carrying **${wipViolations} excess WIP items** and **${blockedTickets.length} blocked tickets**.` : riskIndex === 'MEDIUM' ? `Delivery flow is **MODERATE RISK**; review queue latency is elevated.` : `Delivery flow is **HEALTHY**; all items within working agreements.`}
 
-### 🔍 Active Stalls & Blocked Work
+<details>
+<summary><b>🔍 Active Stalls & Blocked Work (${displayedStalledPrs.length} PRs, ${blockedTickets.length} Blockers)</b></summary>
+
 ${prStallsFormatted}
 ${blockersFormatted}
 ${missedDeadlinesFormatted}
 
----
+</details>
 
-### 📋 Team Working Agreement & SLA Compliance
+<details>
+<summary><b>📋 Team Working Agreement & SLA Compliance</b></summary>
+
 - **PR Sizing & SLA**: PR review turnaround is averaging **${formatWaitTime(avgPrWaitHours)}** against the 4h target SLA.
 - **WIP Constraint**: Team is carrying **${wipViolations} excess in-progress items**, creating context-switching overhead.
 
----
+</details>
 
-### 🎯 Strategic De-Bottlenecking Recommendations
+<details>
+<summary><b>🎯 Strategic De-Bottlenecking Recommendations</b></summary>
+
 1. **Pairing Session**: ${stalledRec}
 2. **Unblock Critical Path**: ${blockerRec}
 3. **Stop Starting, Start Finishing**: Impose a temporary intake freeze until active WIP drops below ${wipLimit}.
+
+</details>
 `;
 
     return {

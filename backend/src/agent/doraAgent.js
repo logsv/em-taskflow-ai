@@ -211,19 +211,25 @@ ${provenanceNotice}
 | **Change Failure Rate** | **${changeFailureRatePct}%** | ${rating} Tier | ${changeFailureRatePct <= 15.0 ? '🟢 Stable' : '🔴 High Risk'} |
 | **Time to Restore (MTTR)**| **${mttrHours} hours** | ${rating} Tier | ${mttrHours <= 4.0 ? '🟢 Fast Recovery' : '🟡 Moderate'} |
 
----
+> 💡 **Executive Bottom Line**: Overall operational flow is rated at **${rating} Tier** (${deploymentFrequencyWeeks >= 1.0 && averageLeadTimeHours <= 48 ? 'Stable velocity with rapid merge cadence' : 'Review queue latency represents primary optimization area'}).
 
-### 🔍 Flow & Bottleneck Analysis
+<details>
+<summary><b>🔍 Flow & Bottleneck Analysis (${bottlenecks.length} Key Insights)</b></summary>
+
 ${bottlenecks.map((b) => `- ${b}`).join('\n')}
 - **Review Queue Latency**: Pull requests average **${reviewWaitTimeHours}h** in review across [**${repoPath} Pull Requests**](${repoUrl}/pulls).
 - **CI Pipeline Duration**: Build & test automation accounts for **~${ciBuildTimeHours * 60} minutes**.
 
----
+</details>
 
-### 🎯 Strategic Recommendations for Engineering Manager
+<details>
+<summary><b>🎯 Strategic Recommendations for Engineering Manager</b></summary>
+
 1. **PR Batch Size Guardrail**: Enforce PR sizing $< 400$ lines to reduce review wait time by up to 50%.
 2. **CI Parallelization**: Run unit test suites in parallel to maintain fast $(< 15\text{ mins})$ merge feedback loops.
 3. **Automated Rollback Verification**: Implement one-click rollbacks for releases showing error anomalies.
+
+</details>
 `;
 
     return {

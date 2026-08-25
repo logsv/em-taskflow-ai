@@ -386,24 +386,33 @@ export const peopleGrowthTool = createDeterministicToolHarness({
       ? `\n\n### 📓 Notion 1-on-1 Notes & Career Rubrics\n${notionDocs.map((d) => `- [${d.title}](${d.url}) (Last edited: ${d.last_edited ? new Date(d.last_edited).toLocaleDateString() : 'Recent'})`).join('\n')}`
       : '';
 
-    const summaryText = `### 📊 Competency Radar & Gap Analysis: ${inputArgs.engineer_id} (${currentLevel} ➔ ${targetLevel})
+    const summaryText = `### 🎯 Promotion Readiness Scorecard: ${inputArgs.engineer_id} (${currentLevel} ➔ ${targetLevel})
 
 > **Track**: ${track === 'ENGINEERING_MANAGEMENT' ? 'Management (M1/M2)' : 'Individual Contributor (IC)'} | **Tenure**: ${tenureMonths} Months | **Promotion Readiness**: **${readinessScore}% (${readinessVerdict.replace(/_/g, ' ')})** | **Workload**: ${workloadHours}h/wk (${burnoutRisk} Burnout Risk)
+
+| Metric | Measured Value | Requirement | Status |
+| :--- | :--- | :--- | :--- |
+| **Promotion Readiness** | **${readinessScore}%** | $\\ge 90\%$ (Ready) | ${readinessScore >= 90 ? '🟢 Ready for Promotion' : readinessScore >= 75 ? '🟡 On Track' : '🔴 Developing'} |
+| **Prerequisites Met** | **${metPrereqsCount} / ${prerequisites.length}** | 100% Mandatory | ${metPrereqsCount === prerequisites.length ? '🟢 Complete' : '🟡 In Progress'} |
+| **Weekly Workload** | **${workloadHours} hrs/wk** | $\\le 44.0$ hrs/wk | ${burnoutRisk === 'LOW' ? '🟢 Sustainable' : burnoutRisk === 'MEDIUM' ? '🟡 Elevated' : '🔴 High Burnout Risk'} |
+| **Significant Skill Gaps** | **${significantGaps.length > 0 ? significantGaps.join(', ') : 'None'}** | 0 Major Gaps | ${significantGaps.length === 0 ? '🟢 None' : '⚠️ Action Required'} |
+
+> 💡 **Executive Bottom Line**: Overall readiness is **${readinessVerdict.replace(/_/g, ' ')} (${readinessScore}%)**. ${significantGaps.length > 0 ? `Primary growth area: **${significantGaps[0]}**.` : 'All baseline dimension benchmarks satisfied.'}
+
+<details>
+<summary><b>📊 12-Dimension Competency Radar & Gap Analysis</b></summary>
 
 | Competency Dimension | Current (${currentLevel}) | Target (${targetLevel}) | Status | Gap |
 | :--- | :---: | :---: | :---: | :---: |
 ${competencyRadar.map((r) => `| **${r.dimension}** | ${r.current} / 5 | ${r.target} / 5 | ${r.status === 'MET' ? '✅ Met' : r.status === 'MINOR_GAP' ? '⚠️ Minor Gap' : '❌ Major Gap'} | ${r.gap > 0 ? `-${r.gap}` : '0.0'} |`).join('\n')}
 
----
-
-### 🎯 Promotion Readiness Scorecard & Prerequisites
-- **Overall Readiness Score**: **${readinessScore}%** — **${readinessVerdict.replace(/_/g, ' ')}**.
-- **Mandatory Prerequisites Met**: **${metPrereqsCount} / ${prerequisites.length}**.
+- **Mandatory Prerequisites Checklist**:
 ${prerequisites.map((p) => `- [${p.status === 'MET' ? 'x' : ' '}] **${p.name}** (${p.status})`).join('\n')}
 
----
+</details>
 
-### 🗺️ Multi-Horizon Career Development Roadmap
+<details>
+<summary><b>🗺️ Multi-Horizon Career Development Roadmap (3m – 3y)</b></summary>
 
 #### 🟢 Immediate Horizon (3–6 Months)
 - **Goal**: ${roadmaps.immediate_3_to_6m.focus}
@@ -417,13 +426,17 @@ ${roadmaps.medium_6_to_18m.deliverables.map((d) => `- ${d}`).join('\n')}
 - **Goal**: ${roadmaps.long_term_1_to_3y.focus}
 ${roadmaps.long_term_1_to_3y.deliverables.map((d) => `- ${d}`).join('\n')}
 
----
+</details>
 
-### 🚀 Suggested Stretch Assignments & Google Calendar 1-on-1 Sync
+<details>
+<summary><b>🚀 Stretch Assignments & Google Calendar 1-on-1 Sync</b></summary>
+
 - **Primary Stretch Project**: Lead the migration to isolated database-per-service vector architecture.
 - **Upcoming 1-on-1 Calendar Schedule**:
 ${events.map((ev) => `  * 📅 **${ev.start_time}**: ${ev.summary} (${ev.attendee})`).join('\n')}
 - **Weekly Meeting Load**: **${meetingHours} hrs/week** (Sustainability Status: **${burnoutRisk} Risk**).${notionSection}
+
+</details>
 `;
 
     return {
