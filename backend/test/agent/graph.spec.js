@@ -77,4 +77,24 @@ describe('Agent Graph', () => {
     expect(result.evidence.delivery[0]).to.equal('Test evidence');
     expect(mockSupervisor.invoke.calledOnce).to.be.true;
   }, 10000);
+
+  it('should isolate active turn messages from previous conversation turns', async () => {
+    const { getCurrentTurnMessages, isWorkerOrAssistantMessage } = await import('../../src/agent/graph.js');
+    const pastMessages = [
+      { role: 'user', content: 'Check delivery bottlenecks.' },
+      { role: 'assistant', content: 'Turn 1 Delivery Scorecard: 7 WIP items.', tool_calls: [] },
+      { role: 'user', content: 'More details in depth for Delivery Risk Index to resolve' },
+    ];
+
+    const currentTurn = getCurrentTurnMessages(pastMessages);
+    expect(currentTurn.length).to.equal(0); // Only messages AFTER the latest HumanMessage are in active scratchpad
+    const hasWorkerInCurrentTurn = currentTurn.some(isWorkerOrAssistantMessage);
+    expect(hasWorkerInCurrentTurn).to.be.false;
+
+    // Simulate worker returning evidence in active turn
+    currentTurn.push({ role: 'tool', name: 'analyze_delivery_bottlenecks', content: 'Detailed mathematical breakdown' });
+    const hasWorkerAfterRun = currentTurn.some(isWorkerOrAssistantMessage);
+    expect(hasWorkerAfterRun).to.be.true;
+  });
 });
+

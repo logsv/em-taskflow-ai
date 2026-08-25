@@ -98,13 +98,30 @@ export function isWorkerOrAssistantMessage(m) {
   return isAi || isTool;
 }
 
+/**
+ * Slices the messages array to isolate the execution trajectory of the active turn
+ * (all messages occurring after the latest HumanMessage).
+ */
+export function getCurrentTurnMessages(messages = []) {
+  if (!Array.isArray(messages) || messages.length === 0) return [];
+  let lastHumanIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (isHumanMsg(messages[i])) {
+      lastHumanIdx = i;
+      break;
+    }
+  }
+  return lastHumanIdx >= 0 ? messages.slice(lastHumanIdx + 1) : messages;
+}
+
 // Pre-model hook: dynamically inject active routing constraints as a system instruction
 export function supervisorPreModelHook(state) {
   const allowed = state.routingPlan?.domains || [];
   const messages = state.messages || [];
-  const hasWorkerRun = messages.length >= 2 && messages.some(isWorkerOrAssistantMessage);
+  const currentTurn = getCurrentTurnMessages(messages);
+  const hasWorkerRun = currentTurn.length >= 1 && currentTurn.some(isWorkerOrAssistantMessage);
 
-  const evidence = hasWorkerRun ? extractEvidenceContent(messages) : "";
+  const evidence = hasWorkerRun ? extractEvidenceContent(currentTurn) : "";
 
   const routingPrompt = `Active Routing Plan Policy:
 Authorized worker domains for this query: ${allowed.length > 0 ? allowed.join(", ") : "none"}.
@@ -137,7 +154,9 @@ ${
 }
 
 function extractEvidenceContent(messages) {
-  const candidate = [...messages].reverse().find((m) => {
+  const currentTurn = getCurrentTurnMessages(messages);
+  const targetMessages = currentTurn.length > 0 ? currentTurn : messages;
+  const candidate = [...targetMessages].reverse().find((m) => {
     if (isSystemMsg(m) || isHumanMsg(m)) return false;
     const text = getMessageText(m);
     if (text.length < 15) return false;
@@ -182,6 +201,7 @@ function extractEvidenceContent(messages) {
 // Post-model hook: structural policy guardrail to block unauthorized handoffs and prevent infinite handoff loops
 export function supervisorPostModelHook(state) {
   const messages = state.messages || [];
+  const currentTurn = getCurrentTurnMessages(messages);
   const lastMessage = messages[messages.length - 1];
 
   if (lastMessage && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
@@ -193,11 +213,11 @@ export function supervisorPostModelHook(state) {
       fullAllowedDomains.push("rag");
     }
 
-    // Check if worker agent has already executed in prior messages of conversation trajectory (excluding lastMessage itself)
-    const priorMessages = messages.slice(0, messages.length - 1);
+    // Check if worker agent has already executed in prior messages of the CURRENT turn (excluding lastMessage itself)
+    const priorCurrentTurnMessages = currentTurn.slice(0, currentTurn.length - 1);
     const workerExecuted =
-      priorMessages.length >= 2 &&
-      priorMessages.some(
+      priorCurrentTurnMessages.length >= 1 &&
+      priorCurrentTurnMessages.some(
         (m) =>
           m.role === "tool" ||
           m.type === "tool" ||
@@ -210,7 +230,7 @@ export function supervisorPostModelHook(state) {
 
     if (workerExecuted && handoffCall) {
       warn(`Policy Guardrail Intercepted: Prevented repeated handoff to '${handoffCall.name}' after worker execution.`);
-      const synthesisContent = extractEvidenceContent(messages);
+      const synthesisContent = extractEvidenceContent(currentTurn);
 
       // Mutate tool_calls array elements directly and construct clean AIMessage with matching ID
       if (Array.isArray(lastMessage.tool_calls)) {
@@ -297,14 +317,15 @@ function createSupervisorLlmWrapper(baseLlm) {
       : typeof input?.toChatMessages === "function"
       ? input.toChatMessages()
       : [];
-    const hasWorkerRun = inputArr.length >= 2 && inputArr.some(isWorkerOrAssistantMessage);
+    const currentTurn = getCurrentTurnMessages(inputArr);
+    const hasWorkerRun = currentTurn.length >= 1 && currentTurn.some(isWorkerOrAssistantMessage);
 
     const res = await originalInvoke(input, options);
     const isHandoffCall = res && Array.isArray(res.tool_calls) && res.tool_calls.some((tc) => tc.name?.startsWith?.("transfer_to_"));
 
     if (hasWorkerRun && isHandoffCall) {
       warn(`Supervisor LLM Intercept: Prevented repeated handoff to '${res.tool_calls[0].name}' after worker execution.`);
-      const content = extractEvidenceContent(inputArr);
+      const content = extractEvidenceContent(currentTurn);
       return new AIMessage({
         id: res.id,
         content,
@@ -312,7 +333,7 @@ function createSupervisorLlmWrapper(baseLlm) {
       });
     }
 
-    // Turn 1 Fallback Handoff: Dispatch to workspace agent if LLM omitted tool call
+    // Turn 1 Fallback Handoff: Dispatch to workspace agent if LLM omitted tool call in current turn
     if (inputArr.length > 0 && !hasWorkerRun && (!res || !Array.isArray(res.tool_calls) || res.tool_calls.length === 0)) {
       const lastHuman = [...inputArr].reverse().find(isHumanMsg);
       const text = getMessageText(lastHuman).toLowerCase();
@@ -500,11 +521,13 @@ export async function executeAgentQuery(query, options = {}) {
     });
 
     const messages = Array.isArray(result.messages) ? result.messages : [];
+    const currentTurn = getCurrentTurnMessages(messages);
+    const candidateMessages = currentTurn.length > 0 ? currentTurn : messages;
     const lastMessage = messages[messages.length - 1];
-    const toolsUsed = collectToolsUsed(messages);
+    const toolsUsed = collectToolsUsed(candidateMessages);
     let responseText = "";
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
+    for (let i = candidateMessages.length - 1; i >= 0; i--) {
+      const msg = candidateMessages[i];
       if (!isWorkerOrAssistantMessage(msg)) {
         continue;
       }
@@ -516,7 +539,7 @@ export async function executeAgentQuery(query, options = {}) {
     }
 
     if (!responseText) {
-      const extractedEvidence = extractEvidenceContent(messages);
+      const extractedEvidence = extractEvidenceContent(candidateMessages);
       if (extractedEvidence && !extractedEvidence.includes("Workspace findings gathered")) {
         responseText = extractedEvidence;
       } else {

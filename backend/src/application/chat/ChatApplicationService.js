@@ -69,8 +69,8 @@ export class ChatApplicationService {
     const { rewrittenQuery, wasRewritten, entities: extractedEntities } = preRouterRewriter.resolveQuery(query, existingMessages);
     const queryToProcess = wasRewritten ? rewrittenQuery : query;
 
-    // Tier 4: Episodic Memory Retrieval for past references outside active window
-    const episodicPastContext = await episodicMemoryService.retrieveRelevantPastContext(queryToProcess, ensuredThread?.id, 2).catch(() => []);
+    // Tier 4: Episodic Memory Retrieval for past references outside active window (0 extra DB queries)
+    const episodicPastContext = await episodicMemoryService.retrieveRelevantPastContext(queryToProcess, ensuredThread?.id, 2, existingMessages).catch(() => []);
 
     const result = await this.agentService.processQuery(queryToProcess, {
       threadId: ensuredThread.id,

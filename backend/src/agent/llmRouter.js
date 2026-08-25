@@ -66,6 +66,7 @@ CRITICAL ROUTING & DISAMBIGUATION RULES:
 11. Career skills + SBI feedback: If combining career progression evaluation with drafting SBI feedback: set domains: ["people", "sbi"], must_use_tools: true, allow_rag: false, confidence: 0.95.
 12. Check roadmap milestones against active sprint deliverables: set domains: ["roadmap", "sprint"], must_use_tools: true, allow_rag: false, confidence: 0.95.
 13. Technical dependencies and blockers for Q4 roadmap: set domains: ["roadmap"], must_use_tools: true, allow_rag: false, confidence: 0.95.
+14. Conversational Follow-Up & Deep Dive: If the query is an open-ended conversational follow-up, deep-dive explanation, tactical resolution plan, or talking script on metrics already discussed in prior conversation context: set domains: [], must_use_tools: false, allow_rag: false, confidence: 0.95.
 
 Output a flat JSON object with these exact keys: "domains", "must_use_tools", "allow_rag", "confidence", "reasoning_summary".
 `;
@@ -158,6 +159,22 @@ export function classifyFastPath(query, options = {}) {
       allow_rag: false,
       confidence: 1.0,
       reasoning_summary: "Fast-path classifier: General conceptual explanation (0 tools, 0 RAG).",
+    };
+  }
+
+  // 5. Conversational Follow-Up & Exploration over Chat History
+  const isFollowUpExploration = /^(tell\s+(me\s+)?(more\s+)?about|more\s+details(\s+on|\s+about)?|why\s+is|how\s+(do\s+we|to)\s+(resolve|fix|address)|what\s+does\s+.*\s+mean)\b/i.test(q);
+  const messagesList = Array.isArray(options?.messages) ? options.messages : (Array.isArray(options?.history) ? options.history : []);
+  const hasHistory = messagesList.length > 0;
+  if (isFollowUpExploration && hasHistory) {
+    info(`Fast-routed conversational follow-up exploration query directly to contextual LLM synthesis (0 tools)`, { querySnippet: q.slice(0, 50) });
+    return {
+      intent_type: "CONTEXTUAL_SYNTHESIS",
+      domains: [],
+      must_use_tools: false,
+      allow_rag: false,
+      confidence: 0.95,
+      reasoning_summary: "Fast-path classifier: Conversational follow-up exploration over chat history context (0 tools).",
     };
   }
 
@@ -374,9 +391,15 @@ const getRouterChain = () => {
 
       let content = "";
       try {
+        const options = input.options || input;
+        const historyMessages = Array.isArray(options.messages) ? options.messages : [];
+        const priorContext = historyMessages.length > 0
+          ? `[Prior Conversation Context: ${historyMessages.slice(-2).map((m) => `${m.role || 'speaker'}: ${String(m.content || '').slice(0, 120)}`).join(' | ')}]\n`
+          : '';
+
         const messages = [
           new SystemMessage(systemTemplate),
-          new HumanMessage(input.query),
+          new HumanMessage(`${priorContext}User query: ${input.query}`),
         ];
         const result = await llm.invoke(messages);
 

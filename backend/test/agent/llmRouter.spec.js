@@ -15,4 +15,20 @@ describe('LLM Router Fast-Path Classification', () => {
     const result = classifyFastPath(query);
     expect(result).toBeNull(); // Should proceed to LLM Router / Multi-Agent Supervisor
   });
+
+  it('should fast-route conversational follow-ups with history as CONTEXTUAL_SYNTHESIS (0 tools)', () => {
+    const query = 'Tell more about Active WIP Count';
+    const options = {
+      messages: [
+        { role: 'user', content: 'Check current sprint delivery bottlenecks' },
+        { role: 'assistant', content: '### Delivery Bottleneck Scorecard\nActive WIP Count: 7 items (Limit: 5)' },
+      ],
+    };
+    const result = classifyFastPath(query, options);
+    expect(result).not.toBeNull();
+    expect(result.intent_type).toBe('CONTEXTUAL_SYNTHESIS');
+    expect(result.domains).toEqual([]);
+    expect(result.must_use_tools).toBeFalse();
+    expect(result.allow_rag).toBeFalse();
+  });
 });
