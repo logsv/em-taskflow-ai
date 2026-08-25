@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+import dotenv from 'dotenv';
 import axios from 'axios';
 import databaseService from '../db/postgres.js';
 import { config } from '../config.js';
@@ -6,6 +9,7 @@ import { closeJiraMcp } from '../mcp/jira.js';
 import { closeNotionMcp } from '../mcp/notion.js';
 import { closeGithubMcp } from '../mcp/github.js';
 import { closeSlackMcp } from '../mcp/slack.js';
+import { closeGoogleMcp } from '../mcp/google.js';
 import { resetChatModel } from '../llm/index.js';
 
 export function maskSecret(secret) {
@@ -87,6 +91,22 @@ class SettingsService {
     return this.cachedRawSettings;
   }
 
+  reloadEnvFromDisk() {
+    try {
+      const envPaths = [
+        path.resolve(process.cwd(), '.env'),
+        path.resolve(process.cwd(), '../.env'),
+        path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../.env'),
+        path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../.env'),
+      ];
+      for (const p of envPaths) {
+        if (fs.existsSync(p)) {
+          dotenv.config({ path: p, override: true });
+        }
+      }
+    } catch (_e) {}
+  }
+
   getDefaultEnvSettings() {
     return {
       llm: {
@@ -152,8 +172,8 @@ class SettingsService {
           enabled: true,
         },
         googleCalendar: {
-          apiKey: process.env.GOOGLE_CALENDAR_API_KEY || '',
-          calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
+          apiKey: process.env.GOOGLE_CALENDAR_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_CALENDAR_TOKEN || process.env.GOOGLE_OAUTH_TOKEN || '',
+          calendarId: process.env.GOOGLE_CALENDAR_ID || process.env.GOOGLE_USER_EMAIL || 'primary',
           clientId: process.env.GOOGLE_CLIENT_ID || '',
           enabled: true,
         },
@@ -222,6 +242,17 @@ class SettingsService {
       if (rawSettings.mcp.notion) {
         if (rawSettings.mcp.notion.apiKey) process.env.NOTION_API_KEY = rawSettings.mcp.notion.apiKey;
         if (rawSettings.mcp.notion.mcpUrl) process.env.NOTION_MCP_URL = rawSettings.mcp.notion.mcpUrl;
+      }
+      if (rawSettings.mcp.googleCalendar) {
+        if (rawSettings.mcp.googleCalendar.apiKey) {
+          process.env.GOOGLE_CALENDAR_API_KEY = rawSettings.mcp.googleCalendar.apiKey;
+        }
+        if (rawSettings.mcp.googleCalendar.calendarId) {
+          process.env.GOOGLE_CALENDAR_ID = rawSettings.mcp.googleCalendar.calendarId;
+        }
+        if (rawSettings.mcp.googleCalendar.clientId) {
+          process.env.GOOGLE_CLIENT_ID = rawSettings.mcp.googleCalendar.clientId;
+        }
       }
       if (rawSettings.mcp.slack) {
         if (rawSettings.mcp.slack.botToken) process.env.SLACK_BOT_TOKEN = rawSettings.mcp.slack.botToken;
@@ -419,12 +450,14 @@ class SettingsService {
     await closeNotionMcp().catch(() => {});
     await closeGithubMcp().catch(() => {});
     await closeSlackMcp().catch(() => {});
+    await closeGoogleMcp().catch(() => {});
 
     info('✅ Settings saved to database and hot-reloaded into active runtime');
     return this.getMaskedSettings();
   }
 
   async resetToEnvDefaults() {
+    this.reloadEnvFromDisk();
     const defaults = this.getDefaultEnvSettings();
     const llmRec = await databaseService.setAppSetting('llm', defaults.llm, 'migrated_env');
     const mcpRec = await databaseService.setAppSetting('mcp', defaults.mcp, 'migrated_env');
@@ -446,6 +479,7 @@ class SettingsService {
     await closeNotionMcp().catch(() => {});
     await closeGithubMcp().catch(() => {});
     await closeSlackMcp().catch(() => {});
+    await closeGoogleMcp().catch(() => {});
 
     info('🔄 Restored settings to .env defaults');
     return this.getMaskedSettings();
@@ -582,19 +616,29 @@ class SettingsService {
       }
 
       if (type === 'googleCalendar' || type === 'google_calendar') {
-        const calendarId = encodeURIComponent(credentials.calendarId || raw.mcp.googleCalendar?.calendarId || 'primary');
+        const calendarId = encodeURIComponent(credentials.calendarId || raw.mcp.googleCalendar?.calendarId || process.env.GOOGLE_CALENDAR_ID || 'primary');
         const apiKey = isMasked(credentials.apiKey)
           ? raw.mcp.googleCalendar?.apiKey
-          : credentials.apiKey !== undefined ? credentials.apiKey : raw.mcp.googleCalendar?.apiKey;
+          : credentials.apiKey !== undefined ? credentials.apiKey : (raw.mcp.googleCalendar?.apiKey || process.env.GOOGLE_CALENDAR_API_KEY || process.env.GOOGLE_API_KEY);
 
         if (!apiKey) {
           return { success: false, latencyMs: 0, message: 'No Google Calendar API Key / Token configured' };
         }
 
-        const res = await axios.get(
-          `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events?maxResults=5&timeMin=${new Date().toISOString()}&key=${apiKey}`,
-          { timeout: 4500 }
-        );
+        const isOAuth = apiKey.startsWith('ya29.') || apiKey.startsWith('Bearer ') || apiKey.length > 80;
+        const requestConfig = {
+          timeout: 4500,
+        };
+        let url = `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events?maxResults=5&timeMin=${new Date().toISOString()}`;
+        if (isOAuth) {
+          requestConfig.headers = {
+            Authorization: apiKey.startsWith('Bearer ') ? apiKey : `Bearer ${apiKey}`,
+          };
+        } else {
+          url += `&key=${encodeURIComponent(apiKey)}`;
+        }
+
+        const res = await axios.get(url, requestConfig);
 
         const items = res.data?.items || [];
         return {
