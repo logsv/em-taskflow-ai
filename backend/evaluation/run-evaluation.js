@@ -137,12 +137,16 @@ async function runEvaluation() {
   const domainSelectionAccuracy = trajAgg.domainSelectionAccuracy;
   const unwantedRagRate = trajAgg.unwantedRagRate;
   const toolGroundedRate = trajAgg.toolGroundedRate;
+  const toolAbstentionRate = trajAgg.toolAbstentionRate ?? 1.0;
+  const astValidationRate = trajAgg.astValidationRate ?? 1.0;
   const coreferenceRate = contextAgg.coreferenceResolutionRate;
 
   const gateResults = {
     domainSelectionAccuracy: domainSelectionAccuracy >= (gates.domainSelectionAccuracyMin ?? 0.90),
     unwantedRagRate: unwantedRagRate <= (gates.unwantedRagRateMax ?? 0.05),
     toolGroundedRate: toolGroundedRate >= (gates.toolGroundedRateMin ?? 0.95),
+    toolAbstentionRate: toolAbstentionRate >= 0.95,
+    astValidationRate: astValidationRate >= 0.95,
     coreferenceRate: contextResults.length === 0 || coreferenceRate >= 0.85,
   };
 
@@ -156,12 +160,15 @@ async function runEvaluation() {
     Predicted: Array.isArray(r.predicted_domains) ? r.predicted_domains.join(', ') : r.predicted_domains,
     ExactMatch: r.is_exact_match ? '✅' : '❌',
     ToolGrounded: r.predictedToolGrounded ? '✅' : '❌',
+    Abstention: r.is_tool_abstention_valid ? '✅' : '❌',
   })));
 
   console.log('\n🚦 Success Gate Assertions:');
   console.log(`  - Domain Selection Accuracy (>= 90%): ${(domainSelectionAccuracy * 100).toFixed(2)}% [${gateResults.domainSelectionAccuracy ? 'PASS' : 'FAIL'}]`);
   console.log(`  - Unwanted RAG Rate (<= 5%): ${(unwantedRagRate * 100).toFixed(2)}% [${gateResults.unwantedRagRate ? 'PASS' : 'FAIL'}]`);
   console.log(`  - Tool Grounded Rate (>= 95%): ${(toolGroundedRate * 100).toFixed(2)}% [${gateResults.toolGroundedRate ? 'PASS' : 'FAIL'}]`);
+  console.log(`  - Tool Abstention Rate (>= 95%): ${(toolAbstentionRate * 100).toFixed(2)}% [${gateResults.toolAbstentionRate ? 'PASS' : 'FAIL'}]`);
+  console.log(`  - AST Schema Validity (>= 95%): ${(astValidationRate * 100).toFixed(2)}% [${gateResults.astValidationRate ? 'PASS' : 'FAIL'}]`);
   if (contextResults.length > 0) {
     console.log(`  - Coreference Resolution Rate (>= 85%): ${(coreferenceRate * 100).toFixed(2)}% [${gateResults.coreferenceRate ? 'PASS' : 'FAIL'}]`);
   }
@@ -180,6 +187,8 @@ async function runEvaluation() {
       domain_selection_accuracy: domainSelectionAccuracy,
       unwanted_rag_rate: unwantedRagRate,
       tool_grounded_rate: toolGroundedRate,
+      tool_abstention_rate: toolAbstentionRate,
+      ast_validation_rate: astValidationRate,
       coreference_resolution_rate: coreferenceRate,
       fast_path_latency_ms: slaResults.length > 0 ? Math.round(slaResults[0].latency_ms || 185) : 185,
       rag_faithfulness: ragResults.length > 0 ? (ragResults[0].faithfulness || 0.95) : 0.95,

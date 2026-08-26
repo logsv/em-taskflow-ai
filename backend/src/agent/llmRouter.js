@@ -146,9 +146,9 @@ export function classifyFastPath(query, options = {}) {
     };
   }
 
-  // 4. General Conceptual Explanations (No workspace telemetry state required)
-  // e.g. "Explain the difference between optimistic and pessimistic locking..."
-  const explanationPattern = /^(explain (the )?(difference between|concept of|how |why )|what is the difference between)\b/i;
+  // 4. General Conceptual Explanations & Summaries (No workspace telemetry state required)
+  // e.g. "Explain the difference between optimistic and pessimistic locking...", "Summarize the differences between TCP and UDP protocols"
+  const explanationPattern = /^((explain|summarize) (the )?(difference between|differences between|concept of|how |why )|what is the difference between)\b/i;
   const isGeneralExplanation = explanationPattern.test(q) && !q.includes("our ") && !q.includes("team ") && !q.includes("company sop") && !q.includes("document");
   if (isGeneralExplanation) {
     info(`Fast-routed conceptual explanation query directly to LLM (0 tools)`, { querySnippet: q.slice(0, 40) });
@@ -192,7 +192,7 @@ export function classifyFastPath(query, options = {}) {
   }
 
   // Generic direct LLM patterns
-  const genericDirectPattern = /^(write|create|implement|generate|code|explain|what\s+is|how\s+to|show\s+me)\b/i;
+  const genericDirectPattern = /^(write|create|implement|generate|code|explain|summarize|what\s+is|how\s+to|show\s+me)\b/i;
   if (genericDirectPattern.test(q)) {
     info(`Fast-routed generic query directly to LLM (0 tools)`, { querySnippet: q.slice(0, 40) });
     return {
@@ -296,7 +296,8 @@ export function getDeterministicFallbackPlan(query, reason = "router_llm_json_fa
 
   // 8. SOP / Compliance / ADR
   const isSop = 
-    (q.includes("sop") || q.includes("compliance") || q.includes("company standard operating procedure") || q.includes("code review sla") || q.includes("adr repository")) && !isDocumentLookup;
+    (q.includes("sop") || q.includes("compliance") || q.includes("company standard operating procedure") || q.includes("code review sla") || q.includes("adr repository")) &&
+    !isDocumentLookup && !q.includes("audit this em report") && !q.includes("audit and critique this");
 
   // 9. Roadmap
   const isRoadmap = 

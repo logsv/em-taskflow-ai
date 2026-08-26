@@ -5,7 +5,11 @@ import { Langfuse } from 'langfuse';
 
 dotenv.config();
 
-const DATASETS_DIR = path.resolve('../evaluations/datasets');
+const DATASETS_DIR = fs.existsSync(path.resolve('evaluation/golden-dataset.json'))
+  ? path.resolve('evaluation')
+  : (fs.existsSync(path.resolve('../evaluations/datasets/golden-dataset.json'))
+      ? path.resolve('../evaluations/datasets')
+      : path.resolve('evaluations/datasets'));
 
 export async function syncDatasetsToLangfuse() {
   const host = process.env.LANGFUSE_HOST || 'http://localhost:3001';
@@ -26,7 +30,7 @@ export async function syncDatasetsToLangfuse() {
 
   console.log(`🔗 Connecting to Langfuse at ${host}...`);
 
-  // 1. Sync golden-dataset (68 items)
+  // 1. Sync golden-dataset (76 items)
   let goldenCount = 0;
   const goldenPath = path.join(DATASETS_DIR, 'golden-dataset.json');
   if (fs.existsSync(goldenPath)) {
