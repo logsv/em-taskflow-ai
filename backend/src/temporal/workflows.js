@@ -137,3 +137,46 @@ export async function teamAutoDiscoveryWorkflow(params = {}) {
     members: reconcileResult.members,
   };
 }
+
+/**
+ * Durable Autonomous EM Task & Health Audit Workflow.
+ * Executes parallel domain harvests, calculates health score, persists action items, and dispatches Slack notifications.
+ */
+export async function emAutonomousAuditWorkflow(params = {}) {
+  // 1. Parallel harvests across 4 domains
+  const [deliveryHarvest, peopleHarvest, sprintOkrHarvest, sopHarvest] = await Promise.all([
+    activities.harvestDoraAndDeliveryActivity(params),
+    activities.harvestPeopleAndCadenceActivity(params),
+    activities.harvestSprintAndOkrActivity(params),
+    activities.harvestSopAndGovernanceActivity(params),
+  ]);
+
+  // 2. Synthesize health score, deduplicate & persist action items and audit run
+  const synthesisResult = await activities.synthesizeAuditAndActionItemsActivity({
+    triggeredBy: params.triggeredBy || 'CRON_4H',
+    harvestResults: {
+      delivery: deliveryHarvest,
+      people: peopleHarvest,
+      sprintOkr: sprintOkrHarvest,
+      sop: sopHarvest,
+    },
+  });
+
+  // 3. Dispatch multi-channel Slack notification
+  const slackResult = await activities.dispatchSlackAuditNotificationActivity({
+    auditRun: synthesisResult.auditRun,
+    topActions: synthesisResult.topActions,
+    mode: params.slackMode || 'consolidated',
+    channel: params.slackChannel,
+  });
+
+  return {
+    status: 'COMPLETED',
+    auditRunId: synthesisResult.auditRun.id,
+    healthScore: synthesisResult.auditRun.healthScore,
+    actionItemsCount: synthesisResult.actionItems?.length || 0,
+    slackResult,
+    summary: synthesisResult.auditRun.summaryMarkdown,
+  };
+}
+

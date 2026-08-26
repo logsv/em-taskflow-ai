@@ -15,6 +15,7 @@ import {
   startTeamDiscoveryWorkflow,
   startSlackPostHITLWorkflow,
   signalSlackPostApproval,
+  startEmAutonomousAuditWorkflow,
   getWorkflowStatus,
 } from '../temporal/client.js';
 import { config } from '../config.js';
@@ -1121,6 +1122,89 @@ router.get('/temporal/slack-post/status', async (req, res) => {
       details: err.message,
       requestId: req.requestId,
     });
+  }
+});
+
+// POST /api/admin/audit/trigger - 1-Click Trigger Autonomous EM Audit
+router.post('/audit/trigger', async (req, res) => {
+  const { mode = 'consolidated', channel = null } = req.body || {};
+  try {
+    const temporalRes = await startEmAutonomousAuditWorkflow({
+      triggeredBy: 'ADMIN_MANUAL',
+      slackMode: mode,
+      slackChannel: channel,
+    });
+
+    if (temporalRes && temporalRes.workflowId) {
+      return res.json({
+        success: true,
+        orchestrator: 'temporal',
+        workflowId: temporalRes.workflowId,
+        message: '⚡ Autonomous EM Audit dispatched to Temporal Durable Workflow!',
+        requestId: req.requestId,
+      });
+    }
+
+    // Fallback: in-process execution
+    const {
+      harvestDoraAndDeliveryActivity,
+      harvestPeopleAndCadenceActivity,
+      harvestSprintAndOkrActivity,
+      harvestSopAndGovernanceActivity,
+      synthesizeAuditAndActionItemsActivity,
+      dispatchSlackAuditNotificationActivity,
+    } = await import('../temporal/activities.js');
+
+    const [delivery, people, sprintOkr, sop] = await Promise.all([
+      harvestDoraAndDeliveryActivity(),
+      harvestPeopleAndCadenceActivity(),
+      harvestSprintAndOkrActivity(),
+      harvestSopAndGovernanceActivity(),
+    ]);
+
+    const synthesis = await synthesizeAuditAndActionItemsActivity({
+      triggeredBy: 'ADMIN_MANUAL',
+      harvestResults: { delivery, people, sprintOkr, sop },
+    });
+
+    await dispatchSlackAuditNotificationActivity({
+      auditRun: synthesis.auditRun,
+      topActions: synthesis.topActions,
+      mode,
+      channel,
+    });
+
+    res.json({
+      success: true,
+      orchestrator: 'in_process_fallback',
+      auditRunId: synthesis.auditRun.id,
+      healthScore: synthesis.auditRun.healthScore,
+      actionItemsCount: synthesis.actionItems.length,
+      message: '✅ Autonomous EM Audit executed successfully in-process!',
+      requestId: req.requestId,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to trigger audit', details: err.message, requestId: req.requestId });
+  }
+});
+
+// GET /api/admin/audit/status - Get latest audit health & history
+router.get('/audit/status', async (req, res) => {
+  try {
+    const latestAudit = await databaseService.getLatestAuditRun();
+    const summary = await databaseService.getActionItemsSummary();
+    const runs = await databaseService.listAuditRuns({ limit: 5 });
+
+    res.json({
+      success: true,
+      latestAudit,
+      summary,
+      recentRuns: runs,
+      cronSchedule: '0 */4 * * * (Every 4 Hours)',
+      requestId: req.requestId,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch audit status', details: err.message, requestId: req.requestId });
   }
 });
 

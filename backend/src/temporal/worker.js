@@ -35,6 +35,9 @@ export async function startTemporalNodeWorker() {
     });
 
     info({ module: 'temporalWorker', action: 'listening', taskQueue: 'team-sync-queue' }, "Node.js Temporal Worker listening on task queue: 'team-sync-queue'");
+    // Register audit schedule
+    import('./client.js').then((m) => m.ensureAuditCronSchedule()).catch(() => {});
+
     // Run worker in background
     worker.run().catch(err => {
       warn({ module: 'temporalWorker', action: 'runtimeWarning', err }, 'Node.js Temporal Worker runtime warning');
