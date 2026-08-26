@@ -7,7 +7,7 @@
 ## 📑 Table of Contents
 - [🏛️ System Architecture](#️-system-architecture)
 - [🧩 Subsystem Breakdown](#-subsystem-breakdown)
-- [📡 API Reference](#-api-reference)
+- [📡 API Reference & Swagger Explorer](#-api-reference--swagger-explorer)
 - [⚙️ Environment Configuration](#️-environment-configuration)
 - [🛠️ Local Development & Testing](#️-local-development--testing)
 - [📁 Codebase Directory Structure](#-codebase-directory-structure)
@@ -79,7 +79,9 @@ The backend implements an **8-stage hybrid multi-agent pipeline** optimized for 
 
 ---
 
-## 📡 API Reference
+## 📡 API Reference & Swagger Explorer
+
+Interactive Swagger UI documentation is available locally at [`http://localhost:4000/api/docs`](http://localhost:4000/api/docs) (OpenAPI 3.1 JSON at `/api/docs/openapi.json`).
 
 ### Health Check
 - **`GET /api/health`**
@@ -131,7 +133,7 @@ The backend implements an **8-stage hybrid multi-agent pipeline** optimized for 
 
 ## ⚙️ Environment Configuration
 
-Configuration is managed via [`backend/.env`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/.env) (templated in [`backend/.env.example`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/.env.example)).
+Configuration is managed via [`backend/.env`](.env) (templated in [`backend/.env.example`](.env.example)).
 
 | Variable | Default Value | Description |
 | :--- | :--- | :--- |
@@ -156,7 +158,7 @@ npm run dev
 The server will start on port `4000` (or `PORT` environment variable).
 
 ### Automated Testing (Jasmine Suite)
-Run all **235 unit specs**:
+Run all **240 unit specs**:
 ```bash
 npm test
 ```
@@ -184,7 +186,7 @@ backend/
 │   ├── rag/              # Document chunking, HyDE transformation, hybrid retriever engine
 │   ├── routes/           # Express API endpoints (api.js, admin.js, docs.js, rag.js, upload.js)
 │   └── utils/            # Response formatters, logger, non-blocking tracer
-├── test/                 # Jasmine unit test specifications (235 specs)
+├── test/                 # Jasmine unit test specifications (240 specs)
 ├── .env.example          # Environment variables template
 └── package.json          # Node.js dependencies & ESM scripts
 ```

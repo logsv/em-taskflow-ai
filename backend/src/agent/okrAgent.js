@@ -12,7 +12,8 @@ export const okrProgressTool = createDeterministicToolHarness({
   featureFlagKey: 'okr',
   schema: z.object({
     sources: z.array(z.string()).default(['default', 'notion', 'jira']),
-    mode: z.enum(['ANALYZE', 'LIST_RAW', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    mode: z.enum(['ANALYZE', 'LIST_RAW', 'DRILL_DOWN', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    target: z.enum(['ALL', 'AT_RISK', 'OBJECTIVES', 'GAP_REMEDIATION', 'KRS']).default('ALL'),
     quarter: z.string().default('Q4'),
     objective_id: z.string().default('all'),
     fetch_fresh_data: z.boolean().default(true),
@@ -227,11 +228,28 @@ export const okrProgressTool = createDeterministicToolHarness({
     ];
 
     if (mode === 'LIST_RAW') {
+      const krRows = rawKrs.map((item) => {
+        const target = Number(item.target_value || item.target || 100);
+        const current = Number(item.current_value || item.current || 0);
+        const isInverse = item.direction === 'LOWER_IS_BETTER' || /latency|turnaround|hours|ms|seconds|bugs|incidents|flakiness/i.test(item.kr || item.key_result || '');
+        const score = isInverse ? (current > 0 ? Math.min(1.0, target / current) : 1.0) : (target > 0 ? Math.min(1.0, current / target) : 1.0);
+        const progressPct = Math.round(score * 100);
+        const statusBadge = progressPct >= 80 ? '🟢 On Track' : progressPct >= 60 ? '🟡 At Risk' : '🔴 Off Track';
+        return `| **${item.kr || item.key_result || 'Key Result'}** | \`${current} ${item.unit || ''}\` | \`${target} ${item.unit || ''}\` | **${progressPct}%** | ${statusBadge} |`;
+      });
+
+      const listSummary = `### 🎯 Engineering OKRs & Key Results: ${quarter} (${rawKrs.length} Key Results)\n\n` +
+        `| Key Result Description | Current | Target | Progress | Status |\n| :--- | :---: | :---: | :---: | :---: |\n` +
+        (krRows.length > 0 ? krRows.join('\n') : '| *No OKRs recorded for quarter* | - | - | - | - |') +
+        `\n\n> 💡 **Pacing Guidance**: Focus engineering sprints on items flagged At Risk or Off Track.`;
+
       return {
         mode: 'LIST_RAW',
+        target: inputArgs.target || 'ALL',
         quarter,
         total_krs: rawKrs.length,
         items: rawKrs,
+        summary: listSummary,
       };
     }
 
@@ -330,6 +348,31 @@ export const okrProgressTool = createDeterministicToolHarness({
     }
     if (overallConfidenceScore < 0.40 || overallProgressPct < 45) {
       pacing = 'OFF_TRACK';
+    }
+
+    if (mode === 'DRILL_DOWN') {
+      let drillSummary = '';
+      if (inputArgs.target === 'AT_RISK' || inputArgs.target === 'GAP_REMEDIATION') {
+        drillSummary = `### ⚠️ At-Risk Key Results & Gap Remediation: ${quarter}\n\n` +
+          (laggingKrs.length > 0
+            ? laggingKrs.map((k) => `#### 📌 ${k.kr}\n- **Current vs Target**: ${k.current} / ${k.target} (${k.progress_pct}% complete, Confidence: ${k.confidence_score})\n- **Root Cause**: ${k.root_cause}\n- **Remediation Plan**: ${k.remediation}`).join('\n\n')
+            : '🟢 **All Key Results On Track**: Zero high-risk pacing gaps detected.') +
+          `\n\n> 💡 **Executive Action**: Review remediation resource allocation with tech leads.`;
+      } else {
+        drillSummary = `### 🎯 Targeted OKR Progress Breakdown: ${quarter}\n\n` +
+          analyzedKrs.map((k) => `- **${k.kr}**: Current: ${k.current} (Target: ${k.target}, ${k.progress_pct}% complete - ${k.status})`).join('\n') +
+          `\n\n> 💡 **Status**: Track leading indicator metrics in weekly EM dashboards.`;
+      }
+
+      return {
+        mode: 'DRILL_DOWN',
+        target: inputArgs.target || 'ALL',
+        quarter,
+        overall_progress_pct: overallProgressPct,
+        overall_confidence_score: overallConfidenceScore,
+        at_risk_krs: laggingKrs,
+        summary: drillSummary,
+      };
     }
 
     // Build Executive Markdown Report

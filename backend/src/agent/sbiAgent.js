@@ -86,7 +86,8 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
   featureFlagKey: 'sbi',
   schema: z.object({
     sources: z.array(z.string()).default(['default', 'github', 'jira', 'notion']),
-    mode: z.enum(['ANALYZE', 'LIST_RAW', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    mode: z.enum(['ANALYZE', 'LIST_RAW', 'DRILL_DOWN', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    target: z.enum(['ALL', 'TALKING_SCRIPT', 'BIAS_AUDIT', 'ACTION_PLAN', 'RECORDS']).default('ALL'),
     engineer_id: z.string().default('eng_alex').describe('Recipient name, alias, or engineer ID'),
     raw_draft: z.string().optional().describe('Raw unstructured manager notes or observations'),
     feedback_type: z.enum(['CONSTRUCTIVE_COACHING', 'POSITIVE_PRAISE', 'PERFORMANCE_REVIEW', 'INCIDENT_POSTMORTEM']).default('CONSTRUCTIVE_COACHING'),
@@ -305,11 +306,21 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
 
     if (mode === 'LIST_RAW') {
       const historyRecords = await databaseService.getSbiRecords(engineerId).catch(() => []);
+      const recordRows = historyRecords.map((r) => {
+        return `| \`${r.created_at ? new Date(r.created_at).toLocaleDateString() : 'Recent'}\` | **${r.feedback_type || 'COACHING'}** | *${(r.situation || '').slice(0, 45)}...* | 🟢 Recorded |`;
+      });
+      const listSummary = `### 📋 SBI Feedback History: ${engineerId} (${historyRecords.length} Records)\n\n` +
+        `| Date | Type | Situation Context | Status |\n| :--- | :--- | :--- | :---: |\n` +
+        (recordRows.length > 0 ? recordRows.join('\n') : '| *No previous SBI coaching records logged* | - | - | 🟢 Clean Record |') +
+        `\n\n> 💡 **SBI Best Practice**: Maintain a bi-weekly cadence of constructive and reinforcing feedback.`;
+
       return {
         mode: 'LIST_RAW',
+        target: inputArgs.target || 'ALL',
         engineer_id: engineerId,
         totalRecords: historyRecords.length,
         items: historyRecords,
+        summary: listSummary,
       };
     }
 
@@ -350,6 +361,40 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
     const artifactsSection = artifactLines.length > 0
       ? `\n\n### 🔗 Corroborating Workspace Artifacts\n${artifactLines.join('\n')}`
       : '';
+
+    if (mode === 'DRILL_DOWN') {
+      let drillSummary = '';
+      if (inputArgs.target === 'TALKING_SCRIPT') {
+        drillSummary = `### 🎙️ 1-on-1 Delivery Talking Script: ${engineerId}\n\n` +
+          `> ${talkingScript}\n\n` +
+          `- **Delivery Guidance**: Maintain a blameless, curious posture. Allow ${engineerId} time to respond.\n` +
+          `- **Follow-up Protocol**: Log commitments in 1-on-1 notes and set a 30-day checkpoint.`;
+      } else if (inputArgs.target === 'BIAS_AUDIT') {
+        drillSummary = `### 🛡️ Objectivity & Bias Audit Breakdown (${objectivityScore}% Score)\n\n` +
+          `- **Tone Rating**: Highly Objective & Evidence-Based\n` +
+          `- **Eliminated Subjective Terms**: ${eliminatedTerms.length > 0 ? eliminatedTerms.map((t) => `\`"${t}"\``).join(', ') : 'None (Strictly factual language observed)'}\n` +
+          `- **Compliance Guarantee**: Meets SOP-07 Blameless Coaching and EM Feedback standards.`;
+      } else {
+        drillSummary = `### 🎯 Targeted SBI Coaching Deep Dive: ${engineerId}\n\n` +
+          `- **📍 Situation**: *${linkedSituation}*\n` +
+          `- **👀 Behavior**: *${linkedBehavior}*\n` +
+          `- **💥 Impact**: *${linkedImpact}*\n` +
+          `- **🌱 Action Plan**: *${linkedActionPlan}*\n\n` +
+          `> **1-on-1 Script**: ${talkingScript}`;
+      }
+
+      return {
+        mode: 'DRILL_DOWN',
+        target: inputArgs.target || 'ALL',
+        engineer_id: engineerId,
+        feedback_type: feedbackType,
+        situation,
+        behavior,
+        impact,
+        action_plan: actionPlan,
+        summary: drillSummary,
+      };
+    }
 
     const summaryText = `### 🎯 Situation-Behavior-Impact (SBI) Feedback: ${engineerId} (${role})
 

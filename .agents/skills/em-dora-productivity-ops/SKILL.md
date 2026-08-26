@@ -47,7 +47,7 @@ curl -s http://localhost:4000/api/em/sprints
 node -e "import('./src/db/postgres.js').then(async (m) => { const db = m.default; console.log('Stats:', await db.getStats()); });"
 ```
 
-### Run Full Test Suite (233 Specs)
+### Run Full Test Suite (240 Specs)
 ```bash
 cd backend
 npm test

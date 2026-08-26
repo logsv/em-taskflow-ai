@@ -12,7 +12,8 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
   featureFlagKey: 'roadmap',
   schema: z.object({
     sources: z.array(z.string()).default(['default', 'jira', 'notion', 'linear']),
-    mode: z.enum(['ANALYZE', 'LIST_RAW', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    mode: z.enum(['ANALYZE', 'LIST_RAW', 'DRILL_DOWN', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    target: z.enum(['ALL', 'EPICS', 'BLOCKERS', 'DRIFT', 'MILESTONES']).default('ALL'),
     initiative_id: z.string().default('q4_roadmap'),
     quarter: z.string().default('Q4'),
     target_date: z.string().optional().describe('Target completion or milestone date (YYYY-MM-DD)'),
@@ -232,12 +233,54 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
     ];
 
     if (mode === 'LIST_RAW') {
+      const epicRows = epics.map((e) => {
+        const jiraUrl = process.env.JIRA_BASE_URL ? `${process.env.JIRA_BASE_URL.replace(/\/$/, '')}/browse/${e.key}` : '#';
+        const statusBadge = e.status === 'BLOCKED' ? '🔴 Blocked' : e.progress_pct >= 80 ? '🟢 On Track' : '🟡 In Progress';
+        return `| [**${e.key}**](${jiraUrl}) | **${e.summary}** | **${e.progress_pct}%** | \`@${e.owner}\` | \`${e.target_date}\` | ${statusBadge} |`;
+      });
+      const listSummary = `### 🗺️ Quarterly Roadmap Epics: ${quarter} (${epics.length} Epics)\n\n` +
+        `| Epic Key | Summary | Progress | Owner | Target Date | Status |\n| :--- | :--- | :---: | :--- | :---: | :---: |\n` +
+        (epicRows.length > 0 ? epicRows.join('\n') : '| *No active epics found for quarter* | - | - | - | - | - |') +
+        `\n\n> 💡 **Milestone Alignment**: Overall progress and cross-team dependencies are tracked against ${quarter} target dates.`;
+
       return {
         mode: 'LIST_RAW',
+        target: inputArgs.target || 'ALL',
         quarter,
         initiative_id: inputArgs.initiative_id,
         items: epics,
         total_epics: epics.length,
+        summary: listSummary,
+      };
+    }
+
+    if (mode === 'DRILL_DOWN') {
+      const activeBlockers = epics.flatMap((e) => (e.blockers || []).map((b) => ({ epic: e.key, blocker: b })));
+      let drillSummary = '';
+      if (inputArgs.target === 'BLOCKERS') {
+        drillSummary = `### 🚫 Cross-Team Technical Blockers: ${quarter}\n\n` +
+          (activeBlockers.length > 0
+            ? activeBlockers.map((b) => `- **[${b.epic}]**: ${b.blocker}`).join('\n')
+            : '🟢 **Zero Active Blockers**: All critical epic dependencies are clear.') +
+          `\n\n> 💡 **Escalation Protocol**: Unblock high-priority cross-team dependencies in sprint planning.`;
+      } else if (inputArgs.target === 'DRIFT') {
+        drillSummary = `### ⏱️ Roadmap Milestone Drift & Scope Creep: ${quarter}\n\n` +
+          epics.map((e) => `- **${e.key} (${e.summary})**: ${e.current_points > e.baseline_points ? `+${Math.round(((e.current_points - e.baseline_points)/e.baseline_points)*100)}% scope creep (${e.current_points} vs ${e.baseline_points} pts)` : 'On baseline scope'}`).join('\n') +
+          `\n\n> 💡 **Pacing Guidance**: Re-evaluate capacity buffers for epics experiencing scope expansion.`;
+      } else {
+        drillSummary = `### 🎯 Targeted Epic Alignment Breakdown: ${quarter}\n\n` +
+          epics.map((e) => `- **${e.key}**: ${e.summary} (${e.progress_pct}% complete, Target: \`${e.target_date}\`)\n  *Owner*: \`@${e.owner}\` | *Status*: ${e.status}`).join('\n\n') +
+          `\n\n> 💡 **Quarter Goal**: Maintain alignment across engineering tracks.`;
+      }
+
+      return {
+        mode: 'DRILL_DOWN',
+        target: inputArgs.target || 'ALL',
+        quarter,
+        initiative_id: inputArgs.initiative_id,
+        epics_count: epics.length,
+        blockers: activeBlockers,
+        summary: drillSummary,
       };
     }
 

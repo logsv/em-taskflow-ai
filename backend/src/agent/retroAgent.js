@@ -13,7 +13,8 @@ export const sprintRetroTool = createDeterministicToolHarness({
   featureFlagKey: 'retro',
   schema: z.object({
     sources: z.array(z.string()).default(['default', 'notion', 'jira', 'github']),
-    mode: z.enum(['ANALYZE', 'LIST_RAW', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    mode: z.enum(['ANALYZE', 'LIST_RAW', 'DRILL_DOWN', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    target: z.enum(['ALL', 'ACTION_ITEMS', 'PATTERNS', 'FRICTION_POINTS', 'WINS']).default('ALL'),
     sprint_id: z.string().default('sprint_42'),
     sprint_name: z.string().default('Sprint 42'),
     retro_notes: z.string().optional().describe('Raw retro feedback notes, cards, or team chat transcript'),
@@ -223,11 +224,49 @@ export const sprintRetroTool = createDeterministicToolHarness({
     ];
 
     if (mode === 'LIST_RAW') {
+      const actionRows = smartActionItems.map((a) => {
+        return `| **${a.task}** | \`@${a.owner}\` | \`${a.target_sprint}\` | \`${a.success_metric}\` | 🟢 ${a.status} |`;
+      });
+      const listSummary = `### 📋 Retrospective Action Items: ${sprintName} (${smartActionItems.length} SMART Actions)\n\n` +
+        `| Action Item Task | Owner | Target Milestone | Success Metric | Status |\n| :--- | :--- | :--- | :--- | :---: |\n` +
+        (actionRows.length > 0 ? actionRows.join('\n') : '| *No action items recorded* | - | - | - | - |') +
+        `\n\n> 💡 **Follow-Up Cadence**: Review action item completion during the mid-sprint checkpoint.`;
+
       return {
         mode: 'LIST_RAW',
+        target: inputArgs.target || 'ALL',
         sprint_id: sprintId,
         total_items: smartActionItems.length,
         items: smartActionItems,
+        summary: listSummary,
+      };
+    }
+
+    if (mode === 'DRILL_DOWN') {
+      let drillSummary = '';
+      if (inputArgs.target === 'PATTERNS') {
+        drillSummary = `### 🔁 Chronic Multi-Sprint Recurring Patterns: ${sprintName}\n\n` +
+          recurringPatterns.map((p) => `- ${p}`).join('\n\n') +
+          `\n\n> 💡 **Systemic Root Cause**: Recurring friction requires structural process changes rather than individual effort.`;
+      } else if (inputArgs.target === 'FRICTION_POINTS') {
+        drillSummary = `### ⚠️ Sprint Friction Points & Root Causes: ${sprintName}\n\n` +
+          whatNeedsImprovement.map((f) => `- ${f}`).join('\n') +
+          `\n\n> 💡 **Remediation**: Track resolution in the SMART action items.`;
+      } else {
+        const actionRows = smartActionItems.map((a) => `- **${a.task}** (Owner: \`@${a.owner}\`, Target: \`${a.target_sprint}\`)\n  *Success Metric*: ${a.success_metric}`);
+        drillSummary = `### 🎯 Targeted Retrospective Action Plan: ${sprintName}\n\n` +
+          actionRows.join('\n\n') +
+          `\n\n> 💡 **Accountability**: Each action item is explicitly owned by a team member with a verifiable target milestone.`;
+      }
+
+      return {
+        mode: 'DRILL_DOWN',
+        target: inputArgs.target || 'ALL',
+        sprint_id: sprintId,
+        sprint_name: sprintName,
+        recurring_patterns: recurringPatterns,
+        action_items: smartActionItems,
+        summary: drillSummary,
       };
     }
 

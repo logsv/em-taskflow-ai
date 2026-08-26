@@ -29,7 +29,7 @@ export default withMermaid(
         { text: 'MCP Integrations', link: '/mcp-integrations/overview' },
         { text: 'API Reference', link: '/api-reference/rest-api' },
         { text: 'Evaluations', link: '/evaluations/overview' },
-        { text: 'Operations', link: '/operations/deployment' },
+        { text: 'Operations & Skills', link: '/operations/agent-skills' },
         { text: 'Swagger Explorer ↗', link: 'http://localhost:4000/api/docs', target: '_blank' }
       ],
       sidebar: {
@@ -94,6 +94,7 @@ export default withMermaid(
           {
             text: '🛠️ Operator & SRE Playbook',
             items: [
+              { text: '🧰 Agent Skills & Playbooks', link: '/operations/agent-skills' },
               { text: 'Production Docker Deployment', link: '/operations/deployment' },
               { text: 'Database Backup & Recovery', link: '/operations/backup-recovery' },
               { text: 'Telemetry & Observability', link: '/operations/telemetry' },

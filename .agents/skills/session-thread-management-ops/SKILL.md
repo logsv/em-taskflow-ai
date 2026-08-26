@@ -53,7 +53,7 @@ cd backend
 npx jasmine test/routes/sessionAndThreadsRoutes.spec.js test/application/sessionApplicationService.spec.js test/application/chatHistoryOptimization.spec.js
 ```
 
-### 3. Run Full Backend Test Suite (233 Specs)
+### 3. Run Full Backend Test Suite (240 Specs)
 ```bash
 cd backend
 npm test

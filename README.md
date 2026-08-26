@@ -9,7 +9,7 @@
 [![Ollama](https://img.shields.io/badge/LLM-100%25%20Local%20(Ollama)-orange.svg)](https://ollama.ai)
 [![Documentation](https://img.shields.io/badge/Docs-VitePress-brightgreen.svg)](https://logsv.github.io/em-taskflow-ai/)
 [![API Explorer](https://img.shields.io/badge/API%20Docs-Swagger%20OpenAPI%203.1-38bdf8.svg)](http://localhost:4000/api/docs)
-[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-235%20passed-success.svg)](backend)
+[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-240%20passed-success.svg)](backend)
 [![Python AI Tests](https://img.shields.io/badge/Python%20AI%20Tests-39%20passed-success.svg)](services/python-ai-service)
 [![Docker Compose](https://img.shields.io/badge/Deployment-Docker%20Compose-2496ED.svg)](docker-compose.yml)
 
@@ -32,12 +32,13 @@
 
 ## 📖 Documentation Portal & Swagger Explorer
 
-- **📚 VitePress Documentation Portal**: Full developer documentation, architecture deep dives, ADRs, and SRE playbooks live at [**https://logsv.github.io/em-taskflow-ai/**](https://logsv.github.io/em-taskflow-ai/) (source in [`/docs`](docs)).
+- **📚 VitePress Documentation Portal**: Full developer documentation, architecture deep dives, ADRs, Agent Skills, and SRE playbooks live at [**https://logsv.github.io/em-taskflow-ai/**](https://logsv.github.io/em-taskflow-ai/) (source in [`/docs`](docs)).
   ```bash
   npm run docs:dev     # Start local VitePress docs on http://localhost:5173
   npm run docs:build   # Build static documentation bundle
   ```
 - **⚡ Interactive Swagger API Explorer**: Test Express REST endpoints interactively at [`http://localhost:4000/api/docs`](http://localhost:4000/api/docs) (OpenAPI 3.1 schema at `/api/docs/openapi.json`).
+- **🧰 Agent Skills Directory**: Full sitemap of 13 operational skills located in [`SKILLS.md`](SKILLS.md) and [`.agents/skills/`](.agents/skills).
 
 ---
 
@@ -231,7 +232,7 @@ npm run dev
 
 ## ⚙️ Configuration & Environment Setup
 
-The backend configuration is managed via [`backend/.env`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/.env) (templated in [`backend/.env.example`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/.env.example)).
+The backend configuration is managed via [`backend/.env`](backend/.env) (templated in [`backend/.env.example`](backend/.env.example)).
 
 | Variable | Default Value | Description |
 | :--- | :--- | :--- |
@@ -273,11 +274,11 @@ curl -X POST http://localhost:4000/api/chat \
   -d '{"message":"Summarize the uploaded document","mode":"baseline"}'
 ```
 
-### 5. Automated Backend Unit Tests (233 Specs)
+### 5. Automated Backend Unit Tests (240 Specs)
 Run Jasmine unit tests and evaluation suite (`hermes3:8b`):
 ```bash
 cd backend
-npm test            # 233 unit tests, 0 failures
+npm test            # 240 unit tests, 0 failures
 npm run evaluate    # Enterprise evaluation suite
 ```
 
@@ -308,22 +309,25 @@ docker compose down -v
 
 ```
 em-taskflow-ai/
-├── backend/            # Express API, LangGraph supervisor, Admin routes, Jasmine tests (233 specs)
+├── .agents/skills/     # 13 specialized operational skills for AI agents
+├── backend/            # Express API, LangGraph supervisor, Admin routes, Jasmine tests (240 specs)
 │   └── README.md       # Backend internal docs & API endpoints
+├── docs/               # Full VitePress developer documentation & architecture portal
 ├── frontend/           # React, Vite, Cockpit, Standalone Admin Portal (/admin)
 │   └── README.md       # Frontend UI architecture & build guide
 ├── services/           # Python AI Service (gRPC/REST RAG processor, Pytest 39 specs)
 ├── docker/             # Postgres init-databases.sql and container assets
 ├── data/               # Vector storage & database seeds
 ├── docker-compose.yml  # Production multi-container composition
+├── SKILLS.md           # Agent skills sitemap and directory
 └── README.md           # Primary repository landing page
 ```
 
-- **Backend Internals**: See [`backend/README.md`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/README.md)
-- **Frontend Internals**: See [`frontend/README.md`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/frontend/README.md)
-- **Python AI Service Internals**: See [`services/python-ai-service/README.md`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/README.md)
-- **Agent Guidelines**: See [`AGENTS.md`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/AGENTS.md), [`GEMINI.md`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/GEMINI.md), and [`CLAUDE.md`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/CLAUDE.md)
-- **Skills Index**: See [`SKILLS.md`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/SKILLS.md)
+- **Backend Internals**: See [`backend/README.md`](backend/README.md)
+- **Frontend Internals**: See [`frontend/README.md`](frontend/README.md)
+- **Python AI Service Internals**: See [`services/python-ai-service/README.md`](services/python-ai-service/README.md)
+- **Agent Guidelines**: See [`AGENTS.md`](AGENTS.md), [`GEMINI.md`](GEMINI.md), and [`CLAUDE.md`](CLAUDE.md)
+- **Skills Index**: See [`SKILLS.md`](SKILLS.md)
 
 ---
 
