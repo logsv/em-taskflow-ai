@@ -1,5 +1,6 @@
 import feedbackRepository from '../../persistence/feedback/FeedbackRepository.js';
 import { resolveLangfuseBaseUrl } from '../../utils/tracer.js';
+import { info, warn } from '../../utils/logger.js';
 
 export class FeedbackApplicationService {
   constructor({ feedbackRepo = null, dbService = null } = {}) {
@@ -58,10 +59,10 @@ export class FeedbackApplicationService {
           comment: comment || (numericScore === 1.0 ? 'Thumbs Up' : 'Thumbs Down'),
         });
         return langfuse.flushAsync().then(() => {
-          console.log(`✅ Langfuse feedback score (${numericScore}) logged successfully for trace: ${targetTraceId}`);
+          info({ module: 'feedback', action: 'submitFeedback', targetTraceId, numericScore }, `Langfuse feedback score (${numericScore}) logged successfully for trace`);
         });
-      }).catch((error) => {
-        console.warn(`⚠️ Failed to submit feedback to Langfuse:`, error?.message || error);
+      }).catch((err) => {
+        warn({ module: 'feedback', action: 'submitFeedbackFallback', targetTraceId, err }, 'Failed to submit feedback to Langfuse');
       });
     }
 

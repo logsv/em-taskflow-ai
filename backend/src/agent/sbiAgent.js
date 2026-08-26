@@ -85,7 +85,7 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
   description: 'Formats performance feedback using the Situation-Behavior-Impact (SBI) framework, scrubs subjective bias, links GitHub/Jira artifacts, generates 1-on-1 talking scripts, and persists records.',
   featureFlagKey: 'sbi',
   schema: z.object({
-    sources: z.array(z.string()).default(['default', 'github', 'jira', 'notion']),
+    sources: z.array(z.string()).default(['default', 'github', 'jira', 'notion', 'slack']),
     mode: z.enum(['ANALYZE', 'LIST_RAW', 'DRILL_DOWN', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
     target: z.enum(['ALL', 'TALKING_SCRIPT', 'BIAS_AUDIT', 'ACTION_PLAN', 'RECORDS']).default('ALL'),
     engineer_id: z.string().default('eng_alex').describe('Recipient name, alias, or engineer ID'),
@@ -101,6 +101,37 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
   }),
   // Tier 1: Model Context Protocol (MCP) & Live Multi-Source Executors
   mcpExecutors: {
+    slack: async (inputArgs) => {
+      try {
+        const { executeMCPTool } = await import('../mcp/index.js');
+        const member = (await identityService.resolveMember(inputArgs?.engineer_id)) || (await identityService.resolveMemberFromText(inputArgs?.raw_draft || inputArgs?.engineer_id || ''));
+        const targetQuery = member?.displayName || inputArgs?.engineer_id || 'feedback';
+
+        const res = await Promise.race([
+          executeMCPTool('slack_search_messages', { query: targetQuery }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Slack search timed out')), 2500)),
+        ]).catch(() => null);
+
+        let parsed = res;
+        if (typeof res === 'string') {
+          try { parsed = JSON.parse(res); } catch (_) {}
+        }
+
+        if (parsed && Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+          return {
+            discussion_threads_count: parsed.messages.length,
+            recent_messages: parsed.messages.slice(0, 3).map((m) => ({
+              user: m.user,
+              text: m.text,
+              ts: m.ts,
+            })),
+            source: 'mcp_slack',
+            synced_at: new Date().toISOString(),
+          };
+        }
+      } catch (_e) {}
+      return null;
+    },
     github: async (inputArgs) => {
       try {
         const { executeMCPTool } = await import('../mcp/index.js');
@@ -347,6 +378,7 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
     const ghData = sourceResults.github?.data || {};
     const jiraData = sourceResults.jira?.data || {};
     const notionData = sourceResults.notion?.data || {};
+    const slackData = sourceResults.slack?.data || {};
 
     const artifactLines = [];
     if (ghData.recent_prs && ghData.recent_prs.length > 0) {
@@ -357,6 +389,9 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
     }
     if (notionData.past_notes && notionData.past_notes.length > 0) {
       artifactLines.push(`- **Notion 1-on-1 History**: ${notionData.past_notes.map((n) => `[${n.title}](${n.url})`).join(', ')}`);
+    }
+    if (slackData.recent_messages && slackData.recent_messages.length > 0) {
+      artifactLines.push(`- **Slack Communications**: ${slackData.recent_messages.map((m) => `"${(m.text || '').slice(0, 50)}..."`).join(', ')}`);
     }
     const artifactsSection = artifactLines.length > 0
       ? `\n\n### 🔗 Corroborating Workspace Artifacts\n${artifactLines.join('\n')}`

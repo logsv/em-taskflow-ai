@@ -1,5 +1,6 @@
 import ragService from '../../rag/index.js';
 import { startRAGIngestWorkflow } from '../../temporal/client.js';
+import { warn } from '../../utils/logger.js';
 
 export class UploadPdfApplicationService {
   constructor({ rag = ragService } = {}) {
@@ -36,7 +37,7 @@ export class UploadPdfApplicationService {
         };
       }
     } catch (err) {
-      console.warn(`⚠️ Temporal workflow trigger fallback (${err.message})`);
+      warn({ module: 'upload', action: 'startRAGIngestWorkflowFallback', filename, err }, 'Temporal workflow trigger fallback');
     }
 
     // Direct synchronous fallback

@@ -4,6 +4,7 @@ import axios from "axios";
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import { getMcpConfig } from "../config.js";
 import settingsService from "../services/settingsService.js";
+import { info, warn, error, debug } from "../utils/logger.js";
 
 let client = null;
 let tools = [];
@@ -28,7 +29,7 @@ function createNativeGoogleCalendarTools(apiKey) {
       const effectiveKey = apiKey || cachedSettings.apiKey || process.env.GOOGLE_CALENDAR_API_KEY || process.env.GOOGLE_API_KEY || null;
 
       try {
-        console.log(`📅 Google Calendar REST API get_calendar_events: cal="${effectiveCalId}" window="${time_window}"`);
+        debug({ module: "googleCalendarMCP", action: "get_calendar_events", calendarId: effectiveCalId, time_window }, `Google Calendar REST API get_calendar_events: cal="${effectiveCalId}" window="${time_window}"`);
         if (effectiveKey) {
           const now = new Date();
           const startIso = timeMin || now.toISOString();
@@ -56,7 +57,7 @@ function createNativeGoogleCalendarTools(apiKey) {
 
           const items = res.data?.items || [];
           if (items.length > 0) {
-            console.log(`📅 Google Calendar REST API returned ${items.length} live event(s)`);
+            info({ module: "googleCalendarMCP", action: "get_calendar_events", count: items.length }, `Google Calendar REST API returned ${items.length} live event(s)`);
             const formatted = items.map((e) => ({
               id: e.id,
               summary: e.summary || "Untitled Meeting",
@@ -71,7 +72,7 @@ function createNativeGoogleCalendarTools(apiKey) {
           }
         }
       } catch (err) {
-        console.warn(`⚠️ Google Calendar REST API call failed (${err?.message}), using scheduled working hours fallback...`);
+        warn({ module: "googleCalendarMCP", action: "get_calendar_events_fallback", err }, "Google Calendar REST API call failed, using scheduled working hours fallback");
       }
 
       // No live calendar data available
@@ -118,7 +119,7 @@ function createNativeGoogleCalendarTools(apiKey) {
           }
         }
       } catch (err) {
-        console.warn(`⚠️ Google Calendar get_event_details failed (${err?.message})`);
+        warn({ module: "googleCalendarMCP", action: "get_event_details_fallback", err }, "Google Calendar get_event_details failed");
       }
 
       return JSON.stringify({
@@ -177,7 +178,7 @@ function createNativeGoogleCalendarTools(apiKey) {
           }
         }
       } catch (err) {
-        console.warn(`⚠️ Google Calendar create_calendar_event live call failed (${err?.message})`);
+        warn({ module: "googleCalendarMCP", action: "create_calendar_event_fallback", err }, "Google Calendar create_calendar_event live call failed");
       }
 
       return JSON.stringify({
@@ -223,17 +224,17 @@ async function ensureInit() {
 
       tools = await client.getTools();
       if (tools.length > 0) {
-        console.log(`✅ Loaded ${tools.length} Remote Google Calendar MCP tools`);
+        info({ module: "googleCalendarMCP", action: "initRemoteMcp", toolCount: tools.length }, `Loaded ${tools.length} Remote Google Calendar MCP tools`);
         initialized = true;
         return;
       }
     } catch (err) {
-      console.warn(`⚠️ Remote Google Calendar MCP connection failed (${err?.message}), falling back to Native Google Calendar REST tools...`);
+      warn({ module: "googleCalendarMCP", action: "initRemoteMcpFallback", err }, "Remote Google Calendar MCP connection failed, falling back to Native Google Calendar REST tools");
     }
   }
 
   tools = createNativeGoogleCalendarTools(apiKey);
-  console.log(`✅ Loaded ${tools.length} Native Google Calendar REST API tools`);
+  info({ module: "googleCalendarMCP", action: "initNativeTools", toolCount: tools.length }, `Loaded ${tools.length} Native Google Calendar REST API tools`);
   initialized = true;
 }
 

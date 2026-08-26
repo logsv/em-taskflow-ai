@@ -20,7 +20,7 @@ import { info, warn, error } from "../utils/logger.js";
 
 const VALID_DOMAINS = new Set([
   "dora", "delivery", "sbi", "people", "sprint", "retro", "roadmap", "okr", "sop", "critic",
-  "jira", "github", "notion", "calendar", "rag"
+  "jira", "github", "notion", "calendar", "slack", "rag"
 ]);
 const TRANSFER_TOOL_PREFIX = "transfer_";
 const RAG_TOOL_NAME = "rag_db_query_retriever";
@@ -47,10 +47,10 @@ export class LangGraphAgentService {
     this.domainToolNames = {
       dora: new Set(["calculate_dora_metrics", "transfer_to_dora_agent"]),
       delivery: new Set(["analyze_delivery_bottlenecks", "transfer_to_delivery_agent", "search_issues", "list_pull_requests"]),
-      sbi: new Set(["format_sbi_feedback", "transfer_to_sbi_agent"]),
+      sbi: new Set(["format_sbi_feedback", "transfer_to_sbi_agent", "slack_search_messages"]),
       people: new Set(["analyze_personnel_growth", "transfer_to_people_agent"]),
       sprint: new Set(["calculate_sprint_plan", "transfer_to_sprint_agent"]),
-      retro: new Set(["generate_sprint_retro", "transfer_to_retro_agent"]),
+      retro: new Set(["generate_sprint_retro", "transfer_to_retro_agent", "slack_search_messages", "slack_post_message"]),
       roadmap: new Set(["get_roadmap_alignment", "transfer_to_roadmap_agent"]),
       okr: new Set(["evaluate_okr_progress", "transfer_to_okr_agent"]),
       sop: new Set(["query_sop_compliance", "transfer_to_sop_agent"]),
@@ -59,6 +59,7 @@ export class LangGraphAgentService {
       github: new Set(["search_issues", "list_pull_requests", "transfer_to_github_agent"]),
       notion: new Set(["notion_search", "transfer_to_notion_agent"]),
       calendar: new Set(["get_calendar_events", "calendar_list_events", "transfer_to_calendar_agent"]),
+      slack: new Set(["slack_search_messages", "slack_post_message", "slack_list_channels", "transfer_to_slack_agent"]),
       rag: new Set([RAG_TOOL_NAME]),
     };
     this.runtimeMetrics = {
@@ -206,7 +207,7 @@ export class LangGraphAgentService {
               }
             }
           } catch (dbError) {
-            console.warn("⚠️ Failed to check confirmation history:", dbError);
+            warn({ module: "agentService", action: "checkConfirmationHistory", err: dbError }, "Failed to check confirmation history");
           }
         }
       }
@@ -334,7 +335,7 @@ export class LangGraphAgentService {
   async runEnforcedPolicy(query, routingPlan, decision, options = {}) {
     if (routingPlan?.intent_type === "DIRECT_LLM" || routingPlan?.intent_type === "ATTACHMENT_DIRECT" || routingPlan?.intent_type === "CONTEXTUAL_SYNTHESIS" || (Array.isArray(routingPlan?.domains) && routingPlan.domains.length === 0 && !routingPlan.must_use_tools && !routingPlan.allow_rag)) {
       decision.selectedPath = routingPlan?.intent_type === "CONTEXTUAL_SYNTHESIS" ? "contextual-synthesis" : "direct-llm-fastpath";
-      console.log(`⚡ [AGENT SERVICE FAST-PATH]: ${decision.selectedPath} execution for query "${query.slice(0, 40)}..." (0 tools).`);
+      info({ module: "agentService", action: "fastPathExecution", selectedPath: decision.selectedPath, querySnippet: query.slice(0, 40) }, `Fast-path execution (${decision.selectedPath}) for query`);
       return this.runLlmExecutor(query, options);
     }
 
@@ -400,7 +401,7 @@ export class LangGraphAgentService {
       decision.ragHit = Array.isArray(ragResult?.sources) && ragResult.sources.length > 0;
       if (decision.ragHit) {
         decision.selectedPath = "rag+llm";
-        console.log(`✅ [AGENT SERVICE RAG HIT]: Returning ${ragResult.sources.length} document source(s) from RAG pipeline.`);
+        info({ module: "agentService", action: "ragHit", sourceCount: ragResult.sources.length }, `RAG hit: returning ${ragResult.sources.length} document source(s)`);
         return this.formatRagResult(ragResult);
       }
     }
@@ -549,7 +550,7 @@ export class LangGraphAgentService {
       const rawPlan = await routerChain.invoke({ query, options }, { callbacks });
       return this.normalizeRoutingPlan(rawPlan);
     } catch (error) {
-      console.warn("⚠️ LLM router failed, using passthrough fallback:", error?.message || error);
+      warn({ module: "agentService", action: "routerFallback", err: error }, "LLM router failed, using passthrough fallback");
       return this.getFallbackRoutingPlan("router_failed", query, options);
     }
   }
@@ -763,6 +764,7 @@ export class LangGraphAgentService {
       github: [],
       notion: [],
       calendar: [],
+      slack: [],
       rag: [],
     };
 

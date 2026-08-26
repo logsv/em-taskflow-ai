@@ -1,6 +1,7 @@
 import { auth } from '@modelcontextprotocol/sdk/client/auth.js';
 import { NotionOAuthProvider, getNotionMcpUrl } from './notionOAuthProvider.js';
 import { closeNotionMcp, getNotionTools } from './notion.js';
+import { warn } from '../utils/logger.js';
 
 export async function startNotionOAuthFlow() {
   const provider = new NotionOAuthProvider();
@@ -61,7 +62,7 @@ export async function completeNotionOAuthFlow(code) {
       await mcpModule.reconnectMCP();
     }
   } catch (error) {
-    console.warn('⚠️ Failed to reconnect MCP after Notion OAuth:', error?.message || error);
+    warn({ module: 'notionOAuth', action: 'reconnectMcp', err: error }, 'Failed to reconnect MCP after Notion OAuth');
   }
   return {
     status: 'authorized',

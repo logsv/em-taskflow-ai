@@ -6,6 +6,7 @@
 
 import identityService from '../services/identityService.js';
 import settingsService from '../services/settingsService.js';
+import { info, warn, error, debug } from '../utils/logger.js';
 
 class TeamSyncWorker {
   constructor() {
@@ -24,18 +25,18 @@ class TeamSyncWorker {
     this.stop();
     this.syncIntervalMs = intervalMs;
 
-    console.log(`⏱️ [TeamSyncWorker] Started Node.js team sync worker (Interval: ${this.syncIntervalMs / 1000 / 60}m)`);
+    info({ module: 'teamSyncWorker', action: 'start', intervalMinutes: this.syncIntervalMs / 1000 / 60 }, `Started Node.js team sync worker (Interval: ${this.syncIntervalMs / 1000 / 60}m)`);
 
     // Run initial sync non-blocking on startup after 5s warm-up
     this.warmupTimeoutHandle = setTimeout(() => {
       this.executeParallelSync().catch(err => {
-        console.warn(`⚠️ [TeamSyncWorker] Initial sync warning: ${err.message}`);
+        warn({ module: 'teamSyncWorker', action: 'initialSyncFallback', err }, 'Initial team sync warning');
       });
     }, 5000);
 
     this.intervalHandle = setInterval(() => {
       this.executeParallelSync().catch(err => {
-        console.warn(`⚠️ [TeamSyncWorker] Scheduled sync warning: ${err.message}`);
+        warn({ module: 'teamSyncWorker', action: 'scheduledSyncFallback', err }, 'Scheduled team sync warning');
       });
     }, this.syncIntervalMs);
   }
@@ -51,7 +52,7 @@ class TeamSyncWorker {
     if (this.intervalHandle) {
       clearInterval(this.intervalHandle);
       this.intervalHandle = null;
-      console.log('⏹️ [TeamSyncWorker] Stopped Node.js team sync worker');
+      debug({ module: 'teamSyncWorker', action: 'stop' }, 'Stopped Node.js team sync worker');
     }
     this.isRunning = false;
   }
@@ -61,7 +62,7 @@ class TeamSyncWorker {
    */
   async executeParallelSync() {
     if (this.isRunning) {
-      console.log('⏳ [TeamSyncWorker] Team sync already in progress, skipping concurrent run.');
+      debug({ module: 'teamSyncWorker', action: 'executeParallelSync' }, 'Team sync already in progress, skipping concurrent run');
       return { status: 'IN_PROGRESS' };
     }
 
@@ -70,7 +71,7 @@ class TeamSyncWorker {
     this.lastRunStatus = 'RUNNING';
 
     const startTime = Date.now();
-    console.log('🚀 [TeamSyncWorker] Executing parallel team auto-discovery across GitHub, Jira, Notion, and Google Calendar...');
+    info({ module: 'teamSyncWorker', action: 'executeParallelSyncStart' }, 'Executing parallel team auto-discovery across GitHub, Jira, Notion, and Google Calendar');
 
     try {
       // 1. Ensure latest MCP settings are loaded
@@ -82,7 +83,7 @@ class TeamSyncWorker {
 
       const durationMs = Date.now() - startTime;
       this.lastRunStatus = 'SUCCESS';
-      console.log(`✅ [TeamSyncWorker] Team sync complete in ${durationMs}ms: ${syncResult.syncedCount} members reconciled & persisted into PostgreSQL`);
+      info({ module: 'teamSyncWorker', action: 'executeParallelSyncSuccess', durationMs, syncedCount: syncResult.syncedCount }, `Team sync complete in ${durationMs}ms: ${syncResult.syncedCount} members reconciled & persisted into PostgreSQL`);
 
       return {
         status: 'SUCCESS',
@@ -93,7 +94,7 @@ class TeamSyncWorker {
       };
     } catch (err) {
       this.lastRunStatus = 'ERROR';
-      console.error(`❌ [TeamSyncWorker] Team sync failed: ${err.message}`);
+      error({ module: 'teamSyncWorker', action: 'executeParallelSyncError', err }, 'Team sync failed');
       throw err;
     } finally {
       this.isRunning = false;

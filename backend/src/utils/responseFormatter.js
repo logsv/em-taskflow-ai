@@ -1,4 +1,5 @@
 import { getChatModel } from "../llm/index.js";
+import { warn } from "./logger.js";
 
 function toArray(value) {
   return Array.isArray(value) ? value : [];
@@ -106,8 +107,8 @@ export async function buildEmResponse(query, rawAnswer, evidenceBySource, decisi
       };
       return { answer: renderEmSections(merged) };
     }
-  } catch (error) {
-    console.error("⚠️ Response formatter failed, falling back to heuristic parsing:", error);
+  } catch (err) {
+    warn({ module: 'responseFormatter', action: 'buildEmResponseFallback', err }, 'Response formatter failed, falling back to heuristic parsing');
   }
 
   return { answer: renderEmSections(normalized) };

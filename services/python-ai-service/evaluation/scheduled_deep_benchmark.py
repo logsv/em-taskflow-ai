@@ -185,5 +185,7 @@ def run_scheduled_deep_benchmark(
 
 if __name__ == "__main__":
     results = run_scheduled_deep_benchmark()
-    print("\n📊 Final Benchmark Summary:")
-    print(json.dumps(results, indent=2))
+    logger.info(
+        "Final Benchmark Summary",
+        extra={"details": {"results": results}}
+    )

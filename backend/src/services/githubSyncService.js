@@ -1,6 +1,7 @@
 import databaseService from '../db/postgres.js';
 import config from '../config.js';
 import settingsService from './settingsService.js';
+import { info, warn, debug } from '../utils/logger.js';
 
 class GithubSyncService {
   /**
@@ -11,7 +12,7 @@ class GithubSyncService {
     const defaultRepo = cachedGithub.owner && cachedGithub.repo ? `${cachedGithub.owner}/${cachedGithub.repo}` : (cachedGithub.repo || process.env.GITHUB_REPO || '');
     const effectiveRepo = repoName || defaultRepo;
     if (!effectiveRepo) {
-      console.log('ℹ️ [GITHUB SYNC]: No GitHub repository configured, skipping sync.');
+      debug({ module: 'githubSyncService', action: 'syncGithubData' }, 'No GitHub repository configured, skipping sync');
       return { totalSynced: 0, issues: [] };
     }
     const token = process.env.GITHUB_TOKEN || process.env.GITHUB_PERSONAL_ACCESS_TOKEN || config?.mcp?.github?.token || cachedGithub.token;
@@ -25,7 +26,7 @@ class GithubSyncService {
     }
 
     const apiUrl = `https://api.github.com/repos/${effectiveRepo}/issues?state=all&per_page=100`;
-    console.log(`📡 [GITHUB SYNC]: Fetching issues from ${apiUrl}...`);
+    debug({ module: 'githubSyncService', action: 'fetchIssues', apiUrl }, `Fetching issues from ${apiUrl}`);
 
     let rawIssues = [];
     try {
@@ -34,8 +35,8 @@ class GithubSyncService {
         throw new Error(`GitHub API returned status ${response.status}: ${response.statusText}`);
       }
       rawIssues = await response.json();
-    } catch (error) {
-      console.warn(`⚠️ [GITHUB SYNC]: Direct API fetch failed (${error.message}). Checking search API fallback...`);
+    } catch (err) {
+      warn({ module: 'githubSyncService', action: 'directFetchFallback', err }, 'Direct API fetch failed, checking search API fallback');
       try {
         const searchUrl = `https://api.github.com/search/issues?q=repo:${repoName}+is:issue&per_page=100`;
         const searchRes = await fetch(searchUrl, { headers });
@@ -43,10 +44,10 @@ class GithubSyncService {
           const searchData = await searchRes.json();
           rawIssues = searchData.items || [];
         } else {
-          throw error;
+          throw err;
         }
       } catch (fallbackError) {
-        console.warn(`⚠️ [GITHUB SYNC]: All live API attempts failed (${fallbackError.message}). Using PostgreSQL cache fallback...`);
+        warn({ module: 'githubSyncService', action: 'searchFallbackError', err: fallbackError }, 'All live API attempts failed. Using PostgreSQL cache fallback');
         const meta = await databaseService.getGithubSyncMetadata().catch(() => ({ total: 0, last_synced_at: null }));
         return {
           success: true,
@@ -78,11 +79,11 @@ class GithubSyncService {
         synced_at: new Date().toISOString(),
       }));
 
-    console.log(`📦 [GITHUB SYNC]: Processing ${issues.length} issue(s) for PostgreSQL storage...`);
+    debug({ module: 'githubSyncService', action: 'processIssues', count: issues.length }, `Processing ${issues.length} issue(s) for PostgreSQL storage`);
 
     // Upsert into PostgreSQL DB
     const dbSavedCount = await databaseService.upsertGithubIssues(issues);
-    console.log(`🗄️ [GITHUB SYNC]: Upserted ${dbSavedCount} issue(s) into PostgreSQL database`);
+    info({ module: 'githubSyncService', action: 'upsertGithubIssues', dbSavedCount }, `Upserted ${dbSavedCount} issue(s) into PostgreSQL database`);
 
     const syncedAt = new Date().toISOString();
     return {
@@ -110,7 +111,7 @@ class GithubSyncService {
         lastSyncedAt: lastSyncedAt || new Date().toISOString(),
       };
     } catch (dbError) {
-      console.warn(`⚠️ [GITHUB CACHE]: DB query failed (${dbError.message}).`);
+      warn({ module: 'githubSyncService', action: 'fetchCachedGithubIssuesFallback', err: dbError }, 'DB query failed for cached GitHub issues');
       return {
         issues: [],
         count: 0,

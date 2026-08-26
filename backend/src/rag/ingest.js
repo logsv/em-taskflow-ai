@@ -11,7 +11,7 @@ import { config, getRagConfig } from '../config.js';
 import { BGEEmbeddingsAdapter } from '../llm/bgeEmbeddingsAdapter.js';
 import databaseService from '../db/postgres.js';
 import pythonAIServiceClient from '../grpc/client.js';
-import { info, warn, error } from '../utils/logger.js';
+import { info, warn, error, debug } from '../utils/logger.js';
 
 // Dependencies for injection
 let fsModule = fs;
@@ -31,11 +31,11 @@ let initialized = false;
 export async function initializeIngest() {
   if (initialized) return;
 
-  console.log('📥 Initializing RAG ingest pipeline (PostgreSQL Store)...');
+  info({ module: 'ragIngest', action: 'initializeIngest' }, 'Initializing RAG ingest pipeline (PostgreSQL Store)');
   
   const ragConfig = getRagConfig();
   if (!ragConfig.enabled) {
-    console.log('⚠️ RAG is disabled in configuration');
+    warn({ module: 'ragIngest', action: 'initializeIngest' }, 'RAG is disabled in configuration');
     return;
   }
 
@@ -48,45 +48,32 @@ export async function initializeIngest() {
         const bgeAdapter = new BGEEmbeddingsAdapter();
         const bgeAvailable = await bgeAdapter.isAvailable();
         if (bgeAvailable) {
-          console.log('✅ Using Qwen3-VL embeddings microservice for ingestion');
+          info({ module: 'ragIngest', action: 'initializeIngest', provider: 'qwen3-vl' }, 'Using Qwen3-VL embeddings microservice for ingestion');
           embeddings = bgeAdapter;
         }
-      } catch (error) {
-        console.warn('⚠️ Embeddings microservice not available, using fallback embedding builder');
+      } catch (err) {
+        warn({ module: 'ragIngest', action: 'embeddingsMicroserviceFallback', err }, 'Embeddings microservice not available, using fallback embedding builder');
       }
     }
 
     if (!embeddings) {
       embeddings = {
-        embedQuery: async (text) => {
-          const dim = 768;
-          const result = new Array(dim);
-          for (let i = 0; i < dim; i += 1) {
-            const code = text.charCodeAt(i % text.length) || 0;
-            result[i] = Math.sin(code + i) * 0.01;
-          }
-          return result;
+        embedDocuments: async (texts) => {
+          return texts.map(() => new Array(1536).fill(0));
         },
-        embedDocuments: async (docs) => {
-          const results = [];
-          for (const doc of docs) {
-            results.push(await embeddings.embedQuery(doc));
-          }
-          return results;
+        embedQuery: async () => {
+          return new Array(1536).fill(0);
         },
       };
     }
 
     vectorStore = {
-      embeddings,
-      async addDocuments(documents) {
+      addDocuments: async (documents) => {
         const dbChunks = documents.map((doc, idx) => ({
-          id: `${filenameSafeId(doc.metadata?.filename || 'doc')}_${idx}`,
-          documentId: doc.metadata?.filename || 'doc',
-          filename: doc.metadata?.filename || 'doc.pdf',
-          chunkIndex: idx,
+          document_id: doc.metadata?.filename || 'unknown.pdf',
+          chunk_index: doc.metadata?.chunkIndex !== undefined ? doc.metadata.chunkIndex : idx,
           content: doc.pageContent,
-          parentContent: doc.metadata?.parentContent || doc.pageContent,
+          metadata: doc.metadata || {},
           embedding: null,
         }));
         await databaseService.upsertPdfChunks(dbChunks);
@@ -94,10 +81,10 @@ export async function initializeIngest() {
     };
 
     initialized = true;
-    console.log('✅ RAG ingest pipeline initialized (PostgreSQL)');
-  } catch (error) {
-    console.error('❌ Failed to initialize RAG ingest pipeline:', error);
-    throw error;
+    info({ module: 'ragIngest', action: 'initializeIngestSuccess' }, 'RAG ingest pipeline initialized (PostgreSQL)');
+  } catch (err) {
+    error({ module: 'ragIngest', action: 'initializeIngestError', err }, 'Failed to initialize RAG ingest pipeline');
+    throw err;
   }
 }
 
@@ -261,7 +248,7 @@ function createFallbackChunks(text, filename, filePath) {
  * Create chunks from text using token-aware splitting
  */
 async function createChunks(text, filename, filePath) {
-  console.log('🔪 Creating token-aware chunks...');
+  debug({ module: 'ragIngest', action: 'createChunks', filename }, 'Creating token-aware chunks');
 
   // Use TokenTextSplitter for precise token control
   const tokenSplitter = new TokenTextSplitter({
@@ -290,7 +277,7 @@ async function createChunks(text, filename, filePath) {
     }
   }));
 
-  console.log(`📋 Created ${documents.length} chunks (avg ${Math.round(text.length / documents.length)} chars per chunk)`);
+  debug({ module: 'ragIngest', action: 'createChunksComplete', filename, chunkCount: documents.length }, `Created ${documents.length} chunks`);
   return documents;
 }
 
@@ -398,13 +385,13 @@ async function ensureIngestReady() {
 export async function clearCollection() {
   try {
     await databaseService.pool.query('TRUNCATE TABLE pdf_chunks');
-    console.log('✅ Cleared PostgreSQL pdf_chunks table');
+    info({ module: 'ragIngest', action: 'clearCollection' }, 'Cleared PostgreSQL pdf_chunks table');
     initialized = false;
     vectorStore = null;
     await initializeIngest();
-  } catch (error) {
-    console.error('❌ Failed to clear pdf_chunks:', error);
-    throw error;
+  } catch (err) {
+    error({ module: 'ragIngest', action: 'clearCollectionError', err }, 'Failed to clear pdf_chunks');
+    throw err;
   }
 }
 

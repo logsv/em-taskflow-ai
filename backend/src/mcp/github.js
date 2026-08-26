@@ -5,6 +5,7 @@ import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import { getMcpConfig } from "../config.js";
 import { GithubOAuthProvider } from "./githubOAuthProvider.js";
 import settingsService from "../services/settingsService.js";
+import { info, warn, error, debug } from "../utils/logger.js";
 
 let client = null;
 let tools = [];
@@ -62,7 +63,7 @@ function createNativeGithubTools(token) {
             return JSON.stringify(formatted, null, 2);
           }
         } catch (dbErr) {
-          console.error("❌ PostgreSQL github_issues cache fetch error:", dbErr?.message);
+          error({ module: "githubMCP", action: "searchIssuesCacheFetch", err: dbErr }, "PostgreSQL github_issues cache fetch error");
         }
         return JSON.stringify([], null, 2);
       }
@@ -75,11 +76,11 @@ function createNativeGithubTools(token) {
         if (!q.includes("is:issue") && !q.includes("is:pr") && !q.includes("type:issue") && !q.includes("type:pr")) {
           q = `is:issue ${q}`;
         }
-        console.log(`🐙 GitHub REST API search_issues: query="${q}"`);
+        debug({ module: "githubMCP", action: "search_issues", query: q }, `GitHub REST API search_issues: query="${q}"`);
         const res = await axios.get(`https://api.github.com/search/issues?q=${encodeURIComponent(q)}`, { headers, timeout: 8000 });
         const items = res.data?.items || [];
         if (items.length > 0) {
-          console.log(`🐙 GitHub REST API search_issues returned ${items.length} live item(s)`);
+          info({ module: "githubMCP", action: "search_issues", count: items.length }, `GitHub REST API search_issues returned ${items.length} live item(s)`);
           const formatted = items.slice(0, 10).map((item) => ({
             title: item.title,
             number: item.number,
@@ -111,7 +112,7 @@ function createNativeGithubTools(token) {
 
         return JSON.stringify([], null, 2);
       } catch (err) {
-        console.warn(`⚠️ GitHub search_issues API call failed (${err?.message}), using PostgreSQL github_issues DB snapshot fallback...`);
+        warn({ module: "githubMCP", action: "search_issues_fallback", err }, "GitHub search_issues API call failed, using PostgreSQL github_issues DB snapshot fallback");
         try {
           const databaseService = (await import("../db/postgres.js")).default;
           const cachedIssues = await databaseService.getGithubIssues({});
@@ -129,7 +130,7 @@ function createNativeGithubTools(token) {
             return JSON.stringify(formatted, null, 2);
           }
         } catch (dbErr) {
-          console.error("❌ PostgreSQL github_issues fallback failed:", dbErr?.message);
+          error({ module: "githubMCP", action: "searchIssuesCacheFallback", err: dbErr }, "PostgreSQL github_issues fallback failed");
         }
         return JSON.stringify([], null, 2);
       }
@@ -171,13 +172,13 @@ function createNativeGithubTools(token) {
             );
           }
         } catch (dbErr) {
-          console.error("❌ PostgreSQL github_issues fallback failed:", dbErr?.message);
+          error({ module: "githubMCP", action: "issueReadCacheFallback", err: dbErr }, "PostgreSQL github_issues fallback failed");
         }
         return JSON.stringify({ error: `Issue #${issue_number} not found in cache` }, null, 2);
       }
 
       try {
-        console.log(`🐙 GitHub REST API issue_read: ${owner}/${repo} #${issue_number}`);
+        debug({ module: "githubMCP", action: "issue_read", owner, repo, issue_number }, `GitHub REST API issue_read: ${owner}/${repo} #${issue_number}`);
         const res = await axios.get(`https://api.github.com/repos/${owner}/${repo}/issues/${issue_number}`, { headers, timeout: 8000 });
         const item = res.data;
         return JSON.stringify(
@@ -195,7 +196,7 @@ function createNativeGithubTools(token) {
           2,
         );
       } catch (err) {
-        console.warn(`⚠️ GitHub issue_read API failed (${err?.message}), using PostgreSQL github_issues DB fallback...`);
+        warn({ module: "githubMCP", action: "issue_read_fallback", err }, "GitHub issue_read API failed, using PostgreSQL github_issues DB fallback");
         try {
           const databaseService = (await import("../db/postgres.js")).default;
           const cachedIssues = await databaseService.getGithubIssues({ repo: `${owner}/${repo}` });
@@ -217,7 +218,7 @@ function createNativeGithubTools(token) {
             );
           }
         } catch (dbErr) {
-          console.error("❌ PostgreSQL github_issues fallback failed:", dbErr?.message);
+          error({ module: "githubMCP", action: "issueReadCacheFallback", err: dbErr }, "PostgreSQL github_issues fallback failed");
         }
         return `GitHub issue_read error: ${err?.response?.data?.message || err?.message}`;
       }
@@ -237,7 +238,7 @@ function createNativeGithubTools(token) {
       const time_window = args.time_window || "30d";
       const { headers } = getActiveHeaders();
       try {
-        console.log(`🐙 GitHub REST API get_dora_events: ${owner}/${repo} (${time_window})`);
+        debug({ module: "githubMCP", action: "get_dora_events", owner, repo, time_window }, `GitHub REST API get_dora_events: ${owner}/${repo} (${time_window})`);
         const days = time_window === "7d" ? 7 : time_window === "90d" ? 90 : 30;
         const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -319,7 +320,7 @@ function createNativeGithubTools(token) {
 
         return JSON.stringify(payload, null, 2);
       } catch (err) {
-        console.warn(`⚠️ GitHub get_dora_events failed (${err?.message}), returning null for DB snapshot fallback.`);
+        warn({ module: "githubMCP", action: "get_dora_events_fallback", err }, "GitHub get_dora_events failed, returning null for DB snapshot fallback");
         return JSON.stringify({ error: err?.message, data_source: "failed" });
       }
     },
@@ -356,19 +357,19 @@ function createNativeGithubTools(token) {
             return JSON.stringify(formatted, null, 2);
           }
         } catch (dbErr) {
-          console.error("❌ PostgreSQL get_pull_requests cache fallback error:", dbErr?.message);
+          error({ module: "githubMCP", action: "getPullRequestsCacheFallback", err: dbErr }, "PostgreSQL get_pull_requests cache fallback error");
         }
         return JSON.stringify([], null, 2);
       }
 
       try {
-        console.log(`🐙 GitHub REST API get_pull_requests: ${owner}/${repo} state=${state}`);
+        debug({ module: "githubMCP", action: "get_pull_requests", owner, repo, state }, `GitHub REST API get_pull_requests: ${owner}/${repo} state=${state}`);
         const res = await axios.get(
           `https://api.github.com/repos/${owner}/${repo}/pulls?state=${state}&per_page=30&sort=updated&direction=desc`,
           { headers, timeout: 8000 }
         );
         const pulls = Array.isArray(res.data) ? res.data : [];
-        console.log(`🐙 GitHub REST API get_pull_requests returned ${pulls.length} live pull request(s)`);
+        info({ module: "githubMCP", action: "get_pull_requests", count: pulls.length }, `GitHub REST API get_pull_requests returned ${pulls.length} live pull request(s)`);
         const formatted = pulls.map((item) => ({
           number: item.number,
           title: item.title,
@@ -382,7 +383,7 @@ function createNativeGithubTools(token) {
         }));
         return JSON.stringify(formatted, null, 2);
       } catch (err) {
-        console.warn(`⚠️ GitHub get_pull_requests failed (${err?.message}), returning empty for DB fallback.`);
+        warn({ module: "githubMCP", action: "get_pull_requests_fallback", err }, "GitHub get_pull_requests failed, returning empty for DB fallback");
         return JSON.stringify([], null, 2);
       }
     },
@@ -405,16 +406,16 @@ async function ensureInit() {
       client = new MultiServerMCPClient({ mcpServers: { github: serverConfig } });
       tools = await client.getTools();
       initialized = true;
-      console.log("✅ Successfully initialized GitHub MCP remote tools");
+      info({ module: "githubMCP", action: "initRemoteMcp", toolCount: tools.length }, "Successfully initialized GitHub MCP remote tools");
       return;
     } catch (err) {
-      console.warn("⚠️ Remote GitHub MCP connection failed, falling back to GitHub REST API tools:", err?.message);
+      warn({ module: "githubMCP", action: "initRemoteMcpFallback", err }, "Remote GitHub MCP connection failed, falling back to GitHub REST API tools");
     }
   }
 
   tools = createNativeGithubTools(token);
   initialized = true;
-  console.log(`✅ Loaded ${tools.length} Native GitHub REST API tools`);
+  info({ module: "githubMCP", action: "initNativeTools", toolCount: tools.length }, `Loaded ${tools.length} Native GitHub REST API tools`);
 }
 
 export async function getGithubTools() {

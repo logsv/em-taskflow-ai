@@ -212,7 +212,12 @@ class EMTauBenchmarkRunner:
 if __name__ == "__main__":
     runner = EMTauBenchmarkRunner(k_repeats=5)
     res = runner.run_benchmark(sync_to_langfuse=False)
-    print("\n🏆 EM-τ-Bench Benchmark Results:")
-    print(f"  - pass^{res['k_repeats']} Reliability Rate: {res['pass_k_rate'] * 100:.1f}%")
-    print(f"  - Overall Goal Completion: {res['overall_goal_completion'] * 100:.1f}%")
-    print(f"  - Policy Compliance: {res['overall_policy_compliance'] * 100:.1f}%")
+    logger.info(
+        "EM-τ-Bench Benchmark Results",
+        extra={"details": {
+            "pass_k_rate": res["pass_k_rate"],
+            "k_repeats": res["k_repeats"],
+            "overall_goal_completion": res["overall_goal_completion"],
+            "overall_policy_compliance": res["overall_policy_compliance"],
+        }}
+    )

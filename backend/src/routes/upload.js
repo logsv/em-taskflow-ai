@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import pythonAIServiceClient from '../grpc/client.js';
 import { attachSessionContext } from '../middleware/sessionContext.js';
 import { startChatFileExtractWorkflow, getWorkflowStatus } from '../temporal/client.js';
+import { info, warn, error, debug } from '../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,7 +41,7 @@ router.post('/', attachSessionContext, upload.single('file'), async (req, res) =
     }
 
     const { originalname, mimetype, path: filePath, size } = req.file;
-    console.log(`📎 Chat file upload received: ${originalname} (${mimetype}, ${size} bytes)`);
+    debug({ module: 'upload', action: 'receiveChatUpload', originalname, mimetype, size }, `Chat file upload received: ${originalname}`);
 
     // Try Temporal Durable Workflow first
     try {
@@ -55,7 +56,7 @@ router.post('/', attachSessionContext, upload.single('file'), async (req, res) =
         });
       }
     } catch (err) {
-      console.warn(`⚠️ Temporal Chat File Extract workflow fallback (${err.message})`);
+      warn({ module: 'upload', action: 'startChatFileExtractWorkflowFallback', filename: originalname, err }, 'Temporal Chat File Extract workflow fallback');
     }
 
     // Direct synchronous fallback via Python AI Service
@@ -80,12 +81,12 @@ router.post('/', attachSessionContext, upload.single('file'), async (req, res) =
       message: 'Attachment extracted successfully for chat prompt injection',
       requestId: req.requestId,
     });
-  } catch (error) {
-    console.error('❌ Chat upload failed:', error);
+  } catch (err) {
+    error({ module: 'upload', action: 'chatUploadError', err }, 'Chat upload failed');
     return res.status(500).json({
       success: false,
       error: 'File attachment extraction failed',
-      details: error.message,
+      details: err.message,
       requestId: req.requestId,
     });
   }

@@ -1,5 +1,6 @@
 import { getMcpConfig } from '../config.js';
 import legacyPreferenceRepository from '../persistence/legacy/LegacyPreferenceRepository.js';
+import { info } from '../utils/logger.js';
 
 const TOKENS_KEY = 'mcp.notion.oauth.tokens';
 const CLIENT_INFO_KEY = 'mcp.notion.oauth.clientInfo';
@@ -65,7 +66,7 @@ export class NotionOAuthProvider {
       url,
       createdAt: new Date().toISOString(),
     });
-    console.log('🔐 Notion OAuth authorization required. Open this URL in browser:', url);
+    info({ module: 'notionOAuthProvider', action: 'redirectToAuthorization', url }, 'Notion OAuth authorization required. Open authorization URL');
   }
 
   async saveCodeVerifier(codeVerifier) {

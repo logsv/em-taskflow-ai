@@ -1,6 +1,6 @@
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class JSONFormatter(logging.Formatter):
@@ -8,16 +8,28 @@ class JSONFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         log_obj = {
-            "timestamp": datetime.utcfromtimestamp(record.created).isoformat() + "Z",
-            "level": record.levelname,
+            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "level": record.levelname.lower(),
             "service": "em-taskflow-python-ai",
             "logger": record.name,
             "message": record.getMessage(),
         }
         if record.exc_info:
             log_obj["exception"] = self.formatException(record.exc_info)
+        
+        # Merge structured extra details
+        details = {}
         if hasattr(record, "details") and isinstance(record.details, dict):
-            log_obj["details"] = record.details
+            details.update(record.details)
+        if hasattr(record, "action"):
+            details["action"] = record.action
+        if hasattr(record, "module"):
+            details["module"] = record.module
+        if hasattr(record, "duration_ms"):
+            details["duration_ms"] = record.duration_ms
+        if details:
+            log_obj["details"] = details
+
         return json.dumps(log_obj)
 
 
@@ -55,13 +67,21 @@ def setup_json_logging(level: int = logging.INFO):
                     except Exception:
                         pass
 
+                def close(self):
+                    try:
+                        super().close()
+                    except Exception:
+                        pass
+
             axiom_client = Client(token=axiom_token)
             axiom_handler = SafeAxiomHandler(axiom_client, axiom_dataset)
             axiom_handler.setLevel(level)
             root_logger.addHandler(axiom_handler)
         except Exception as e:
-            print(f"Warning: Failed to setup Axiom logging handler: {e}")
+            # Output warning using standard logger
+            root_logger.warning(f"Failed to setup Axiom logging handler: {e}")
 
     return root_logger
+
 
 

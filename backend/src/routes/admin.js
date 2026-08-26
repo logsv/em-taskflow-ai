@@ -19,6 +19,7 @@ import { config } from '../config.js';
 import settingsService from '../services/settingsService.js';
 import identityService from '../services/identityService.js';
 import teamSyncWorker from '../workers/teamSyncWorker.js';
+import { info, warn, error, debug } from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -202,7 +203,7 @@ router.post('/eval/prompt-matrix', async (req, res) => {
         });
       }
     } catch (temporalErr) {
-      console.warn(`⚠️ Temporal prompt matrix dispatch fallback: ${temporalErr.message}`);
+      warn({ module: 'adminRoutes', action: 'startPromptEvaluationWorkflowFallback', err: temporalErr }, 'Temporal prompt matrix dispatch fallback');
     }
 
     // 2. Fallback Path (< 10%): Direct Async Evaluation via Python AI service
@@ -423,7 +424,7 @@ router.post('/eval/run-deep-benchmark', async (req, res) => {
         });
       }
     } catch (temporalErr) {
-      console.warn(`⚠️ Temporal benchmark dispatch fallback: ${temporalErr.message}`);
+      warn({ module: 'adminRoutes', action: 'startDeepBenchmarkWorkflowFallback', err: temporalErr }, 'Temporal benchmark dispatch fallback');
     }
 
     // Subprocess Fallback
@@ -573,7 +574,7 @@ router.post('/eval/replay-traces', async (req, res) => {
         });
       }
     } catch (temporalErr) {
-      console.warn(`⚠️ Temporal trace replay dispatch fallback: ${temporalErr.message}`);
+      warn({ module: 'adminRoutes', action: 'startTraceReplayWorkflowFallback', err: temporalErr }, 'Temporal trace replay dispatch fallback');
     }
 
     const pythonDir = path.resolve(process.cwd(), '..', 'services/python-ai-service');

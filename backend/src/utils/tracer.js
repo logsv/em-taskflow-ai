@@ -2,6 +2,7 @@ import fs from 'fs';
 import { Langfuse } from 'langfuse';
 import { CallbackHandler as LangfuseCallbackHandler } from 'langfuse-langchain';
 import { trace as otelTrace, context as otelContext } from '@opentelemetry/api';
+import { warn } from './logger.js';
 
 let langfuseClientInstance = null;
 
@@ -83,7 +84,7 @@ export function createEndToEndTrace(options = {}) {
       options.trace = trace;
       options.tracerCallbacks = callbacks;
     } catch (err) {
-      console.warn('⚠️ Non-blocking Langfuse trace creation warning:', err.message);
+      warn({ module: 'tracer', action: 'createTraceFallback', err }, 'Non-blocking Langfuse trace creation warning');
     }
   }
 
@@ -155,7 +156,7 @@ export function getTracerCallbacks(options = {}) {
       }));
     }
   } catch (err) {
-    console.warn('⚠️ Non-blocking tracer initialization warning:', err.message);
+    warn({ module: 'tracer', action: 'getTracerCallbacksFallback', err }, 'Non-blocking tracer initialization warning');
   }
   const res = callbacks.length > 0 ? callbacks : undefined;
   options.tracerCallbacks = res;
@@ -181,7 +182,7 @@ export function scoreTrace(options = {}) {
     });
     return true;
   } catch (err) {
-    console.warn('⚠️ Non-blocking trace score warning:', err.message);
+    warn({ module: 'tracer', action: 'scoreTraceFallback', err }, 'Non-blocking trace score warning');
     return false;
   }
 }

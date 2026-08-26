@@ -1726,8 +1726,8 @@ class DatabaseService {
       return;
     }
 
-    this.pool.end().catch((error) => {
-      console.error('Error closing Postgres pool:', error);
+    this.pool.end().catch((err) => {
+      error({ module: 'postgres', action: 'closePool', err }, 'Error closing Postgres pool');
     });
     this.pool = null;
     this.initialized = false;

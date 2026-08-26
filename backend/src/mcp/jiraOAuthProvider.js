@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { getMcpConfig } from '../config.js';
 import legacyPreferenceRepository from '../persistence/legacy/LegacyPreferenceRepository.js';
 import settingsService from '../services/settingsService.js';
+import { info, warn } from '../utils/logger.js';
 
 const TOKENS_KEY = 'mcp.jira.oauth.tokens';
 const CLIENT_INFO_KEY = 'mcp.jira.oauth.clientInfo';
@@ -84,14 +85,15 @@ export class JiraOAuthProvider {
         },
         timeout: 5000,
       });
+
       const resources = Array.isArray(res.data) ? res.data : [];
       if (resources.length > 0) {
         await legacyPreferenceRepository.set(ACCESSIBLE_RESOURCES_KEY, resources);
-        console.log(`🔷 Atlassian OAuth: Resolved ${resources.length} accessible Cloud resource(s):`, resources.map((r) => `${r.name} (${r.url})`));
+        info({ module: 'jiraOAuthProvider', action: 'fetchAndSaveAccessibleResources', resourceCount: resources.length }, `Atlassian OAuth: Resolved ${resources.length} accessible Cloud resource(s)`);
       }
       return resources;
     } catch (err) {
-      console.warn('⚠️ Failed to fetch Atlassian accessible resources:', err?.message || err);
+      warn({ module: 'jiraOAuthProvider', action: 'fetchAndSaveAccessibleResourcesFallback', err }, 'Failed to fetch Atlassian accessible resources');
       return [];
     }
   }

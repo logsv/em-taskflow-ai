@@ -4,6 +4,7 @@
  */
 
 import { Connection, Client } from '@temporalio/client';
+import { info, warn, debug } from '../utils/logger.js';
 
 let temporalClient = null;
 let hasLoggedTestWarning = false;
@@ -27,7 +28,7 @@ export async function getTemporalClient() {
       );
       const connection = await Promise.race([connectPromise, timeoutPromise]);
       temporalClient = new Client({ connection });
-      console.log(`✅ Node.js connected to Temporal Server at ${host}`);
+      info({ module: 'temporalClient', action: 'connect', host }, `Node.js connected to Temporal Server at ${host}`);
       return temporalClient;
     } catch {
       // Continue to next host candidate
@@ -36,7 +37,7 @@ export async function getTemporalClient() {
 
   if (!isTest || !hasLoggedTestWarning) {
     if (!isTest) {
-      console.warn(`⚠️ Node.js failed to connect to Temporal Server at ${hostsToTry.join(', ')}`);
+      warn({ module: 'temporalClient', action: 'connectWarning', hosts: hostsToTry }, 'Node.js failed to connect to Temporal Server');
     }
     hasLoggedTestWarning = true;
   }
@@ -56,14 +57,14 @@ export async function startRAGIngestWorkflow(filePath, filename) {
       args: [{ file_path: filePath, filename }],
       workflowId,
     });
-    console.log(`🚀 Started Temporal RAG Workflow: ${handle.workflowId}`);
+    info({ module: 'temporalClient', action: 'startRAGIngestWorkflow', workflowId: handle.workflowId }, 'Started Temporal RAG Workflow');
     return {
       workflowId: handle.workflowId,
       runId: handle.firstExecutionRunId,
       status: 'RUNNING',
     };
   } catch (err) {
-    console.warn(`⚠️ Failed to start Temporal RAG Workflow (${err.message})`);
+    warn({ module: 'temporalClient', action: 'startRAGIngestWorkflowFallback', err }, 'Failed to start Temporal RAG Workflow');
     return null;
   }
 }
@@ -81,14 +82,14 @@ export async function startChatFileExtractWorkflow(filePath, filename, mimeType 
       args: [{ file_path: filePath, filename, mime_type: mimeType }],
       workflowId,
     });
-    console.log(`🚀 Started Temporal Chat File Extraction Workflow: ${handle.workflowId}`);
+    info({ module: 'temporalClient', action: 'startChatFileExtractWorkflow', workflowId: handle.workflowId }, 'Started Temporal Chat File Extraction Workflow');
     return {
       workflowId: handle.workflowId,
       runId: handle.firstExecutionRunId,
       status: 'RUNNING',
     };
   } catch (err) {
-    console.warn(`⚠️ Failed to start Temporal Chat File Extraction Workflow (${err.message})`);
+    warn({ module: 'temporalClient', action: 'startChatFileExtractWorkflowFallback', err }, 'Failed to start Temporal Chat File Extraction Workflow');
     return null;
   }
 }
@@ -108,7 +109,7 @@ export async function getWorkflowStatus(workflowId) {
       try {
         resultPayload = await handle.result();
       } catch (e) {
-        console.warn(`⚠️ Could not retrieve result for completed workflow ${workflowId}: ${e.message}`);
+        warn({ module: 'temporalClient', action: 'getWorkflowStatusResultFallback', workflowId, err: e }, 'Could not retrieve result for completed workflow');
       }
     } else if (statusName === 'FAILED') {
       try {
@@ -143,14 +144,14 @@ export async function startDeepBenchmarkWorkflow(options = {}) {
       args: [{ model_name: modelTarget, trulens_limit: trulensLimit }],
       workflowId,
     });
-    console.log(`🚀 Started Temporal Deep Benchmark Workflow: ${handle.workflowId}`);
+    info({ module: 'temporalClient', action: 'startDeepBenchmarkWorkflow', workflowId: handle.workflowId }, 'Started Temporal Deep Benchmark Workflow');
     return {
       workflowId: handle.workflowId,
       runId: handle.firstExecutionRunId,
       status: 'RUNNING',
     };
   } catch (err) {
-    console.warn(`⚠️ Failed to start Temporal Deep Benchmark Workflow (${err.message})`);
+    warn({ module: 'temporalClient', action: 'startDeepBenchmarkWorkflowFallback', err }, 'Failed to start Temporal Deep Benchmark Workflow');
     return null;
   }
 }
@@ -167,14 +168,14 @@ export async function startTraceReplayWorkflow(options = {}) {
       args: [{ baseline_model: baselineModel, candidate_model: candidateModel }],
       workflowId,
     });
-    console.log(`🚀 Started Temporal Trace Replay Workflow: ${handle.workflowId}`);
+    info({ module: 'temporalClient', action: 'startTraceReplayWorkflow', workflowId: handle.workflowId }, 'Started Temporal Trace Replay Workflow');
     return {
       workflowId: handle.workflowId,
       runId: handle.firstExecutionRunId,
       status: 'RUNNING',
     };
   } catch (err) {
-    console.warn(`⚠️ Failed to start Temporal Trace Replay Workflow (${err.message})`);
+    warn({ module: 'temporalClient', action: 'startTraceReplayWorkflowFallback', err }, 'Failed to start Temporal Trace Replay Workflow');
     return null;
   }
 }
@@ -190,14 +191,14 @@ export async function startTeamDiscoveryWorkflow(params = {}) {
       args: [params],
       workflowId,
     });
-    console.log(`🚀 Started Node.js Temporal Team Discovery Workflow: ${handle.workflowId}`);
+    info({ module: 'temporalClient', action: 'startTeamDiscoveryWorkflow', workflowId: handle.workflowId }, 'Started Node.js Temporal Team Discovery Workflow');
     return {
       workflowId: handle.workflowId,
       runId: handle.firstExecutionRunId,
       status: 'RUNNING',
     };
   } catch (err) {
-    console.warn(`⚠️ Failed to start Node.js Temporal Team Discovery Workflow (${err.message})`);
+    warn({ module: 'temporalClient', action: 'startTeamDiscoveryWorkflowFallback', err }, 'Failed to start Node.js Temporal Team Discovery Workflow');
     return null;
   }
 }
@@ -213,7 +214,7 @@ export async function executeTeamDiscoveryWorkflow(params = {}) {
       args: [params],
       workflowId,
     });
-    console.log(`🚀 Executing Node.js Temporal Team Discovery Workflow: ${handle.workflowId}`);
+    info({ module: 'temporalClient', action: 'executeTeamDiscoveryWorkflow', workflowId: handle.workflowId }, 'Executing Node.js Temporal Team Discovery Workflow');
     const result = await handle.result();
     return {
       workflowId: handle.workflowId,
@@ -222,7 +223,7 @@ export async function executeTeamDiscoveryWorkflow(params = {}) {
       result,
     };
   } catch (err) {
-    console.warn(`⚠️ Failed executing Node.js Temporal Team Discovery Workflow (${err.message})`);
+    warn({ module: 'temporalClient', action: 'executeTeamDiscoveryWorkflowFallback', err }, 'Failed executing Node.js Temporal Team Discovery Workflow');
     return null;
   }
 }
@@ -232,20 +233,25 @@ export async function startPromptEvaluationWorkflow(options = {}) {
   if (!client) return null;
 
   const evalTaskQueue = process.env.TEMPORAL_EVAL_TASK_QUEUE || 'eval-task-queue';
+  const workflowId = `prompt-eval-${Date.now()}`;
+  const modelTarget = options.modelTarget || 'hermes3:8b';
+  const limit = options.limit || 10;
+  const batchSize = options.batchSize || 2;
+
   try {
     const handle = await client.workflow.start('PromptEvaluationWorkflow', {
       taskQueue: evalTaskQueue,
       args: [{ model_name: modelTarget, limit, batch_size: batchSize }],
       workflowId,
     });
-    console.log(`🚀 Started Temporal Prompt Evaluation Workflow: ${handle.workflowId}`);
+    info({ module: 'temporalClient', action: 'startPromptEvaluationWorkflow', workflowId: handle.workflowId }, 'Started Temporal Prompt Evaluation Workflow');
     return {
       workflowId: handle.workflowId,
       runId: handle.firstExecutionRunId,
       status: 'RUNNING',
     };
   } catch (err) {
-    console.warn(`⚠️ Failed to start Temporal Prompt Evaluation Workflow (${err.message})`);
+    warn({ module: 'temporalClient', action: 'startPromptEvaluationWorkflowFallback', err }, 'Failed to start Temporal Prompt Evaluation Workflow');
     return null;
   }
 }

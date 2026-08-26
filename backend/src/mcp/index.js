@@ -117,9 +117,10 @@ export function getMCPToolGroups() {
     githubTools: githubMcpTools,
     notionTools: notionMcpTools,
     calendarTools: googleMcpTools,
+    slackTools: slackMcpTools,
     otherTools: allTools.filter(
       (tool) =>
-        ![...jiraMcpTools, ...githubMcpTools, ...notionMcpTools, ...googleMcpTools].some((t) => t.name === tool.name),
+        ![...jiraMcpTools, ...githubMcpTools, ...notionMcpTools, ...googleMcpTools, ...slackMcpTools].some((t) => t.name === tool.name),
     ),
   };
 }
@@ -134,6 +135,8 @@ export function getMCPToolsByServer(serverName) {
       return githubMcpTools;
     case "google":
       return googleMcpTools;
+    case "slack":
+      return slackMcpTools;
     default:
       return [];
   }
@@ -364,6 +367,15 @@ export function sanitizeToolInput(input, toolName = "") {
   if (toolName === "notion_get_page" || toolName?.includes("notion_get_page")) {
     if (!clean.page_id && clean.id) clean.page_id = clean.id;
     if (!clean.page_id) clean.page_id = "notion-sprint-goals-01";
+  }
+
+  if (toolName === "slack_search_messages" || toolName?.includes("slack_search")) {
+    if (!clean.query && clean.q) clean.query = clean.q;
+    if (!clean.query) clean.query = "retro";
+  }
+
+  if (toolName === "slack_post_message" || toolName?.includes("slack_post")) {
+    if (!clean.message && clean.text) clean.message = clean.text;
   }
 
   return clean;

@@ -7,6 +7,7 @@ import { Worker, NativeConnection } from '@temporalio/worker';
 import * as activities from './activities.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { info, warn } from '../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,7 +18,7 @@ export async function startTemporalNodeWorker() {
   }
 
   const temporalHost = process.env.TEMPORAL_HOST || 'temporal:7233';
-  console.log(`⏳ Connecting Node.js Temporal Worker to host: ${temporalHost}...`);
+  info({ module: 'temporalWorker', action: 'connecting', temporalHost }, `Connecting Node.js Temporal Worker to host: ${temporalHost}`);
 
   try {
     const connection = await NativeConnection.connect({
@@ -33,15 +34,15 @@ export async function startTemporalNodeWorker() {
       activities,
     });
 
-    console.log(`🚀 Node.js Temporal Worker listening on task queue: 'team-sync-queue'`);
+    info({ module: 'temporalWorker', action: 'listening', taskQueue: 'team-sync-queue' }, "Node.js Temporal Worker listening on task queue: 'team-sync-queue'");
     // Run worker in background
     worker.run().catch(err => {
-      console.warn(`⚠️ Node.js Temporal Worker runtime warning: ${err.message}`);
+      warn({ module: 'temporalWorker', action: 'runtimeWarning', err }, 'Node.js Temporal Worker runtime warning');
     });
 
     return worker;
   } catch (err) {
-    console.warn(`⚠️ Node.js Temporal Worker connection warning: ${err.message}`);
+    warn({ module: 'temporalWorker', action: 'connectionWarning', err }, 'Node.js Temporal Worker connection warning');
     return null;
   }
 }

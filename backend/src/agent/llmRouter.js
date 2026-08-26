@@ -11,7 +11,7 @@ const routerOutputSchema = {
       type: "array",
       items: {
         type: "string",
-        enum: ["jira", "github", "notion", "calendar", "rag", "dora", "sbi", "people", "delivery", "retro", "sprint", "sop", "roadmap", "okr", "critic"],
+        enum: ["jira", "github", "notion", "calendar", "slack", "rag", "dora", "sbi", "people", "delivery", "retro", "sprint", "sop", "roadmap", "okr", "critic"],
       },
       description: "List of required source domains for the query. Can be empty if no specific domain is needed.",
     },
@@ -45,7 +45,7 @@ Active workspace domains:
 - 'sbi': for Situation-Behavior-Impact performance feedback, coaching, and individual constructive feedback (takes strict precedence over PR turnaround/deadline mentions).
 - 'people': for 1-on-1 tracking, engineer career growth, skill competency matrix, team morale, burnout indicators, and individual engineer promotion/development roadmaps.
 - 'delivery': for team throughput, WIP limits, review bottlenecks, cycle time, commit counts, PR turnaround, ticket throughput, blocker tickets, and release risks from PR delays/Jira blockers.
-- 'retro': for sprint or project retrospective generation, blameless post-mortems, and action item tracking.
+- 'retro': for sprint or project retrospective generation, blameless post-mortems, action item tracking, and posting/reading retro feedback from Slack.
 - 'sprint': for sprint capacity estimation, story point velocity, and backlog grooming.
 - 'sop': for standard operating procedures, compliance, mandatory review SLAs, company policies, and ADR repository compliance.
 - 'roadmap': for feature milestone timelines, product dependency alignment, and roadmap drift.
@@ -57,7 +57,7 @@ CRITICAL ROUTING & DISAMBIGUATION RULES:
 2. DORA metrics & MTTR: Pure DORA metrics queries (deployment frequency, lead time for changes, change failure rate, MTTR, mean time to restore, e.g. "What is our Mean Time to Restore (MTTR) across recent production incidents in the last 7 days?", "Calculate DORA metrics for non-existent repo"): set domains: ["dora"], must_use_tools: true, allow_rag: false, confidence: 0.95 (do NOT add delivery for MTTR or incident recovery times).
 3. Format SBI feedback: If asking to format or generate an SBI feedback/coaching (e.g. "Format a Situation-Behavior-Impact (SBI) feedback report for senior dev code review turnaround delays", "Generate an SBI constructive coaching plan"): set domains: ["sbi"] only, must_use_tools: true, allow_rag: false, confidence: 0.95 (do NOT add delivery, as SBI formatting takes strict precedence).
 4. Career development roadmaps & competency gaps: If asking about 1-on-1 notes, career progression, competency gaps, or career/skill development roadmaps for promotions (e.g. "Assess technical skill competency gaps and 6-month development roadmap for Staff Engineer promotion"): set domains: ["people"] only, must_use_tools: true, allow_rag: false, confidence: 0.95 (do NOT add roadmap, as individual skill development roadmaps belong strictly to people).
-5. Retrospectives & Post-Mortems: For sprint retrospectives and blameless post-mortems (e.g. "Formulate a blameless retrospective post-mortem for the payment gateway outage", "Generate a sprint retrospective summary"): set domains: ["retro"] only, must_use_tools: true, allow_rag: false, confidence: 0.95 (do NOT add sop).
+5. Retrospectives & Post-Mortems: For sprint retrospectives, blameless post-mortems, and Slack retro posts (e.g. "Formulate a blameless retrospective post-mortem for the payment gateway outage", "Generate a sprint retrospective summary and post to Slack", "Post retro action plan to #engineering-retro"): set domains: ["retro"] only, must_use_tools: true, allow_rag: false, confidence: 0.95 (do NOT add sop).
 6. Review/Audit draft reports: If asking to audit, critique, or review draft text/reports/dossiers/EM reports (e.g. "Audit and critique this engineering manager weekly status report", "Audit this EM report against our SOP standards", "Review this draft sprint performance summary"): set domains: ["critic"] only, must_use_tools: true, allow_rag: false, confidence: 0.95 (do NOT add sop, as auditing draft reports belongs strictly to critic).
 7. Audit retro for SOP compliance: If asking to audit/verify a sprint retrospective summary for compliance with company/engineering SOP (e.g. "Audit our sprint retrospective summary to verify action items adhere to engineering SOP standards"): set domains: ["sop", "critic"], must_use_tools: true, allow_rag: true, confidence: 0.95 (do NOT add retro as the primary action is auditing compliance).
 8. ADR repository compliance: If query asks to check our Architecture Decision Record (ADR) repository for ADR compliance (e.g. "Check our Architecture Decision Record (ADR) repository for ADR-014 on database sharding and check compliance"): set domains: ["sop"], allow_rag: true, must_use_tools: true, confidence: 0.95.
@@ -83,7 +83,7 @@ export function classifyFastPath(query, options = {}) {
   const hasAttachmentContext = attachments.length > 0 || q.includes('[attachment:') || q.includes('[image attachment:') || q.includes('# document executive context:');
 
   if (hasAttachmentContext) {
-    const isExplicitExternalTool = ['jira', 'github', 'notion', 'calendar'].some((tool) => q.includes(tool));
+    const isExplicitExternalTool = ['jira', 'github', 'notion', 'calendar', 'slack'].some((tool) => q.includes(tool));
     if (!isExplicitExternalTool) {
       info(`Attachment query detected, routing directly to LLM document analysis (0 RAG search, 0 external MCP tools)`, { querySnippet: q.slice(0, 60) });
       return {
@@ -181,7 +181,7 @@ export function classifyFastPath(query, options = {}) {
   // Domain keywords that REQUIRE tool or database retrieval
   const workspaceKeywords = [
     "github", "issue", "repo", "pr", "pull request", "jira", "sprint", "blocker", "notion", "page",
-    "calendar", "meeting", "schedule", "pdf", "doc", "document", "uploaded", "file", "rubric", "rubrics",
+    "calendar", "meeting", "schedule", "slack", "pdf", "doc", "document", "uploaded", "file", "rubric", "rubrics",
     "what is in", "dora", "metric", "sbi", "feedback", "1-on-1", "one on one", "burnout", "retro",
     "retrospective", "wip", "sop", "adr", "roadmap", "okr", "kpi", "lead time", "mttr", "commit", "leaderboard", "ticket"
   ];
@@ -262,7 +262,8 @@ export function getDeterministicFallbackPlan(query, reason = "router_llm_json_fa
   const isSbi = 
     q.includes("sbi") || q.includes("feedback") || q.includes("coaching") || q.includes("disciplinary") ||
     q.includes("recognition") || q.includes("situation-behavior-impact") || q.includes("constructive coaching") ||
-    q.includes("career progression notes and format constructive") || q.includes("skill progression and format");
+    q.includes("career progression notes and format constructive") || q.includes("skill progression and format") ||
+    (q.includes("slack") && (q.includes("feedback") || q.includes("coaching") || q.includes("1-on-1")));
 
   // 3. DORA Metrics keywords (MTTR is pure DORA, not delivery)
   const isDora = 
@@ -291,7 +292,7 @@ export function getDeterministicFallbackPlan(query, reason = "router_llm_json_fa
 
   // 7. Retrospective
   const isRetro = 
-    (q.includes("retro") || q.includes("retrospective") || q.includes("post-mortem") || q.includes("blameless retro")) &&
+    (q.includes("retro") || q.includes("retrospective") || q.includes("post-mortem") || q.includes("blameless retro") || q.includes("post to slack") || q.includes("#engineering-retro") || (q.includes("slack") && (q.includes("retro") || q.includes("action") || q.includes("standup") || q.includes("channel")))) &&
     !q.includes("audit our sprint retrospective");
 
   // 8. SOP / Compliance / ADR

@@ -6,6 +6,7 @@
 import axios from 'axios';
 import databaseService from '../db/postgres.js';
 import settingsService from '../services/settingsService.js';
+import { info, warn } from '../utils/logger.js';
 
 /**
  * Activity 1: Harvest GitHub contributors & commit authors
@@ -51,7 +52,7 @@ export async function fetchGitHubTeamActivity(params = {}) {
       }
     }
   } catch (err) {
-    console.warn(`⚠️ [Temporal Activity] GitHub contributors harvest: ${err.message}`);
+    warn({ module: 'temporalActivities', action: 'fetchGitHubTeamActivityContributors', err }, 'GitHub contributors harvest warning');
   }
 
   try {
@@ -61,166 +62,187 @@ export async function fetchGitHubTeamActivity(params = {}) {
     });
     if (Array.isArray(res.data)) {
       for (const item of res.data) {
-        const email = item?.commit?.author?.email;
-        const name = item?.commit?.author?.name;
-        const login = item?.author?.login;
-        if (email && !email.includes('noreply.github.com')) {
+        const author = item.author?.login || item.commit?.author?.name;
+        const email = item.commit?.author?.email;
+        if (author && !author.includes('[bot]')) {
           members.push({
-            displayName: name || login || 'Engineer',
-            email,
-            githubUsername: login,
-            aliases: [name, login, email.split('@')[0]].filter(Boolean),
+            displayName: author,
+            email: email && !email.includes('users.noreply') ? email : null,
+            githubUsername: author,
+            aliases: [author, `@${author}`],
           });
         }
       }
     }
   } catch (err) {
-    console.warn(`⚠️ [Temporal Activity] GitHub commits harvest: ${err.message}`);
+    warn({ module: 'temporalActivities', action: 'fetchGitHubTeamActivityCommits', err }, 'GitHub commits harvest warning');
   }
 
   return { source: 'github', count: members.length, members };
 }
 
 /**
- * Activity 2: Harvest active assignees from Jira Cloud
+ * Activity 2: Harvest Jira assignees & project users
  */
 export async function fetchJiraTeamActivity(params = {}) {
   const isTest = process.env.NODE_ENV === 'test' || process.argv.some(a => a.includes('jasmine'));
-  if (isTest && !params.jira_url) {
+  if (isTest && !params.jira_token) {
     return { source: 'jira', count: 0, members: [] };
   }
 
   await settingsService.initialize();
   const rawSettings = settingsService.getCachedSettings() || settingsService.cachedRawSettings;
-  const url = (params.jira_url || rawSettings?.mcp?.jira?.url || process.env.JIRA_URL || '').replace(/\/$/, '');
-  const email = params.jira_email || rawSettings?.mcp?.jira?.email || process.env.JIRA_EMAIL || '';
-  const token = params.jira_api_token || rawSettings?.mcp?.jira?.apiToken || process.env.JIRA_API_TOKEN || '';
+  const token = params.jira_token || rawSettings?.mcp?.jira?.apiToken || process.env.JIRA_API_TOKEN || '';
+  const email = params.jira_email || rawSettings?.mcp?.jira?.email || rawSettings?.mcp?.jira?.username || process.env.JIRA_USER_EMAIL || process.env.JIRA_USERNAME || '';
+  const baseUrl = params.jira_url || rawSettings?.mcp?.jira?.url || process.env.JIRA_BASE_URL || '';
+  const projectKey = params.jira_project_key || rawSettings?.mcp?.jira?.projectKey || process.env.JIRA_PROJECT_KEY || '';
 
   const members = [];
-  const oauthTokens = await settingsService.getOAuthTokens('jira').catch(() => null);
-  let authHeader = null;
-
-  if (oauthTokens?.access_token) {
-    authHeader = `Bearer ${oauthTokens.access_token}`;
-  } else if (email && token && !token.includes('placeholder') && !token.includes('dummy')) {
-    authHeader = 'Basic ' + Buffer.from(`${email}:${token}`).toString('base64');
-  }
-
-  if (!url || !authHeader || url.includes('example.atlassian.net')) {
+  if (!token || !baseUrl || !baseUrl.includes('http') || baseUrl.includes('example.jira.com')) {
     return { source: 'jira', count: 0, members: [] };
   }
 
+  const cleanToken = token.trim();
+  const cleanEmail = email.trim();
+  const authHeader = cleanEmail && cleanToken && !cleanToken.startsWith('Basic ')
+    ? `Basic ${Buffer.from(`${cleanEmail}:${cleanToken}`).toString('base64')}`
+    : (cleanToken.startsWith('Basic ') || cleanToken.startsWith('Bearer ') ? cleanToken : `Bearer ${cleanToken}`);
+
+  const headers = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    Authorization: authHeader,
+  };
+
   try {
-    const res = await axios.get(`${url}/rest/api/3/users/search?query=%20&maxResults=50`, {
-      headers: {
-        Authorization: authHeader,
-        Accept: 'application/json',
-      },
-      timeout: 5000,
-    });
+    const url = baseUrl.endsWith('/rest/api/3') ? `${baseUrl}/users/search` : `${baseUrl.replace(/\/$/, '')}/rest/api/3/users/search`;
+    const res = await axios.get(url, { headers, timeout: 5000, params: { maxResults: 50 } });
     if (Array.isArray(res.data)) {
       for (const u of res.data) {
-        if (u.accountType === 'atlassian' && u.emailAddress) {
+        if (u.accountType === 'atlassian' && u.active) {
           members.push({
-            displayName: u.displayName || u.emailAddress.split('@')[0],
-            email: u.emailAddress,
-            jiraEmail: u.emailAddress,
+            displayName: u.displayName,
+            email: u.emailAddress || null,
             jiraAccountId: u.accountId,
-            aliases: [u.displayName, u.emailAddress.split('@')[0]].filter(Boolean),
+            avatarUrl: u.avatarUrls?.['48x48'] || null,
+            aliases: [u.displayName, u.emailAddress].filter(Boolean),
           });
         }
       }
     }
   } catch (err) {
-    console.warn(`⚠️ [Temporal Activity] Jira users harvest: ${err.message}`);
+    warn({ module: 'temporalActivities', action: 'fetchJiraTeamActivity', err }, 'Jira users harvest warning');
   }
 
   return { source: 'jira', count: members.length, members };
 }
 
 /**
- * Activity 3: Harvest workspace users from Notion
+ * Activity 3: Harvest Notion workspace users
  */
 export async function fetchNotionTeamActivity(params = {}) {
   const isTest = process.env.NODE_ENV === 'test' || process.argv.some(a => a.includes('jasmine'));
-  if (isTest && !params.notion_api_key) {
+  if (isTest && !params.notion_token) {
     return { source: 'notion', count: 0, members: [] };
   }
 
   await settingsService.initialize();
   const rawSettings = settingsService.getCachedSettings() || settingsService.cachedRawSettings;
-  const apiKey = params.notion_api_key || rawSettings?.mcp?.notion?.apiKey || process.env.NOTION_API_KEY || '';
+  const token = params.notion_token || rawSettings?.mcp?.notion?.apiKey || process.env.NOTION_API_KEY || '';
+
   const members = [];
-  if (!apiKey || apiKey.includes('placeholder') || apiKey.includes('dummy')) {
+  if (!token || token.includes('placeholder') || token.includes('dummy')) {
     return { source: 'notion', count: 0, members: [] };
   }
 
+  const headers = {
+    'Notion-Version': '2022-06-28',
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token.trim()}`,
+  };
+
   try {
-    const res = await axios.get('https://api.notion.com/v1/users', {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Notion-Version': '2022-06-28',
-      },
-      timeout: 5000,
-    });
-    if (Array.isArray(res.data?.results)) {
-      for (const nu of res.data.results) {
-        const userEmail = nu.person?.email;
-        if (userEmail) {
-          const name = nu.name || userEmail.split('@')[0];
-          members.push({
-            displayName: name,
-            email: userEmail,
-            notionName: name,
-            aliases: [name, userEmail.split('@')[0]].filter(Boolean),
-          });
-        }
+    const res = await axios.get('https://api.notion.com/v1/users?page_size=50', { headers, timeout: 5000 });
+    const results = res.data?.results || [];
+    for (const u of results) {
+      if (u.type === 'person' && u.person?.email) {
+        members.push({
+          displayName: u.name || u.person.email.split('@')[0],
+          email: u.person.email,
+          notionUserId: u.id,
+          avatarUrl: u.avatar_url || null,
+          aliases: [u.name, u.person.email].filter(Boolean),
+        });
       }
     }
   } catch (err) {
-    console.warn(`⚠️ [Temporal Activity] Notion users harvest: ${err.message}`);
+    warn({ module: 'temporalActivities', action: 'fetchNotionTeamActivity', err }, 'Notion users harvest warning');
   }
 
   return { source: 'notion', count: members.length, members };
 }
 
 /**
- * Activity 4: Harvest 1-on-1 attendees from Google Calendar
+ * Activity 4: Harvest Google Calendar attendees
  */
-export async function fetchGCalTeamActivity(params = {}) {
+export async function fetchGoogleCalendarTeamActivity(params = {}) {
+  const isTest = process.env.NODE_ENV === 'test' || process.argv.some(a => a.includes('jasmine'));
+  if (isTest && !params.google_api_key) {
+    return { source: 'gcal', count: 0, members: [] };
+  }
+
   await settingsService.initialize();
-  const rawSettings = settingsService.cachedRawSettings;
-  const apiKey = params.google_api_key || rawSettings?.mcp?.google?.apiKey || process.env.GOOGLE_API_KEY || '';
-  const calendarId = params.calendar_id || rawSettings?.mcp?.google?.calendarId || process.env.GOOGLE_CALENDAR_ID || 'primary';
+  const rawSettings = settingsService.getCachedSettings() || settingsService.cachedRawSettings;
+  const apiKey = params.google_api_key || rawSettings?.mcp?.googleCalendar?.apiKey || process.env.GOOGLE_CALENDAR_API_KEY || process.env.GOOGLE_API_KEY || '';
+  const calendarId = params.calendar_id || rawSettings?.mcp?.googleCalendar?.calendarId || process.env.GOOGLE_CALENDAR_ID || 'primary';
+
   const members = [];
-  if (!apiKey) {
+  if (!apiKey || apiKey.includes('placeholder') || apiKey.includes('dummy')) {
     return { source: 'gcal', count: 0, members: [] };
   }
 
   try {
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?maxResults=25&key=${apiKey}`;
-    const res = await axios.get(url, { timeout: 5000 });
-    if (Array.isArray(res.data?.items)) {
-      for (const item of res.data.items) {
-        for (const att of item.attendees || []) {
-          if (att.email && !att.email.includes('calendar.google.com')) {
-            const name = att.displayName || att.email.split('@')[0];
+    const isOAuth = apiKey.startsWith('ya29.') || apiKey.startsWith('Bearer ') || apiKey.length > 80;
+    const headers = isOAuth ? { Authorization: apiKey.startsWith('Bearer ') ? apiKey : `Bearer ${apiKey}` } : {};
+    const reqParams = {
+      maxResults: 50,
+      singleEvents: true,
+      orderBy: 'startTime',
+      timeMin: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      timeMax: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+      ...(isOAuth ? {} : { key: apiKey }),
+    };
+
+    const res = await axios.get(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
+      { params: reqParams, headers, timeout: 5000 }
+    );
+
+    const items = res.data?.items || [];
+    const seenEmails = new Set();
+
+    for (const evt of items) {
+      if (Array.isArray(evt.attendees)) {
+        for (const att of evt.attendees) {
+          if (att.email && !seenEmails.has(att.email.toLowerCase()) && !att.email.includes('calendar.google.com') && !att.resource) {
+            seenEmails.add(att.email.toLowerCase());
             members.push({
-              displayName: name,
+              displayName: att.displayName || att.email.split('@')[0],
               email: att.email,
-              gcalEmail: att.email,
-              aliases: [name, att.email.split('@')[0]].filter(Boolean),
+              aliases: [att.displayName, att.email].filter(Boolean),
             });
           }
         }
       }
     }
   } catch (err) {
-    console.warn(`⚠️ [Temporal Activity] Google Calendar harvest: ${err.message}`);
+    warn({ module: 'temporalActivities', action: 'fetchGoogleCalendarTeamActivity', err }, 'Google Calendar harvest warning');
   }
 
   return { source: 'gcal', count: members.length, members };
 }
+
+export const fetchGCalTeamActivity = fetchGoogleCalendarTeamActivity;
 
 /**
  * Activity 5: Reconcile all tool harvests and persist to PostgreSQL taskflow_backend
@@ -322,14 +344,16 @@ export async function reconcileAndPersistTeamActivity(params = {}) {
       await databaseService.upsertTeamMember(member);
       persistedCount++;
     } catch (e) {
-      console.warn(`⚠️ [Temporal Activity] Persistence warning for ${member.displayName}: ${e.message}`);
+      warn({ module: 'temporalActivities', action: 'persistTeamMember', member: member.displayName, err: e }, 'Persistence warning for team member');
     }
   }
 
-  console.log(`✅ [Temporal Activity] Reconciled & persisted ${persistedCount} team members into PostgreSQL`);
+  info({ module: 'temporalActivities', action: 'reconcileAndPersistTeamActivity', persistedCount, totalFound: mergedMap.size }, `Reconciled & persisted ${persistedCount} team members into PostgreSQL`);
   return {
     status: 'SUCCESS',
-    persistedCount: persistedCount || mergedMap.size,
+    success: true,
+    totalDiscovered: mergedMap.size,
+    persistedCount,
     members: Array.from(mergedMap.values()),
   };
 }
