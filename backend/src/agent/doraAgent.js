@@ -5,6 +5,7 @@ import { doraAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import identityService from '../services/identityService.js';
+import settingsService from '../services/settingsService.js';
 
 export const doraMetricsTool = createDeterministicToolHarness({
   name: 'calculate_dora_metrics',
@@ -13,7 +14,9 @@ export const doraMetricsTool = createDeterministicToolHarness({
   schema: z.object({
     sources: z.array(z.string()).default(['github']),
     time_window: z.enum(['7d', '30d', '90d']).default('30d'),
-    mode: z.enum(['ANALYZE', 'LIST_RAW', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    mode: z.enum(['ANALYZE', 'LIST_RAW', 'DRILL_DOWN', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    metric: z.enum(['ALL', 'LEAD_TIME', 'DEPLOY_FREQ', 'CFR', 'MTTR']).default('ALL'),
+    target: z.enum(['ALL', 'RELEASES', 'DEPLOYMENTS', 'PRS', 'ISSUES']).default('ALL'),
     repo_id: z.string().optional(),
     team_id: z.string().optional(),
     author: z.string().optional(),
@@ -27,10 +30,14 @@ export const doraMetricsTool = createDeterministicToolHarness({
       }
       try {
         const { executeMCPTool } = await import('../mcp/index.js');
-        const repoStr = inputArgs.repo_id || 'logsv/em-taskflow-ai';
-        const parts = repoStr.includes('/') ? repoStr.split('/') : ['logsv', repoStr];
-        const owner = parts[0] || 'logsv';
-        const repo = parts[1] || 'em-taskflow-ai';
+        const cachedGithub = settingsService.getCachedSettings()?.mcp?.github || {};
+        const defaultOwner = cachedGithub.owner || process.env.GITHUB_OWNER || process.env.GITHUB_USERNAME || '';
+        const defaultRepo = cachedGithub.repo || process.env.GITHUB_REPO || '';
+        const fallbackRepoStr = defaultOwner && defaultRepo ? `${defaultOwner}/${defaultRepo}` : defaultRepo || '';
+        const repoStr = inputArgs.repo_id || fallbackRepoStr;
+        const parts = repoStr.includes('/') ? repoStr.split('/') : [defaultOwner || 'main', repoStr || 'repo'];
+        const owner = parts[0] || defaultOwner || 'main';
+        const repo = parts[1] || defaultRepo || 'repo';
 
         const res = await Promise.race([
           executeMCPTool('get_dora_events', {
@@ -187,14 +194,76 @@ export const doraMetricsTool = createDeterministicToolHarness({
       bottlenecks.push('Deployment pipeline and review throughput are operating within healthy SLA bounds.');
     }
 
-    // Build Structured Markdown Output Card
-    const repoPath = ghData.repo_id || (inputArgs.repo_id ? inputArgs.repo_id : 'logsv/em-taskflow-ai');
+    const mode = inputArgs.mode || 'ANALYZE';
+    const targetMetric = inputArgs.metric || 'ALL';
+    const targetEntity = inputArgs.target || 'ALL';
+
+    const cachedGithub = settingsService.getCachedSettings()?.mcp?.github || {};
+    const defaultRepoPath = cachedGithub.owner && cachedGithub.repo ? `${cachedGithub.owner}/${cachedGithub.repo}` : (cachedGithub.repo || 'configured_repo');
+    const repoPath = ghData.repo_id || inputArgs.repo_id || defaultRepoPath;
     const repoUrl = `https://github.com/${repoPath}`;
+
     const targetLabel = inputArgs.team_id
       ? `Team '${inputArgs.team_id}'`
       : inputArgs.repo_id
       ? `Repository [**${inputArgs.repo_id}**](${repoUrl})`
       : `[**${repoPath}**](${repoUrl})`;
+
+    if (mode === 'DRILL_DOWN') {
+      let drillSummary = '';
+      if (targetMetric === 'LEAD_TIME' || targetEntity === 'PRS') {
+        drillSummary = `### ⏱️ Lead Time for Changes Drilldown: ${targetLabel}\n\n` +
+          `- **Average Lead Time**: **${averageLeadTimeHours} hours** (${rating} Tier)\n` +
+          `- **PR Review Queue Latency**: **${reviewWaitTimeHours} hours** (~${Math.round((reviewWaitTimeHours / Math.max(averageLeadTimeHours, 1)) * 100)}% of lead time)\n` +
+          `- **CI/CD Pipeline Build Time**: **~${ciBuildTimeHours * 60} minutes**\n\n` +
+          `> 💡 **Optimization Focus**: Lead time is predominantly constrained by review wait latency. Implementing pairing and $<400$ line PR sizing will yield immediate velocity improvements.`;
+      } else if (targetMetric === 'DEPLOY_FREQ' || targetEntity === 'RELEASES' || targetEntity === 'DEPLOYMENTS') {
+        drillSummary = `### 🚀 Deployment Frequency Drilldown: ${targetLabel}\n\n` +
+          `- **Cadence**: **${deploymentFrequencyWeeks} deploys/week** (${rating} Tier)\n` +
+          `- **Status**: ${deploymentFrequencyWeeks >= 1.0 ? '🟢 Steady production release cadence' : '🔴 Deployments occurring less than once per week'}\n\n` +
+          `> 💡 **Optimization Focus**: Moving towards smaller, trunk-based feature flags allows releasing daily rather than waiting for bi-weekly batch deployments.`;
+      } else if (targetMetric === 'CFR') {
+        drillSummary = `### 🛡️ Change Failure Rate Drilldown: ${targetLabel}\n\n` +
+          `- **Change Failure Rate**: **${changeFailureRatePct}%** (${rating} Tier)\n` +
+          `- **Benchmark**: High-performing teams maintain CFR $< 15\%$.\n\n` +
+          `> 💡 **Optimization Focus**: Add automated integration test coverage in GitHub Actions before code merge to prevent regressions reaching staging.`;
+      } else if (targetMetric === 'MTTR') {
+        drillSummary = `### ⏱️ Mean Time to Restore (MTTR) Drilldown: ${targetLabel}\n\n` +
+          `- **MTTR**: **${mttrHours} hours** (${rating} Tier)\n` +
+          `- **Benchmark**: Elite MTTR is $< 1.0\\text{ hour}$; healthy is $< 4.0\\text{ hours}$.\n\n` +
+          `> 💡 **Optimization Focus**: Verify automated rollbacks and pre-configured runbooks in incident postmortems.`;
+      } else {
+        drillSummary = `### 🔍 DORA Metrics Operational Breakdown: ${targetLabel}\n\n` +
+          `- **Deployment Frequency**: ${deploymentFrequencyWeeks} deploys/week\n` +
+          `- **Lead Time for Changes**: ${averageLeadTimeHours}h (Review Wait: ${reviewWaitTimeHours}h)\n` +
+          `- **Change Failure Rate**: ${changeFailureRatePct}%\n` +
+          `- **MTTR**: ${mttrHours}h\n`;
+      }
+
+      return {
+        mode: 'DRILL_DOWN',
+        metric: targetMetric,
+        rating,
+        tier: rating,
+        team_id: inputArgs.team_id || ghData.team_id || null,
+        repo_id: inputArgs.repo_id || ghData.repo_id || null,
+        time_window: inputArgs.time_window || '30d',
+        metrics: {
+          deployment_frequency: `${deploymentFrequencyWeeks} deploys/week`,
+          lead_time_hours: averageLeadTimeHours,
+          change_failure_rate_pct: changeFailureRatePct,
+          mttr_hours: mttrHours,
+          review_wait_time_hours: reviewWaitTimeHours,
+          ci_build_time_hours: ciBuildTimeHours,
+          active_issues_count: activeIssues.length,
+        },
+        bottlenecks,
+        is_cached: Boolean(ghData.is_cached),
+        data_source: dataSource,
+        synced_at: syncedAt,
+        summary: drillSummary,
+      };
+    }
 
     const provenanceNotice = ghData.is_cached
       ? `> ⚠️ **Notice**: Displaying cached operational telemetry from PostgreSQL database as of \`${syncedAt}\`.`

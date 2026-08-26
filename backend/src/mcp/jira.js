@@ -3,6 +3,7 @@ import { z } from "zod";
 import axios from "axios";
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import { getMcpConfig } from "../config.js";
+import settingsService from "../services/settingsService.js";
 
 let client = null;
 let tools = [];
@@ -31,14 +32,19 @@ function createNativeJiraTools(token, baseUrl, email = "") {
     }),
     func: async ({ jql = 'status in ("In Progress", "Blocked")', max_results = 20 }) => {
       try {
-        console.log(`🔷 Jira REST API jira_search: jql="${jql}"`);
+        const configuredProjectKey = settingsService.getCachedSettings()?.mcp?.jira?.projectKey || process.env.JIRA_PROJECT_KEY || "";
+        let effectiveJql = jql;
+        if (configuredProjectKey && !effectiveJql.toLowerCase().includes("project =") && !effectiveJql.toLowerCase().includes("project in")) {
+          effectiveJql = `project = "${configuredProjectKey}" AND (${effectiveJql})`;
+        }
+        console.log(`🔷 Jira REST API jira_search: jql="${effectiveJql}"`);
         if (baseUrl && (baseUrl.includes("atlassian.net") || baseUrl.includes("/rest/api"))) {
           const searchUrl = baseUrl.endsWith("/rest/api/3")
             ? `${baseUrl}/search`
             : `${baseUrl.replace(/\/$/, "")}/rest/api/3/search`;
           const res = await axios.post(
             searchUrl,
-            { jql, maxResults: max_results, fields: ["summary", "status", "assignee", "duedate", "issuelinks", "priority", "customfield_10020"] },
+            { jql: effectiveJql, maxResults: max_results, fields: ["summary", "status", "assignee", "duedate", "issuelinks", "priority", "customfield_10020"] },
             { headers, timeout: 8000 }
           );
           const issues = res.data?.issues || [];

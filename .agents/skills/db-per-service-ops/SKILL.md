@@ -47,9 +47,9 @@ docker exec em-taskflow-postgres psql -U taskflow -d taskflow_ai -c "\d pdf_chun
 ## 🧪 Verification Commands
 
 ```bash
-# Backend unit tests against taskflow_backend (233 specs)
+# Backend unit tests against taskflow_backend (240 specs, 0 failures)
 cd backend && npm test
 
-# Python AI unit tests against taskflow_ai (39 specs)
+# Python AI unit tests against taskflow_ai (39 specs, 0 failures)
 cd services/python-ai-service && uv run pytest
 ```

@@ -88,4 +88,52 @@ describe('SettingsService & LLM Model Hot-Reload Contract', () => {
     const restoredLLM = getChatModel();
     expect(restoredLLM.modelName || restoredLLM.model).toBe('hermes3:8b');
   });
+
+  it('should hot-reload GitHub, Jira, and Notion target configuration settings dynamically', async () => {
+    spyOn(databaseService, 'setAppSetting').and.callFake(async (key, val, src) => ({
+      key,
+      value: val,
+      source: src,
+      updated_at: new Date().toISOString(),
+    }));
+
+    await settingsService.updateSettings({
+      mcp: {
+        github: {
+          owner: 'acme-corp',
+          repo: 'enterprise-core',
+          token: 'ghp_dynamic_test_secret_123',
+        },
+        jira: {
+          url: 'https://acme-corp.atlassian.net',
+          projectKey: 'ACME',
+          email: 'admin@acme.corp',
+        },
+        notion: {
+          apiKey: 'ntn_test_secret_456',
+          okrPageId: 'page_okr_999',
+          retroPageId: 'page_retro_888',
+          sopPageId: 'page_sop_777',
+          careerPageId: 'page_career_666',
+        },
+      },
+    });
+
+    const cached = settingsService.getCachedSettings();
+    expect(cached.mcp.github.owner).toBe('acme-corp');
+    expect(cached.mcp.github.repo).toBe('enterprise-core');
+    expect(cached.mcp.jira.projectKey).toBe('ACME');
+    expect(cached.mcp.notion.okrPageId).toBe('page_okr_999');
+    expect(cached.mcp.notion.retroPageId).toBe('page_retro_888');
+    expect(cached.mcp.notion.sopPageId).toBe('page_sop_777');
+    expect(cached.mcp.notion.careerPageId).toBe('page_career_666');
+
+    // Verify masked settings mask sensitive tokens while exposing page IDs and repos
+    const masked = await settingsService.getMaskedSettings();
+    expect(masked.mcp.github.owner).toBe('acme-corp');
+    expect(masked.mcp.github.repo).toBe('enterprise-core');
+    expect(masked.mcp.github.token).toContain('•');
+    expect(masked.mcp.notion.apiKey).toContain('•');
+    expect(masked.mcp.notion.okrPageId).toBe('page_okr_999');
+  });
 });

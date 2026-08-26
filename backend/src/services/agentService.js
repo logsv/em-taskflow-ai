@@ -112,7 +112,7 @@ export class LangGraphAgentService {
       name: `Chat Request: "${(userQuery || '').slice(0, 40)}"`,
       query: userQuery,
       sessionId: options.sessionId || options.threadId || "default_session",
-      userId: options.userId || "user_logsv",
+      userId: options.userId || "default_user",
       tags: options.tags || ["em-taskflow", "chat-api"],
     });
     if (trace) {
@@ -447,7 +447,11 @@ export class LangGraphAgentService {
     const isListQuery = queryLower.startsWith("list ") || queryLower.startsWith("show all ") || queryLower.includes("list all") || queryLower.includes("list raw");
     const detectedTarget = queryLower.includes("pr") || queryLower.includes("pull request")
       ? "PRS"
-      : (queryLower.includes("wip") ? "WIP_ITEMS" : (queryLower.includes("block") ? "BLOCKERS" : "ALL"));
+      : (queryLower.includes("wip") ? "WIP_ITEMS"
+      : (queryLower.includes("block") ? "BLOCKERS"
+      : (queryLower.includes("release") || queryLower.includes("deploy") ? "RELEASES"
+      : (queryLower.includes("1-on-1") || queryLower.includes("one on one") || queryLower.includes("meeting") ? "ONE_ON_ONES"
+      : (queryLower.includes("skill") || queryLower.includes("gap") ? "SKILL_GAPS" : "ALL")))));
 
     try {
       const recoveryPromises = recoverable.map(async (domain) => {

@@ -4,6 +4,7 @@ import { getChatModel } from '../llm/index.js';
 import { sopAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
+import settingsService from '../services/settingsService.js';
 
 export const sopComplianceTool = createDeterministicToolHarness({
   name: 'query_sop_compliance',
@@ -47,8 +48,9 @@ export const sopComplianceTool = createDeterministicToolHarness({
     notion: async (_inputArgs) => {
       try {
         const { executeMCPTool } = await import('../mcp/index.js');
+        const configuredPageId = settingsService.getCachedSettings()?.mcp?.notion?.sopPageId || process.env.NOTION_SOP_PAGE_ID;
         const res = await Promise.race([
-          executeMCPTool('notion_search', { query: 'Engineering Handbook SOP ADR Governance' }),
+          executeMCPTool('notion_search', { query: configuredPageId || 'Engineering Handbook SOP ADR Governance' }),
           new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Notion search timed out')), 2500)),
         ]).catch(() => null);
 
@@ -61,7 +63,7 @@ export const sopComplianceTool = createDeterministicToolHarness({
             return {
               policy_hub_found: true,
               title: pages[0].title || 'Engineering Architecture & Governance Standards',
-              url: pages[0].url || 'https://notion.so/engineering-governance',
+              url: pages[0].url || (configuredPageId ? `https://notion.so/${configuredPageId}` : 'https://notion.so/engineering-governance'),
               source: 'mcp_notion',
               synced_at: new Date().toISOString(),
             };

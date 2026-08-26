@@ -51,6 +51,19 @@ describe('Phase 3 Core Analytics Agents Specs: DORA & Delivery Harnesses', () =>
       expect(parsed.team_id).toBeUndefined();
       expect(parsed.repo_id).toBeUndefined();
     });
+
+    it('should support DRILL_DOWN mode to analyze specific DORA metrics in depth', async () => {
+      const res = await doraMetricsTool.invoke({
+        time_window: '30d',
+        mode: 'DRILL_DOWN',
+        metric: 'LEAD_TIME',
+        repo_id: 'em-taskflow-ai',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      expect(res.data.mode).toBe('DRILL_DOWN');
+      expect(res.data.summary).toContain('Lead Time for Changes Drilldown');
+    });
   });
 
   describe('deliveryAgent & analyze_delivery_bottlenecks Tool Harness', () => {

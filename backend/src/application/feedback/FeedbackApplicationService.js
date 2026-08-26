@@ -43,7 +43,7 @@ export class FeedbackApplicationService {
           id: targetTraceId,
           name: 'user_conversation_feedback',
           sessionId: sessionContext?.sessionId || threadId || undefined,
-          userId: sessionContext?.userId || 'user_logsv',
+          userId: sessionContext?.userId || 'default_user',
           metadata: {
             messageId,
             threadId,

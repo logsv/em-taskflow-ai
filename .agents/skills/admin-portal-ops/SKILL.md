@@ -50,7 +50,7 @@ curl -s http://localhost:4000/api/admin/documents/01-valid.pdf/chunks
 docker compose ps
 ```
 
-### Run Full Test Suite (233 Specs)
+### Run Full Backend Test Suite (240 Specs)
 ```bash
 cd backend
 npm test

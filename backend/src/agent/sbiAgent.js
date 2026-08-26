@@ -5,6 +5,7 @@ import { sbiAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import identityService from '../services/identityService.js';
+import settingsService from '../services/settingsService.js';
 
 // Dictionary of subjective/emotional terms mapped to objective behavioral anchors
 const DE_BIASING_RULES = [
@@ -23,8 +24,10 @@ function sanitizeSubjectiveDraft(rawText) {
 
   for (const rule of DE_BIASING_RULES) {
     if (rule.pattern.test(sanitized)) {
-      eliminatedTerms.push(rule.pattern.source.replace(/\\b|\(|\)/g, ''));
-      sanitized = sanitized.replace(rule.pattern, rule.replacement);
+      sanitized = sanitized.replace(rule.pattern, (matched) => {
+        eliminatedTerms.push(matched);
+        return rule.replacement;
+      });
     }
   }
 
@@ -48,15 +51,22 @@ function cleanMetaPromptSituation(text, contextType) {
   return cleaned;
 }
 
-function linkifyWorkItems(text, repo = 'logsv/em-taskflow-ai') {
+function linkifyWorkItems(text, repo) {
   if (!text || typeof text !== 'string') return text;
+  const cached = settingsService.getCachedSettings();
+  const defaultRepo = cached?.mcp?.github?.owner && cached?.mcp?.github?.repo 
+    ? `${cached.mcp.github.owner}/${cached.mcp.github.repo}` 
+    : 'logsv/em-taskflow-ai';
+  const targetRepo = repo && repo !== 'github_repo' ? repo : defaultRepo;
+  const jiraUrl = (cached?.mcp?.jira?.url || process.env.JIRA_BASE_URL || 'https://jira.atlassian.net').replace(/\/$/, '');
+
   // Linkify PR #123 or #123 (avoiding already formatted markdown links)
   let out = text.replace(/(?<!\[)\b(PR\s+#?|#)(\d+)\b(?!\])/gi, (match, prefix, num) => {
-    return `[PR #${num}](https://github.com/${repo}/pull/${num})`;
+    return `[PR #${num}](https://github.com/${targetRepo}/pull/${num})`;
   });
   // Linkify Jira issue keys like ENG-104
   out = out.replace(/(?<!\[)\b([A-Z]{2,6}-\d+)\b(?!\])/g, (match, key) => {
-    return `[${key}](https://jira.atlassian.net/browse/${key})`;
+    return `[${key}](${jiraUrl}/browse/${key})`;
   });
   return out;
 }
@@ -107,12 +117,16 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
         else if (res && Array.isArray(res.items)) prs = res.items;
 
         if (prs.length > 0) {
+          const cached = settingsService.getCachedSettings();
+          const defaultRepo = cached?.mcp?.github?.owner && cached?.mcp?.github?.repo 
+            ? `${cached.mcp.github.owner}/${cached.mcp.github.repo}` 
+            : (cached?.mcp?.github?.repo || process.env.GITHUB_REPO || 'github_repo');
           return {
             related_prs_count: prs.length,
             recent_prs: prs.slice(0, 3).map((p) => ({
               number: p.number || 402,
               title: p.title || 'Feature implementation PR',
-              html_url: p.html_url || `https://github.com/logsv/em-taskflow-ai/pull/${p.number || 402}`,
+              html_url: p.html_url || `https://github.com/${defaultRepo}/pull/${p.number || 402}`,
             })),
             source: 'mcp_github',
             synced_at: new Date().toISOString(),

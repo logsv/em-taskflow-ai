@@ -26,15 +26,21 @@ function createNativeGithubTools(token) {
     };
   };
 
+  const getActiveOwnerRepo = (owner, repo) => {
+    const cached = settingsService.getCachedSettings()?.mcp?.github || {};
+    const activeOwner = owner || cached.owner || process.env.GITHUB_OWNER || process.env.GITHUB_USERNAME || "";
+    const activeRepo = repo || cached.repo || process.env.GITHUB_REPO || "";
+    return { owner: activeOwner, repo: activeRepo };
+  };
+
   const searchIssuesTool = new DynamicStructuredTool({
     name: "search_issues",
     description: "Search GitHub issues and pull requests across user repositories.",
     schema: z.object({
-      query: z.string().describe("GitHub search query string e.g. is:issue is:open repo:logsv/em-taskflow-ai"),
+      query: z.string().describe("GitHub search query string e.g. is:issue is:open repo:org/repo"),
     }),
     func: async ({ query }) => {
-      const owner = process.env.GITHUB_OWNER || process.env.GITHUB_USERNAME || "logsv";
-      const repo = process.env.GITHUB_REPO || "em-taskflow-ai";
+      const { owner, repo } = getActiveOwnerRepo();
       const { headers, hasToken } = getActiveHeaders();
 
       // If no valid token is configured in DB or env, immediately utilize the PostgreSQL github_issues DB cache
@@ -47,9 +53,9 @@ function createNativeGithubTools(token) {
               title: item.title,
               number: item.number,
               state: item.state,
-              html_url: item.html_url || `https://github.com/issues/${item.number}`,
+              html_url: item.html_url || (owner && repo ? `https://github.com/${owner}/${repo}/issues/${item.number}` : `https://github.com/issues/${item.number}`),
               user: item.assignee || "unassigned",
-              repo: item.repo || `${owner}/${repo}`,
+              repo: item.repo || (owner && repo ? `${owner}/${repo}` : "configured_repo"),
               created_at: item.synced_at || new Date().toISOString(),
               body: item.title || "",
             }));
@@ -63,7 +69,7 @@ function createNativeGithubTools(token) {
 
       try {
         let q = query ? query.trim() : "is:issue state:open";
-        if (owner && !q.includes("user:") && !q.includes("org:") && !q.includes("repo:")) {
+        if (owner && repo && !q.includes("user:") && !q.includes("org:") && !q.includes("repo:")) {
           q = `${q} repo:${owner}/${repo}`;
         }
         if (!q.includes("is:issue") && !q.includes("is:pr") && !q.includes("type:issue") && !q.includes("type:pr")) {
@@ -94,9 +100,9 @@ function createNativeGithubTools(token) {
             title: item.title,
             number: item.number,
             state: item.state,
-            html_url: item.html_url || `https://github.com/issues/${item.number}`,
+            html_url: item.html_url || (owner && repo ? `https://github.com/${owner}/${repo}/issues/${item.number}` : `https://github.com/issues/${item.number}`),
             user: item.assignee || "unassigned",
-            repo: item.repo || "github_repo",
+            repo: item.repo || (owner && repo ? `${owner}/${repo}` : "github_repo"),
             created_at: item.synced_at || new Date().toISOString(),
             body: item.title || "",
           }));
@@ -114,9 +120,9 @@ function createNativeGithubTools(token) {
               title: item.title,
               number: item.number,
               state: item.state,
-              html_url: item.html_url || `https://github.com/issues/${item.number}`,
+              html_url: item.html_url || (owner && repo ? `https://github.com/${owner}/${repo}/issues/${item.number}` : `https://github.com/issues/${item.number}`),
               user: item.assignee || "unassigned",
-              repo: item.repo || "github_repo",
+              repo: item.repo || (owner && repo ? `${owner}/${repo}` : "github_repo"),
               created_at: item.synced_at || new Date().toISOString(),
               body: item.title || "",
             }));
@@ -134,17 +140,19 @@ function createNativeGithubTools(token) {
     name: "issue_read",
     description: "Read details of a specific GitHub issue by owner, repo, and issue_number.",
     schema: z.object({
-      owner: z.string().default("logsv").describe("GitHub repository owner/username"),
-      repo: z.string().default("em-taskflow-ai").describe("GitHub repository name"),
+      owner: z.string().optional().describe("GitHub repository owner/username"),
+      repo: z.string().optional().describe("GitHub repository name"),
       issue_number: z.number().describe("Issue number"),
     }),
-    func: async ({ owner = "logsv", repo = "em-taskflow-ai", issue_number }) => {
+    func: async (args) => {
+      const { owner, repo } = getActiveOwnerRepo(args.owner, args.repo);
+      const issue_number = args.issue_number;
       const { headers, hasToken } = getActiveHeaders();
 
       if (!hasToken) {
         try {
           const databaseService = (await import("../db/postgres.js")).default;
-          const cachedIssues = await databaseService.getGithubIssues({ repo: `${owner}/${repo}` });
+          const cachedIssues = await databaseService.getGithubIssues({ repo: owner && repo ? `${owner}/${repo}` : undefined });
           const match = cachedIssues.find((i) => i.number === issue_number);
           if (match) {
             return JSON.stringify(
@@ -153,7 +161,7 @@ function createNativeGithubTools(token) {
                 number: match.number,
                 state: match.state,
                 html_url: match.html_url,
-                user: match.assignee || "logsv",
+                user: match.assignee || "unassigned",
                 body: match.title,
                 created_at: match.synced_at,
                 comments: 0,
@@ -220,11 +228,13 @@ function createNativeGithubTools(token) {
     name: "get_dora_events",
     description: "Fetch pull request lifecycles, release tags, and deployment events from GitHub for DORA metrics analysis.",
     schema: z.object({
-      owner: z.string().default("logsv").describe("GitHub repository owner/organization"),
-      repo: z.string().default("em-taskflow-ai").describe("GitHub repository name"),
+      owner: z.string().optional().describe("GitHub repository owner/organization"),
+      repo: z.string().optional().describe("GitHub repository name"),
       time_window: z.enum(["7d", "30d", "90d"]).default("30d").describe("Time window for DORA analysis"),
     }),
-    func: async ({ owner = "logsv", repo = "em-taskflow-ai", time_window = "30d" }) => {
+    func: async (args) => {
+      const { owner, repo } = getActiveOwnerRepo(args.owner, args.repo);
+      const time_window = args.time_window || "30d";
       const { headers } = getActiveHeaders();
       try {
         console.log(`🐙 GitHub REST API get_dora_events: ${owner}/${repo} (${time_window})`);
@@ -291,7 +301,7 @@ function createNativeGithubTools(token) {
         const mttrEstimate = hotfixCount > 0 ? 2.5 : 0.8;
 
         const payload = {
-          repo_id: `${owner}/${repo}`,
+          repo_id: owner && repo ? `${owner}/${repo}` : "configured_repo",
           time_window,
           deployment_frequency_per_week: deployFreqPerWeek,
           lead_time_hours: avgLeadTime,
@@ -319,11 +329,13 @@ function createNativeGithubTools(token) {
     name: "get_pull_requests",
     description: "Fetch pull requests from GitHub for code review queues and delivery tracking.",
     schema: z.object({
-      owner: z.string().default("logsv").describe("GitHub repository owner/username"),
-      repo: z.string().default("em-taskflow-ai").describe("GitHub repository name"),
+      owner: z.string().optional().describe("GitHub repository owner/username"),
+      repo: z.string().optional().describe("GitHub repository name"),
       state: z.enum(["open", "closed", "all"]).default("open").describe("State of pull requests"),
     }),
-    func: async ({ owner = "logsv", repo = "em-taskflow-ai", state = "open" }) => {
+    func: async (args) => {
+      const { owner, repo } = getActiveOwnerRepo(args.owner, args.repo);
+      const state = args.state || "open";
       const { headers, hasToken } = getActiveHeaders();
       if (!hasToken) {
         try {
@@ -335,9 +347,9 @@ function createNativeGithubTools(token) {
               number: item.number,
               title: item.title,
               state: item.state,
-              html_url: item.html_url || `https://github.com/${owner}/${repo}/pull/${item.number}`,
+              html_url: item.html_url || (owner && repo ? `https://github.com/${owner}/${repo}/pull/${item.number}` : `https://github.com/pull/${item.number}`),
               user: item.assignee || "unassigned",
-              repo: item.repo || `${owner}/${repo}`,
+              repo: item.repo || (owner && repo ? `${owner}/${repo}` : "github_repo"),
               created_at: item.synced_at || new Date().toISOString(),
               draft: false,
             }));
@@ -361,9 +373,9 @@ function createNativeGithubTools(token) {
           number: item.number,
           title: item.title,
           state: item.state,
-          html_url: item.html_url || `https://github.com/${owner}/${repo}/pull/${item.number}`,
+          html_url: item.html_url || (owner && repo ? `https://github.com/${owner}/${repo}/pull/${item.number}` : `https://github.com/pull/${item.number}`),
           user: item.user?.login || "unassigned",
-          repo: `${owner}/${repo}`,
+          repo: owner && repo ? `${owner}/${repo}` : "github_repo",
           created_at: item.created_at,
           updated_at: item.updated_at,
           draft: Boolean(item.draft),

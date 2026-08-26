@@ -19,11 +19,11 @@ export async function fetchGitHubTeamActivity(params = {}) {
   await settingsService.initialize();
   const rawSettings = settingsService.getCachedSettings() || settingsService.cachedRawSettings;
   const token = params.github_token || rawSettings?.mcp?.github?.token || process.env.GITHUB_TOKEN || '';
-  const owner = params.github_owner || rawSettings?.mcp?.github?.owner || process.env.GITHUB_OWNER || 'logsv';
-  const repo = params.github_repo || rawSettings?.mcp?.github?.repo || process.env.GITHUB_REPO || 'em-taskflow-ai';
+  const owner = params.github_owner || rawSettings?.mcp?.github?.owner || process.env.GITHUB_OWNER || '';
+  const repo = params.github_repo || rawSettings?.mcp?.github?.repo || process.env.GITHUB_REPO || '';
 
   const members = [];
-  if (!token || token.includes('placeholder') || token.includes('dummy')) {
+  if (!token || token.includes('placeholder') || token.includes('dummy') || !owner || !repo) {
     return { source: 'github', count: 0, members: [] };
   }
 
@@ -300,15 +300,15 @@ export async function reconcileAndPersistTeamActivity(params = {}) {
       track: 'ENGINEERING_MANAGEMENT',
       tenureMonths: 24,
     });
-    mergedMap.set('vikas', {
-      id: 'mem_vikas',
-      displayName: 'Vikas Kumar',
-      email: 'vikas.mca.jnu@gmail.com',
-      githubUsername: 'logsv',
-      jiraEmail: 'vikas.mca.jnu@gmail.com',
-      gcalEmail: 'vikas.mca.jnu@gmail.com',
-      notionName: 'Vikas Kumar',
-      aliases: ['Vikas', 'logsv', 'eng_vikas'],
+    mergedMap.set('taylor', {
+      id: 'mem_taylor',
+      displayName: 'Taylor Morgan',
+      email: 'taylor.morgan@company.internal',
+      githubUsername: 'taylor-dev',
+      jiraEmail: 'taylor.morgan@company.internal',
+      gcalEmail: 'taylor.morgan@company.internal',
+      notionName: 'Taylor Morgan',
+      aliases: ['Taylor', 'taylorm', 'eng_taylor', 'taylor-dev'],
       currentLevel: 'L6_STAFF',
       targetLevel: 'L7_PRINCIPAL',
       track: 'INDIVIDUAL_CONTRIBUTOR',

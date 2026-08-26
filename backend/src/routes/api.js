@@ -298,7 +298,7 @@ router.post('/feedback', attachSessionContext, async (req, res) => {
 
 router.post('/github/sync', async (req, res) => {
   try {
-    const repo = req.body?.repo || 'logsv/em-taskflow-ai';
+    const repo = req.body?.repo;
     const result = await githubSyncService.syncGithubData(repo);
     res.json(result);
   } catch (error) {

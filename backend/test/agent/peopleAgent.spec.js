@@ -76,6 +76,20 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
     expect(res.data.mode).toBe('LIST_RAW');
     expect(Array.isArray(res.data.items)).toBe(true);
     expect(res.data.totalEvents).toBeGreaterThanOrEqual(1);
+    expect(res.data.summary).toContain('Scheduled 1-on-1 & Growth Check-ins');
+  });
+
+  it('should support DRILL_DOWN mode for targeted skill gap analysis', async () => {
+    const res = await peopleGrowthTool.invoke({
+      engineer_id: 'eng_alex',
+      mode: 'DRILL_DOWN',
+      target: 'SKILL_GAPS',
+    });
+
+    expect(res.status).toBe('SUCCESS');
+    expect(res.data.mode).toBe('DRILL_DOWN');
+    expect(res.data.readiness_score).toBeDefined();
+    expect(res.data.summary).toContain('Skill Gap & Career Growth Breakdown');
   });
 
   it('should execute multi-source executors including Notion notes and Google Calendar', async () => {

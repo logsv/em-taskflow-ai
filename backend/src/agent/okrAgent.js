@@ -4,6 +4,7 @@ import { getChatModel } from '../llm/index.js';
 import { okrAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
+import settingsService from '../services/settingsService.js';
 
 export const okrProgressTool = createDeterministicToolHarness({
   name: 'evaluate_okr_progress',
@@ -21,8 +22,9 @@ export const okrProgressTool = createDeterministicToolHarness({
     notion: async (_inputArgs) => {
       try {
         const { executeMCPTool } = await import('../mcp/index.js');
+        const configuredPageId = settingsService.getCachedSettings()?.mcp?.notion?.okrPageId || process.env.NOTION_OKR_PAGE_ID;
         const res = await Promise.race([
-          executeMCPTool('notion_search', { query: 'Engineering OKRs Quarterly Review' }),
+          executeMCPTool('notion_search', { query: configuredPageId || 'Engineering OKRs Quarterly Review' }),
           new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Notion search timed out')), 2500)),
         ]).catch(() => null);
 
@@ -34,8 +36,8 @@ export const okrProgressTool = createDeterministicToolHarness({
           if (pages.length > 0) {
             return {
               okr_hub_found: true,
-              hub_title: pages[0].title || 'Q4 Engineering OKRs & KPI Hub',
-              hub_url: pages[0].url || 'https://notion.so/okrs-q4',
+              hub_title: pages[0].title || 'Engineering OKRs & KPI Hub',
+              hub_url: pages[0].url || (configuredPageId ? `https://notion.so/${configuredPageId}` : 'https://notion.so/okrs'),
               source: 'mcp_notion',
               synced_at: new Date().toISOString(),
             };

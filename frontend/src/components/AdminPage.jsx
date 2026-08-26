@@ -2004,13 +2004,13 @@ function AdminPage({ onBackToChat }) {
 
                     <div className="form-row">
                       <div className="form-group flex-2">
-                        <label>Owner / Org</label>
+                        <label>Owner / Organization</label>
                         <input
                           type="text"
                           className="settings-input"
                           value={adminSettings?.mcp?.github?.owner || ''}
                           onChange={(e) => updateMcpField('github', 'owner', e.target.value)}
-                          placeholder="logsv"
+                          placeholder="e.g. acme-corp or your-username"
                         />
                       </div>
                       <div className="form-group flex-2">
@@ -2020,7 +2020,7 @@ function AdminPage({ onBackToChat }) {
                           className="settings-input"
                           value={adminSettings?.mcp?.github?.repo || ''}
                           onChange={(e) => updateMcpField('github', 'repo', e.target.value)}
-                          placeholder="em-taskflow-ai"
+                          placeholder="e.g. web-app or core-backend"
                         />
                       </div>
                     </div>
@@ -2043,6 +2043,9 @@ function AdminPage({ onBackToChat }) {
                           {showSecrets.githubToken ? '👁️' : '🔒'}
                         </button>
                       </div>
+                      <span className="input-hint" style={{ marginTop: '4px', display: 'block', fontSize: '0.75rem', color: '#94a3b8' }}>
+                        ℹ️ All DORA metrics, pull request review queue checks, and release tracking will target this repository.
+                      </span>
                     </div>
 
                     {connTestStatus.github && (
@@ -2089,6 +2092,55 @@ function AdminPage({ onBackToChat }) {
                         </button>
                       </div>
                     </div>
+
+                    <div className="form-row">
+                      <div className="form-group flex-2">
+                        <label>Target OKR Page / Database ID (Optional)</label>
+                        <input
+                          type="text"
+                          className="settings-input"
+                          value={adminSettings?.mcp?.notion?.okrPageId || ''}
+                          onChange={(e) => updateMcpField('notion', 'okrPageId', e.target.value)}
+                          placeholder="e.g. 1a2b3c4d... or OKR Page Title"
+                        />
+                      </div>
+                      <div className="form-group flex-2">
+                        <label>Target Retrospective Board ID (Optional)</label>
+                        <input
+                          type="text"
+                          className="settings-input"
+                          value={adminSettings?.mcp?.notion?.retroPageId || ''}
+                          onChange={(e) => updateMcpField('notion', 'retroPageId', e.target.value)}
+                          placeholder="e.g. 4d3c2b1a... or Retro Board Title"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="form-row">
+                      <div className="form-group flex-2">
+                        <label>Target SOP / Policy Hub ID (Optional)</label>
+                        <input
+                          type="text"
+                          className="settings-input"
+                          value={adminSettings?.mcp?.notion?.sopPageId || ''}
+                          onChange={(e) => updateMcpField('notion', 'sopPageId', e.target.value)}
+                          placeholder="e.g. 9z8y7x6w... or SOP Hub Title"
+                        />
+                      </div>
+                      <div className="form-group flex-2">
+                        <label>Target Career Ladder / 1-on-1s ID (Optional)</label>
+                        <input
+                          type="text"
+                          className="settings-input"
+                          value={adminSettings?.mcp?.notion?.careerPageId || ''}
+                          onChange={(e) => updateMcpField('notion', 'careerPageId', e.target.value)}
+                          placeholder="e.g. 5e6f7g8h... or Career Rubric Title"
+                        />
+                      </div>
+                    </div>
+                    <span className="input-hint" style={{ marginTop: '2px', display: 'block', fontSize: '0.75rem', color: '#94a3b8' }}>
+                      ℹ️ Link your team's specific Notion document/database IDs or leave blank to search across your workspace automatically.
+                    </span>
 
                     {connTestStatus.notion && (
                       <div className={`conn-status-badge ${connTestStatus.notion.success ? 'badge-online' : 'badge-offline'}`}>

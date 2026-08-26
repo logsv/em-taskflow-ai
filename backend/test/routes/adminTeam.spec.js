@@ -15,7 +15,7 @@ describe('Admin Team Members Service & Identity Management', () => {
     expect(members.length).toBeGreaterThanOrEqual(3);
     expect(members.some((m) => m.displayName === 'Alex Williams')).toBe(true);
     expect(members.some((m) => m.displayName === 'Sarah Chen')).toBe(true);
-    expect(members.some((m) => m.displayName === 'Vikas Kumar')).toBe(true);
+    expect(members.some((m) => m.displayName === 'Taylor Morgan')).toBe(true);
   });
 
   it('should create a new team member and persist in database', async () => {

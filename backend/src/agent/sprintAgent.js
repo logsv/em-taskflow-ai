@@ -247,11 +247,23 @@ export const sprintPlanTool = createDeterministicToolHarness({
     ];
 
     if (mode === 'LIST_RAW') {
+      const ticketRows = candidateTickets.map((t) => {
+        const url = process.env.JIRA_BASE_URL ? `${process.env.JIRA_BASE_URL.replace(/\/$/, '')}/browse/${t.key}` : '#';
+        const typeBadge = t.is_tech_debt ? '🛠️ Tech Debt' : '✨ Feature';
+        return `| [**${t.key}**](${url}) | **${t.summary}** | **${t.story_points} pts** | \`@${t.assignee}\` | ${typeBadge} |`;
+      });
+
+      const listSummary = `### 📋 Candidate Sprint Backlog: ${sprintName} (${candidateTickets.length} Tickets, ${candidateTickets.reduce((sum, t) => sum + (t.story_points || 0), 0)} pts)\n\n` +
+        `| Jira Key | Summary | Estimate | Assignee | Category |\n| :--- | :--- | :---: | :--- | :---: |\n` +
+        (ticketRows.length > 0 ? ticketRows.join('\n') : '| *No candidate tickets found* | - | - | - | - |') +
+        `\n\n> 💡 **Commitment Target**: Recommended capacity commitment is **${recommendedCommitment} pts**.`;
+
       return {
         mode: 'LIST_RAW',
         sprint_id: sprintId,
         totalCandidates: candidateTickets.length,
         items: candidateTickets,
+        summary: listSummary,
       };
     }
 

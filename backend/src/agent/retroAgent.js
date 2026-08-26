@@ -5,6 +5,7 @@ import { retroAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import identityService from '../services/identityService.js';
+import settingsService from '../services/settingsService.js';
 
 export const sprintRetroTool = createDeterministicToolHarness({
   name: 'generate_sprint_retro',
@@ -24,8 +25,9 @@ export const sprintRetroTool = createDeterministicToolHarness({
     notion: async (_inputArgs) => {
       try {
         const { executeMCPTool } = await import('../mcp/index.js');
+        const configuredPageId = settingsService.getCachedSettings()?.mcp?.notion?.retroPageId || process.env.NOTION_RETRO_PAGE_ID;
         const res = await Promise.race([
-          executeMCPTool('notion_search', { query: 'Sprint Retrospective Retro Board' }),
+          executeMCPTool('notion_search', { query: configuredPageId || 'Sprint Retrospective Retro Board' }),
           new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Notion search timed out')), 2500)),
         ]).catch(() => null);
 
@@ -37,8 +39,8 @@ export const sprintRetroTool = createDeterministicToolHarness({
           if (pages.length > 0) {
             return {
               retro_board_found: true,
-              board_title: pages[0].title || 'Sprint 42 Retrospective',
-              board_url: pages[0].url || 'https://notion.so/retro-42',
+              board_title: pages[0].title || 'Sprint Retrospective Board',
+              board_url: pages[0].url || (configuredPageId ? `https://notion.so/${configuredPageId}` : 'https://notion.so/retro'),
               source: 'mcp_notion',
               synced_at: new Date().toISOString(),
             };

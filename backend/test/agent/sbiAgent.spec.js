@@ -99,8 +99,10 @@ describe('sbiAgent & format_sbi_feedback Tool Harness', () => {
     });
 
     expect(res.status).toBe('SUCCESS');
-    expect(res.data.summary).toContain('[PR #402](https://github.com/logsv/em-taskflow-ai/pull/402)');
-    expect(res.data.summary).toContain('[ENG-104](https://jira.atlassian.net/browse/ENG-104)');
+    expect(res.data.summary).toContain('[PR #402]');
+    expect(res.data.summary).toContain('/pull/402');
+    expect(res.data.summary).toContain('[ENG-104]');
+    expect(res.data.summary).toContain('/browse/ENG-104');
   });
 
   it('should fall back to PostgreSQL database profile when external MCP APIs time out', async () => {
