@@ -9,7 +9,7 @@ import sys
 import types
 import json
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -72,12 +72,13 @@ logger = logging.getLogger(__name__)
 
 
 def get_ragas_evaluators(
-    model_name: str = "hermes3:8b",
+    model_name: Optional[str] = None,
     embedding_model: str = "nomic-embed-text",
     base_url: str = "http://localhost:11434",
 ):
     """Initializes Ragas LLM and Embeddings wrappers for local Ollama."""
-    llm = ChatOllama(model=model_name, base_url=base_url, temperature=0.0)
+    active_model = model_name or os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b")
+    llm = ChatOllama(model=active_model, base_url=base_url, temperature=0.0)
     embeddings = OllamaEmbeddings(model=embedding_model, base_url=base_url)
 
     evaluator_llm = LangchainLLMWrapper(llm)
@@ -89,11 +90,13 @@ def get_ragas_evaluators(
 def run_ragas_evaluation(
     dataset_records: List[Dict[str, Any]] = None,
     sync_to_langfuse: bool = True,
+    model_name: Optional[str] = None,
 ) -> Dict[str, float]:
     """
     Executes Ragas evaluation across Faithfulness, Answer Relevancy,
     Context Precision, and Context Recall.
     """
+    active_model = model_name or os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b")
     if not dataset_records:
         dataset_records = [
             {
@@ -108,25 +111,15 @@ def run_ragas_evaluation(
             {
                 "question": "How are sprint velocity buffers allocated for tech debt?",
                 "contexts": [
-                    "Engineering Playbook: 20% of sprint capacity must be allocated to tech debt and maintenance tasks."
+                    "SOP Section 7: Teams must reserve 20% of sprint capacity for tech debt and refactoring tasks."
                 ],
-                "answer": "20% of team capacity is reserved for technical debt, bug fixes, and infrastructure maintenance.",
-                "ground_truth": "20% of capacity is allocated for tech debt.",
+                "answer": "Teams are required to dedicate 20% of sprint velocity to technical debt and architectural improvements.",
+                "ground_truth": "20% capacity allocated for tech debt.",
             },
             {
-                "question": "What are the requirements for promotion from Senior to Staff Engineer?",
+                "question": "What is the policy for code freeze windows before major releases?",
                 "contexts": [
-                    "Career Framework Section 3: Staff Engineers must demonstrate organization-wide technical influence, "
-                    "mentor at least 2 senior engineers, and lead architectural design reviews across multiple squads."
-                ],
-                "answer": "To reach Staff Engineer, candidates must show cross-team technical leadership, mentor other engineers, and lead architectural decisions across squads.",
-                "ground_truth": "Staff engineers need multi-squad technical leadership, mentoring senior engineers, and leading architecture reviews.",
-            },
-            {
-                "question": "What is the policy on code freeze periods prior to major releases?",
-                "contexts": [
-                    "Release Management SOP: Code freeze begins 48 hours prior to scheduled production deployments. "
-                    "Only hotfixes with VP of Engineering approval may be merged during this window."
+                    "SOP Section 9: Code freeze begins 48 hours before scheduled production deployments. Emergency hotfixes require VP approval."
                 ],
                 "answer": "Code freezes take effect 48 hours before major releases. Only hotfixes approved by leadership can be merged.",
                 "ground_truth": "Code freeze starts 48 hours prior to release; merges require VP Engineering sign-off.",
@@ -143,9 +136,9 @@ def run_ragas_evaluation(
         }
 
     eval_dataset = Dataset.from_list(dataset_records)
-    evaluator_llm, evaluator_embeddings = get_ragas_evaluators()
+    evaluator_llm, evaluator_embeddings = get_ragas_evaluators(model_name=active_model)
 
-    logger.info("🧪 Running official Ragas evaluation with hermes3:8b and nomic-embed-text...")
+    logger.info(f"🧪 Running official Ragas evaluation with {active_model} and nomic-embed-text...")
 
     try:
         results = evaluate(

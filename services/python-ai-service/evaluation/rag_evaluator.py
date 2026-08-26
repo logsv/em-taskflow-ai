@@ -6,6 +6,7 @@ and evaluates HyDE query transformation, RRF synergy lift, and chunk recall usin
 
 import math
 import logging
+import os
 from typing import Dict, Any, List, Optional
 try:
     import ollama
@@ -15,8 +16,8 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_OLLAMA_HOST = "http://localhost:11434"
-DEFAULT_MODEL = "hermes3:8b"
+DEFAULT_OLLAMA_HOST = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+DEFAULT_MODEL = os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b")
 
 
 class PythonRAGEvaluator:

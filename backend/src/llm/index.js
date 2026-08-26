@@ -103,37 +103,63 @@ function createChatModelForProvider(providerKey, options = {}) {
 /**
  * Initialize all LLM clients
  */
-export async function initializeLLM() {
-  if (initialized) return;
+export async function initializeLLM(force = false) {
+  if (initialized && chatModel && !force) return;
 
-  console.log('🤖 Initializing local Ollama LLM client...');
-  
   const llmConfig = getLlmConfig();
   const providerKey = llmConfig.defaultProvider || 'ollama';
+  const modelName = llmConfig.defaultModel || 'hermes3:8b';
+
+  console.log(`🤖 Initializing LLM client (Provider: ${providerKey}, Model: ${modelName})...`);
 
   try {
     chatModel = createChatModelForProvider(providerKey, {
-      model: llmConfig.defaultModel || 'hermes3:8b',
+      model: modelName,
       temperature: 0.1,
     });
   } catch (err) {
     console.warn(`⚠️ Primary LLM provider "${providerKey}" failed (${err.message}). Falling back to local Ollama...`);
     chatModel = createChatModelForProvider('ollama', {
-      model: 'hermes3:8b',
+      model: modelName || 'hermes3:8b',
       temperature: 0.1,
     });
   }
 
   initialized = true;
-  console.log('✅ Local Ollama LLM client initialized successfully');
+  console.log(`✅ LLM client initialized successfully (${modelName})`);
 }
 
 /**
- * Get default chat model instance (singleton)
+ * Reset active cached LLM model so the next call picks up updated database settings
  */
-export function getChatModel() {
+export function resetChatModel() {
+  chatModel = null;
+  initialized = false;
+}
+
+/**
+ * Set custom chat model instance (useful for unit test stubs/mocks)
+ */
+export function setChatModel(model) {
+  chatModel = model;
+  initialized = true;
+}
+
+/**
+ * Get default chat model instance (singleton or custom options instance)
+ */
+export function getChatModel(options = null) {
+  if (options && (options.temperature !== undefined || options.model !== undefined)) {
+    return createChatModelInstance(options);
+  }
   if (!chatModel) {
-    throw new Error('LLM not initialized. Call initializeLLM() first.');
+    const llmConfig = getLlmConfig();
+    const providerKey = llmConfig.defaultProvider || 'ollama';
+    chatModel = createChatModelForProvider(providerKey, {
+      model: llmConfig.defaultModel || 'hermes3:8b',
+      temperature: 0.1,
+    });
+    initialized = true;
   }
   return chatModel;
 }

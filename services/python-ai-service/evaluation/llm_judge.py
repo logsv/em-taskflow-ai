@@ -5,12 +5,13 @@ Standardized on local SLM inference (hermes3:8b via Ollama)
 
 import json
 import logging
+import os
 from typing import Dict, Any, List, Optional
 from scipy.stats import kendalltau
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_JUDGE_MODEL = "hermes3:8b"
+DEFAULT_JUDGE_MODEL = os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b")
 
 
 class BaseLLMJudge:

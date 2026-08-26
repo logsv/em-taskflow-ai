@@ -305,36 +305,34 @@ export const sprintPlanTool = createDeterministicToolHarness({
 | **Net Productive Hours** | **${netAvailableHours} hrs** | ${Math.round(capacityRatio * 100)}% of gross available time | ✅ Sustainable Pace |
 | **Recommended Target Velocity** | **${recommendedCommitment} pts** | Adjusted for availability (-${baseTargetVelocity - recommendedCommitment} pts) | 🎯 High Reliability |
 
----
+> 💡 **Executive Bottom Line**: Lock commitment to **${recommendedCommitment} story points** (${featurePoints} pts Features, ${techDebtPoints} pts Tech Debt, ${bufferAllocationPoints} pts Buffer). ${riskWarnings.length > 0 ? riskWarnings[0] : 'Capacity is evenly distributed.'}
 
-### 🎯 Capacity Allocation Breakdown (${featurePct}/${techDebtPct}/${unplannedBufferPct} Rule)
+<details>
+<summary><b>🎯 Capacity Allocation (${featurePct}/${techDebtPct}/${unplannedBufferPct} Rule) & Execution Risks</b></summary>
 
-- 🚀 **Feature Deliverables (${featurePct}%)**: **${featurePoints} story points** allocated to core product roadmap deliverables.
-- 🛠️ **Technical Debt & Reliability (${techDebtPct}%)**: **${techDebtPoints} story points** allocated to architecture hardening, index tuning & refactoring.
-- 🛡️ **Unplanned Scope & Incident Buffer (${unplannedBufferPct}%)**: **${bufferAllocationPoints} story points** reserved for production triage and escalations.
+- 🚀 **Feature Deliverables (${featurePct}%)**: **${featurePoints} story points**
+- 🛠️ **Technical Debt & Reliability (${techDebtPct}%)**: **${techDebtPoints} story points**
+- 🛡️ **Unplanned Scope & Incident Buffer (${unplannedBufferPct}%)**: **${bufferAllocationPoints} story points**
 
 \`\`\`
 [ Features: ${featurePoints} pts (${featurePct}%) ] [ Tech Debt: ${techDebtPoints} pts (${techDebtPct}%) ] [ Buffer: ${bufferAllocationPoints} pts (${unplannedBufferPct}%) ]
 \`\`\`
 
----
+- **Execution Risks & Workload Audit**:
+${riskWarnings.length > 0 ? riskWarnings.map((w) => `  * ${w}`).join('\n') : '  * ✅ Zero high-severity concentration risks detected.'}
 
-### ⚠️ Sprint Execution Risks & Concentration Audit
-${riskWarnings.length > 0 ? riskWarnings.map((w) => `- ${w}`).join('\n') : '- ✅ **Zero high-severity execution risks detected**. Capacity is evenly distributed across team members.'}
+</details>
 
----
+<details>
+<summary><b>📋 Recommended Candidate Backlog (${candidateTickets.length} Issues, ${totalCandidatePoints} pts)</b></summary>
 
-### 📋 Recommended Sprint Commitment Plan (Candidate Backlog)
 | Issue Key | Summary | Type | Points | Assignee |
 | :--- | :--- | :---: | :---: | :--- |
 ${candidateTickets.map((t) => `| [${t.key}](https://jira.atlassian.net/browse/${t.key}) | ${t.summary} | ${t.is_tech_debt ? '🛠️ Tech Debt' : '🚀 Feature'} | **${t.story_points} pts** | ${t.assignee} |`).join('\n')}
 
----
+- **Ceremony Next Steps**: Ensure peer pairing for issues $\ge 5$ story points.
 
-### 📌 Next Steps for Sprint Planning Ceremony:
-1. Lock commitment to **${recommendedCommitment} story points** to maintain a 100% sprint completion reliability rate.
-2. Ensure the **${techDebtPoints} points** of technical debt items ([ENG-204](https://jira.atlassian.net/browse/ENG-204), [ENG-212](https://jira.atlassian.net/browse/ENG-212)) remain in scope.
-3. Confirm peer pairing partners for any ticket estimated at $\ge 5$ story points.
+</details>
 `;
 
     return {

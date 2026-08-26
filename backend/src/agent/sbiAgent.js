@@ -348,23 +348,24 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
 | **💥 Impact** | *${linkedImpact}* |
 | **🌱 Growth Action** | *${linkedActionPlan}* |
 
----
+<details>
+<summary><b>🛡️ Objectivity & Bias Audit (Score: ${objectivityScore}%)</b></summary>
 
-### 🛡️ Objectivity & Bias Audit
 - **Tone Objectivity Score**: **${objectivityScore}%** (Rooted in observable facts).
 - **Bias Flagging**: **CLEAN** (${eliminatedTerms.length > 0 ? `Eliminated subjective labels: ${eliminatedTerms.join(', ')}` : 'No personality attributions or emotional bias detected'}).
 - **NVC Compliance**: Formulated strictly using Non-Violent Communication observations and actionable requests.${artifactsSection}
 
----
+</details>
 
-### 💬 Recommended 1-on-1 Manager Talking Script
+<details>
+<summary><b>💬 1-on-1 Manager Talking Script & 30-Day Follow-Up</b></summary>
+
 > ${talkingScript}
 
----
-
-### 📌 Next Checkpoint & Follow-Up Agreement
 - **30-Day Checkpoint**: Review upcoming sprint deliverables for consistency with agreed action plan.
 - **Assigned Deliverable**: ${linkedActionPlan}.
+
+</details>
 `;
 
     return {

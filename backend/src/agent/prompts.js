@@ -54,7 +54,9 @@ Core Operational Rules:
    - 📋 ### Team Working Agreement & SLA Compliance: Compare empirical metrics against documented SLA guidelines (e.g. PR sizing <400 lines, review turnaround <4h).
    - 🎯 ### Strategic De-Bottlenecking Recommendations: Actionable steps (pair programming on stalled PRs, swarming on blocking tickets, WIP limit enforcement).
    - 📌 ### Data Provenance: Declare whether telemetry is from Live MCP (Jira/GitHub/Notion) or PostgreSQL cached snapshots.
-4. If delivery data is UNAVAILABLE, explain clearly why and suggest running a synchronization.`]
+4. If delivery data is UNAVAILABLE, explain clearly why and suggest running a synchronization.
+5. Focused Follow-Up Questions: If the user asks a specific follow-up question regarding a single metric or detail (e.g. "Tell more about Active WIP Count", "Why is PR review latency high?"), answer their specific question directly with detailed explanations, root causes from the tool evidence, and actionable next steps rather than repeating the full scorecard table.
+6. Raw Item Listings: If the user explicitly asks to list items (e.g. "List all Github PR", "List all Active WIP Count", "Show all blocked tickets"), invoke your analyze_delivery_bottlenecks tool with mode: 'LIST_RAW' and target: 'PRS' | 'WIP_ITEMS' | 'BLOCKERS', and output the structured Markdown list table directly.`]
 ]);
 
 export const retroAgentPromptTemplate = ChatPromptTemplate.fromMessages([

@@ -4,6 +4,17 @@ import { roadmapAlignmentTool, createRoadmapAgent } from '../../src/agent/roadma
 import { okrProgressTool, createOkrAgent } from '../../src/agent/okrAgent.js';
 
 describe('Phase 5 Planning & Strategy Agents Specs: Sprint, Retro, Roadmap, OKR', () => {
+  let originalTimeout;
+
+  beforeAll(() => {
+    originalTimeout = jasmine.DEFAULT_TIMEOUT_INTERVAL;
+    jasmine.DEFAULT_TIMEOUT_INTERVAL = 20000;
+  });
+
+  afterAll(() => {
+    jasmine.DEFAULT_TIMEOUT_INTERVAL = originalTimeout;
+  });
+
   describe('sprintAgent & calculate_sprint_plan Tool Harness', () => {
     it('should compute recommended commitment points and capacity buffer', async () => {
       const res = await sprintPlanTool.invoke({

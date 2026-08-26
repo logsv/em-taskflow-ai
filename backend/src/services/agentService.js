@@ -119,6 +119,7 @@ export class LangGraphAgentService {
       options.trace = trace;
       options.tracerCallbacks = callbacks;
     }
+    options.messages = Array.isArray(options.messages) ? options.messages : (Array.isArray(options.history) ? options.history : []);
 
     const runtime = getRuntimeConfig();
     const routerRuntime = runtime.router || {};
@@ -331,9 +332,9 @@ export class LangGraphAgentService {
   }
 
   async runEnforcedPolicy(query, routingPlan, decision, options = {}) {
-    if (routingPlan?.intent_type === "DIRECT_LLM" || routingPlan?.intent_type === "ATTACHMENT_DIRECT" || (Array.isArray(routingPlan?.domains) && routingPlan.domains.length === 0 && !routingPlan.must_use_tools && !routingPlan.allow_rag)) {
-      decision.selectedPath = "direct-llm-fastpath";
-      console.log(`⚡ [AGENT SERVICE FAST-PATH]: Direct LLM execution for query "${query.slice(0, 40)}..." (0 tools).`);
+    if (routingPlan?.intent_type === "DIRECT_LLM" || routingPlan?.intent_type === "ATTACHMENT_DIRECT" || routingPlan?.intent_type === "CONTEXTUAL_SYNTHESIS" || (Array.isArray(routingPlan?.domains) && routingPlan.domains.length === 0 && !routingPlan.must_use_tools && !routingPlan.allow_rag)) {
+      decision.selectedPath = routingPlan?.intent_type === "CONTEXTUAL_SYNTHESIS" ? "contextual-synthesis" : "direct-llm-fastpath";
+      console.log(`⚡ [AGENT SERVICE FAST-PATH]: ${decision.selectedPath} execution for query "${query.slice(0, 40)}..." (0 tools).`);
       return this.runLlmExecutor(query, options);
     }
 
@@ -442,10 +443,26 @@ export class LangGraphAgentService {
 
     const answers = [];
     let recoveredAny = false;
+    const queryLower = String(query || "").toLowerCase();
+    const isListQuery = queryLower.startsWith("list ") || queryLower.startsWith("show all ") || queryLower.includes("list all") || queryLower.includes("list raw");
+    const detectedTarget = queryLower.includes("pr") || queryLower.includes("pull request")
+      ? "PRS"
+      : (queryLower.includes("wip") ? "WIP_ITEMS" : (queryLower.includes("block") ? "BLOCKERS" : "ALL"));
+
     try {
-      for (const domain of recoverable) {
+      const recoveryPromises = recoverable.map(async (domain) => {
         const { tool, input } = recoveryTools[domain];
-        const result = await tool.invoke({ mode: "ANALYZE", fetch_fresh_data: true, ...input });
+        try {
+          const dynamicMode = isListQuery ? "LIST_RAW" : (input.mode || "ANALYZE");
+          const result = await tool.invoke({ mode: dynamicMode, target: detectedTarget, fetch_fresh_data: true, ...input });
+          return { domain, tool, result };
+        } catch (err) {
+          return { domain, tool, result: { status: "FAILED", error: err?.message } };
+        }
+      });
+
+      const outcomes = await Promise.all(recoveryPromises);
+      for (const { domain, tool, result } of outcomes) {
         decision.toolsUsed = Array.from(new Set([...toArray(decision.toolsUsed), tool.name]));
         decision.reasons.push(`supervisor_missing_${tool.name}_recovered_deterministically`);
         if (result?.status !== "SUCCESS") {
@@ -501,17 +518,18 @@ export class LangGraphAgentService {
   }
 
   normalizeRoutingPlan(rawPlan) {
-    const inputDomains = toArray(rawPlan?.domains);
+    const isContextualSynthesis = rawPlan?.intent_type === "CONTEXTUAL_SYNTHESIS";
+    const inputDomains = isContextualSynthesis ? [] : toArray(rawPlan?.domains);
     const domains = Array.from(new Set(inputDomains.filter((domain) => VALID_DOMAINS.has(domain))));
     const confidence = Number(rawPlan?.confidence);
     const normalizedConfidence = Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.2;
-    const hasWorkspaceDomains = domains.some((domain) => domain !== "rag");
+    const hasWorkspaceDomains = !isContextualSynthesis && domains.some((domain) => domain !== "rag");
 
     return {
       intent_type: rawPlan?.intent_type || null,
       domains,
-      must_use_tools: hasWorkspaceDomains ? true : !!rawPlan?.must_use_tools,
-      allow_rag: !!rawPlan?.allow_rag,
+      must_use_tools: hasWorkspaceDomains ? true : (isContextualSynthesis ? false : !!rawPlan?.must_use_tools),
+      allow_rag: isContextualSynthesis ? false : !!rawPlan?.allow_rag,
       confidence: normalizedConfidence,
       reasoning_summary: String(rawPlan?.reasoning_summary || "LLM router plan.").slice(0, 300),
     };
@@ -841,13 +859,26 @@ export class LangGraphAgentService {
   }
 
   async runLlmExecutor(query, options = {}) {
-    const { HumanMessage: HM, SystemMessage: SM } = await import("@langchain/core/messages");
+    const { HumanMessage: HM, SystemMessage: SM, AIMessage: AM } = await import("@langchain/core/messages");
     const llm = getChatModel();
     const callbacks = getTracerCallbacks(options);
-    const response = await llm.invoke([
-      new SM("You are a helpful AI assistant. Answer the user's question clearly and concisely."),
-      new HM(query),
-    ], { callbacks });
+    
+    const inputMessages = [
+      new SM("You are an expert Engineering Management AI assistant. Answer the user's question clearly, thoroughly, and concisely using the conversation history context where relevant."),
+    ];
+
+    if (Array.isArray(options.messages) && options.messages.length > 0) {
+      for (const m of options.messages) {
+        if (m.role === "user" || m._getType?.() === "human") {
+          inputMessages.push(new HM(m.content));
+        } else if (m.role === "assistant" || m._getType?.() === "ai") {
+          inputMessages.push(new AM(m.content));
+        }
+      }
+    }
+    inputMessages.push(new HM(query));
+
+    const response = await llm.invoke(inputMessages, { callbacks });
     const answer = typeof response.content === "string" ? response.content : String(response.content || "");
     return {
       answer: answer || "No response generated.",

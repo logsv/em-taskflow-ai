@@ -244,9 +244,10 @@ export const sprintRetroTool = createDeterministicToolHarness({
 
 ${whatWentWell.map((w) => `- ${w}`).join('\n')}
 
----
+> 💡 **Executive Bottom Line**: Sprint concluded with strong feature completion. Top continuous improvement focus: **CI/CD Flakiness & PR Review Turnaround**.
 
-### 🔍 Friction Points & Thematic Clustering (What Didn't Go Well)
+<details>
+<summary><b>🔍 Friction Points & Thematic Clustering (${whatNeedsImprovement.length} Areas)</b></summary>
 
 | Friction Theme | Root Cause Analysis | Systemic Impact | Blameless Severity |
 | :--- | :--- | :--- | :---: |
@@ -256,24 +257,21 @@ ${whatWentWell.map((w) => `- ${w}`).join('\n')}
 
 ${whatNeedsImprovement.map((w) => `- ${w}`).join('\n')}
 
----
+- **Recurring Multi-Sprint Patterns**:
+${recurringPatterns.map((p) => `  * ${p}`).join('\n')}
 
-### 🔄 Recurring Multi-Sprint Patterns & Chronic Gaps
-${recurringPatterns.map((p) => `- ${p}`).join('\n')}
+</details>
 
----
-
-### 🎯 SMART Continuous Improvement Action Plan
+<details>
+<summary><b>🎯 SMART Continuous Improvement Action Plan (${smartActionItems.length} Deliverables)</b></summary>
 
 | Action Item | Owner | Target Checkpoint | Success Metric |
 | :--- | :---: | :---: | :--- |
 ${smartActionItems.map((a) => `| **${a.task}** | \`${a.owner}\` | ${a.target_sprint} | ${a.success_metric} |`).join('\n')}
 
----
+- **Facilitation Tone**: Strictly blameless Nonviolent Communication (NVC) anchored in systemic process enhancements.
 
-### 📌 Data Provenance
-- **Data Source**: Live MCP Telemetry (GitHub / Jira / Notion) & PostgreSQL \`sprint_analytics\`.
-- **Facilitation Tone**: Strictly blameless Nonviolent Communication (NVC). All friction framed as systemic workflow bottlenecks.
+</details>
 `;
 
     return {

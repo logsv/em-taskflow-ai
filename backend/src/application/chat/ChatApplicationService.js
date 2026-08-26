@@ -69,8 +69,8 @@ export class ChatApplicationService {
     const { rewrittenQuery, wasRewritten, entities: extractedEntities } = preRouterRewriter.resolveQuery(query, existingMessages);
     const queryToProcess = wasRewritten ? rewrittenQuery : query;
 
-    // Tier 4: Episodic Memory Retrieval for past references outside active window
-    const episodicPastContext = await episodicMemoryService.retrieveRelevantPastContext(queryToProcess, ensuredThread?.id, 2).catch(() => []);
+    // Tier 4: Episodic Memory Retrieval for past references outside active window (0 extra DB queries)
+    const episodicPastContext = await episodicMemoryService.retrieveRelevantPastContext(queryToProcess, ensuredThread?.id, 2, existingMessages).catch(() => []);
 
     const result = await this.agentService.processQuery(queryToProcess, {
       threadId: ensuredThread.id,
@@ -293,16 +293,29 @@ function createMessageRepoAdapter(dbService) {
 }
 
 /**
- * Sliding Window + State Anchoring for Chat History
- * Keeps the latest N turns active, compressing older turns into a state summary anchor.
+ * Sliding Window + State Anchoring for Chat History with Progressive Disclosure Condensation
+ * Keeps the latest N turns active, compressing older turns and collapsing <details> accordions.
  */
 export function optimizeChatHistory(messages = [], maxActiveTurns = 8) {
-  if (!Array.isArray(messages) || messages.length <= maxActiveTurns + 2) {
-    return messages;
+  if (!Array.isArray(messages)) {
+    return [];
   }
 
-  const activeMessages = messages.slice(-maxActiveTurns);
-  const olderMessages = messages.slice(0, -maxActiveTurns);
+  // Condense older assistant accordion blocks (<details>...</details>) in working memory to save tokens
+  const processedMessages = messages.map((m, idx) => {
+    if (m.role === 'assistant' && typeof m.content === 'string' && idx < messages.length - 2) {
+      const condensed = m.content.replace(/<details>[\s\S]*?<summary><b>(.*?)<\/b><\/summary>[\s\S]*?<\/details>/gi, '[Collapsed Section: $1]');
+      return { ...m, content: condensed };
+    }
+    return m;
+  });
+
+  if (processedMessages.length <= maxActiveTurns + 2) {
+    return processedMessages;
+  }
+
+  const activeMessages = processedMessages.slice(-maxActiveTurns);
+  const olderMessages = processedMessages.slice(0, -maxActiveTurns);
 
   const keyTopics = olderMessages
     .filter((m) => m.role === 'user')

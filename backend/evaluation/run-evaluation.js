@@ -1,9 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import 'dotenv/config';
+import settingsService from '../src/services/settingsService.js';
 import { initializeLLM } from '../src/llm/index.js';
 import { getRouterChain } from '../src/agent/llmRouter.js';
-import { getRuntimeConfig } from '../src/config.js';
+import { config, getLlmConfig, getRuntimeConfig } from '../src/config.js';
 import { MultiAgentTrajectoryStrategy } from './evaluators/multi-agent-eval.js';
 import { RAGPipelineStrategy } from './evaluators/rag-eval.js';
 import { PreLLMProcessorChain } from './evaluators/pre-llm-eval.js';
@@ -28,10 +29,22 @@ class GoldenDatasetRepository {
 
 /**
  * Composite Evaluation Runner
- * Executes evaluation strategies (Multi-Agent Trajectory, RAG, Context Resolution, Pre-LLM SLA) using hermes3:8b.
+ * Executes evaluation strategies (Multi-Agent Trajectory, RAG, Context Resolution, Pre-LLM SLA) using configured model.
  */
 async function runEvaluation() {
-  console.log('🧪 Initializing Evaluation Suite (Model: hermes3:8b)...');
+  // 1. Initialize settings from PostgreSQL database if available
+  await settingsService.initialize().catch(() => {});
+
+  // 2. Allow CLI override via --model <name>
+  const modelIdx = process.argv.indexOf('--model');
+  if (modelIdx !== -1 && process.argv[modelIdx + 1]) {
+    const overrideModel = process.argv[modelIdx + 1];
+    config.llm.defaultModel = overrideModel;
+    process.env.LLM_DEFAULT_MODEL = overrideModel;
+  }
+
+  const activeModel = config.llm?.defaultModel || getLlmConfig().defaultModel || process.env.LLM_DEFAULT_MODEL || 'hermes3:8b';
+  console.log(`🧪 Initializing Evaluation Suite (Model: ${activeModel})...`);
 
   // If in CI or Ollama is disabled, check if local Ollama server is reachable
   if (process.env.OLLAMA_AVAILABLE === 'false' || process.env.CI_MODE === 'true' || process.env.CI === 'true') {
@@ -48,7 +61,7 @@ async function runEvaluation() {
     }
   }
 
-  await initializeLLM();
+  await initializeLLM(true);
 
   const router = getRouterChain();
   const runtime = getRuntimeConfig();
@@ -135,7 +148,7 @@ async function runEvaluation() {
 
   const allPassed = Object.values(gateResults).every(Boolean);
 
-  console.log('\n📊 Evaluation Metric Summary (hermes3:8b):');
+  console.log(`\n📊 Evaluation Metric Summary (${activeModel}):`);
   console.table(trajectoryResults.map((r) => ({
     ID: r.eval_id,
     Query: r.prompt ? r.prompt.substring(0, 40) + '...' : '',
@@ -162,7 +175,7 @@ async function runEvaluation() {
 
     const compositeSummary = {
       timestamp: new Date().toISOString(),
-      model: 'hermes3:8b',
+      model: activeModel,
       total_prompts: totalPrompts,
       domain_selection_accuracy: domainSelectionAccuracy,
       unwanted_rag_rate: unwantedRagRate,
@@ -190,7 +203,7 @@ async function runEvaluation() {
       });
 
       const goldenDs = await langfuse.getDataset('golden-dataset');
-      const runName = `hermes3:8b-eval-${new Date().toISOString().slice(0, 10)}`;
+      const runName = `${activeModel}-eval-${new Date().toISOString().slice(0, 10)}`;
 
       if (goldenDs && Array.isArray(goldenDs.items)) {
         for (const res of trajectoryResults) {

@@ -13,28 +13,36 @@ export class EpisodicMemoryService {
 
   /**
    * Retrieves relevant historical message snippets if query references past conversation.
+   * Prioritizes already loaded in-memory existingMessages to prevent duplicate database queries.
    * @param {string} query
    * @param {string} threadId
    * @param {number} limit
+   * @param {Array<Object>|null} existingMessages
    * @returns {Promise<Array<{ role: string, content: string, createdAt: string }>>}
    */
-  async retrieveRelevantPastContext(query = '', threadId = null, limit = 2) {
-    if (!threadId || !query || query.trim().length < 5) {
+  async retrieveRelevantPastContext(query = '', threadId = null, limit = 2, existingMessages = null) {
+    if (!query || query.trim().length < 5) {
       return [];
     }
 
     const q = String(query).toLowerCase();
     const isPastReference =
-      /\b(earlier|previously|before|we discussed|you mentioned|as said|in the beginning|last time)\b/i.test(q) ||
-      /\bwhat was\b/i.test(q);
+      /\b(earlier|previously|before|we discussed|you mentioned|as said|in the beginning|last time|what was|what did we decide)\b/i.test(q);
 
     if (!isPastReference) {
       return [];
     }
 
     try {
-      // Query past messages for this thread excluding the most recent 6 messages
-      const allMessages = await this.db.getThreadMessages(threadId, 50).catch(() => []);
+      // Prioritize in-memory existingMessages to avoid redundant database roundtrips
+      let allMessages = Array.isArray(existingMessages) && existingMessages.length > 0
+        ? existingMessages
+        : null;
+
+      if (!allMessages && threadId) {
+        allMessages = await this.db.getThreadMessages(threadId, 50).catch(() => []);
+      }
+
       if (!Array.isArray(allMessages) || allMessages.length <= 6) {
         return [];
       }

@@ -26,9 +26,11 @@ export async function buildEmResponse(query, rawAnswer, evidenceBySource, decisi
     !cleanAnswer ||
     decision.needsClarification || 
     decision.selectedPath === "direct-llm-fastpath" || 
+    decision.selectedPath === "contextual-synthesis" ||
     decision.selectedPath === "rag+llm" || 
     decision.ragHit || 
     decision.routingPlan?.intent_type === "DIRECT_LLM" ||
+    decision.routingPlan?.intent_type === "CONTEXTUAL_SYNTHESIS" ||
     !hasVerifiedToolEvidence ||
     isStructured
   ) {

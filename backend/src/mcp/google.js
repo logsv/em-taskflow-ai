@@ -34,17 +34,22 @@ function createNativeGoogleCalendarTools(apiKey) {
           const startIso = timeMin || now.toISOString();
           const endIso = timeMax || new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
+          const isOAuth = effectiveKey.startsWith("ya29.") || effectiveKey.startsWith("Bearer ") || effectiveKey.length > 80;
+          const headers = isOAuth ? { Authorization: effectiveKey.startsWith("Bearer ") ? effectiveKey : `Bearer ${effectiveKey}` } : {};
+          const params = {
+            maxResults: max_results,
+            timeMin: startIso,
+            timeMax: endIso,
+            singleEvents: true,
+            orderBy: "startTime",
+            ...(isOAuth ? {} : { key: effectiveKey }),
+          };
+
           const res = await axios.get(
             `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(effectiveCalId)}/events`,
             {
-              params: {
-                maxResults: max_results,
-                timeMin: startIso,
-                timeMax: endIso,
-                singleEvents: true,
-                orderBy: "startTime",
-                key: effectiveKey,
-              },
+              params,
+              headers,
               timeout: 5000,
             }
           );
@@ -122,10 +127,15 @@ function createNativeGoogleCalendarTools(apiKey) {
 
       try {
         if (effectiveKey && eventId) {
+          const isOAuth = effectiveKey.startsWith("ya29.") || effectiveKey.startsWith("Bearer ") || effectiveKey.length > 80;
+          const headers = isOAuth ? { Authorization: effectiveKey.startsWith("Bearer ") ? effectiveKey : `Bearer ${effectiveKey}` } : {};
+          const params = isOAuth ? {} : { key: effectiveKey };
+
           const res = await axios.get(
             `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(effectiveCalId)}/events/${encodeURIComponent(eventId)}`,
             {
-              params: { key: effectiveKey },
+              params,
+              headers,
               timeout: 4000,
             }
           );
@@ -168,6 +178,13 @@ function createNativeGoogleCalendarTools(apiKey) {
 
       try {
         if (effectiveKey) {
+          const isOAuth = effectiveKey.startsWith("ya29.") || effectiveKey.startsWith("Bearer ") || effectiveKey.length > 80;
+          const headers = {
+            "Content-Type": "application/json",
+            ...(isOAuth ? { Authorization: effectiveKey.startsWith("Bearer ") ? effectiveKey : `Bearer ${effectiveKey}` } : {}),
+          };
+          const params = isOAuth ? {} : { key: effectiveKey };
+
           const res = await axios.post(
             `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(effectiveCalId)}/events`,
             {
@@ -178,8 +195,8 @@ function createNativeGoogleCalendarTools(apiKey) {
               attendees: attendees.map((email) => ({ email })),
             },
             {
-              params: { key: effectiveKey },
-              headers: { "Content-Type": "application/json" },
+              params,
+              headers,
               timeout: 5000,
             }
           );

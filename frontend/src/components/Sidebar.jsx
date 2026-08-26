@@ -289,10 +289,8 @@ function Sidebar({
           </div>
           <a
             href="/admin"
-            onClick={(e) => {
-              e.preventDefault();
-              if (onOpenAdmin) onOpenAdmin();
-            }}
+            target="_blank"
+            rel="noopener noreferrer"
             className="admin-portal-link-btn"
             style={{
               marginTop: '10px',
