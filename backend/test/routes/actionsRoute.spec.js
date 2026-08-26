@@ -203,4 +203,67 @@ describe('EM Action Hub & Audit REST API Routes', () => {
       expect(res.body.orchestrator).toBeDefined();
     });
   });
+
+  describe('Slack Dispatch & Nudge Endpoints (/api/actions/slack/* & /:id/nudge)', () => {
+    it('GET /api/actions/slack/channels should list accessible channels', async () => {
+      const res = await request.get('/api/actions/slack/channels');
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.channels)).toBe(true);
+      expect(res.body.channels.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('POST /api/actions/slack/dispatch should dispatch executive brief to Slack', async () => {
+      const res = await request
+        .post('/api/actions/slack/dispatch')
+        .send({
+          channel: '#engineering-leadership',
+          mode: 'consolidated',
+          customNote: 'Please review before morning standup',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.overview).toBeDefined();
+      expect(res.body.message).toContain('dispatched');
+    });
+
+    it('POST /api/actions/:id/nudge should dispatch targeted Slack nudge to engineer', async () => {
+      const res = await request
+        .post('/api/actions/act_test_pr_42/nudge')
+        .send({
+          customNote: 'Alex, can you take a look at PR #42 today?',
+          sender: 'Sarah Chen (EM)',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.nudge).toBeDefined();
+      expect(res.body.message).toContain('Nudge sent');
+    });
+
+    it('POST /api/actions/:id/nudge should return 404 if action item not found', async () => {
+      const res = await request
+        .post('/api/actions/non_existent_id/nudge')
+        .send({ customNote: 'Ping' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('POST /api/actions/batch should update status of multiple action items', async () => {
+      const res = await request
+        .post('/api/actions/batch')
+        .send({
+          actionIds: ['act_test_pr_42', 'act_test_1on1_sarah'],
+          operation: 'status_update',
+          status: 'COMPLETED',
+          resolutionNotes: 'Batch completed during sprint sync',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.updatedCount).toBe(2);
+    });
+  });
 });

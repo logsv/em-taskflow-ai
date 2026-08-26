@@ -28,7 +28,7 @@ This file provides system guidance, architectural rules, anti-hallucination guid
    - Agents must NEVER write analytics trace tables into application databases.
 
 4. **Rule of Verification**:
-   - Never declare success without executing unit tests. All **269 backend specs** and **45 Python AI specs** must pass with **0 failures**.
+   - Never declare success without executing unit tests. All **300 backend specs** and **45 Python AI specs** must pass with **0 failures**.
 
 5. **No Superficial Symptom Patches**:
    - NEVER resolve errors by masking symptoms, swallowing exceptions silently, returning dummy fallbacks, or commenting out failing unit test assertions.
@@ -44,11 +44,11 @@ This file provides system guidance, architectural rules, anti-hallucination guid
 
 ### 2. Isolated Database & Vector Storage (PostgreSQL 16 `pgvector/pgvector:pg16` + Redis)
 - **PostgreSQL 16 (`em-taskflow-postgres`)**:
-  - `taskflow_backend`: Application state, sessions, threads, chat messages, GitHub issues cache, team members.
+  - `taskflow_backend`: Application state, sessions, threads, chat messages, GitHub issues cache, team members, `em_audit_runs`, `em_action_items`.
   - `taskflow_ai`: Dedicated `pdf_chunks` table with `pgvector` HNSW index (`idx_pdf_chunks_embedding`) and `pg_trgm` FTS index (`idx_pdf_chunks_fts`).
 - **Redis (`em-taskflow-redis:6379`)**:
   - `semanticCache.js`: High-speed vector similarity semantic caching for RAG queries (0.95 threshold, 1-hour TTL, SHA-256 keying).
-- **Fault-Tolerant In-Memory Fallbacks**: In-memory stores (`inMemoryPdfChunks`, `inMemoryGithubIssues`) ensure backend endpoints NEVER fail even if PostgreSQL is temporarily offline.
+- **Fault-Tolerant In-Memory Fallbacks**: In-memory stores (`inMemoryPdfChunks`, `inMemoryGithubIssues`, `inMemoryAuditRuns`, `inMemoryActionItems`) ensure backend endpoints NEVER fail even if PostgreSQL is temporarily offline.
 
 ### 3. Advanced RAG Engine (HyDE + Dense/Sparse Hybrid Search + RRF)
 - **HyDE Query Expansion**: Generates hypothetical candidate document answers (`generateHypotheticalDocument` in `retriever.js`) to enrich retrieval context.
@@ -77,7 +77,7 @@ This file provides system guidance, architectural rules, anti-hallucination guid
 - **Jira OAuth 2.0 PKCE**: Native Jira REST tool harness (`jira_search`, `jira_get_issue`, `jira_create_issue`) with automated token management.
 - **Notion REST API & OAuth 2.0**: Native workspace search (`notion_search`), page fetch (`notion_get_page`), database queries (`notion_query_database`).
 - **GitHub REST API**: User-Agent headers, repo scoping, pull requests, issue search, and DORA deployment event tracking.
-- **Slack Web API**: Channels listing (`slack_list_channels`), message search (`slack_search_messages`), with Temporal Human-in-the-Loop approval governance for posting (`slack_post_message`).
+- **Slack Web API**: Channels listing (`slack_list_channels`), message search (`slack_search_messages`), with Temporal Human-in-the-Loop approval governance for posting (`slack_post_message`), and direct Action Hub notifications/nudges.
 - **Google Calendar**: Dynamic calendar ID configuration, event retrieval (`get_calendar_events`), event creation, attendee schedule inspection.
 - **Base Tool Harness**: Standardized circuit breaking, exponential backoff, schema validation, and logging across all external MCP endpoints.
 
@@ -107,6 +107,18 @@ This file provides system guidance, architectural rules, anti-hallucination guid
 - **Phase 3: Telemetry Tracing, Local Git Hook & CI/CD Enforcement**:
   - `scoreTrace()`: Non-blocking trace score exporter to `langfuse_db` (port 5433).
   - `.git/hooks/pre-push`: Automated local pre-push git verification executing Jasmine unit tests, Python Pytests, and evaluation SLA gates.
+
+### 9. Autonomous EM Task & Health Audit Engine & Action Hub (`/actions`)
+- **Temporal 4-Hour Background Cron** (`0 */4 * * *`): `emAutonomousAuditWorkflow` coordinates parallel domain harvests (`dora_and_delivery`, `people_and_cadence`, `sprint_and_okr`, `sop_and_governance`).
+- **Multi-Channel Slack Dispatch Engine**:
+  - *Consolidated Mode*: Executive scorecard with Health Score ($20 \le \text{Score} \le 100$), DORA tier, sprint pacing %, overdue 1-on-1s, and top 4 action items.
+  - *Threaded Breakdown Mode*: Parent scorecard + 4 threaded replies breaking down Delivery, People, Sprint, and SOP.
+  - *Individual Action Item Nudge*: 1-click Slack reminder ping to assigned engineer with PR/Jira deep link.
+- **Interactive EM Action Hub Cockpit**:
+  - Multi-view action triage (**Kanban Board**, **Dense Table** with bulk select, **Rich Card Grid**).
+  - Action item inspection drawer & resolution notes logger.
+  - Team 1-on-1 cadence tracking matrix & career level progression.
+  - Live ADR-008 per-service database governance checklist.
 
 ---
 

@@ -232,4 +232,141 @@ router.get('/audit/status/:workflowId', async (req, res) => {
   }
 });
 
+// GET /api/actions/slack/channels - List available Slack channels
+router.get('/slack/channels', async (_req, res) => {
+  try {
+    const { getAvailableSlackChannels } = await import('../mcp/slack.js');
+    const channels = await getAvailableSlackChannels();
+    res.json({ success: true, channels });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message, channels: [] });
+  }
+});
+
+// POST /api/actions/slack/dispatch - Dispatch executive brief or custom summary to Slack
+router.post('/slack/dispatch', async (req, res) => {
+  try {
+    const {
+      channel = null,
+      mode = 'consolidated',
+      customNote = null,
+      auditId = null,
+    } = req.body || {};
+
+    const {
+      sendAuditOverviewMessage,
+      sendAuditSubsectionThread,
+    } = await import('../mcp/slack.js');
+
+    const auditRun = auditId
+      ? await databaseService.getAuditRunById(auditId)
+      : await databaseService.getLatestAuditRun();
+
+    if (!auditRun) {
+      return res.status(404).json({ success: false, error: 'No audit run available to dispatch' });
+    }
+
+    const items = await databaseService.listActionItems({ status: 'PENDING', limit: 4 });
+    const topActions = items.map((i) => ({
+      title: i.title,
+      category: i.category,
+      severity: i.severity,
+      assigneeName: i.assigneeName,
+      suggestedAction: i.suggestedAction,
+    }));
+
+    const overviewRes = await sendAuditOverviewMessage({
+      auditRun,
+      topActions,
+      channel,
+    });
+
+    let threadResults = [];
+    if (mode === 'threaded_subsections' && overviewRes.ts) {
+      threadResults = await sendAuditSubsectionThread({
+        threadTs: overviewRes.ts,
+        auditRun,
+        channel,
+      });
+    }
+
+    info({ module: 'actionsRoute', action: 'slackDispatch', channel, mode }, 'EM Executive Brief dispatched to Slack');
+    res.json({
+      success: true,
+      mode,
+      channel: overviewRes.targetChannel,
+      overview: overviewRes,
+      subsections: threadResults,
+      message: `✅ EM Executive Brief dispatched to ${overviewRes.targetChannel || 'Slack'} successfully!`,
+    });
+  } catch (err) {
+    warn({ module: 'actionsRoute', action: 'slackDispatchError', err }, 'Failed to dispatch to Slack');
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/actions/:id/nudge - Send direct Slack reminder to assigned engineer
+router.post('/:id/nudge', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { channel = null, customNote = null, sender = 'Engineering Manager' } = req.body || {};
+
+    const actionItem = await databaseService.getActionItemById(id);
+    if (!actionItem) {
+      return res.status(404).json({ success: false, error: 'Action item not found' });
+    }
+
+    const { sendActionItemNudge } = await import('../mcp/slack.js');
+    const nudgeRes = await sendActionItemNudge({
+      actionItem,
+      customNote,
+      channel,
+      sender,
+    });
+
+    info({ module: 'actionsRoute', action: 'sendActionItemNudge', id, assignee: actionItem.assigneeName }, 'Action item nudge sent');
+    res.json({
+      success: true,
+      nudge: nudgeRes,
+      message: `💬 Nudge sent for "${actionItem.title}" to ${nudgeRes.targetChannel || 'Slack'}!`,
+    });
+  } catch (err) {
+    warn({ module: 'actionsRoute', action: 'sendActionItemNudgeError', err }, 'Failed to send action item nudge');
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/actions/batch - Batch update statuses or batch Slack operations
+router.post('/batch', async (req, res) => {
+  try {
+    const { actionIds = [], operation = 'status_update', status = 'COMPLETED', resolutionNotes = null, completedBy = 'Engineering Manager' } = req.body || {};
+
+    if (!Array.isArray(actionIds) || actionIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'actionIds array is required' });
+    }
+
+    const updatedItems = [];
+    for (const id of actionIds) {
+      if (operation === 'status_update') {
+        const item = await databaseService.updateActionItemStatus(id, {
+          status,
+          resolutionNotes: resolutionNotes || `Batch updated to ${status}`,
+          completedBy,
+        });
+        if (item) updatedItems.push(item);
+      }
+    }
+
+    res.json({
+      success: true,
+      operation,
+      updatedCount: updatedItems.length,
+      items: updatedItems,
+      message: `✅ Batch updated ${updatedItems.length} action items to ${status}`,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 export default router;

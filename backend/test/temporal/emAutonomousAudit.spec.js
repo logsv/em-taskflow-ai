@@ -11,6 +11,8 @@ import {
 import {
   sendAuditOverviewMessage,
   sendAuditSubsectionThread,
+  sendActionItemNudge,
+  getAvailableSlackChannels,
 } from '../../src/mcp/slack.js';
 import {
   startEmAutonomousAuditWorkflow,
@@ -190,6 +192,37 @@ describe('Autonomous EM Task & Health Audit Engine Specs', () => {
 
       expect(res.status).toBe('SUCCESS');
       expect(res.overview).toBeDefined();
+    });
+
+    it('sendActionItemNudge should format structured reminder for an individual action item', async () => {
+      const actionItem = {
+        title: 'Stalled PR #42 review',
+        description: 'Waiting for review for 38 hours',
+        category: 'DELIVERY',
+        severity: 'CRITICAL',
+        assigneeName: 'alex-dev',
+        suggestedAction: 'Ping reviewer on Slack',
+        externalReference: { url: 'https://github.com/company/repo/pull/42', id: '#42' },
+      };
+
+      const res = await sendActionItemNudge({
+        actionItem,
+        customNote: 'Please take a look before afternoon standup',
+        channel: '#engineering-leadership',
+        sender: 'Sarah Chen (EM)',
+      });
+
+      expect(res.status).toBeDefined();
+      expect(res.message).toContain('EM Action Hub Nudge for @alex-dev');
+      expect(res.message).toContain('Stalled PR #42 review');
+      expect(res.message).toContain('Please take a look before afternoon standup');
+    });
+
+    it('getAvailableSlackChannels should return list of accessible Slack channels', async () => {
+      const channels = await getAvailableSlackChannels();
+      expect(Array.isArray(channels)).toBe(true);
+      expect(channels.length).toBeGreaterThanOrEqual(2);
+      expect(channels.some((c) => c.name === 'engineering-leadership')).toBe(true);
     });
   });
 

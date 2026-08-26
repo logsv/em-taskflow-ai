@@ -428,6 +428,111 @@ export async function sendAuditSubsectionThread({
   return results;
 }
 
+/**
+ * Send an individual action item reminder/nudge to an engineer or channel
+ */
+export async function sendActionItemNudge({
+  actionItem,
+  customNote = null,
+  channel = null,
+  sender = 'Engineering Manager',
+} = {}) {
+  const currentConfig = getSlackConfig();
+  const token = currentConfig.botToken;
+  const targetChannel = channel || currentConfig.defaultChannel;
+
+  const sevEmoji = actionItem.severity === 'CRITICAL' ? '🚨' : actionItem.severity === 'WARNING' ? '⚠️' : 'ℹ️';
+  const assignee = actionItem.assigneeName ? `@${actionItem.assigneeName}` : 'Team';
+  const refLink = actionItem.externalReference?.url ? `<${actionItem.externalReference.url}|View Link ↗>` : '';
+
+  const messageText = [
+    `${sevEmoji} *EM Action Hub Nudge for ${assignee}*`,
+    `*Category:* \`${actionItem.category}\` | *Severity:* \`${actionItem.severity}\``,
+    `*Issue:* ${actionItem.title}`,
+    `*Context:* ${actionItem.description || 'No additional details'}`,
+    actionItem.suggestedAction ? `*Recommended Next Step:* ${actionItem.suggestedAction}` : '',
+    customNote ? `*EM Note from ${sender}:* _"${customNote}"_` : '',
+    refLink ? `*Reference:* ${refLink}` : '',
+    '🔗 <http://localhost:3000/actions|Open in EM Action Hub ↗>',
+  ].filter(Boolean).join('\n');
+
+  if (!token || token.includes('dummy') || token.includes('placeholder')) {
+    return {
+      status: 'SIMULATED',
+      targetChannel,
+      ts: `sim_nudge_${Date.now()}`,
+      message: messageText,
+    };
+  }
+
+  try {
+    const res = await axios.post(
+      'https://slack.com/api/chat.postMessage',
+      {
+        channel: targetChannel,
+        text: messageText,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 4500,
+      }
+    );
+
+    return {
+      status: res.data?.ok ? 'SUCCESS' : 'ERROR',
+      targetChannel,
+      ts: res.data?.ts,
+      message: messageText,
+      error: res.data?.error,
+    };
+  } catch (err) {
+    return {
+      status: 'ERROR',
+      targetChannel,
+      message: messageText,
+      error: err.message,
+    };
+  }
+}
+
+/**
+ * Get accessible Slack channels for EM Action Hub dropdown
+ */
+export async function getAvailableSlackChannels() {
+  const currentConfig = getSlackConfig();
+  const token = currentConfig.botToken;
+  const defaultList = [
+    { id: 'C_LEADERSHIP', name: 'engineering-leadership', is_default: true },
+    { id: 'C_DEV_STANDUP', name: 'dev-standup', is_default: false },
+    { id: 'C_ALERTS', name: 'em-taskflow-alerts', is_default: false },
+    { id: 'C_RETRO', name: 'engineering-retro', is_default: false },
+  ];
+
+  if (!token || token.includes('dummy') || token.includes('placeholder')) {
+    return defaultList;
+  }
+
+  try {
+    const res = await axios.get('https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=50', {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 4000,
+    });
+    if (res.data?.ok && Array.isArray(res.data.channels)) {
+      return res.data.channels.map((c) => ({
+        id: c.id,
+        name: c.name,
+        is_default: `#${c.name}` === currentConfig.defaultChannel,
+      }));
+    }
+    return defaultList;
+  } catch {
+    return defaultList;
+  }
+}
+
 export async function closeSlackMcp() {
   cachedSlackClient = null;
 }

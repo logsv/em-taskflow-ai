@@ -30,6 +30,7 @@ This document provides a comprehensive sitemap and directory of operational skil
 ### 4. 📊 Observability, Evaluations & Operations
 | Skill Name | Path | Description |
 | :--- | :--- | :--- |
+| **`autonomous-em-audit-ops`** | [`.agents/skills/autonomous-em-audit-ops/SKILL.md`](file://.agents/skills/autonomous-em-audit-ops/SKILL.md) | Managing, executing, and testing the Autonomous EM Task & Health Audit Engine, 4-hour background cron in Temporal, multi-channel Slack notification dispatch, and interactive EM Action Hub UI (`/actions`). |
 | **`admin-portal-ops`** | [`.agents/skills/admin-portal-ops/SKILL.md`](file://.agents/skills/admin-portal-ops/SKILL.md) | Managing the Standalone Admin Portal (`/admin`), external service hubs (Langfuse, Promptfoo, Adminer, Temporal), DORA tier ratings, vector chunk inspection, and Express admin APIs. |
 | **`em-dora-productivity-ops`** | [`.agents/skills/em-dora-productivity-ops/SKILL.md`](file://.agents/skills/em-dora-productivity-ops/SKILL.md) | Tracking, testing, and managing Engineering Manager (EM) DORA productivity metrics (tier ratings), Sprint health analytics, OKRs, and SBI feedback records. |
 | **`enterprise-evaluation-framework-ops`** | [`.agents/skills/enterprise-evaluation-framework-ops/SKILL.md`](file://.agents/skills/enterprise-evaluation-framework-ops/SKILL.md) | Managing, executing, and calibrating the 3-Phase Enterprise Evaluation Framework (`hermes3:8b`), strategy evaluators, DeepEval, Ragas, TruLens, and CI/CD pre-push gates. |
@@ -42,4 +43,4 @@ This document provides a comprehensive sitemap and directory of operational skil
 When performing complex development or operational tasks:
 1. Locate the relevant skill from the categorized directory above.
 2. Read the skill's `SKILL.md` using `view_file` before executing changes.
-3. Follow the empirical verification commands listed in the skill to ensure zero regressions across all **269 backend unit test specs** and **45 Python AI test specs**.
+3. Follow the empirical verification commands listed in the skill to ensure zero regressions across all **300 backend unit test specs** and **45 Python AI test specs**.

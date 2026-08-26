@@ -81,8 +81,23 @@ The backend agent uses an **8-stage hybrid architecture** optimized for **Local 
 - Generates structured markdown sections in a **single LLM pass** (`Executive Summary`, `Key Insights`, `Citations`), bypassing double-LLM formatting overhead.
 
 ### 8. Resilient Per-Service Database Isolation (`postgres.js`)
-- **`taskflow_backend`**: Houses application sessions, chat threads, messages, and cached MCP fallback data (`github_issues`, `dora_snapshots`, `sprint_analytics`, `okr_records`, `team_members`, `app_settings`).
+- **`taskflow_backend`**: Houses application sessions, chat threads, messages, `em_audit_runs`, `em_action_items`, and cached MCP fallback data (`github_issues`, `dora_snapshots`, `sprint_analytics`, `okr_records`, `team_members`, `app_settings`).
 - **`taskflow_ai`**: Houses vector document chunks (`pdf_chunks`).
 - **`temporal` & `temporal_visibility`**: Houses workflow state.
 - **`langfuse_db`**: Houses telemetry traces on port 5433.
 - If live MCP tool servers time out, automatic fallback retrieves cached data from PostgreSQL, presenting stale-data warnings to the user.
+
+### 9. Autonomous EM Task & Health Audit Engine & Multi-View Action Hub (`/actions`)
+- **Temporal 4-Hour Durable Cron (`0 */4 * * *`)**: `emAutonomousAuditWorkflow` periodically queries all 10 domain tools and micro-agents in parallel (`harvestDoraAndDeliveryActivity`, `harvestPeopleAndCadenceActivity`, `harvestSprintAndOkrActivity`, `harvestSopAndGovernanceActivity`).
+- **Synthesis & Deduplication (`synthesizeAuditAndActionItemsActivity`)**: Calculates an Engineering Health Score ($20 \le \text{Score} \le 100$) and persists deduplicated action items into `em_action_items`.
+- **Multi-Channel Slack Dispatch Engine (`slack.js`)**:
+  - *Consolidated Mode*: High-impact scorecard summarizing Health Score, DORA tier, sprint pacing, overdue 1-on-1s, and top 4 prioritized actions.
+  - *Threaded Breakdown Mode*: Parent scorecard + 4 sub-thread replies (Delivery, People, Sprint, SOP).
+  - *Targeted Action Nudges*: Instant Slack ping to assigned engineers with PR/Jira context and recommended next action.
+- **Interactive EM Action Hub UI (`ActionHubPage.jsx`)**:
+  - 🗂️ **Kanban Board**: 3 swimlanes (`Pending Triage`, `In Progress`, `Resolved / Completed`) with 1-click status transitions.
+  - 📑 **Dense Table**: Linear/Jira-style high-density table with multi-select checkboxes for batch triage and Slack sharing.
+  - 🃏 **Rich Card Grid**: Detailed cards with diagnostic descriptions, origin badges, SLA countdowns, and resolution history.
+  - 🔍 **Action Inspection Drawer**: Diagnostic context, root causes, and resolution notes editor with EM attribution.
+  - 👥 **Team Cadence Matrix**: Engineer 1-on-1 tracking table with promotion targets, tenure, and overdue sync alerts.
+
