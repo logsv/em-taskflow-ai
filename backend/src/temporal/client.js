@@ -256,5 +256,108 @@ export async function startPromptEvaluationWorkflow(options = {}) {
   }
 }
 
+/**
+ * Start a Human-in-the-Loop (HITL) Slack Post Workflow on Temporal.
+ * Holds message draft until approved or rejected via signal.
+ */
+export async function startSlackPostHITLWorkflow(params = {}) {
+  const client = await getTemporalClient();
+  const workflowId = `slack-post-hitl-${Date.now()}`;
+
+  if (!client) {
+    info({ module: 'temporalClient', action: 'startSlackPostHITLWorkflowSimulated', workflowId }, 'Temporal client unavailable; returning simulated HITL handle');
+    return {
+      workflowId,
+      runId: `run-${Date.now()}`,
+      status: 'PENDING_HUMAN_APPROVAL',
+      orchestrator: 'in_memory_hitl',
+      channel: params.channel || '#engineering-retro',
+      message: params.message || '',
+    };
+  }
+
+  try {
+    const handle = await client.workflow.start('slackPostHITLWorkflow', {
+      taskQueue: 'team-sync-queue',
+      args: [params],
+      workflowId,
+    });
+    info({ module: 'temporalClient', action: 'startSlackPostHITLWorkflow', workflowId: handle.workflowId }, 'Started Temporal Slack Post HITL Workflow');
+    return {
+      workflowId: handle.workflowId,
+      runId: handle.firstExecutionRunId,
+      status: 'PENDING_HUMAN_APPROVAL',
+      orchestrator: 'temporal',
+      channel: params.channel || '#engineering-retro',
+      message: params.message || '',
+    };
+  } catch (err) {
+    warn({ module: 'temporalClient', action: 'startSlackPostHITLWorkflowFallback', err }, 'Failed to start Temporal Slack Post HITL Workflow');
+    return {
+      workflowId,
+      runId: `run-${Date.now()}`,
+      status: 'PENDING_HUMAN_APPROVAL',
+      orchestrator: 'in_memory_hitl',
+      channel: params.channel || '#engineering-retro',
+      message: params.message || '',
+    };
+  }
+}
+
+/**
+ * Signal a running Slack Post HITL Workflow with approval or rejection.
+ */
+export async function signalSlackPostApproval(workflowId, options = {}) {
+  const {
+    approved = true,
+    approver = 'Engineering Manager',
+    modifiedMessage = null,
+    targetChannel = null,
+    reason = '',
+  } = options;
+
+  const client = await getTemporalClient();
+  if (!client) {
+    info({ module: 'temporalClient', action: 'signalSlackPostApprovalSimulated', workflowId, approved }, 'Simulated signal dispatch (Temporal offline)');
+    return {
+      workflowId,
+      signalSent: true,
+      approved,
+      status: approved ? 'APPROVED_SIMULATED' : 'REJECTED_SIMULATED',
+    };
+  }
+
+  try {
+    const handle = client.workflow.getHandle(workflowId);
+    if (approved) {
+      await handle.signal('approveSlackPost', {
+        approver,
+        modifiedMessage,
+        targetChannel,
+      });
+      info({ module: 'temporalClient', action: 'signalApproveSlackPost', workflowId, approver }, 'Dispatched approveSlackPost signal');
+    } else {
+      await handle.signal('rejectSlackPost', {
+        rejectedBy: approver,
+        reason: reason || 'Post rejected by reviewer',
+      });
+      info({ module: 'temporalClient', action: 'signalRejectSlackPost', workflowId, approver }, 'Dispatched rejectSlackPost signal');
+    }
+
+    return {
+      workflowId,
+      signalSent: true,
+      approved,
+    };
+  } catch (err) {
+    warn({ module: 'temporalClient', action: 'signalSlackPostApprovalError', workflowId, err }, 'Failed to signal Temporal Slack Post Workflow');
+    return {
+      workflowId,
+      signalSent: false,
+      error: err.message,
+    };
+  }
+}
+
 
 

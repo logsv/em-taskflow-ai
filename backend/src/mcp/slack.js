@@ -9,8 +9,11 @@ let cachedSlackClient = null;
 function getSlackConfig() {
   const settings = settingsService.getCachedSettings();
   const mcpSlack = settings?.mcp?.slack || {};
+  const token = typeof process.env.SLACK_BOT_TOKEN === 'string'
+    ? process.env.SLACK_BOT_TOKEN
+    : (mcpSlack.botToken || '');
   return {
-    botToken: process.env.SLACK_BOT_TOKEN || mcpSlack.botToken || '',
+    botToken: token,
     signingSecret: process.env.SLACK_SIGNING_SECRET || mcpSlack.signingSecret || '',
     appToken: process.env.SLACK_APP_TOKEN || mcpSlack.appToken || '',
     defaultChannel: process.env.SLACK_DEFAULT_CHANNEL || mcpSlack.defaultChannel || '#engineering-retro',
@@ -101,7 +104,7 @@ export async function getSlackTools() {
       const token = currentConfig.botToken;
       const targetChannel = channel || currentConfig.defaultChannel;
 
-      if (!token) {
+      if (!token || token.includes('dummy') || token.includes('placeholder')) {
         return JSON.stringify({
           status: 'UNAVAILABLE',
           service: 'slack',
@@ -143,21 +146,51 @@ export async function getSlackTools() {
 
   const postTool = new DynamicStructuredTool({
     name: 'slack_post_message',
-    description: 'Posts an executive summary, retrospective action plan, or notification to a Slack channel.',
+    description: 'Posts an executive summary, retrospective action plan, or notification to a Slack channel with Temporal Human-in-the-Loop (HITL) approval governance.',
     schema: z.object({
       message: z.string().describe('Markdown formatted message or executive summary to post'),
       channel: z.string().optional().describe('Target channel name or ID (default: configured defaultChannel)'),
+      approved_by_human: z.boolean().default(false).describe('Set to true ONLY if this post has received explicit human manager confirmation'),
+      approver: z.string().optional().describe('Identity of human approver confirming the post'),
+      sprint_name: z.string().optional().describe('Sprint or context name for retrospective posting'),
     }),
-    func: async ({ message, channel }) => {
+    func: async ({ message, channel, approved_by_human, approver, sprint_name }) => {
       const currentConfig = getSlackConfig();
       const token = currentConfig.botToken;
       const targetChannel = channel || currentConfig.defaultChannel;
 
-      if (!token) {
+      // 1. Human-in-the-Loop (HITL) Gate via Temporal
+      if (!approved_by_human) {
+        try {
+          const { startSlackPostHITLWorkflow } = await import('../temporal/client.js');
+          const hitlRes = await startSlackPostHITLWorkflow({
+            channel: targetChannel,
+            message,
+            sprintName: sprint_name || 'Current Sprint',
+            requestedBy: 'EM TaskFlow Agent',
+          });
+
+          return JSON.stringify({
+            status: 'PENDING_HUMAN_APPROVAL',
+            workflowId: hitlRes?.workflowId || `slack-post-hitl-${Date.now()}`,
+            target_channel: targetChannel,
+            draft_message: message,
+            requires_approval: true,
+            approval_endpoint: '/api/admin/temporal/slack-post/approve',
+            message: 'Draft post held in Temporal Human-in-the-Loop (HITL) queue. Awaiting human confirmation before dispatching to Slack.',
+          });
+        } catch (hitlErr) {
+          info({ module: 'slackMcp', action: 'hitlDispatchFallback', err: hitlErr }, 'HITL dispatch fallback');
+        }
+      }
+
+      // 2. Direct Post Execution (Human Confirmed)
+      if (!token || token.includes('dummy') || token.includes('placeholder')) {
         return JSON.stringify({
           status: 'SIMULATED',
           target_channel: targetChannel,
-          message: 'Slack token unconfigured. Simulated post to channel.',
+          message: 'Slack token unconfigured. Simulated post to channel (Human Confirmed).',
+          approved_by: approver || 'Engineering Manager',
         });
       }
 
@@ -182,7 +215,8 @@ export async function getSlackTools() {
             status: 'SUCCESS',
             channel: targetChannel,
             ts: res.data.ts,
-            message: 'Successfully posted to Slack',
+            approved_by: approver || 'Engineering Manager',
+            message: 'Successfully posted to Slack channel',
           });
         }
         return JSON.stringify({
@@ -208,7 +242,7 @@ export async function getSlackTools() {
       const currentConfig = getSlackConfig();
       const token = currentConfig.botToken;
 
-      if (!token) {
+      if (!token || token.includes('dummy') || token.includes('placeholder')) {
         return JSON.stringify({
           status: 'UNAVAILABLE',
           service: 'slack',

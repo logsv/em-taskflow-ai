@@ -13,6 +13,8 @@ import {
   startDeepBenchmarkWorkflow,
   startTraceReplayWorkflow,
   startTeamDiscoveryWorkflow,
+  startSlackPostHITLWorkflow,
+  signalSlackPostApproval,
   getWorkflowStatus,
 } from '../temporal/client.js';
 import { config } from '../config.js';
@@ -998,6 +1000,124 @@ router.delete('/team/:id', async (req, res) => {
   } catch (err) {
     res.status(500).json({
       error: 'Failed to delete team member',
+      details: err.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+// POST /api/admin/temporal/slack-post/request - Initiate draft Slack post in Temporal HITL queue
+router.post('/temporal/slack-post/request', async (req, res) => {
+  try {
+    const { message, channel = '#engineering-retro', sprintName = 'Sprint 42', requestedBy = 'Admin Portal' } = req.body || {};
+    if (!message) {
+      return res.status(400).json({ error: 'message parameter is required' });
+    }
+
+    const hitlRes = await startSlackPostHITLWorkflow({
+      message,
+      channel,
+      sprintName,
+      requestedBy,
+    });
+
+    res.json({
+      success: true,
+      workflowId: hitlRes?.workflowId,
+      status: hitlRes?.status || 'PENDING_HUMAN_APPROVAL',
+      orchestrator: hitlRes?.orchestrator || 'temporal',
+      channel,
+      message: 'Draft Slack post created and held in Temporal HITL workflow pending approval.',
+      requestId: req.requestId,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to initiate Temporal Slack post workflow',
+      details: err.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+// POST /api/admin/temporal/slack-post/approve - Send Human Approval Signal
+router.post('/temporal/slack-post/approve', async (req, res) => {
+  try {
+    const { workflowId, approver = 'Engineering Manager', modifiedMessage, targetChannel } = req.body || {};
+    if (!workflowId) {
+      return res.status(400).json({ error: 'workflowId parameter is required' });
+    }
+
+    const signalRes = await signalSlackPostApproval(workflowId, {
+      approved: true,
+      approver,
+      modifiedMessage,
+      targetChannel,
+    });
+
+    res.json({
+      success: signalRes.signalSent !== false,
+      message: `Human approval signal dispatched for workflow ${workflowId}`,
+      workflowId,
+      approved: true,
+      requestId: req.requestId,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to send approval signal to Temporal workflow',
+      details: err.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+// POST /api/admin/temporal/slack-post/reject - Send Human Rejection Signal
+router.post('/temporal/slack-post/reject', async (req, res) => {
+  try {
+    const { workflowId, approver = 'Engineering Manager', reason = 'Rejected by reviewer' } = req.body || {};
+    if (!workflowId) {
+      return res.status(400).json({ error: 'workflowId parameter is required' });
+    }
+
+    const signalRes = await signalSlackPostApproval(workflowId, {
+      approved: false,
+      approver,
+      reason,
+    });
+
+    res.json({
+      success: signalRes.signalSent !== false,
+      message: `Human rejection signal dispatched for workflow ${workflowId}`,
+      workflowId,
+      approved: false,
+      reason,
+      requestId: req.requestId,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to send rejection signal to Temporal workflow',
+      details: err.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+// GET /api/admin/temporal/slack-post/status - Query Temporal Slack Post Workflow Status
+router.get('/temporal/slack-post/status', async (req, res) => {
+  try {
+    const { workflowId } = req.query;
+    if (!workflowId) {
+      return res.status(400).json({ error: 'workflowId query parameter is required' });
+    }
+
+    const status = await getWorkflowStatus(workflowId);
+    res.json({
+      success: true,
+      workflow: status,
+      requestId: req.requestId,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to query Temporal Slack post workflow status',
       details: err.message,
       requestId: req.requestId,
     });

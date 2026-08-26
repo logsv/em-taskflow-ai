@@ -357,3 +357,68 @@ export async function reconcileAndPersistTeamActivity(params = {}) {
     members: Array.from(mergedMap.values()),
   };
 }
+
+/**
+ * Activity: Post confirmed message to Slack channel (Executed after Human Approval in HITL workflow)
+ */
+export async function postSlackMessageActivity(params = {}) {
+  const { channel = '#engineering-retro', message = '', approver = 'Engineering Manager', sprintName = '' } = params;
+
+  await settingsService.initialize();
+  const rawSettings = settingsService.getCachedSettings() || settingsService.cachedRawSettings;
+  const token = params.bot_token !== undefined ? params.bot_token : (rawSettings?.mcp?.slack?.botToken || process.env.SLACK_BOT_TOKEN || '');
+
+  if (!token || token.includes('dummy') || token.includes('placeholder') || token.includes('unconfigured')) {
+    info({ module: 'temporalActivities', action: 'postSlackMessageActivitySimulated', channel, approver }, 'Slack token unconfigured; simulated HITL post');
+    return {
+      success: true,
+      status: 'SIMULATED',
+      channel,
+      ts: `${Date.now()}.000100`,
+      message: `[Simulated Post - Approver: ${approver}] ${message.slice(0, 100)}...`,
+      postedAt: new Date().toISOString(),
+    };
+  }
+
+  const cleanToken = token.trim().replace(/^Bearer\s+/i, '');
+  const headers = {
+    Authorization: `Bearer ${cleanToken}`,
+    'Content-Type': 'application/json; charset=utf-8',
+  };
+
+  try {
+    const res = await axios.post('https://slack.com/api/chat.postMessage', {
+      channel,
+      text: message,
+    }, { headers, timeout: 5000 });
+
+    if (res.data && res.data.ok) {
+      info({ module: 'temporalActivities', action: 'postSlackMessageActivitySuccess', channel, ts: res.data.ts, approver }, 'Slack message posted successfully via Temporal HITL');
+      return {
+        success: true,
+        status: 'SUCCESS',
+        channel: res.data.channel || channel,
+        ts: res.data.ts,
+        approver,
+        postedAt: new Date().toISOString(),
+      };
+    } else {
+      const errorMsg = res.data?.error || 'Slack API chat.postMessage failed';
+      warn({ module: 'temporalActivities', action: 'postSlackMessageActivityApiError', channel, error: errorMsg }, 'Slack API chat.postMessage returned failure');
+      return {
+        success: false,
+        status: 'FAILED',
+        channel,
+        error: errorMsg,
+      };
+    }
+  } catch (err) {
+    warn({ module: 'temporalActivities', action: 'postSlackMessageActivityError', channel, err }, 'Slack chat.postMessage activity network error');
+    return {
+      success: false,
+      status: 'ERROR',
+      channel,
+      error: err.message,
+    };
+  }
+}
