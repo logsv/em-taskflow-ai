@@ -103,13 +103,11 @@ export async function getSlackTools() {
 
       if (!token) {
         return JSON.stringify({
-          status: 'NO_TOKEN',
-          message: 'Slack Bot Token not configured. Using local synthesized channel history.',
-          messages: [
-            { user: 'Sarah Chen', text: 'Kudos to Alex on the zero-downtime database migration this sprint!' },
-            { user: 'Alex Williams', text: 'Auth integration tests are flaky on CI, took 3 reruns today.' },
-            { user: 'Vikas Kumar', text: 'PR review turnaround was slow on mega-PRs >400 lines.' },
-          ],
+          status: 'UNAVAILABLE',
+          service: 'slack',
+          reason: 'SLACK_BOT_TOKEN_NOT_CONFIGURED',
+          message: 'Slack Bot Token (xoxb-...) is not configured. Configure SLACK_BOT_TOKEN in Admin Settings to enable Slack integration.',
+          messages: [],
         });
       }
 
@@ -132,14 +130,13 @@ export async function getSlackTools() {
       } catch (_err) {}
 
       return JSON.stringify({
-        status: 'FALLBACK',
+        status: 'UNAVAILABLE',
+        service: 'slack',
         channel: targetChannel,
         query,
-        messages: [
-          { user: 'Sarah Chen', text: 'Kudos on zero-downtime DB migration!' },
-          { user: 'Alex Williams', text: 'Integration tests failed intermittently on token refresh.' },
-          { user: 'Vikas Kumar', text: 'PR review queue backed up during midpoint.' },
-        ],
+        reason: 'SLACK_API_ERROR',
+        message: 'Slack API request failed. Verify Slack Bot Token permissions and channel access.',
+        messages: [],
       });
     },
   });
@@ -213,12 +210,11 @@ export async function getSlackTools() {
 
       if (!token) {
         return JSON.stringify({
-          status: 'SIMULATED',
-          channels: [
-            { id: 'C01234567', name: 'engineering-retro', is_private: false },
-            { id: 'C09876543', name: 'team-standup', is_private: false },
-            { id: 'C11223344', name: 'devops-alerts', is_private: false },
-          ],
+          status: 'UNAVAILABLE',
+          service: 'slack',
+          reason: 'SLACK_BOT_TOKEN_NOT_CONFIGURED',
+          message: 'Slack Bot Token is not configured. Configure SLACK_BOT_TOKEN in Admin Settings.',
+          channels: [],
         });
       }
 

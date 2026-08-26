@@ -207,7 +207,7 @@ function createNativeGithubTools(token) {
                 number: match.number,
                 state: match.state,
                 html_url: match.html_url,
-                user: match.assignee || "logsv",
+                user: match.assignee || null,
                 body: match.title,
                 created_at: match.synced_at,
                 comments: 0,

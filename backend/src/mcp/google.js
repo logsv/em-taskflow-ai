@@ -74,41 +74,15 @@ function createNativeGoogleCalendarTools(apiKey) {
         console.warn(`⚠️ Google Calendar REST API call failed (${err?.message}), using scheduled working hours fallback...`);
       }
 
-      // Default baseline scheduled events for EM TaskFlow AI 1-on-1 & Team management
-      const fallbackEvents = [
-        {
-          id: "evt_1on1_weekly",
-          summary: `1-on-1 Sync (${effectiveCalId.split("@")[0] || "Engineer"} / EM)`,
-          description: "Weekly engineering check-in: Career growth, blockers, SBI feedback, project delivery.",
-          start: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-          end: new Date(Date.now() + 24 * 60 * 60 * 1000 + 45 * 60 * 1000).toISOString(),
-          attendees: [effectiveCalId, "em@company.internal"],
-          meeting_type: "ONE_ON_ONE",
-          recurring: "WEEKLY",
-        },
-        {
-          id: "evt_sprint_planning",
-          summary: "Sprint Planning & Backlog Refinement",
-          description: "Sprint capacity allocation, DORA metric targets, backlog commitments.",
-          start: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-          end: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000).toISOString(),
-          attendees: ["team-eng@company.internal"],
-          meeting_type: "TEAM_SYNC",
-          recurring: "BI_WEEKLY",
-        },
-        {
-          id: "evt_arch_review",
-          summary: "Architecture & System Design Review",
-          description: "Technical review of architectural decision records (ADRs) and service boundaries.",
-          start: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString(),
-          end: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000).toISOString(),
-          attendees: ["staff-eng@company.internal"],
-          meeting_type: "TECH_REVIEW",
-          recurring: "WEEKLY",
-        },
-      ];
-
-      return JSON.stringify(fallbackEvents, null, 2);
+      // No live calendar data available
+      return JSON.stringify({
+        status: "UNAVAILABLE",
+        service: "google_calendar",
+        calendarId: effectiveCalId,
+        reason: "GOOGLE_CALENDAR_NOT_CONFIGURED_OR_UNREACHABLE",
+        message: "Google Calendar API key is not configured or the calendar is unreachable. Configure GOOGLE_CALENDAR_API_KEY in Admin Settings.",
+        events: [],
+      }, null, 2);
     },
   });
 
@@ -148,13 +122,11 @@ function createNativeGoogleCalendarTools(apiKey) {
       }
 
       return JSON.stringify({
-        id: eventId || "evt_generic",
-        summary: "1-on-1 Engineering Mentorship & Progress Review",
-        description: "Review quarterly OKRs, technical contributions, and career ladder progression.",
-        start: new Date().toISOString(),
-        end: new Date(Date.now() + 45 * 60 * 1000).toISOString(),
-        attendees: ["engineer@company.internal", "manager@company.internal"],
-        status: "confirmed",
+        status: "UNAVAILABLE",
+        service: "google_calendar",
+        eventId,
+        reason: "GOOGLE_CALENDAR_NOT_CONFIGURED_OR_UNREACHABLE",
+        message: `Unable to retrieve event details for ${eventId}. Configure Google Calendar API in Admin Settings.`,
       }, null, 2);
     },
   });

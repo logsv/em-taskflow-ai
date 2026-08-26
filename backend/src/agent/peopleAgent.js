@@ -198,14 +198,16 @@ export const peopleGrowthTool = createDeterministicToolHarness({
   dbCacheFallback: async (source) => {
     try {
       const members = await databaseService.getTeamMembers().catch(() => []);
-      const member = members[0] || {
-        id: 'mem_alex',
-        displayName: 'Alex Williams',
-        currentLevel: 'L4_MID',
-        targetLevel: 'L5_SENIOR',
-        track: 'INDIVIDUAL_CONTRIBUTOR',
-        tenureMonths: 18,
-      };
+      const member = members[0] || null;
+      if (!member) {
+        return {
+          engineer_id: inputArgs?.engineer_id || null,
+          displayName: null,
+          is_cached: true,
+          data_source: 'empty',
+          data_availability: 'no_team_members',
+        };
+      }
 
       if (source === 'googleCalendar') {
         return {
@@ -247,16 +249,17 @@ export const peopleGrowthTool = createDeterministicToolHarness({
       };
     } catch (_err) {
       return {
-        engineer_id: 'eng_alex',
-        displayName: 'Alex Williams',
-        current_level: 'L4_MID',
-        target_level: 'L5_SENIOR',
-        track: 'INDIVIDUAL_CONTRIBUTOR',
-        weekly_workload_hours: 40.0,
-        weekly_meeting_hours: 12.0,
-        today_events: [{ summary: '1-on-1 with Manager', start_time: '10:00 AM', attendee: 'Alex Williams' }],
+        engineer_id: inputArgs?.engineer_id || null,
+        displayName: null,
+        current_level: inputArgs?.current_level || null,
+        target_level: inputArgs?.target_level || null,
+        track: inputArgs?.track || null,
+        tenure_months: inputArgs?.tenure_months || 0,
+        weekly_workload_hours: 0,
+        weekly_meeting_hours: 0,
         is_cached: true,
-        data_source: 'postgres_profile_fallback',
+        data_source: 'empty',
+        data_availability: 'no_data',
       };
     }
   },

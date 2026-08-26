@@ -135,7 +135,7 @@ export function buildFallbackEmSections(rawAnswer, evidenceBySource) {
       const issueTitle = issueMatch[2];
       const issueUrl = issueMatch[3];
       const issueState = issueMatch[4] || "open";
-      const issueAuthor = issueMatch[6] || "logsv";
+      const issueAuthor = issueMatch[6] || "unknown";
       const issueAssignee = issueMatch[7] || "Unassigned";
 
       const linkMD = `[#${issueNum} ${issueTitle}](${issueUrl})`;

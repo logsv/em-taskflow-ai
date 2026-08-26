@@ -272,7 +272,7 @@ class IdentityService {
 
     // In test suites only, supply sample test fixtures if no external MCP tokens are provided
     const isTestEnv = process.env.NODE_ENV === 'test' || process.argv.some(a => a.includes('jasmine'));
-    if (isTestEnv || discovered.size === 0) {
+    if (isTestEnv) {
       addOrMerge({
         id: 'mem_alex',
         displayName: 'Alex Williams',

@@ -128,15 +128,13 @@ export const sprintRetroTool = createDeterministicToolHarness({
       };
     } catch (_e) {
       return {
-        sprint_id: inputArgs?.sprint_id || 'sprint_42',
-        sprint_name: 'Sprint 42',
-        team_members: ['Alex Williams', 'Sarah Chen', 'Vikas Kumar', 'Elena Rostova'],
-        past_retro_items: [
-          'Establish dedicated daily PR review window at 10 AM',
-          'Automate CI check for PR labels',
-        ],
+        sprint_id: inputArgs?.sprint_id || null,
+        sprint_name: inputArgs?.sprint_name || null,
+        team_members: [],
+        past_retro_items: [],
         is_cached: true,
-        data_source: 'static_retro_fallback',
+        data_source: 'empty',
+        data_availability: 'no_data',
       };
     }
   },

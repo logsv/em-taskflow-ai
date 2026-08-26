@@ -53,24 +53,11 @@ function createNativeNotionTools(token) {
       }
 
       return JSON.stringify({
-        results: [
-          {
-            id: "notion-sprint-goals-01",
-            object: "page",
-            title: "Sprint 42 Goals & Working Agreements",
-            sprint_goals: [
-              "Deliver Core Auth OAuth v2 migration with zero downtime",
-              "Maintain PR review turnaround SLA <4h across mid/senior tiers",
-              "Execute zero-defect deployment across API gateway",
-            ],
-            working_agreements: [
-              "Maximum PR size: 400 lines",
-              "WIP limit: 1.5 in-progress tickets per developer",
-              "Pairing required for PRs >400 lines",
-            ],
-          },
-        ],
-        source: "notion_working_agreements_cache",
+        status: "UNAVAILABLE",
+        service: "notion",
+        reason: "NOTION_NOT_CONFIGURED_OR_UNREACHABLE",
+        message: "Notion API key is not configured or the workspace is unreachable. Configure NOTION_API_KEY in Admin Settings.",
+        results: [],
       }, null, 2);
     },
   });
@@ -111,7 +98,13 @@ function createNativeNotionTools(token) {
         console.warn(`⚠️ Notion get_page API failed (${err?.message}), using mock fallback...`);
       }
 
-      return `# Sprint 42 Goals & Working Agreements\n\n## 🎯 Sprint Goals\n- Deliver Core Auth OAuth v2 migration\n- Maintain PR review SLA <4h\n\n## 📋 Working Agreements\n- Maximum PR size: 400 lines\n- WIP limit: 1.5 in-progress tickets per developer\n- Pairing required for PRs >400 lines`;
+      return JSON.stringify({
+        status: "UNAVAILABLE",
+        service: "notion",
+        page_id,
+        reason: "NOTION_NOT_CONFIGURED_OR_UNREACHABLE",
+        message: `Unable to retrieve Notion page ${page_id}. Configure NOTION_API_KEY in Admin Settings.`,
+      });
     },
   });
 
@@ -122,14 +115,28 @@ function createNativeNotionTools(token) {
       database_id: z.string().describe("Notion database UUID"),
     }),
     func: async ({ database_id }) => {
+      const activeToken = token || settingsService.getCachedSettings()?.mcp?.notion?.apiKey || process.env.NOTION_API_KEY || null;
+      if (activeToken) {
+        try {
+          const res = await axios.post(
+            `https://api.notion.com/v1/databases/${database_id.replace(/-/g, "")}/query`,
+            { page_size: 20 },
+            { headers: { ...headers, Authorization: `Bearer ${activeToken}` }, timeout: 8000 }
+          );
+          if (res.data?.results?.length > 0) {
+            return JSON.stringify({ database_id, records: res.data.results, source: "notion_live_api" }, null, 2);
+          }
+        } catch (err) {
+          console.warn(`⚠️ Notion query_database API failed (${err?.message})`);
+        }
+      }
       return JSON.stringify({
+        status: "UNAVAILABLE",
+        service: "notion",
         database_id,
-        records: [
-          { item: "Infrastructure Resilience OKR", progress: "85%", status: "On Track" },
-          { item: "PR Review Turnaround SLA", progress: "92%", status: "On Track" },
-          { item: "Database Migration Schema Lock", progress: "40%", status: "At Risk" },
-        ],
-        source: "notion_database_snapshot",
+        reason: "NOTION_NOT_CONFIGURED_OR_UNREACHABLE",
+        message: `Unable to query Notion database ${database_id}. Configure NOTION_API_KEY in Admin Settings.`,
+        records: [],
       }, null, 2);
     },
   });

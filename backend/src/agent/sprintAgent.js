@@ -176,16 +176,17 @@ export const sprintPlanTool = createDeterministicToolHarness({
     } catch (_e) {
       return {
         sprint_id: inputArgs?.sprint_id || 'upcoming_sprint',
-        sprint_name: 'Sprint 43',
-        team_size: 4,
-        team_members: ['Alex Williams', 'Sarah Chen', 'Vikas Kumar', 'Elena Rostova'],
-        gross_capacity_hours: 240,
-        net_capacity_hours: 228,
-        rolling_avg_velocity: 35,
-        historical_velocities: [34, 38, 32, 36, 35],
-        pto_days_detected: 2,
+        sprint_name: inputArgs?.sprint_name || null,
+        team_size: 0,
+        team_members: [],
+        gross_capacity_hours: 0,
+        net_capacity_hours: 0,
+        rolling_avg_velocity: 0,
+        historical_velocities: [],
+        pto_days_detected: 0,
         is_cached: true,
-        data_source: 'static_sprint_fallback',
+        data_source: 'empty',
+        data_availability: 'no_data',
       };
     }
   },

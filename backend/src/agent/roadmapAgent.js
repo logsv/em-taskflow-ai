@@ -24,61 +24,25 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
     jira: async (inputArgs) => {
       try {
         const { executeMCPTool } = await import('../mcp/index.js');
-        const jql = 'issuetype = Epic OR (issuetype in (Story, Task) AND "Epic Link" is not null) ORDER BY created DESC';
         const res = await Promise.race([
-          executeMCPTool('jira_search', { jql }),
+          executeMCPTool('jira_search', { jql: `issuetype = Epic AND fixVersion in unreleasedVersions()` }),
           new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Jira search timed out')), 2500)),
         ]).catch(() => null);
 
-        let issues = [];
-        if (Array.isArray(res)) issues = res;
-        else if (res && Array.isArray(res.issues)) issues = res.issues;
-
-        const epics = [
-          {
-            key: 'ENG-201',
-            summary: 'Core Auth v2 & OAuth SSO Migration',
-            quarter: inputArgs.quarter || 'Q4',
-            status: 'IN_PROGRESS',
-            progress_pct: 68,
-            baseline_points: 40,
-            current_points: 48,
-            target_date: '2026-11-15',
-            owner: 'Identity Team (Sarah Chen)',
-            blockers: [],
-          },
-          {
-            key: 'ENG-205',
-            summary: 'Mobile Biometrics & Passkey Integration',
-            quarter: inputArgs.quarter || 'Q4',
-            status: 'BLOCKED',
-            progress_pct: 35,
-            baseline_points: 30,
-            current_points: 42,
-            target_date: '2026-11-30',
-            owner: 'Mobile Client Team (Alex Williams)',
-            blockers: ['Blocked by ENG-201 (Core Auth v2 API token exchange endpoint)'],
-          },
-          {
-            key: 'ENG-210',
-            summary: 'Zero-Downtime Database Partitioning & Vector Scaling',
-            quarter: inputArgs.quarter || 'Q4',
-            status: 'IN_PROGRESS',
-            progress_pct: 82,
-            baseline_points: 35,
-            current_points: 35,
-            target_date: '2026-10-31',
-            owner: 'Infrastructure Team (Vikas Kumar)',
-            blockers: [],
-          },
-        ];
-
-        return {
-          epics_count: epics.length,
-          epics,
-          source: 'mcp_jira',
-          synced_at: new Date().toISOString(),
-        };
+        if (res && (Array.isArray(res) || res.issues)) {
+          const issues = Array.isArray(res) ? res : res.issues || [];
+          return {
+            epics_count: issues.length,
+            epics: issues.slice(0, 5).map((iss) => ({
+              key: iss.key,
+              summary: iss.summary || iss.fields?.summary,
+              status: iss.status || iss.fields?.status?.name || 'Unknown',
+              progress_pct: 0,
+            })),
+            source: 'mcp_jira',
+            synced_at: new Date().toISOString(),
+          };
+        }
       } catch (_e) {}
       return null;
     },
@@ -109,14 +73,7 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
       return null;
     },
     linear: async (_inputArgs) => {
-      return {
-        initiatives: [
-          { name: 'Enterprise Security Compliance (SOC2 Type II)', progress: 75, target_quarter: 'Q4' },
-          { name: 'AI Supervisor Multi-Agent Latency Reduction (<300ms)', progress: 90, target_quarter: 'Q4' },
-        ],
-        source: 'mcp_linear',
-        synced_at: new Date().toISOString(),
-      };
+      return null;
     },
     default: async (inputArgs) => {
       const q = inputArgs.quarter || 'Q4';

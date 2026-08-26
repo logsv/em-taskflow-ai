@@ -177,12 +177,8 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
       return {
         wip_count: analytics[0]?.wip_count ?? null,
         wip_limit: analytics[0]?.wip_limit ?? 5,
-        blocked_tickets: analytics[0]?.blocked_tickets || [
-          { key: 'ENG-104', summary: 'Database migration schema lock', blocked_by: 'ENG-99', days_blocked: 3.5 }
-        ],
-        missed_deadline_tickets: analytics[0]?.missed_deadline_tickets || [
-          { key: 'ENG-88', summary: 'OAuth token refresh bug', due_date: '2026-08-01', days_overdue: 5 }
-        ],
+        blocked_tickets: analytics[0]?.blocked_tickets || [],
+        missed_deadline_tickets: analytics[0]?.missed_deadline_tickets || [],
         sprint_goals: ['Deliver Core Auth OAuth v2 migration', 'Maintain PR review turnaround <4h'],
         working_agreements: { max_pr_lines: 400, review_sla_hours: 4, wip_limit_per_dev: 1.5 },
         is_cached: true,
