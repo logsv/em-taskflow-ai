@@ -1565,6 +1565,9 @@ class DatabaseService {
     try {
       await this.ensureInitialized();
       const res = await this.pool.query('SELECT * FROM team_members ORDER BY display_name ASC');
+      if (res.rows.length === 0 && this.inMemoryTeamMembers.length > 0) {
+        return [...this.inMemoryTeamMembers];
+      }
       return res.rows.map((row) => ({
         id: row.id,
         displayName: row.display_name,

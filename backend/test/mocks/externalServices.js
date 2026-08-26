@@ -55,13 +55,28 @@ export const mockHttp = (sandbox) => {
     }),
   };
 
-  const mockFetch = sandbox.stub().resolves({
+  const mockResponse = {
     ok: true,
     status: 200,
-    json: async () => ({ data: 'mocked response' }),
-    text: async () => 'mocked response',
-  });
-  global.fetch = mockFetch;
+    headers: typeof Headers !== 'undefined' ? new Headers({ 'content-type': 'application/json' }) : { entries: () => [] },
+    json: async () => ({
+      id: 'chatcmpl-mock',
+      object: 'chat.completion',
+      created: Date.now(),
+      model: 'hermes3:8b',
+      choices: [{ index: 0, message: { role: 'assistant', content: 'Mocked response' }, finish_reason: 'stop' }],
+      data: 'mocked response',
+    }),
+    text: async () => JSON.stringify({
+      id: 'chatcmpl-mock',
+      choices: [{ index: 0, message: { role: 'assistant', content: 'Mocked response' }, finish_reason: 'stop' }],
+      data: 'mocked response',
+    }),
+  };
+
+  const mockFetch = typeof global.fetch === 'function' && global.fetch.isSinonProxy
+    ? global.fetch.resolves(mockResponse)
+    : sandbox.stub(global, 'fetch').resolves(mockResponse);
 
   return { mockAxios, mockFetch };
 };

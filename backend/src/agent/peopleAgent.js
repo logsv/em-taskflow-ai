@@ -195,7 +195,7 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     },
   },
   // Tier 2: PostgreSQL Database Profile Snapshot Fallback
-  dbCacheFallback: async (source) => {
+  dbCacheFallback: async (source, inputArgs = {}) => {
     try {
       const members = await databaseService.getTeamMembers().catch(() => []);
       const member = members[0] || null;
