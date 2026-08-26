@@ -443,11 +443,18 @@ export class LangGraphAgentService {
 
     const answers = [];
     let recoveredAny = false;
+    const queryLower = String(query || "").toLowerCase();
+    const isListQuery = queryLower.startsWith("list ") || queryLower.startsWith("show all ") || queryLower.includes("list all") || queryLower.includes("list raw");
+    const detectedTarget = queryLower.includes("pr") || queryLower.includes("pull request")
+      ? "PRS"
+      : (queryLower.includes("wip") ? "WIP_ITEMS" : (queryLower.includes("block") ? "BLOCKERS" : "ALL"));
+
     try {
       const recoveryPromises = recoverable.map(async (domain) => {
         const { tool, input } = recoveryTools[domain];
         try {
-          const result = await tool.invoke({ mode: "ANALYZE", fetch_fresh_data: true, ...input });
+          const dynamicMode = isListQuery ? "LIST_RAW" : (input.mode || "ANALYZE");
+          const result = await tool.invoke({ mode: dynamicMode, target: detectedTarget, fetch_fresh_data: true, ...input });
           return { domain, tool, result };
         } catch (err) {
           return { domain, tool, result: { status: "FAILED", error: err?.message } };

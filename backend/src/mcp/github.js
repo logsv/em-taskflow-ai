@@ -315,7 +315,68 @@ function createNativeGithubTools(token) {
     },
   });
 
-  return [searchIssuesTool, issueReadTool, getDoraEventsTool];
+  const getPullRequestsTool = new DynamicStructuredTool({
+    name: "get_pull_requests",
+    description: "Fetch pull requests from GitHub for code review queues and delivery tracking.",
+    schema: z.object({
+      owner: z.string().default("logsv").describe("GitHub repository owner/username"),
+      repo: z.string().default("em-taskflow-ai").describe("GitHub repository name"),
+      state: z.enum(["open", "closed", "all"]).default("open").describe("State of pull requests"),
+    }),
+    func: async ({ owner = "logsv", repo = "em-taskflow-ai", state = "open" }) => {
+      const { headers, hasToken } = getActiveHeaders();
+      if (!hasToken) {
+        try {
+          const databaseService = (await import("../db/postgres.js")).default;
+          const cachedIssues = await databaseService.getGithubIssues({});
+          const cachedPrs = (cachedIssues || []).filter((i) => i.item_type === "pr" || i.is_pr);
+          if (cachedPrs.length > 0) {
+            const formatted = cachedPrs.map((item) => ({
+              number: item.number,
+              title: item.title,
+              state: item.state,
+              html_url: item.html_url || `https://github.com/${owner}/${repo}/pull/${item.number}`,
+              user: item.assignee || "unassigned",
+              repo: item.repo || `${owner}/${repo}`,
+              created_at: item.synced_at || new Date().toISOString(),
+              draft: false,
+            }));
+            return JSON.stringify(formatted, null, 2);
+          }
+        } catch (dbErr) {
+          console.error("❌ PostgreSQL get_pull_requests cache fallback error:", dbErr?.message);
+        }
+        return JSON.stringify([], null, 2);
+      }
+
+      try {
+        console.log(`🐙 GitHub REST API get_pull_requests: ${owner}/${repo} state=${state}`);
+        const res = await axios.get(
+          `https://api.github.com/repos/${owner}/${repo}/pulls?state=${state}&per_page=30&sort=updated&direction=desc`,
+          { headers, timeout: 8000 }
+        );
+        const pulls = Array.isArray(res.data) ? res.data : [];
+        console.log(`🐙 GitHub REST API get_pull_requests returned ${pulls.length} live pull request(s)`);
+        const formatted = pulls.map((item) => ({
+          number: item.number,
+          title: item.title,
+          state: item.state,
+          html_url: item.html_url || `https://github.com/${owner}/${repo}/pull/${item.number}`,
+          user: item.user?.login || "unassigned",
+          repo: `${owner}/${repo}`,
+          created_at: item.created_at,
+          updated_at: item.updated_at,
+          draft: Boolean(item.draft),
+        }));
+        return JSON.stringify(formatted, null, 2);
+      } catch (err) {
+        console.warn(`⚠️ GitHub get_pull_requests failed (${err?.message}), returning empty for DB fallback.`);
+        return JSON.stringify([], null, 2);
+      }
+    },
+  });
+
+  return [searchIssuesTool, issueReadTool, getDoraEventsTool, getPullRequestsTool];
 }
 
 async function ensureInit() {

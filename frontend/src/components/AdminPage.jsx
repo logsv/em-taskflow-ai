@@ -141,6 +141,7 @@ function AdminPage({ onBackToChat }) {
 
     const statusTimer = setInterval(() => {
       fetchSystemStatus();
+      fetchDocuments();
       fetchDoraMetrics();
       fetchJiraOAuthStatus();
       fetchTeamMembers();
@@ -148,6 +149,21 @@ function AdminPage({ onBackToChat }) {
 
     return () => clearInterval(statusTimer);
   }, []);
+
+  // Auto-refresh data when switching to relevant tabs
+  useEffect(() => {
+    if (activeTab === 'storage') {
+      fetchDocuments();
+      fetchSyncStatus();
+    } else if (activeTab === 'team') {
+      fetchTeamMembers();
+    } else if (activeTab === 'settings') {
+      fetchAdminSettings();
+    } else if (activeTab === 'overview') {
+      fetchSystemStatus();
+      fetchDoraMetrics();
+    }
+  }, [activeTab]);
 
   // Poll benchmark status if running
   useEffect(() => {
@@ -2792,6 +2808,29 @@ function AdminPage({ onBackToChat }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <button
                       type="button"
+                      className="admin-refresh-docs-btn"
+                      onClick={() => fetchDocuments()}
+                      disabled={loadingDocs}
+                      title="Refresh Document List"
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: '#1e293b',
+                        color: '#38bdf8',
+                        border: '1px solid #334155',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        cursor: loadingDocs ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {loadingDocs ? '⏳' : '🔄'} Refresh
+                    </button>
+                    <button
+                      type="button"
                       className="admin-upload-pdf-btn"
                       onClick={() => adminFileInputRef.current?.click()}
                       disabled={isUploadingDoc}
@@ -2845,7 +2884,24 @@ function AdminPage({ onBackToChat }) {
                   {loadingDocs ? (
                     <p className="loading-text">Loading vector documents...</p>
                   ) : documents.length === 0 ? (
-                    <p className="empty-text">No PDFs uploaded in vector store.</p>
+                    <div className="empty-docs-box" style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>
+                      <p className="empty-text" style={{ margin: '0 0 10px 0', fontSize: '13px' }}>No documents found in taskflow_ai vector store.</p>
+                      <button
+                        type="button"
+                        onClick={() => fetchDocuments()}
+                        style={{
+                          padding: '6px 14px',
+                          backgroundColor: '#1e293b',
+                          color: '#38bdf8',
+                          border: '1px solid #334155',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        🔄 Reload Vector Store
+                      </button>
+                    </div>
                   ) : (
                     documents.map((doc, idx) => (
                       <div
