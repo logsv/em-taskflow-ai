@@ -183,13 +183,13 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     default: async (inputArgs) => {
       const member = (await identityService.resolveMember(inputArgs?.engineer_id)) || (await identityService.resolveMemberFromText(inputArgs?.engineer_id || ''));
       return {
-        engineer_id: member?.id || inputArgs?.engineer_id || 'eng_alex',
-        displayName: member?.displayName || 'Alex Williams',
+        engineer_id: member?.id || inputArgs?.engineer_id || 'unassigned',
+        displayName: member?.displayName || inputArgs?.engineer_id || 'Engineer',
         current_level: member?.currentLevel || inputArgs?.current_level || 'L4_MID',
         target_level: member?.targetLevel || inputArgs?.target_level || 'L5_SENIOR',
         track: member?.track || inputArgs?.track || 'INDIVIDUAL_CONTRIBUTOR',
-        tenure_months: member?.tenureMonths || inputArgs?.tenure_months || 18,
-        weekly_workload_hours: 41.5,
+        tenure_months: member?.tenureMonths || inputArgs?.tenure_months || 0,
+        weekly_workload_hours: 40.0,
         synced_at: new Date().toISOString(),
       };
     },

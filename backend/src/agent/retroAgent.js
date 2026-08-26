@@ -148,7 +148,7 @@ export const sprintRetroTool = createDeterministicToolHarness({
 
     const members = defaultData.team_members && defaultData.team_members.length > 0
       ? defaultData.team_members
-      : ['Alex Williams', 'Sarah Chen', 'Vikas Kumar', 'Elena Rostova'];
+      : [];
 
     // Dynamic Thematic Parsing
     const whatWentWell = [
@@ -197,7 +197,7 @@ export const sprintRetroTool = createDeterministicToolHarness({
     const smartActionItems = [
       {
         task: 'Implement automated CI flaky test quarantine and retry isolation',
-        owner: members[1] || 'Sarah Chen',
+        owner: members[1] || members[0] || 'DevOps / Tooling Lead',
         category: 'CI_CD_TOOLING',
         target_sprint: 'Sprint 43 (Day 3 Checkpoint)',
         success_metric: 'Reduce CI rerun rate from 18% to <2%',
@@ -205,7 +205,7 @@ export const sprintRetroTool = createDeterministicToolHarness({
       },
       {
         task: 'Establish team pairing protocol and WIP limit (<1.5) for mega-PRs >400 lines',
-        owner: members[0] || 'Alex Williams',
+        owner: members[0] || 'Engineering Team',
         category: 'WORKING_AGREEMENTS',
         target_sprint: 'Sprint 43 (Day 5 Checkpoint)',
         success_metric: 'Achieve PR review turnaround P80 < 4 hours',
@@ -213,7 +213,7 @@ export const sprintRetroTool = createDeterministicToolHarness({
       },
       {
         task: 'Allocate 10% explicit buffer for unplanned customer triage in Sprint 43 planning',
-        owner: members[2] || 'Vikas Kumar',
+        owner: members[2] || members[0] || 'Capacity Planner',
         category: 'CAPACITY_PLANNING',
         target_sprint: 'Sprint 43 (Planning Ceremony)',
         success_metric: 'Zero mid-sprint context switching on core deliverables',

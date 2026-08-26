@@ -107,7 +107,7 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
           baseline_points: 40,
           current_points: 48,
           target_date: '2026-11-15',
-          owner: 'Identity Team (Sarah Chen)',
+          owner: 'Identity Team',
           blockers: [],
         },
         {
@@ -119,7 +119,7 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
           baseline_points: 30,
           current_points: 42,
           target_date: '2026-11-30',
-          owner: 'Mobile Client Team (Alex Williams)',
+          owner: 'Mobile Client Team',
           blockers: ['Blocked by ENG-201 (Core Auth v2 API token exchange endpoint)'],
         },
         {
@@ -131,7 +131,7 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
           baseline_points: 35,
           current_points: 35,
           target_date: '2026-10-31',
-          owner: 'Infrastructure Team (Vikas Kumar)',
+          owner: 'Infrastructure Team',
           blockers: [],
         },
       ],
@@ -160,7 +160,7 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
         baseline_points: 40,
         current_points: 48,
         target_date: '2026-11-15',
-        owner: 'Identity Team (Sarah Chen)',
+        owner: 'Identity Team',
         blockers: [],
       },
       {
@@ -172,7 +172,7 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
         baseline_points: 30,
         current_points: 42,
         target_date: '2026-11-30',
-        owner: 'Mobile Client Team (Alex Williams)',
+        owner: 'Mobile Client Team',
         blockers: ['Blocked by ENG-201 (Core Auth v2 API token exchange endpoint)'],
       },
       {
@@ -184,7 +184,7 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
         baseline_points: 35,
         current_points: 35,
         target_date: '2026-10-31',
-        owner: 'Infrastructure Team (Vikas Kumar)',
+        owner: 'Infrastructure Team',
         blockers: [],
       },
     ];
@@ -338,9 +338,9 @@ ${blockersList.length > 0 ? blockersList.map((b) => `- ⚠️ **[${b.epic}] ${b.
 ---
 
 ### 🛠️ Recommended De-risking & Re-alignment Actions
-1. **Unblock Auth Service v2 API Contract (P0)**: Expedite \`ENG-201\` token exchange endpoint by assigning Sarah Chen dedicated focus to unblock Mobile passkeys.
+1. **Unblock Auth Service v2 API Contract (P0)**: Expedite \`ENG-201\` token exchange endpoint by assigning Identity Team dedicated focus to unblock Mobile passkeys.
 2. **De-scope Non-Core Passkey Fallbacks (P1)**: Move desktop Safari legacy biometric fallback to Q1 milestone to recover ~6 story points on \`ENG-205\`.
-3. **Database Migration Buffer (P2)**: Maintain \`ENG-210\` schedule on track for Oct 31, freeing up Vikas Kumar to assist Identity pod in mid-November.
+3. **Database Migration Buffer (P2)**: Maintain \`ENG-210\` schedule on track for Oct 31, freeing up Infrastructure Team to assist Identity pod in mid-November.
 
 ---
 
