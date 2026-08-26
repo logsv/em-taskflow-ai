@@ -481,7 +481,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
             <span className="card-val">85%</span>
           </div>
           <div className="card-label">1-on-1 Cadence Health</div>
-          <div className="card-sub">1 overdue sync (>14d)</div>
+          <div className="card-sub">1 overdue sync (&gt;14d)</div>
           <div className="mini-progress-bar">
             <div className="bar-fill bar-fill-people" style={{ width: '85%' }}></div>
           </div>
@@ -993,7 +993,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
                   </td>
                   <td>24 Months</td>
                   <td>
-                    <span className="overdue-tag">16 Days Ago (>14d SLA)</span>
+                    <span className="overdue-tag">16 Days Ago (&gt;14d SLA)</span>
                   </td>
                   <td>
                     <span className="badge-severity badge-warning">⚠️ OVERDUE</span>
