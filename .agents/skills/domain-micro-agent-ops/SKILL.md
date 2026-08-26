@@ -47,7 +47,7 @@ node -e "import('./src/agent/retroAgent.js').then(async (m) => { console.log('Re
 node -e "import('./src/agent/okrAgent.js').then(async (m) => { console.log('OKR Harness:', await m.okrProgressTool.invoke({})); });"
 ```
 
-### 2. Run Backend Unit Tests (233 Specs)
+### 2. Run Backend Unit Tests (240 Specs)
 ```bash
 cd backend
 npm test

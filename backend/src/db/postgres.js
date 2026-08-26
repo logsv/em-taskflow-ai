@@ -1060,17 +1060,19 @@ class DatabaseService {
     if (!Array.isArray(issues) || issues.length === 0) return 0;
 
     if (!this.inMemoryGithubIssues) this.inMemoryGithubIssues = new Map();
+    const defaultRepo = process.env.GITHUB_REPO || 'github_repo';
     for (const issue of issues) {
       const num = issue.number || issue.id;
+      const targetRepo = issue.repo || defaultRepo;
       if (num) {
         this.inMemoryGithubIssues.set(String(num), {
           id: `gh_${num}`,
           number: num,
-          repo: issue.repo || 'logsv/em-taskflow-ai',
+          repo: targetRepo,
           title: issue.title || 'Untitled Issue',
           state: issue.state || 'open',
           assignee: issue.assignee || 'unassigned',
-          html_url: issue.html_url || `https://github.com/logsv/em-taskflow-ai/issues/${num}`,
+          html_url: issue.html_url || `https://github.com/${targetRepo}/issues/${num}`,
           labels: issue.labels || [],
           data: issue,
           synced_at: issue.synced_at || new Date().toISOString(),
@@ -1084,7 +1086,8 @@ class DatabaseService {
       try {
         await client.query('BEGIN');
         for (const issue of issues) {
-          const id = `gh_${issue.repo || 'logsv/em-taskflow-ai'}_${issue.number}`;
+          const targetRepo = issue.repo || defaultRepo;
+          const id = `gh_${targetRepo}_${issue.number}`;
           const labelsJson = JSON.stringify(issue.labels || []);
           const dataJson = JSON.stringify(issue);
 
@@ -1105,11 +1108,11 @@ class DatabaseService {
             [
               id,
               issue.number,
-              issue.repo || 'logsv/em-taskflow-ai',
+              targetRepo,
               issue.title || '',
               issue.state || 'open',
               issue.assignee || '',
-              issue.html_url || '',
+              issue.html_url || `https://github.com/${targetRepo}/issues/${issue.number}`,
               labelsJson,
               dataJson,
             ]
@@ -1562,6 +1565,9 @@ class DatabaseService {
     try {
       await this.ensureInitialized();
       const res = await this.pool.query('SELECT * FROM team_members ORDER BY display_name ASC');
+      if (res.rows.length === 0 && this.inMemoryTeamMembers.length > 0) {
+        return [...this.inMemoryTeamMembers];
+      }
       return res.rows.map((row) => ({
         id: row.id,
         displayName: row.display_name,

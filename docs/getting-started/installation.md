@@ -87,3 +87,17 @@ npm install
 npm run dev
 ```
 *(Runs Vite development server on port 3000).*
+
+---
+
+## 🧪 Post-Installation Verification
+
+Run the automated test suites to verify that your environment is 100% operational:
+
+```bash
+# Run 240 backend unit test specs
+cd backend && npm test
+
+# Run 39 Python AI test specs
+cd services/python-ai-service && uv run pytest
+```

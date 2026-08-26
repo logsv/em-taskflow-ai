@@ -10,7 +10,8 @@ export const auditReportTool = createDeterministicToolHarness({
   featureFlagKey: 'critic',
   schema: z.object({
     sources: z.array(z.string()).default(['default']),
-    mode: z.enum(['ANALYZE', 'LIST_RAW', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    mode: z.enum(['ANALYZE', 'LIST_RAW', 'DRILL_DOWN', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    target: z.enum(['ALL', 'CHECKS', 'VIOLATIONS', 'POLICIES', 'SANITIZATION']).default('ALL'),
     draft_response: z.string().default('').describe('Draft EM report, feedback text, or metric analysis under review'),
     original_prompt: z.string().optional().describe('Original user query or task context'),
     audit_type: z.enum(['full_audit', 'tone', 'math', 'links', 'vanity_metrics']).default('full_audit'),
@@ -79,16 +80,25 @@ export const auditReportTool = createDeterministicToolHarness({
     const originalText = inputArgs.draft_response || '';
 
     if (mode === 'LIST_RAW') {
+      const standardChecks = [
+        { key: 'zero_vanity_metrics', name: 'Zero Vanity Metrics Policy', standard: 'Prohibits ranking by LOC/commits' },
+        { key: 'tone_neutrality_blamelessness', name: 'Tone Neutrality & Blameless Empathy', standard: 'Enforces objective SBI framing' },
+        { key: 'mathematical_consistency', name: 'Mathematical & Percentage Integrity', standard: 'Bounds percentages <=100% and checks math' },
+        { key: 'citation_link_integrity', name: 'Citation & Markdown Link Integrity', standard: 'Verifies valid markdown syntax' },
+        { key: 'zero_misleading_fallbacks', name: 'Zero Misleading Fallback Policy', standard: 'Prohibits hardcoded fake usernames' },
+      ];
+      const checkRows = standardChecks.map((c) => `| **${c.name}** | \`${c.key}\` | *${c.standard}* | 🟢 Active Standard |`);
+      const listSummary = `### 🛡️ Engineering Management Report Audit Standards (5 Checks)\n\n` +
+        `| Audit Dimension | Key | Standard Requirement | Status |\n| :--- | :--- | :--- | :---: |\n` +
+        checkRows.join('\n') +
+        `\n\n> 💡 **Quality Guardrail**: All AI-generated status reports, feedback drafts, and retro notes are scanned against these rules.`;
+
       return {
         mode: 'LIST_RAW',
+        target: inputArgs.target || 'ALL',
         audit_type: auditType,
-        checks_performed: [
-          'zero_vanity_metrics',
-          'tone_neutrality_blamelessness',
-          'mathematical_consistency',
-          'citation_link_integrity',
-          'zero_misleading_fallbacks',
-        ],
+        checks_performed: standardChecks.map((c) => c.key),
+        summary: listSummary,
       };
     }
 
@@ -156,6 +166,30 @@ export const auditReportTool = createDeterministicToolHarness({
         .replace(/\b\d+\s*lines of code\b/gi, 'core delivery milestones')
         .replace(/\btotal commits:\s*\d+\b/gi, 'PR throughput: On track')
         .replace(/\b(lazy|screwed up|careless)\b/gi, 'requiring additional pairing support');
+    }
+
+    if (mode === 'DRILL_DOWN') {
+      let drillSummary = '';
+      if (inputArgs.target === 'VIOLATIONS') {
+        drillSummary = `### 🚨 Quality Audit Violations & Required Revisions\n\n` +
+          (violations.length > 0
+            ? violations.map((v, i) => `${i + 1}. **Violation**: ${v}`).join('\n\n')
+            : '🟢 **Zero Audit Violations**: The analyzed draft satisfies all EM quality policies.') +
+          `\n\n> 💡 **Action**: Apply fixes before submitting or publishing.`;
+      } else {
+        drillSummary = `### 🎯 Targeted Audit Breakdown: ${auditType}\n\n` +
+          policyChecks.map((p) => `- **${p.dimension}** [${p.status}]: ${p.observed}`).join('\n') +
+          `\n\n> 💡 **Overall Audit Verdict**: ${violations.length === 0 ? '🟢 APPROVED' : '⚠️ REVISION REQUIRED'}`;
+      }
+
+      return {
+        mode: 'DRILL_DOWN',
+        target: inputArgs.target || 'ALL',
+        audit_type: auditType,
+        policy_checks: policyChecks,
+        violations,
+        summary: drillSummary,
+      };
     }
 
     const markdownSummary = `

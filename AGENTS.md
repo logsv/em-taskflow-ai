@@ -28,7 +28,7 @@ This file provides system guidance, architectural rules, anti-hallucination guid
    - Agents must NEVER write analytics trace tables into application databases.
 
 4. **Rule of Verification**:
-   - Never declare success without executing unit tests. All **235 backend specs** and **39 Python AI specs** must pass with **0 failures**.
+   - Never declare success without executing unit tests. All **240 backend specs** and **39 Python AI specs** must pass with **0 failures**.
 
 5. **No Superficial Symptom Patches**:
    - NEVER resolve errors by masking symptoms, swallowing exceptions silently, returning dummy fallbacks, or commenting out failing unit test assertions.
@@ -120,7 +120,7 @@ npm run dev
 # Build ESM JavaScript output
 npm run build
 
-# Run unit tests with Jasmine & coverage (233 specs)
+# Run unit tests with Jasmine & coverage (240 specs, 0 failures)
 npm test
 
 # Run full evaluation suite (Model: hermes3:8b)
@@ -134,7 +134,7 @@ npm run eval:pre-llm
 
 ### Python AI Service Commands (from `/services/python-ai-service`)
 ```bash
-# Run Python unit & evaluation tests (39 specs)
+# Run Python unit & evaluation tests (39 specs, 0 failures)
 uv run pytest
 ```
 

@@ -49,7 +49,7 @@ cd services/python-ai-service
 uv run pytest
 ```
 
-### Run Backend RAG Test Suite (233 Specs)
+### Run Backend Test Suite (240 Specs)
 ```bash
 cd backend
 npm test

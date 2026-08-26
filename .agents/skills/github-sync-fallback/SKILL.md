@@ -36,7 +36,7 @@ curl -X POST http://localhost:4000/api/github/sync -H "Content-Type: application
 node -e "import('./src/db/postgres.js').then(async (m) => { const db = m.default; console.log('Issues:', await db.listGithubIssues()); });"
 ```
 
-### Run Full Test Suite (233 Specs)
+### Run Full Test Suite (240 Specs)
 ```bash
 cd backend
 npm test

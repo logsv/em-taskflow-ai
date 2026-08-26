@@ -31,7 +31,7 @@ Use this skill when developing, testing, or debugging LangGraph supervisor agent
 node -e "import('./src/agent/llmRouter.js').then(async (m) => { console.log('Fast-Path:', m.classifyFastPath('hello')); console.log('Router:', await m.getRouterChain().invoke({ query: 'my PRs' })); });"
 ```
 
-### Run Full Test Suite (233 Specs)
+### Run Full Test Suite (240 Specs)
 ```bash
 cd backend
 npm test

@@ -162,13 +162,18 @@ class SettingsService {
         },
         github: {
           token: process.env.GITHUB_TOKEN || '',
-          owner: process.env.GITHUB_OWNER || 'logsv',
-          repo: process.env.GITHUB_REPO || 'em-taskflow-ai',
+          owner: process.env.GITHUB_OWNER || '',
+          repo: process.env.GITHUB_REPO || '',
           enabled: true,
         },
         notion: {
           apiKey: process.env.NOTION_API_KEY || '',
           mcpUrl: process.env.NOTION_MCP_URL || '',
+          okrPageId: process.env.NOTION_OKR_PAGE_ID || '',
+          retroPageId: process.env.NOTION_RETRO_PAGE_ID || '',
+          sopPageId: process.env.NOTION_SOP_PAGE_ID || '',
+          careerPageId: process.env.NOTION_CAREER_PAGE_ID || '',
+          sprintGoalsPageId: process.env.NOTION_SPRINT_GOALS_PAGE_ID || '',
           enabled: true,
         },
         googleCalendar: {
@@ -242,6 +247,11 @@ class SettingsService {
       if (rawSettings.mcp.notion) {
         if (rawSettings.mcp.notion.apiKey) process.env.NOTION_API_KEY = rawSettings.mcp.notion.apiKey;
         if (rawSettings.mcp.notion.mcpUrl) process.env.NOTION_MCP_URL = rawSettings.mcp.notion.mcpUrl;
+        if (rawSettings.mcp.notion.okrPageId) process.env.NOTION_OKR_PAGE_ID = rawSettings.mcp.notion.okrPageId;
+        if (rawSettings.mcp.notion.retroPageId) process.env.NOTION_RETRO_PAGE_ID = rawSettings.mcp.notion.retroPageId;
+        if (rawSettings.mcp.notion.sopPageId) process.env.NOTION_SOP_PAGE_ID = rawSettings.mcp.notion.sopPageId;
+        if (rawSettings.mcp.notion.careerPageId) process.env.NOTION_CAREER_PAGE_ID = rawSettings.mcp.notion.careerPageId;
+        if (rawSettings.mcp.notion.sprintGoalsPageId) process.env.NOTION_SPRINT_GOALS_PAGE_ID = rawSettings.mcp.notion.sprintGoalsPageId;
       }
       if (rawSettings.mcp.googleCalendar) {
         if (rawSettings.mcp.googleCalendar.apiKey) {
@@ -317,6 +327,11 @@ class SettingsService {
         notion: {
           apiKey: maskSecret(raw.mcp.notion?.apiKey),
           mcpUrl: raw.mcp.notion?.mcpUrl || '',
+          okrPageId: raw.mcp.notion?.okrPageId || '',
+          retroPageId: raw.mcp.notion?.retroPageId || '',
+          sopPageId: raw.mcp.notion?.sopPageId || '',
+          careerPageId: raw.mcp.notion?.careerPageId || '',
+          sprintGoalsPageId: raw.mcp.notion?.sprintGoalsPageId || '',
           enabled: raw.mcp.notion?.enabled ?? true,
         },
         googleCalendar: {
@@ -393,13 +408,18 @@ class SettingsService {
       },
       github: {
         token: isMasked(incoming.mcp?.github?.token) ? current.mcp.github?.token : incoming.mcp?.github?.token ?? current.mcp.github?.token,
-        owner: incoming.mcp?.github?.owner || current.mcp.github?.owner || '',
-        repo: incoming.mcp?.github?.repo || current.mcp.github?.repo || '',
+        owner: incoming.mcp?.github?.owner ?? current.mcp.github?.owner ?? '',
+        repo: incoming.mcp?.github?.repo ?? current.mcp.github?.repo ?? '',
         enabled: incoming.mcp?.github?.enabled ?? current.mcp.github?.enabled ?? true,
       },
       notion: {
         apiKey: isMasked(incoming.mcp?.notion?.apiKey) ? current.mcp.notion?.apiKey : incoming.mcp?.notion?.apiKey ?? current.mcp.notion?.apiKey,
         mcpUrl: incoming.mcp?.notion?.mcpUrl || current.mcp.notion?.mcpUrl || '',
+        okrPageId: incoming.mcp?.notion?.okrPageId ?? current.mcp.notion?.okrPageId ?? '',
+        retroPageId: incoming.mcp?.notion?.retroPageId ?? current.mcp.notion?.retroPageId ?? '',
+        sopPageId: incoming.mcp?.notion?.sopPageId ?? current.mcp.notion?.sopPageId ?? '',
+        careerPageId: incoming.mcp?.notion?.careerPageId ?? current.mcp.notion?.careerPageId ?? '',
+        sprintGoalsPageId: incoming.mcp?.notion?.sprintGoalsPageId ?? current.mcp.notion?.sprintGoalsPageId ?? '',
         enabled: incoming.mcp?.notion?.enabled ?? current.mcp.notion?.enabled ?? true,
       },
       googleCalendar: {

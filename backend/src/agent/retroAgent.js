@@ -5,6 +5,7 @@ import { retroAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import identityService from '../services/identityService.js';
+import settingsService from '../services/settingsService.js';
 
 export const sprintRetroTool = createDeterministicToolHarness({
   name: 'generate_sprint_retro',
@@ -12,7 +13,8 @@ export const sprintRetroTool = createDeterministicToolHarness({
   featureFlagKey: 'retro',
   schema: z.object({
     sources: z.array(z.string()).default(['default', 'notion', 'jira', 'github']),
-    mode: z.enum(['ANALYZE', 'LIST_RAW', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    mode: z.enum(['ANALYZE', 'LIST_RAW', 'DRILL_DOWN', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    target: z.enum(['ALL', 'ACTION_ITEMS', 'PATTERNS', 'FRICTION_POINTS', 'WINS']).default('ALL'),
     sprint_id: z.string().default('sprint_42'),
     sprint_name: z.string().default('Sprint 42'),
     retro_notes: z.string().optional().describe('Raw retro feedback notes, cards, or team chat transcript'),
@@ -24,8 +26,9 @@ export const sprintRetroTool = createDeterministicToolHarness({
     notion: async (_inputArgs) => {
       try {
         const { executeMCPTool } = await import('../mcp/index.js');
+        const configuredPageId = settingsService.getCachedSettings()?.mcp?.notion?.retroPageId || process.env.NOTION_RETRO_PAGE_ID;
         const res = await Promise.race([
-          executeMCPTool('notion_search', { query: 'Sprint Retrospective Retro Board' }),
+          executeMCPTool('notion_search', { query: configuredPageId || 'Sprint Retrospective Retro Board' }),
           new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Notion search timed out')), 2500)),
         ]).catch(() => null);
 
@@ -37,8 +40,8 @@ export const sprintRetroTool = createDeterministicToolHarness({
           if (pages.length > 0) {
             return {
               retro_board_found: true,
-              board_title: pages[0].title || 'Sprint 42 Retrospective',
-              board_url: pages[0].url || 'https://notion.so/retro-42',
+              board_title: pages[0].title || 'Sprint Retrospective Board',
+              board_url: pages[0].url || (configuredPageId ? `https://notion.so/${configuredPageId}` : 'https://notion.so/retro'),
               source: 'mcp_notion',
               synced_at: new Date().toISOString(),
             };
@@ -125,15 +128,13 @@ export const sprintRetroTool = createDeterministicToolHarness({
       };
     } catch (_e) {
       return {
-        sprint_id: inputArgs?.sprint_id || 'sprint_42',
-        sprint_name: 'Sprint 42',
-        team_members: ['Alex Williams', 'Sarah Chen', 'Vikas Kumar', 'Elena Rostova'],
-        past_retro_items: [
-          'Establish dedicated daily PR review window at 10 AM',
-          'Automate CI check for PR labels',
-        ],
+        sprint_id: inputArgs?.sprint_id || null,
+        sprint_name: inputArgs?.sprint_name || null,
+        team_members: [],
+        past_retro_items: [],
         is_cached: true,
-        data_source: 'static_retro_fallback',
+        data_source: 'empty',
+        data_availability: 'no_data',
       };
     }
   },
@@ -147,7 +148,7 @@ export const sprintRetroTool = createDeterministicToolHarness({
 
     const members = defaultData.team_members && defaultData.team_members.length > 0
       ? defaultData.team_members
-      : ['Alex Williams', 'Sarah Chen', 'Vikas Kumar', 'Elena Rostova'];
+      : [];
 
     // Dynamic Thematic Parsing
     const whatWentWell = [
@@ -196,7 +197,7 @@ export const sprintRetroTool = createDeterministicToolHarness({
     const smartActionItems = [
       {
         task: 'Implement automated CI flaky test quarantine and retry isolation',
-        owner: members[1] || 'Sarah Chen',
+        owner: members[1] || members[0] || 'DevOps / Tooling Lead',
         category: 'CI_CD_TOOLING',
         target_sprint: 'Sprint 43 (Day 3 Checkpoint)',
         success_metric: 'Reduce CI rerun rate from 18% to <2%',
@@ -204,7 +205,7 @@ export const sprintRetroTool = createDeterministicToolHarness({
       },
       {
         task: 'Establish team pairing protocol and WIP limit (<1.5) for mega-PRs >400 lines',
-        owner: members[0] || 'Alex Williams',
+        owner: members[0] || 'Engineering Team',
         category: 'WORKING_AGREEMENTS',
         target_sprint: 'Sprint 43 (Day 5 Checkpoint)',
         success_metric: 'Achieve PR review turnaround P80 < 4 hours',
@@ -212,7 +213,7 @@ export const sprintRetroTool = createDeterministicToolHarness({
       },
       {
         task: 'Allocate 10% explicit buffer for unplanned customer triage in Sprint 43 planning',
-        owner: members[2] || 'Vikas Kumar',
+        owner: members[2] || members[0] || 'Capacity Planner',
         category: 'CAPACITY_PLANNING',
         target_sprint: 'Sprint 43 (Planning Ceremony)',
         success_metric: 'Zero mid-sprint context switching on core deliverables',
@@ -221,11 +222,49 @@ export const sprintRetroTool = createDeterministicToolHarness({
     ];
 
     if (mode === 'LIST_RAW') {
+      const actionRows = smartActionItems.map((a) => {
+        return `| **${a.task}** | \`@${a.owner}\` | \`${a.target_sprint}\` | \`${a.success_metric}\` | 🟢 ${a.status} |`;
+      });
+      const listSummary = `### 📋 Retrospective Action Items: ${sprintName} (${smartActionItems.length} SMART Actions)\n\n` +
+        `| Action Item Task | Owner | Target Milestone | Success Metric | Status |\n| :--- | :--- | :--- | :--- | :---: |\n` +
+        (actionRows.length > 0 ? actionRows.join('\n') : '| *No action items recorded* | - | - | - | - |') +
+        `\n\n> 💡 **Follow-Up Cadence**: Review action item completion during the mid-sprint checkpoint.`;
+
       return {
         mode: 'LIST_RAW',
+        target: inputArgs.target || 'ALL',
         sprint_id: sprintId,
         total_items: smartActionItems.length,
         items: smartActionItems,
+        summary: listSummary,
+      };
+    }
+
+    if (mode === 'DRILL_DOWN') {
+      let drillSummary = '';
+      if (inputArgs.target === 'PATTERNS') {
+        drillSummary = `### 🔁 Chronic Multi-Sprint Recurring Patterns: ${sprintName}\n\n` +
+          recurringPatterns.map((p) => `- ${p}`).join('\n\n') +
+          `\n\n> 💡 **Systemic Root Cause**: Recurring friction requires structural process changes rather than individual effort.`;
+      } else if (inputArgs.target === 'FRICTION_POINTS') {
+        drillSummary = `### ⚠️ Sprint Friction Points & Root Causes: ${sprintName}\n\n` +
+          whatNeedsImprovement.map((f) => `- ${f}`).join('\n') +
+          `\n\n> 💡 **Remediation**: Track resolution in the SMART action items.`;
+      } else {
+        const actionRows = smartActionItems.map((a) => `- **${a.task}** (Owner: \`@${a.owner}\`, Target: \`${a.target_sprint}\`)\n  *Success Metric*: ${a.success_metric}`);
+        drillSummary = `### 🎯 Targeted Retrospective Action Plan: ${sprintName}\n\n` +
+          actionRows.join('\n\n') +
+          `\n\n> 💡 **Accountability**: Each action item is explicitly owned by a team member with a verifiable target milestone.`;
+      }
+
+      return {
+        mode: 'DRILL_DOWN',
+        target: inputArgs.target || 'ALL',
+        sprint_id: sprintId,
+        sprint_name: sprintName,
+        recurring_patterns: recurringPatterns,
+        action_items: smartActionItems,
+        summary: drillSummary,
       };
     }
 

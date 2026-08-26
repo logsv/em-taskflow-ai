@@ -16,11 +16,11 @@ Use this skill when implementing, testing, or auditing observability, self-hoste
    - Primary user queries MUST succeed even if the Langfuse server or analytics database is offline.
 
 2. **Strict Database Boundary**:
-   - Primary application DB: `postgresql://taskflow:taskflow@postgres:5432/taskflow_backend`
-   - Dedicated Analytics DB: `postgresql://langfuse:langfuse@analytics-db:5433/langfuse_db`
+   - Primary application DB: `postgresql://taskflow:taskflow@localhost:5432/taskflow_backend`
+   - Dedicated Analytics DB: `postgresql://langfuse:langfuse@localhost:5433/langfuse_db`
 
 3. **Validation Requirements**:
-   - All migration steps must pass `npm test` with **233 specs, 0 failures**.
+   - All migration steps must pass `npm test` with **240 specs, 0 failures**.
 
 ---
 
@@ -31,7 +31,7 @@ Use this skill when implementing, testing, or auditing observability, self-hoste
 node -e "import('./src/db/postgres.js').then(async (m) => { console.log('Primary DB Connected:', !!m.default); });"
 ```
 
-### Run Full Test Suite (233 Specs)
+### Run Full Test Suite (240 Specs)
 ```bash
 cd backend
 npm test

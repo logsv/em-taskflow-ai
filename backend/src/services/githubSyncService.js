@@ -1,12 +1,20 @@
 import databaseService from '../db/postgres.js';
 import config from '../config.js';
+import settingsService from './settingsService.js';
 
 class GithubSyncService {
   /**
    * Sync issues from GitHub API into PostgreSQL DB (with JSONB)
    */
-  async syncGithubData(repoName = 'logsv/em-taskflow-ai') {
-    const token = process.env.GITHUB_TOKEN || process.env.GITHUB_PERSONAL_ACCESS_TOKEN || config?.mcp?.github?.token;
+  async syncGithubData(repoName) {
+    const cachedGithub = settingsService.getCachedSettings()?.mcp?.github || {};
+    const defaultRepo = cachedGithub.owner && cachedGithub.repo ? `${cachedGithub.owner}/${cachedGithub.repo}` : (cachedGithub.repo || process.env.GITHUB_REPO || '');
+    const effectiveRepo = repoName || defaultRepo;
+    if (!effectiveRepo) {
+      console.log('ℹ️ [GITHUB SYNC]: No GitHub repository configured, skipping sync.');
+      return { totalSynced: 0, issues: [] };
+    }
+    const token = process.env.GITHUB_TOKEN || process.env.GITHUB_PERSONAL_ACCESS_TOKEN || config?.mcp?.github?.token || cachedGithub.token;
     
     const headers = {
       'Accept': 'application/vnd.github.v3+json',
@@ -16,7 +24,7 @@ class GithubSyncService {
       headers['Authorization'] = `token ${token}`;
     }
 
-    const apiUrl = `https://api.github.com/repos/${repoName}/issues?state=all&per_page=100`;
+    const apiUrl = `https://api.github.com/repos/${effectiveRepo}/issues?state=all&per_page=100`;
     console.log(`📡 [GITHUB SYNC]: Fetching issues from ${apiUrl}...`);
 
     let rawIssues = [];

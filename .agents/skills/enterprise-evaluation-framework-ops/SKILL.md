@@ -57,6 +57,7 @@ The Enterprise Evaluation Framework provides deterministic, automated SLA testin
    - Shadow Telemetry Worker: [`services/python-ai-service/app/telemetry/shadow_evaluator.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/app/telemetry/shadow_evaluator.py)
    - DeepEval Trajectory Runner: [`services/python-ai-service/evaluation/deepeval_hermes.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/evaluation/deepeval_hermes.py)
    - Ragas Evaluator: [`services/python-ai-service/evaluation/ragas_runner.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/evaluation/ragas_runner.py)
+   - TruLens RAG Triad: [`services/python-ai-service/evaluation/trulens_rag_triad.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/evaluation/trulens_rag_triad.py)
 4. **Git Pre-Push Hook & CI Workflows**:
    - Local Hook: [`.git/hooks/pre-push`](file://.git/hooks/pre-push)
    - Backend CI Workflow: [`.github/workflows/backend-ci.yml`](file://.github/workflows/backend-ci.yml)
@@ -68,24 +69,35 @@ The Enterprise Evaluation Framework provides deterministic, automated SLA testin
 
 ### 1. Run Complete Evaluation Suite
 ```bash
-npm run eval:enterprise    # Runs Node evaluate, DeepEval, and Ragas
+npm run eval:enterprise    # Runs Node evaluate, DeepEval, Ragas, and TruLens
 ```
 
 ### 2. Run Evaluation Sub-Suites
 ```bash
-# DeepEval Agent Trajectory Tests (Pytest)
+# DeepEval Agent Trajectory Tests (Pytest 39 specs)
 npm run eval:deepeval
 
 # Ragas Hybrid RAG Evaluation (Faithfulness, Precision, Recall)
 npm run eval:ragas
 
+# TruLens RAG Triad Evaluation & Dashboard
+npm run eval:trulens
+npm run eval:trulens:dashboard
+
 # Promptfoo Prompt Matrix & Red-Teaming (Port 15500 & Promptfoo Cloud)
 npm run eval:promptfoo
+npm run eval:promptfoo:view
 ```
 
-### 3. Run Node.js Strategy Evaluators & Pytests
+### 3. Run Node.js Strategy Evaluators & Unit Tests
 ```bash
+# Backend Jasmine Unit Tests (240 specs, 0 failures)
+cd backend && npm test
+
+# Node.js Evaluation Strategy Suite
 cd backend && npm run evaluate
+
+# Python Pytest Suite (39 specs, 0 failures)
 cd services/python-ai-service && uv run pytest
 ```
 

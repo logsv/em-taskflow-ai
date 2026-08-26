@@ -4,6 +4,7 @@ import { getChatModel } from '../llm/index.js';
 import { okrAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
+import settingsService from '../services/settingsService.js';
 
 export const okrProgressTool = createDeterministicToolHarness({
   name: 'evaluate_okr_progress',
@@ -11,7 +12,8 @@ export const okrProgressTool = createDeterministicToolHarness({
   featureFlagKey: 'okr',
   schema: z.object({
     sources: z.array(z.string()).default(['default', 'notion', 'jira']),
-    mode: z.enum(['ANALYZE', 'LIST_RAW', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    mode: z.enum(['ANALYZE', 'LIST_RAW', 'DRILL_DOWN', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    target: z.enum(['ALL', 'AT_RISK', 'OBJECTIVES', 'GAP_REMEDIATION', 'KRS']).default('ALL'),
     quarter: z.string().default('Q4'),
     objective_id: z.string().default('all'),
     fetch_fresh_data: z.boolean().default(true),
@@ -21,8 +23,9 @@ export const okrProgressTool = createDeterministicToolHarness({
     notion: async (_inputArgs) => {
       try {
         const { executeMCPTool } = await import('../mcp/index.js');
+        const configuredPageId = settingsService.getCachedSettings()?.mcp?.notion?.okrPageId || process.env.NOTION_OKR_PAGE_ID;
         const res = await Promise.race([
-          executeMCPTool('notion_search', { query: 'Engineering OKRs Quarterly Review' }),
+          executeMCPTool('notion_search', { query: configuredPageId || 'Engineering OKRs Quarterly Review' }),
           new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Notion search timed out')), 2500)),
         ]).catch(() => null);
 
@@ -34,8 +37,8 @@ export const okrProgressTool = createDeterministicToolHarness({
           if (pages.length > 0) {
             return {
               okr_hub_found: true,
-              hub_title: pages[0].title || 'Q4 Engineering OKRs & KPI Hub',
-              hub_url: pages[0].url || 'https://notion.so/okrs-q4',
+              hub_title: pages[0].title || 'Engineering OKRs & KPI Hub',
+              hub_url: pages[0].url || (configuredPageId ? `https://notion.so/${configuredPageId}` : 'https://notion.so/okrs'),
               source: 'mcp_notion',
               synced_at: new Date().toISOString(),
             };
@@ -225,11 +228,28 @@ export const okrProgressTool = createDeterministicToolHarness({
     ];
 
     if (mode === 'LIST_RAW') {
+      const krRows = rawKrs.map((item) => {
+        const target = Number(item.target_value || item.target || 100);
+        const current = Number(item.current_value || item.current || 0);
+        const isInverse = item.direction === 'LOWER_IS_BETTER' || /latency|turnaround|hours|ms|seconds|bugs|incidents|flakiness/i.test(item.kr || item.key_result || '');
+        const score = isInverse ? (current > 0 ? Math.min(1.0, target / current) : 1.0) : (target > 0 ? Math.min(1.0, current / target) : 1.0);
+        const progressPct = Math.round(score * 100);
+        const statusBadge = progressPct >= 80 ? '🟢 On Track' : progressPct >= 60 ? '🟡 At Risk' : '🔴 Off Track';
+        return `| **${item.kr || item.key_result || 'Key Result'}** | \`${current} ${item.unit || ''}\` | \`${target} ${item.unit || ''}\` | **${progressPct}%** | ${statusBadge} |`;
+      });
+
+      const listSummary = `### 🎯 Engineering OKRs & Key Results: ${quarter} (${rawKrs.length} Key Results)\n\n` +
+        `| Key Result Description | Current | Target | Progress | Status |\n| :--- | :---: | :---: | :---: | :---: |\n` +
+        (krRows.length > 0 ? krRows.join('\n') : '| *No OKRs recorded for quarter* | - | - | - | - |') +
+        `\n\n> 💡 **Pacing Guidance**: Focus engineering sprints on items flagged At Risk or Off Track.`;
+
       return {
         mode: 'LIST_RAW',
+        target: inputArgs.target || 'ALL',
         quarter,
         total_krs: rawKrs.length,
         items: rawKrs,
+        summary: listSummary,
       };
     }
 
@@ -328,6 +348,31 @@ export const okrProgressTool = createDeterministicToolHarness({
     }
     if (overallConfidenceScore < 0.40 || overallProgressPct < 45) {
       pacing = 'OFF_TRACK';
+    }
+
+    if (mode === 'DRILL_DOWN') {
+      let drillSummary = '';
+      if (inputArgs.target === 'AT_RISK' || inputArgs.target === 'GAP_REMEDIATION') {
+        drillSummary = `### ⚠️ At-Risk Key Results & Gap Remediation: ${quarter}\n\n` +
+          (laggingKrs.length > 0
+            ? laggingKrs.map((k) => `#### 📌 ${k.kr}\n- **Current vs Target**: ${k.current} / ${k.target} (${k.progress_pct}% complete, Confidence: ${k.confidence_score})\n- **Root Cause**: ${k.root_cause}\n- **Remediation Plan**: ${k.remediation}`).join('\n\n')
+            : '🟢 **All Key Results On Track**: Zero high-risk pacing gaps detected.') +
+          `\n\n> 💡 **Executive Action**: Review remediation resource allocation with tech leads.`;
+      } else {
+        drillSummary = `### 🎯 Targeted OKR Progress Breakdown: ${quarter}\n\n` +
+          analyzedKrs.map((k) => `- **${k.kr}**: Current: ${k.current} (Target: ${k.target}, ${k.progress_pct}% complete - ${k.status})`).join('\n') +
+          `\n\n> 💡 **Status**: Track leading indicator metrics in weekly EM dashboards.`;
+      }
+
+      return {
+        mode: 'DRILL_DOWN',
+        target: inputArgs.target || 'ALL',
+        quarter,
+        overall_progress_pct: overallProgressPct,
+        overall_confidence_score: overallConfidenceScore,
+        at_risk_krs: laggingKrs,
+        summary: drillSummary,
+      };
     }
 
     // Build Executive Markdown Report

@@ -11,6 +11,15 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
+@pytest.fixture(autouse=True, scope="session")
+def override_test_database():
+    """Force tests to use the isolated test database instead of the runtime database."""
+    os.environ["POSTGRES_DB"] = "taskflow_ai_test"
+    yield
+    # Restore default after test session
+    os.environ["POSTGRES_DB"] = "taskflow_ai"
+
+
 @pytest.fixture
 def sample_pdf_bytes():
     """Generate in-memory sample PDF bytes using PyMuPDF for test assertions."""

@@ -141,6 +141,18 @@ describe('Phase 5 Planning & Strategy Agents Specs: Sprint, Retro, Roadmap, OKR'
       expect(res.data.total_items).toBeGreaterThanOrEqual(1);
     });
 
+    it('should support DRILL_DOWN mode for recurring patterns and friction', async () => {
+      const res = await sprintRetroTool.invoke({
+        sprint_id: 'sprint_104',
+        mode: 'DRILL_DOWN',
+        target: 'PATTERNS',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      expect(res.data.mode).toBe('DRILL_DOWN');
+      expect(res.data.summary).toContain('Chronic Multi-Sprint Recurring Patterns');
+    });
+
     it('should fall back to PostgreSQL database when external MCPs time out', async () => {
       const fallback = await sprintRetroTool.dbCacheFallback('postgres_retro', { sprint_id: 'sprint_fallback' });
       expect(fallback.sprint_id).toBe('sprint_fallback');
@@ -187,6 +199,19 @@ describe('Phase 5 Planning & Strategy Agents Specs: Sprint, Retro, Roadmap, OKR'
       expect(res.data.mode).toBe('LIST_RAW');
       expect(Array.isArray(res.data.items)).toBe(true);
       expect(res.data.items.length).toBeGreaterThan(0);
+      expect(res.data.summary).toContain('Quarterly Roadmap Epics');
+    });
+
+    it('should support DRILL_DOWN mode for cross-team blockers', async () => {
+      const res = await roadmapAlignmentTool.invoke({
+        quarter: 'Q4',
+        mode: 'DRILL_DOWN',
+        target: 'BLOCKERS',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      expect(res.data.mode).toBe('DRILL_DOWN');
+      expect(res.data.summary).toContain('Cross-Team Technical Blockers');
     });
 
     it('should create roadmapAgent safely with low temperature', () => {
@@ -229,6 +254,19 @@ describe('Phase 5 Planning & Strategy Agents Specs: Sprint, Retro, Roadmap, OKR'
       expect(res.data.mode).toBe('LIST_RAW');
       expect(Array.isArray(res.data.items)).toBe(true);
       expect(res.data.items.length).toBeGreaterThan(0);
+      expect(res.data.summary).toContain('Engineering OKRs & Key Results');
+    });
+
+    it('should support DRILL_DOWN mode for at-risk key results', async () => {
+      const res = await okrProgressTool.invoke({
+        quarter: 'Q4',
+        mode: 'DRILL_DOWN',
+        target: 'AT_RISK',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      expect(res.data.mode).toBe('DRILL_DOWN');
+      expect(res.data.summary).toContain('At-Risk Key Results & Gap Remediation');
     });
 
     it('should create okrAgent safely with low temperature', () => {

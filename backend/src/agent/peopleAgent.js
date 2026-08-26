@@ -62,8 +62,9 @@ export const peopleGrowthTool = createDeterministicToolHarness({
   featureFlagKey: 'people',
   schema: z.object({
     sources: z.array(z.string()).default(['default', 'googleCalendar', 'notion']),
-    mode: z.enum(['ANALYZE', 'LIST_RAW', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
-    filter: z.enum(['ALL', 'TODAY_EVENTS', 'ONE_ON_ONES', 'CAREER_NOTES']).default('ALL'),
+    mode: z.enum(['ANALYZE', 'LIST_RAW', 'DRILL_DOWN', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+    filter: z.enum(['ALL', 'TODAY_EVENTS', 'ONE_ON_ONES', 'CAREER_NOTES', 'SKILL_GAPS']).default('ALL'),
+    target: z.enum(['ALL', 'ONE_ON_ONES', 'SKILL_GAPS', 'RADAR', 'CAREER_NOTES']).default('ALL'),
     engineer_id: z.string().default('eng_alex').describe('Name, alias, or identifier of the engineer'),
     current_level: z.enum(['L3_JUNIOR', 'L4_MID', 'L5_SENIOR', 'L6_STAFF', 'L7_PRINCIPAL', 'M1_EM']).default('L4_MID'),
     target_level: z.enum(['L4_MID', 'L5_SENIOR', 'L6_STAFF', 'L7_PRINCIPAL', 'M1_EM', 'M2_SENIOR_EM']).default('L5_SENIOR'),
@@ -127,9 +128,10 @@ export const peopleGrowthTool = createDeterministicToolHarness({
         const { executeMCPTool } = await import('../mcp/index.js');
         const member = (await identityService.resolveMember(inputArgs?.engineer_id)) || (await identityService.resolveMemberFromText(inputArgs?.engineer_id || ''));
         const notionName = member?.notionName || member?.displayName || inputArgs?.engineer_id || '1-on-1';
+        const configuredPageId = settingsService.getCachedSettings()?.mcp?.notion?.careerPageId || process.env.NOTION_CAREER_PAGE_ID;
         
         const res = await Promise.race([
-          executeMCPTool('notion_search', { query: `1-on-1 ${notionName} career progression` }),
+          executeMCPTool('notion_search', { query: configuredPageId || `1-on-1 ${notionName} career progression` }),
           new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Notion search timed out')), 2500)),
         ]).catch(() => null);
 
@@ -142,7 +144,7 @@ export const peopleGrowthTool = createDeterministicToolHarness({
               career_notes_count: pages.length,
               career_docs: pages.slice(0, 3).map((p) => ({
                 title: p.title || p.name || '1-on-1 Career Sync',
-                url: p.url || 'https://notion.so/career-notes',
+                url: p.url || (configuredPageId ? `https://notion.so/${configuredPageId}` : 'https://notion.so/career-notes'),
                 last_edited: p.last_edited_time || new Date().toISOString(),
               })),
               source: 'mcp_notion',
@@ -181,29 +183,31 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     default: async (inputArgs) => {
       const member = (await identityService.resolveMember(inputArgs?.engineer_id)) || (await identityService.resolveMemberFromText(inputArgs?.engineer_id || ''));
       return {
-        engineer_id: member?.id || inputArgs?.engineer_id || 'eng_alex',
-        displayName: member?.displayName || 'Alex Williams',
+        engineer_id: member?.id || inputArgs?.engineer_id || 'unassigned',
+        displayName: member?.displayName || inputArgs?.engineer_id || 'Engineer',
         current_level: member?.currentLevel || inputArgs?.current_level || 'L4_MID',
         target_level: member?.targetLevel || inputArgs?.target_level || 'L5_SENIOR',
         track: member?.track || inputArgs?.track || 'INDIVIDUAL_CONTRIBUTOR',
-        tenure_months: member?.tenureMonths || inputArgs?.tenure_months || 18,
-        weekly_workload_hours: 41.5,
+        tenure_months: member?.tenureMonths || inputArgs?.tenure_months || 0,
+        weekly_workload_hours: 40.0,
         synced_at: new Date().toISOString(),
       };
     },
   },
   // Tier 2: PostgreSQL Database Profile Snapshot Fallback
-  dbCacheFallback: async (source) => {
+  dbCacheFallback: async (source, inputArgs = {}) => {
     try {
       const members = await databaseService.getTeamMembers().catch(() => []);
-      const member = members[0] || {
-        id: 'mem_alex',
-        displayName: 'Alex Williams',
-        currentLevel: 'L4_MID',
-        targetLevel: 'L5_SENIOR',
-        track: 'INDIVIDUAL_CONTRIBUTOR',
-        tenureMonths: 18,
-      };
+      const member = members[0] || null;
+      if (!member) {
+        return {
+          engineer_id: inputArgs?.engineer_id || null,
+          displayName: null,
+          is_cached: true,
+          data_source: 'empty',
+          data_availability: 'no_team_members',
+        };
+      }
 
       if (source === 'googleCalendar') {
         return {
@@ -245,16 +249,17 @@ export const peopleGrowthTool = createDeterministicToolHarness({
       };
     } catch (_err) {
       return {
-        engineer_id: 'eng_alex',
-        displayName: 'Alex Williams',
-        current_level: 'L4_MID',
-        target_level: 'L5_SENIOR',
-        track: 'INDIVIDUAL_CONTRIBUTOR',
-        weekly_workload_hours: 40.0,
-        weekly_meeting_hours: 12.0,
-        today_events: [{ summary: '1-on-1 with Manager', start_time: '10:00 AM', attendee: 'Alex Williams' }],
+        engineer_id: inputArgs?.engineer_id || null,
+        displayName: null,
+        current_level: inputArgs?.current_level || null,
+        target_level: inputArgs?.target_level || null,
+        track: inputArgs?.track || null,
+        tenure_months: inputArgs?.tenure_months || 0,
+        weekly_workload_hours: 0,
+        weekly_meeting_hours: 0,
         is_cached: true,
-        data_source: 'postgres_profile_fallback',
+        data_source: 'empty',
+        data_availability: 'no_data',
       };
     }
   },
@@ -271,11 +276,22 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     ];
 
     if (mode === 'LIST_RAW') {
+      const eventRows = events.map((e) => {
+        return `| **${e.summary || '1-on-1 Meeting'}** | \`${e.start_time || 'Scheduled'}\` | \`@${e.attendee || resolvedName}\` | 🟢 Confirmed |`;
+      });
+
+      const listSummary = `### 📅 Scheduled 1-on-1 & Growth Check-ins (${events.length} Events)\n\n` +
+        `| Meeting / Event | Time | Engineer / Attendee | Status |\n| :--- | :---: | :--- | :---: |\n` +
+        (eventRows.length > 0 ? eventRows.join('\n') : '| *No 1-on-1 meetings scheduled for today* | - | - | 🟢 Clear |') +
+        `\n\n> 💡 **1-on-1 Cadence**: Bi-weekly dedicated 1-on-1 coaching sessions are recommended to track career progression.`;
+
       return {
         mode: 'LIST_RAW',
         filter: inputArgs.filter || 'ALL',
+        target: inputArgs.target || 'ALL',
         totalEvents: events.length,
         items: events,
+        summary: listSummary,
       };
     }
 
@@ -385,6 +401,30 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     const notionSection = notionDocs.length > 0
       ? `\n\n### 📓 Notion 1-on-1 Notes & Career Rubrics\n${notionDocs.map((d) => `- [${d.title}](${d.url}) (Last edited: ${d.last_edited ? new Date(d.last_edited).toLocaleDateString() : 'Recent'})`).join('\n')}`
       : '';
+
+    if (mode === 'DRILL_DOWN') {
+      const drillSummary = `### 🎯 Skill Gap & Career Growth Breakdown: ${inputArgs.engineer_id} (${currentLevel} ➔ ${targetLevel})\n\n` +
+        `- **Promotion Readiness Score**: **${readinessScore}%** (${readinessVerdict.replace(/_/g, ' ')})\n` +
+        `- **Prerequisites Completed**: **${metPrereqsCount} / ${prerequisites.length}**\n` +
+        `- **Top Growth Gaps**:\n` +
+        (significantGaps.length > 0 
+          ? significantGaps.map((g) => `  - **${g}**: Benchmark gap against ${targetLevel} requirements.`).join('\n')
+          : '  - 🟢 All competency benchmarks met for target level.\n') +
+        `\n- **Immediate 3–6 Month Deliverable**: ${roadmaps.immediate_3_to_6m.focus}\n` +
+        `  - ${roadmaps.immediate_3_to_6m.deliverables[0] || 'Lead architectural initiative'}\n\n` +
+        `> 💡 **Next 1-on-1 Action**: Structure upcoming coaching sessions around closing the primary technical gap.`;
+
+      return {
+        mode: 'DRILL_DOWN',
+        engineer_id: inputArgs.engineer_id,
+        current_level: currentLevel,
+        target_level: targetLevel,
+        readiness_score: readinessScore,
+        readiness_verdict: readinessVerdict,
+        significant_gaps: significantGaps,
+        summary: drillSummary,
+      };
+    }
 
     const summaryText = `### 🎯 Promotion Readiness Scorecard: ${inputArgs.engineer_id} (${currentLevel} ➔ ${targetLevel})
 

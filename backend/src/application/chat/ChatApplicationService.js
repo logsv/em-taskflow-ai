@@ -75,7 +75,7 @@ export class ChatApplicationService {
     const result = await this.agentService.processQuery(queryToProcess, {
       threadId: ensuredThread.id,
       sessionId: sessionContext?.sessionId || null,
-      userId: sessionContext?.userId || 'user_logsv',
+      userId: sessionContext?.userId || 'default_user',
       ragMode,
       attachments: normalizedAttachments,
       history: historyContext,

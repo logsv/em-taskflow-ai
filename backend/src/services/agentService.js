@@ -112,7 +112,7 @@ export class LangGraphAgentService {
       name: `Chat Request: "${(userQuery || '').slice(0, 40)}"`,
       query: userQuery,
       sessionId: options.sessionId || options.threadId || "default_session",
-      userId: options.userId || "user_logsv",
+      userId: options.userId || "default_user",
       tags: options.tags || ["em-taskflow", "chat-api"],
     });
     if (trace) {
@@ -445,9 +445,46 @@ export class LangGraphAgentService {
     let recoveredAny = false;
     const queryLower = String(query || "").toLowerCase();
     const isListQuery = queryLower.startsWith("list ") || queryLower.startsWith("show all ") || queryLower.includes("list all") || queryLower.includes("list raw");
-    const detectedTarget = queryLower.includes("pr") || queryLower.includes("pull request")
-      ? "PRS"
-      : (queryLower.includes("wip") ? "WIP_ITEMS" : (queryLower.includes("block") ? "BLOCKERS" : "ALL"));
+    let detectedTarget = "ALL";
+    if (queryLower.includes("pr") || queryLower.includes("pull request")) {
+      detectedTarget = "PRS";
+    } else if (queryLower.includes("wip")) {
+      detectedTarget = "WIP_ITEMS";
+    } else if (queryLower.includes("block") || queryLower.includes("dependency") || queryLower.includes("dependencies")) {
+      detectedTarget = "BLOCKERS";
+    } else if (queryLower.includes("release") || queryLower.includes("deploy")) {
+      detectedTarget = "RELEASES";
+    } else if (queryLower.includes("1-on-1") || queryLower.includes("one on one") || queryLower.includes("meeting")) {
+      detectedTarget = "ONE_ON_ONES";
+    } else if (queryLower.includes("skill") || queryLower.includes("gap") || queryLower.includes("competenc")) {
+      detectedTarget = "SKILL_GAPS";
+    } else if (queryLower.includes("action item") || queryLower.includes("retro item")) {
+      detectedTarget = "ACTION_ITEMS";
+    } else if (queryLower.includes("pattern") || queryLower.includes("recurring") || queryLower.includes("friction")) {
+      detectedTarget = "PATTERNS";
+    } else if (queryLower.includes("epic") || queryLower.includes("roadmap item")) {
+      detectedTarget = "EPICS";
+    } else if (queryLower.includes("drift") || queryLower.includes("scope creep") || queryLower.includes("milestone")) {
+      detectedTarget = "DRIFT";
+    } else if (queryLower.includes("at risk") || queryLower.includes("off track") || queryLower.includes("lagging")) {
+      detectedTarget = "AT_RISK";
+    } else if (queryLower.includes("remediation")) {
+      detectedTarget = "GAP_REMEDIATION";
+    } else if (queryLower.includes("okr") || queryLower.includes("key result") || queryLower.includes("kr")) {
+      detectedTarget = "KRS";
+    } else if (queryLower.includes("adr") || queryLower.includes("architecture decision")) {
+      detectedTarget = "ADRS";
+    } else if (queryLower.includes("sop") || queryLower.includes("policy") || queryLower.includes("governance") || queryLower.includes("standard")) {
+      detectedTarget = "SOPS";
+    } else if (queryLower.includes("violation") || queryLower.includes("non-compliant") || queryLower.includes("non compliant")) {
+      detectedTarget = "VIOLATIONS";
+    } else if (queryLower.includes("script") || queryLower.includes("talking")) {
+      detectedTarget = "TALKING_SCRIPT";
+    } else if (queryLower.includes("bias") || queryLower.includes("objectivity")) {
+      detectedTarget = "BIAS_AUDIT";
+    } else if (queryLower.includes("check") || queryLower.includes("audit")) {
+      detectedTarget = "CHECKS";
+    }
 
     try {
       const recoveryPromises = recoverable.map(async (domain) => {

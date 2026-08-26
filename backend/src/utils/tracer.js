@@ -63,7 +63,7 @@ export function createEndToEndTrace(options = {}) {
   let callbacks = undefined;
 
   const sessionId = options.sessionId || options.threadId || (options.options && options.options.threadId) || undefined;
-  const userId = options.userId || 'user_logsv';
+  const userId = options.userId || 'anonymous';
   const queryStr = typeof options.query === 'string' ? options.query : (options.input ? JSON.stringify(options.input) : '');
 
   // Initialize Langfuse Root Trace
@@ -150,7 +150,7 @@ export function getTracerCallbacks(options = {}) {
         secretKey: process.env.LANGFUSE_SECRET_KEY,
         baseUrl,
         sessionId: sessionId ? String(sessionId) : undefined,
-        userId: options.userId || 'user_logsv',
+        userId: options.userId || 'anonymous',
         tags: options.tags || ['em-taskflow'],
       }));
     }

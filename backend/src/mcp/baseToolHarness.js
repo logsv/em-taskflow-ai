@@ -6,7 +6,7 @@ import { createSpan } from '../utils/tracer.js';
 
 export const commonHarnessSchema = z.object({
   sources: z.array(z.string()).default(['default']),
-  mode: z.enum(['ANALYZE', 'LIST_RAW', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
+  mode: z.enum(['ANALYZE', 'LIST_RAW', 'DRILL_DOWN', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
   filter: z.enum(['ALL', 'MISSED_DEADLINE', 'WIP_VIOLATION', 'HIGH_PRIORITY']).default('ALL'),
   time_window: z.enum(['7d', '30d', '90d']).default('30d'),
   fetch_fresh_data: z.boolean().default(true),

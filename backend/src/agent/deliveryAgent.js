@@ -5,6 +5,7 @@ import { deliveryAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import identityService from '../services/identityService.js';
+import settingsService from '../services/settingsService.js';
 
 export const deliveryBottlenecksTool = createDeterministicToolHarness({
   name: 'analyze_delivery_bottlenecks',
@@ -27,8 +28,9 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
     github: async (inputArgs) => {
       try {
         const { executeMCPTool } = await import('../mcp/index.js');
-        const repo = inputArgs?.repo_id && inputArgs.repo_id !== 'default' ? inputArgs.repo_id : 'em-taskflow-ai';
-        const owner = process.env.GITHUB_OWNER || process.env.GITHUB_USERNAME || 'logsv';
+        const cachedGithub = settingsService.getCachedSettings()?.mcp?.github || {};
+        const owner = process.env.GITHUB_OWNER || process.env.GITHUB_USERNAME || cachedGithub.owner || '';
+        const repo = inputArgs?.repo_id && inputArgs.repo_id !== 'default' ? inputArgs.repo_id : (cachedGithub.repo || process.env.GITHUB_REPO || '');
 
         // Fetch real Pull Requests (not Issues)
         let prsRes = await Promise.race([
@@ -37,8 +39,9 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
         ]).catch(() => null);
 
         if (!prsRes) {
+          const repoQuery = owner && repo ? `repo:${owner}/${repo}` : '';
           prsRes = await Promise.race([
-            executeMCPTool('search_issues', { query: `repo:${owner}/${repo} is:pr state:open` }),
+            executeMCPTool('search_issues', { query: `${repoQuery} is:pr state:open`.trim() }),
             new Promise((_, reject) => setTimeout(() => reject(new Error('MCP GitHub search timed out')), 2500)),
           ]).catch(() => null);
         }
@@ -174,12 +177,8 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
       return {
         wip_count: analytics[0]?.wip_count ?? null,
         wip_limit: analytics[0]?.wip_limit ?? 5,
-        blocked_tickets: analytics[0]?.blocked_tickets || [
-          { key: 'ENG-104', summary: 'Database migration schema lock', blocked_by: 'ENG-99', days_blocked: 3.5 }
-        ],
-        missed_deadline_tickets: analytics[0]?.missed_deadline_tickets || [
-          { key: 'ENG-88', summary: 'OAuth token refresh bug', due_date: '2026-08-01', days_overdue: 5 }
-        ],
+        blocked_tickets: analytics[0]?.blocked_tickets || [],
+        missed_deadline_tickets: analytics[0]?.missed_deadline_tickets || [],
         sprint_goals: ['Deliver Core Auth OAuth v2 migration', 'Maintain PR review turnaround <4h'],
         working_agreements: { max_pr_lines: 400, review_sla_hours: 4, wip_limit_per_dev: 1.5 },
         is_cached: true,
@@ -191,13 +190,15 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
     try {
       const issues = await databaseService.getGithubIssues({}).catch(() => []);
       const cachedPrs = (issues || []).filter((i) => i.item_type === 'pr' || i.is_pr || String(i.html_url || '').includes('/pull/'));
+      const cachedGithub = settingsService.getCachedSettings()?.mcp?.github || {};
+      const defaultRepo = cachedGithub.owner && cachedGithub.repo ? `${cachedGithub.owner}/${cachedGithub.repo}` : (cachedGithub.repo || 'github_repo');
       const prs = cachedPrs.map((i) => ({
         id: `#${i.number}`,
         number: i.number,
         title: i.title,
-        html_url: i.html_url || `https://github.com/${i.repo || 'logsv/em-taskflow-ai'}/pull/${i.number}`,
+        html_url: i.html_url || `https://github.com/${i.repo || defaultRepo}/pull/${i.number}`,
         state: i.state || 'open',
-        repo: i.repo || 'logsv/em-taskflow-ai',
+        repo: i.repo || defaultRepo,
         assignee: i.assignee || 'unassigned',
         review_wait_hours: 14.5,
         is_stalled: false,
@@ -245,19 +246,21 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
 
     if (mode === 'LIST_RAW' || target === 'PRS' || target === 'WIP_ITEMS' || target === 'BLOCKERS' || filter === 'PRS' || filter === 'WIP_ITEMS') {
       if (target === 'PRS' || filter === 'PRS' || filter === 'STALLED_REVIEW') {
+        const cachedGithub = settingsService.getCachedSettings()?.mcp?.github || {};
+        const defaultRepo = cachedGithub.owner && cachedGithub.repo ? `${cachedGithub.owner}/${cachedGithub.repo}` : (cachedGithub.repo || 'github_repo');
         const prList = (gh.blocked_prs || []).filter((p) => p.html_url && p.html_url.includes('/pull/'));
         const prRows = prList.map((p) => {
           const prNumber = p.id || ('#' + p.number);
-          const prUrl = p.html_url || `https://github.com/${p.repo || 'logsv/em-taskflow-ai'}/pull/${p.number || 1}`;
-          const author = p.author || p.assignee || 'logsv';
+          const prUrl = p.html_url || `https://github.com/${p.repo || defaultRepo}/pull/${p.number || 1}`;
+          const author = p.author || p.assignee || 'unassigned';
           const waitTime = p.review_wait_hours ? `${p.review_wait_hours}h` : '12h';
           const status = p.is_stalled ? '🔴 Stalled (>24h)' : '🟢 Active';
-          return `| [**${prNumber}: ${p.title}**](${prUrl}) | \`@${author}\` | ${waitTime} | ${status} | \`${p.repo || 'logsv/em-taskflow-ai'}\` |`;
+          return `| [**${prNumber}: ${p.title}**](${prUrl}) | \`@${author}\` | ${waitTime} | ${status} | \`${p.repo || defaultRepo}\` |`;
         });
 
         const prSummary = prList.length > 0
           ? `### 🐙 GitHub Open Pull Requests (${prList.length} PRs)\n\n| Pull Request | Author | Review Wait | SLA Status | Repository |\n| :--- | :--- | :---: | :---: | :--- |\n${prRows.join('\n')}\n\n> 💡 **Review SLA Guidance**: Target review turnaround is $< 4.0\\text{h}$. Stalled PRs (>24h) should be prioritized for pairing.`
-          : `### 🐙 GitHub Open Pull Requests (0 PRs)\n\n| Pull Request | Author | Review Wait | SLA Status | Repository |\n| :--- | :--- | :---: | :---: | :--- |\n| *No open pull requests awaiting review* | - | - | 🟢 All Merged | \`logsv/em-taskflow-ai\` |\n\n> 💡 **Review SLA Guidance**: All feature branches are merged or closed. The pull request review queue is currently clear!`;
+          : `### 🐙 GitHub Open Pull Requests (0 PRs)\n\n| Pull Request | Author | Review Wait | SLA Status | Repository |\n| :--- | :--- | :---: | :---: | :--- |\n| *No open pull requests awaiting review* | - | - | 🟢 All Merged | \`${defaultRepo}\` |\n\n> 💡 **Review SLA Guidance**: All feature branches are merged or closed. The pull request review queue is currently clear!`;
 
         return {
           mode: 'LIST_RAW',

@@ -46,6 +46,21 @@ describe('Phase 6 Knowledge & Quality Agents Specs: SOP RAG & Reflective Critic 
       expect(res.data.mode).toBe('LIST_RAW');
       expect(Array.isArray(res.data.items)).toBe(true);
       expect(res.data.items.length).toBeGreaterThan(0);
+      expect(res.data.summary).toContain('Standard Operating Procedures');
+    });
+
+    it('should support DRILL_DOWN mode for violations audit', async () => {
+      const res = await sopComplianceTool.invoke({
+        topic: 'database_isolation',
+        task_context: 'Proposed direct table access and cross-service joins',
+        mode: 'DRILL_DOWN',
+        target: 'VIOLATIONS',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      expect(res.data.mode).toBe('DRILL_DOWN');
+      expect(res.data.violations_count).toBeGreaterThanOrEqual(1);
+      expect(res.data.summary).toContain('Non-Compliance Violations');
     });
 
     it('should create sopAgent safely with low temperature', () => {
@@ -103,6 +118,20 @@ describe('Phase 6 Knowledge & Quality Agents Specs: SOP RAG & Reflective Critic 
       expect(res.data.mode).toBe('LIST_RAW');
       expect(Array.isArray(res.data.checks_performed)).toBe(true);
       expect(res.data.checks_performed.length).toBeGreaterThanOrEqual(5);
+      expect(res.data.summary).toContain('Report Audit Standards');
+    });
+
+    it('should support DRILL_DOWN mode for audit violations', async () => {
+      const res = await auditReportTool.invoke({
+        draft_response: 'Lazy developer @logsv wrote 500 lines of code',
+        mode: 'DRILL_DOWN',
+        target: 'VIOLATIONS',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      expect(res.data.mode).toBe('DRILL_DOWN');
+      expect(res.data.violations.length).toBeGreaterThan(0);
+      expect(res.data.summary).toContain('Quality Audit Violations');
     });
 
     it('should create criticAgent safely with low temperature', () => {

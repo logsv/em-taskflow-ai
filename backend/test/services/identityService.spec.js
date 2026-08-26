@@ -40,10 +40,10 @@ describe('IdentityService & Cross-Platform Team Auto-Discovery', () => {
   it('should resolve a member by GitHub handle with @ prefix', async () => {
     await identityService.autoDiscoverAndSync();
 
-    const resolved = await identityService.resolveMember('@logsv');
+    const resolved = await identityService.resolveMember('@taylor-dev');
     expect(resolved).toBeDefined();
-    expect(resolved.displayName).toBe('Vikas Kumar');
-    expect(resolved.githubUsername).toBe('logsv');
+    expect(resolved.displayName).toBe('Taylor Morgan');
+    expect(resolved.githubUsername).toBe('taylor-dev');
   });
 
   it('should return null when querying an unknown member', async () => {
@@ -62,8 +62,8 @@ describe('IdentityService & Cross-Platform Team Auto-Discovery', () => {
     const jiraUser = await identityService.getToolUsernameForMember('Sarah', 'jira');
     expect(jiraUser).toBe('sarah.chen@company.internal');
 
-    const gcalUser = await identityService.getToolUsernameForMember('Vikas', 'gcal');
-    expect(gcalUser).toBe('vikas.mca.jnu@gmail.com');
+    const gcalUser = await identityService.getToolUsernameForMember('Taylor', 'gcal');
+    expect(gcalUser).toBe('taylor.morgan@company.internal');
   });
 
   it('should extract and resolve member from natural language text query', async () => {

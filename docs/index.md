@@ -13,6 +13,9 @@ hero:
       text: Architecture Blueprint
       link: /architecture/high-level-design
     - theme: alt
+      text: Agent Skills & Playbooks
+      link: /operations/agent-skills
+    - theme: alt
       text: Swagger API Explorer ↗
       link: http://localhost:4000/api/docs
 
@@ -35,4 +38,13 @@ features:
   - icon: ⚡
     title: Redis Semantic Cache & Fast-Path
     details: Vector similarity caching (0.95 cosine threshold) for <50ms cache hits and Fast-Path regex classifier for <300ms direct math, code, and attachment execution.
+  - icon: 🧪
+    title: 3-Phase Enterprise Evaluation
+    details: Golden dataset validation, Python LLM-as-a-Judge CoT, DeepEval trajectories, Ragas faithfulness, and TruLens RAG triad benchmarks.
+  - icon: 🧰
+    title: 13 Specialized Agent Skills
+    details: Standardized operational playbooks for autonomous agents and human developers covering multi-agent routing, MCP harnesses, and database ops.
+  - icon: 🛡️
+    title: 240+ Verified Unit Specs
+    details: 240 backend unit test specs and 39 Python AI test specs passing with 0 failures under automated pre-push and CI/CD gates.
 ---

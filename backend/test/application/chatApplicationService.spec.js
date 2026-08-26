@@ -53,7 +53,7 @@ describe('ChatApplicationService', () => {
     expect(agent.processQuery).toHaveBeenCalledWith('Hello', jasmine.objectContaining({
       threadId: 'th_123',
       sessionId: 'sess_123',
-      userId: 'user_logsv',
+      userId: 'default_user',
       ragMode: 'baseline',
     }));
     expect(dbService.saveMessage.calls.count()).toBe(2);

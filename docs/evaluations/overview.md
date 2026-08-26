@@ -42,12 +42,17 @@ npm run eval:enterprise
 # Run Node.js composite evaluators
 cd backend && npm run evaluate
 
-# Run DeepEval agent trajectory benchmarks (Pytest)
+# Run DeepEval agent trajectory benchmarks (Pytest 39 specs)
 npm run eval:deepeval
 
 # Run Ragas Hybrid RAG metrics (Precision, Recall, Faithfulness)
 npm run eval:ragas
 
+# Run TruLens RAG Triad Evaluation & Dashboard
+npm run eval:trulens
+npm run eval:trulens:dashboard
+
 # Launch Promptfoo Matrix Server
 npm run eval:promptfoo
+npm run eval:promptfoo:view
 ```

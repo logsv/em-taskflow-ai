@@ -33,7 +33,7 @@ curl -s http://localhost:11434/api/tags
 curl -X POST http://localhost:11434/api/generate -d '{"model": "hermes3:8b", "prompt": "hi", "stream": false}'
 ```
 
-### Run Full Backend Test Suite (233 Specs)
+### Run Full Backend Test Suite (240 Specs)
 ```bash
 cd backend
 npm test

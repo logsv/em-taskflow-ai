@@ -64,7 +64,7 @@ npx jasmine test/mcp/baseToolHarness.spec.js test/services/mcpResiliency.spec.js
 curl -s http://localhost:4000/api/oauth/jira/status
 ```
 
-### 4. Run Full Backend Test Suite (233 Specs)
+### 4. Run Full Backend Test Suite (240 Specs)
 ```bash
 cd backend
 npm test

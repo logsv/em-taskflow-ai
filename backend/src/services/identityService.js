@@ -166,43 +166,45 @@ class IdentityService {
     if (rawSettings.mcp?.github?.token) {
       try {
         const token = rawSettings.mcp.github.token;
-        const owner = rawSettings.mcp.github.owner || 'logsv';
-        const repo = rawSettings.mcp.github.repo || 'em-taskflow-ai';
+        const owner = rawSettings.mcp.github.owner || process.env.GITHUB_OWNER || '';
+        const repo = rawSettings.mcp.github.repo || process.env.GITHUB_REPO || '';
 
-        // Fetch contributors
-        const contribRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}/contributors?per_page=30`, {
-          headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' },
-          timeout: 4500,
-        }).catch(() => ({ data: [] }));
+        if (owner && repo) {
+          // Fetch contributors
+          const contribRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}/contributors?per_page=30`, {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' },
+            timeout: 4500,
+          }).catch(() => ({ data: [] }));
 
-        for (const c of (contribRes.data || [])) {
-          if (c.login && !c.login.includes('[bot]')) {
-            addOrMerge({
-              id: `mem_gh_${c.login.toLowerCase()}`,
-              displayName: c.login,
-              githubUsername: c.login,
-              aliases: [c.login, `@${c.login}`],
-            });
+          for (const c of (contribRes.data || [])) {
+            if (c.login && !c.login.includes('[bot]')) {
+              addOrMerge({
+                id: `mem_gh_${c.login.toLowerCase()}`,
+                displayName: c.login,
+                githubUsername: c.login,
+                aliases: [c.login, `@${c.login}`],
+              });
+            }
           }
-        }
 
-        // Fetch recent commit authors for real names & emails
-        const commitRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=30`, {
-          headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' },
-          timeout: 4500,
-        }).catch(() => ({ data: [] }));
+          // Fetch recent commit authors for real names & emails
+          const commitRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=30`, {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' },
+            timeout: 4500,
+          }).catch(() => ({ data: [] }));
 
-        for (const item of (commitRes.data || [])) {
-          const author = item.commit?.author;
-          const ghLogin = item.author?.login;
-          if (author?.email && !author.email.includes('noreply.github.com')) {
-            addOrMerge({
-              id: `mem_${author.email.split('@')[0].replace(/[^a-z0-9]/gi, '_')}`,
-              displayName: author.name || ghLogin || 'Engineer',
-              email: author.email,
-              githubUsername: ghLogin || null,
-              aliases: [author.name, ghLogin, author.email.split('@')[0]].filter(Boolean),
-            });
+          for (const item of (commitRes.data || [])) {
+            const author = item.commit?.author;
+            const ghLogin = item.author?.login;
+            if (author?.email && !author.email.includes('noreply.github.com')) {
+              addOrMerge({
+                id: `mem_${author.email.split('@')[0].replace(/[^a-z0-9]/gi, '_')}`,
+                displayName: author.name || ghLogin || 'Engineer',
+                email: author.email,
+                githubUsername: ghLogin || null,
+                aliases: [author.name, ghLogin, author.email.split('@')[0]].filter(Boolean),
+              });
+            }
           }
         }
       } catch (err) {
@@ -270,7 +272,7 @@ class IdentityService {
 
     // In test suites only, supply sample test fixtures if no external MCP tokens are provided
     const isTestEnv = process.env.NODE_ENV === 'test' || process.argv.some(a => a.includes('jasmine'));
-    if (isTestEnv || discovered.size === 0) {
+    if (isTestEnv) {
       addOrMerge({
         id: 'mem_alex',
         displayName: 'Alex Williams',
@@ -298,14 +300,14 @@ class IdentityService {
         track: 'ENGINEERING_MANAGEMENT',
       });
       addOrMerge({
-        id: 'mem_vikas',
-        displayName: 'Vikas Kumar',
-        email: 'vikas.mca.jnu@gmail.com',
-        aliases: ['Vikas', 'logsv', 'eng_vikas'],
-        githubUsername: 'logsv',
-        jiraEmail: 'vikas.mca.jnu@gmail.com',
-        gcalEmail: 'vikas.mca.jnu@gmail.com',
-        notionName: 'Vikas Kumar',
+        id: 'mem_taylor',
+        displayName: 'Taylor Morgan',
+        email: 'taylor.morgan@company.internal',
+        aliases: ['Taylor', 'taylorm', 'eng_taylor', 'taylor-dev'],
+        githubUsername: 'taylor-dev',
+        jiraEmail: 'taylor.morgan@company.internal',
+        gcalEmail: 'taylor.morgan@company.internal',
+        notionName: 'Taylor Morgan',
         currentLevel: 'L6_STAFF',
         targetLevel: 'L7_PRINCIPAL',
         track: 'INDIVIDUAL_CONTRIBUTOR',

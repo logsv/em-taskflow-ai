@@ -52,7 +52,7 @@ npm run dev
 # Build ESM JavaScript output
 npm run build
 
-# Run unit tests with Jasmine (233 specs, 0 failures)
+# Run unit tests with Jasmine (240 specs, 0 failures)
 npm test
 
 # Run full evaluation suite (Model: hermes3:8b)
@@ -92,7 +92,7 @@ docker compose logs -f backend python-ai-service postgres redis langfuse
 ## Service Topology & Ports
 
 1. **Frontend Cockpit**: `http://localhost:3000` (Admin Portal at `http://localhost:3000/admin`)
-2. **Backend Express API**: `http://localhost:4000` (`/api/health`, `/api/chat`, `/api/sessions`, `/api/admin/*`)
+2. **Backend Express API**: `http://localhost:4000` (`/api/health`, `/api/chat`, `/api/sessions`, `/api/admin/*`, `/api/docs`)
 3. **Python AI Microservice**: Port 8000 (REST) and Port 50051 (gRPC)
 4. **PostgreSQL 16**: Port 5432 (`taskflow_backend`, `taskflow_ai`, `temporal`)
 5. **Analytics DB (Langfuse)**: Port 5433 (`langfuse_db`)
@@ -108,4 +108,4 @@ docker compose logs -f backend python-ai-service postgres redis langfuse
 - **1-Tool Sub-Agent Bounding**: Sub-agents in LangGraph are bounded to maximum 1 tool per call for local SLM accuracy >95%.
 - **Zero Misleading Fallbacks**: Fallback responses return real PostgreSQL cached snapshots (`github_issues`, `dora_snapshots`, `sprint_analytics`, `okr_records`). Never output hardcoded dummy strings.
 - **Non-Blocking Telemetry**: Tracing calls to Langfuse must be non-blocking and never crash request lifecycles.
-- **Test Integrity**: Never push without running backend unit tests (`233 specs`) and Python unit tests (`39 specs`).
+- **Test Integrity**: Never push without running backend unit tests (`240 specs`) and Python unit tests (`39 specs`).

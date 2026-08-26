@@ -1,6 +1,7 @@
 import { config, getMcpConfig } from "../config.js";
 import { ChatOpenAI } from "@langchain/openai";
 import { info, warn, error } from "../utils/logger.js";
+import settingsService from "../services/settingsService.js";
 
 let mcpTools = [];
 let jiraMcpTools = [];
@@ -284,6 +285,10 @@ export function sanitizeToolInput(input, toolName = "") {
   }
 
   // GitHub MCP Tool Sanitizations for local 3B LLM param mismatch
+  const cachedGithub = settingsService.getCachedSettings()?.mcp?.github || {};
+  const activeOwner = cachedGithub.owner || process.env.GITHUB_OWNER || process.env.GITHUB_USERNAME || "";
+  const activeRepo = cachedGithub.repo || process.env.GITHUB_REPO || "";
+
   if (toolName === "search_issues" || toolName?.includes("search_issue")) {
     delete clean.owner;
     delete clean.repo;
@@ -294,13 +299,17 @@ export function sanitizeToolInput(input, toolName = "") {
     }
     delete clean.order;
 
-    let q = typeof clean.query === "string" ? clean.query : (clean.q || clean.search || clean.issue || "is:issue is:open user:logsv");
+    let q = typeof clean.query === "string" ? clean.query : (clean.q || clean.search || clean.issue || "is:issue is:open");
     q = q.replace(/title:\s*issue/gi, "").replace(/status:\s*open/gi, "is:open").trim();
     if (!q || q === "is:open" || q === "open") {
-      q = "is:issue is:open user:logsv";
+      q = "is:issue is:open";
     }
-    if (!q.includes("user:") && !q.includes("org:") && !q.includes("repo:")) {
-      q = `${q} user:logsv`;
+    if (activeOwner && !q.includes("user:") && !q.includes("org:") && !q.includes("repo:")) {
+      if (activeRepo) {
+        q = `${q} repo:${activeOwner}/${activeRepo}`;
+      } else {
+        q = `${q} user:${activeOwner}`;
+      }
     }
     if (!q.includes("is:issue") && !q.includes("is:pull-request") && !q.includes("is:pr")) {
       q = `is:issue ${q}`;
@@ -309,16 +318,16 @@ export function sanitizeToolInput(input, toolName = "") {
   }
 
   if (toolName === "issue_read" || toolName === "get_issue" || toolName?.includes("issue_read")) {
-    if (!clean.owner) clean.owner = "logsv";
-    if (!clean.repo) clean.repo = "em-taskflow-ai";
+    if (!clean.owner && activeOwner) clean.owner = activeOwner;
+    if (!clean.repo && activeRepo) clean.repo = activeRepo;
     if (!clean.issue_number && !clean.number) {
-      clean.issue_number = 14;
+      clean.issue_number = 1;
     }
   }
 
   if (toolName === "list_issues" || toolName?.includes("list_issue")) {
-    if (!clean.owner) clean.owner = "logsv";
-    if (!clean.repo) clean.repo = "em-taskflow-ai";
+    if (!clean.owner && activeOwner) clean.owner = activeOwner;
+    if (!clean.repo && activeRepo) clean.repo = activeRepo;
     delete clean.field_filters;
     delete clean.orderBy;
     delete clean.direction;
@@ -329,8 +338,8 @@ export function sanitizeToolInput(input, toolName = "") {
   }
 
   if (toolName === "get_dora_events" || toolName?.includes("dora_events")) {
-    if (!clean.owner) clean.owner = "logsv";
-    if (!clean.repo) clean.repo = "em-taskflow-ai";
+    if (!clean.owner && activeOwner) clean.owner = activeOwner;
+    if (!clean.repo && activeRepo) clean.repo = activeRepo;
     if (!clean.time_window) clean.time_window = "30d";
   }
 
@@ -344,7 +353,6 @@ export function sanitizeToolInput(input, toolName = "") {
 
   if (toolName === "jira_get_issue" || toolName?.includes("jira_get_issue")) {
     if (!clean.issue_key && clean.key) clean.issue_key = clean.key;
-    if (!clean.issue_key) clean.issue_key = "ENG-104";
   }
 
   if (toolName === "notion_search" || toolName?.includes("notion_search")) {

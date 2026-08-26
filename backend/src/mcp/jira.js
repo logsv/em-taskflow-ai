@@ -3,6 +3,7 @@ import { z } from "zod";
 import axios from "axios";
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import { getMcpConfig } from "../config.js";
+import settingsService from "../services/settingsService.js";
 
 let client = null;
 let tools = [];
@@ -31,14 +32,19 @@ function createNativeJiraTools(token, baseUrl, email = "") {
     }),
     func: async ({ jql = 'status in ("In Progress", "Blocked")', max_results = 20 }) => {
       try {
-        console.log(`🔷 Jira REST API jira_search: jql="${jql}"`);
+        const configuredProjectKey = settingsService.getCachedSettings()?.mcp?.jira?.projectKey || process.env.JIRA_PROJECT_KEY || "";
+        let effectiveJql = jql;
+        if (configuredProjectKey && !effectiveJql.toLowerCase().includes("project =") && !effectiveJql.toLowerCase().includes("project in")) {
+          effectiveJql = `project = "${configuredProjectKey}" AND (${effectiveJql})`;
+        }
+        console.log(`🔷 Jira REST API jira_search: jql="${effectiveJql}"`);
         if (baseUrl && (baseUrl.includes("atlassian.net") || baseUrl.includes("/rest/api"))) {
           const searchUrl = baseUrl.endsWith("/rest/api/3")
             ? `${baseUrl}/search`
             : `${baseUrl.replace(/\/$/, "")}/rest/api/3/search`;
           const res = await axios.post(
             searchUrl,
-            { jql, maxResults: max_results, fields: ["summary", "status", "assignee", "duedate", "issuelinks", "priority", "customfield_10020"] },
+            { jql: effectiveJql, maxResults: max_results, fields: ["summary", "status", "assignee", "duedate", "issuelinks", "priority", "customfield_10020"] },
             { headers, timeout: 8000 }
           );
           const issues = res.data?.issues || [];
@@ -94,21 +100,14 @@ function createNativeJiraTools(token, baseUrl, email = "") {
       }
 
       return JSON.stringify({
-        total: 7,
-        wip_count: 7,
-        wip_limit: 5,
-        issues: [
-          { key: "ENG-104", summary: "Database migration schema lock", status: "Blocked", blocked_by: "ENG-99", days_blocked: 3.5 },
-          { key: "ENG-105", summary: "Refactor session store connection pool", status: "In Progress", assignee: "backend_dev" },
-        ],
-        blocked_tickets: [
-          { key: "ENG-104", summary: "Database migration schema lock", blocked_by: "ENG-99", days_blocked: 3.5 }
-        ],
-        missed_deadline_tickets: [
-          { key: "ENG-88", summary: "OAuth token refresh bug", due_date: "2026-08-01", days_overdue: 5 }
-        ],
-        source: "default_mock_snapshot",
-        is_cached: true,
+        status: "UNAVAILABLE",
+        service: "jira",
+        reason: "JIRA_NOT_CONFIGURED_OR_UNREACHABLE",
+        message: "Jira integration is not configured or the API is unreachable. Configure JIRA_BASE_URL and API tokens in Admin Settings.",
+        total: 0,
+        issues: [],
+        blocked_tickets: [],
+        missed_deadline_tickets: [],
       }, null, 2);
     },
   });
@@ -141,14 +140,11 @@ function createNativeJiraTools(token, baseUrl, email = "") {
         console.warn(`⚠️ Jira get_issue API failed (${err?.message}), using mock fallback...`);
       }
       return JSON.stringify({
+        status: "UNAVAILABLE",
+        service: "jira",
         key: issue_key,
-        summary: issue_key === "ENG-104" ? "Database migration schema lock" : "OAuth token refresh bug",
-        status: issue_key === "ENG-104" ? "Blocked" : "In Progress",
-        assignee: "backend_lead",
-        blocked_by: issue_key === "ENG-104" ? "ENG-99" : null,
-        due_date: "2026-08-25",
-        priority: "High",
-        source: "mock_fallback",
+        reason: "JIRA_NOT_CONFIGURED_OR_UNREACHABLE",
+        message: `Unable to retrieve Jira issue ${issue_key}. Configure JIRA_BASE_URL and API tokens in Admin Settings.`,
       }, null, 2);
     },
   });
@@ -162,16 +158,12 @@ function createNativeJiraTools(token, baseUrl, email = "") {
     }),
     func: async ({ sprint_id = "active", board_id = "main_board" }) => {
       return JSON.stringify({
+        status: "UNAVAILABLE",
+        service: "jira",
         board_id,
         sprint_id,
-        sprint_name: "Sprint 42 - Resilience & Delivery Flow",
-        committed_story_points: 45,
-        completed_story_points: 38,
-        wip_count: 7,
-        wip_limit: 5,
-        scope_creep_points: 5,
-        velocity_avg_points: 40,
-        source: "agile_sprint_report",
+        reason: "JIRA_NOT_CONFIGURED_OR_UNREACHABLE",
+        message: "Unable to retrieve sprint report. Configure Jira Agile Board integration in Admin Settings.",
       }, null, 2);
     },
   });
