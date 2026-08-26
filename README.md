@@ -9,8 +9,8 @@
 [![Ollama](https://img.shields.io/badge/LLM-100%25%20Local%20(Ollama)-orange.svg)](https://ollama.ai)
 [![Documentation](https://img.shields.io/badge/Docs-VitePress-brightgreen.svg)](https://logsv.github.io/em-taskflow-ai/)
 [![API Explorer](https://img.shields.io/badge/API%20Docs-Swagger%20OpenAPI%203.1-38bdf8.svg)](http://localhost:4000/api/docs)
-[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-240%20passed-success.svg)](backend)
-[![Python AI Tests](https://img.shields.io/badge/Python%20AI%20Tests-39%20passed-success.svg)](services/python-ai-service)
+[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-269%20passed-success.svg)](backend)
+[![Python AI Tests](https://img.shields.io/badge/Python%20AI%20Tests-45%20passed-success.svg)](services/python-ai-service)
 [![Docker Compose](https://img.shields.io/badge/Deployment-Docker%20Compose-2496ED.svg)](docker-compose.yml)
 
 ---
@@ -160,7 +160,7 @@ flowchart TD
 
 - **👑 LangGraph Multi-Agent Supervisor (`@langchain/langgraph-supervisor`)**: Orchestrates handoffs across 10 specialized domain micro-agents (`dora`, `delivery`, `sbi`, `people`, `sprint`, `retro`, `roadmap`, `okr`, `sop`, `critic`) with loop prevention.
 - **🎯 Bounded Tool Scoping (1-Tool Rule)**: Each sub-agent is restricted to maximum 1 tool definition per invocation, maintaining 95%+ execution accuracy on local Small Language Models (3B-7B).
-- **🔌 Multi-Source Model Context Protocol Suite**: Jira OAuth 2.0 PKCE, Notion REST, GitHub PAT/OAuth with repo scoping, Slack Web API, and Google Calendar.
+- **🔌 Multi-Source Model Context Protocol Suite**: Native Jira OAuth 2.0 PKCE, Notion REST, GitHub PAT/OAuth with repo scoping, Slack Web API (direct read search & channels, with Temporal Human-in-the-Loop approval for posting), and Google Calendar.
 - **🐍 100% Python AI RAG Service Delegation**: All document processing, embeddings, vector search, and RAG operations execute exclusively through the dedicated Python AI service (`pythonAIServiceClient` in `grpc/client.js`).
 - **🛡️ Clean Response Formatting & 99% DB Resiliency**: If live APIs return 0 items or fail, system falls back directly to PostgreSQL cached snapshots (`github_issues`, `dora_snapshots`, `sprint_analytics`, `okr_records`, `team_members`).
 - **⚙️ Database Per-Service Isolation**: Microservice database separation into `taskflow_backend`, `taskflow_ai`, `temporal`, and `langfuse_db`.
@@ -274,19 +274,19 @@ curl -X POST http://localhost:4000/api/chat \
   -d '{"message":"Summarize the uploaded document","mode":"baseline"}'
 ```
 
-### 5. Automated Backend Unit Tests (240 Specs)
+### 5. Automated Backend Unit Tests (269 Specs)
 Run Jasmine unit tests and evaluation suite (`hermes3:8b`):
 ```bash
 cd backend
-npm test            # 240 unit tests, 0 failures
+npm test            # 269 unit tests, 0 failures
 npm run evaluate    # Enterprise evaluation suite
 ```
 
-### 6. Automated Python AI Service Tests (39 Specs)
+### 6. Automated Python AI Service Tests (45 Specs)
 Run the Pytest suite:
 ```bash
 cd services/python-ai-service
-uv run pytest       # 39 specs, 0 failures
+uv run pytest       # 45 specs, 0 failures
 ```
 
 ---

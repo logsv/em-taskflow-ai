@@ -18,10 +18,10 @@ Use this skill when creating, modifying, testing, or auditing any of the 10 Engi
 2. **The 10 Domain Micro-Agents & Multi-Source MCP Integrations**:
    - **`doraAgent`** $\rightarrow$ `calculate_dora_metrics`: Computes DORA metrics using GitHub commit/release data, Jira incidents, and PostgreSQL snapshots.
    - **`deliveryAgent`** $\rightarrow$ `analyze_delivery_bottlenecks`: Analyzes commit velocity, PR turnaround, and Jira blocker tickets.
-   - **`sbiAgent`** $\rightarrow$ `format_sbi_feedback`: Formats Situation-Behavior-Impact feedback from Jira ticket context, 1-on-1s, and Slack interactions.
+   - **`sbiAgent`** $\rightarrow$ `format_sbi_feedback`: Formats Situation-Behavior-Impact feedback from Jira ticket context, 1-on-1s, and Slack team communication threads.
    - **`peopleAgent`** $\rightarrow$ `analyze_personnel_growth`: Evaluates career growth, 1-on-1 cadence via Google Calendar, and Notion career ladders.
    - **`sprintAgent`** $\rightarrow$ `calculate_sprint_plan`: Synthesizes Jira sprint backlog, GitHub PRs, and Google Calendar PTO schedules.
-   - **`retroAgent`** $\rightarrow$ `generate_sprint_retro`: Performs thematic clustering (*What Went Well*, *Areas for Improvement*, *Action Items*) over Notion retro boards, Jira issues, GitHub DORA events, and Slack discussions.
+   - **`retroAgent`** $\rightarrow$ `generate_sprint_retro`: Performs thematic clustering (*What Went Well*, *Areas for Improvement*, *Action Items*) over Notion retro boards, Jira issues, GitHub DORA events, and Slack channels (`#engineering-retro`), with optional Temporal HITL approval for posting action plans.
    - **`roadmapAgent`** $\rightarrow$ `get_roadmap_alignment`: Evaluates milestone alignment and roadmap drift using Jira Epics, GitHub milestones, and Notion roadmaps.
    - **`okrAgent`** $\rightarrow$ `evaluate_okr_progress`: Tracks quarterly OKR pacing scores and KPI progress from Notion OKRs, Jira deliverables, and GitHub commits.
    - **`sopAgent`** $\rightarrow$ `query_sop_compliance`: Queries SOP compliance, ADR governance, architecture decision records, and review SLAs.
@@ -47,7 +47,7 @@ node -e "import('./src/agent/retroAgent.js').then(async (m) => { console.log('Re
 node -e "import('./src/agent/okrAgent.js').then(async (m) => { console.log('OKR Harness:', await m.okrProgressTool.invoke({})); });"
 ```
 
-### 2. Run Backend Unit Tests (240 Specs)
+### 2. Run Backend Unit Tests (269 Specs)
 ```bash
 cd backend
 npm test

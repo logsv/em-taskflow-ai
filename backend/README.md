@@ -60,7 +60,7 @@ The backend implements an **8-stage hybrid multi-agent pipeline** optimized for 
 - **Jira OAuth 2.0 PKCE** (`jiraOAuth.js`, `jira.js`): JQL queries, issue details, and automated token refresh.
 - **Notion REST API** (`notion.js`, `notionOAuth.js`): Workspace searches and database querying.
 - **GitHub REST API** (`github.js`, `githubOAuth.js`): Scoped PAT/OAuth authentication, PRs, issues, DORA events.
-- **Slack Web API** (`slack.js`): Channel listings, message search, and message dispatch.
+- **Slack Web API** (`slack.js`): Direct message searching (`slack_search_messages`) and channel listings (`slack_list_channels`), with Temporal Human-in-the-Loop (HITL) approval governance for message posting (`slack_post_message`).
 - **Google Calendar** (`google.js`): Dynamic calendar ID event listing and meeting schedules.
 - **Base Tool Harness** (`baseToolHarness.js`): Circuit breaker, retry backoff, and execution metrics.
 
@@ -158,7 +158,7 @@ npm run dev
 The server will start on port `4000` (or `PORT` environment variable).
 
 ### Automated Testing (Jasmine Suite)
-Run all **240 unit specs**:
+Run all **269 unit specs**:
 ```bash
 npm test
 ```
@@ -185,8 +185,9 @@ backend/
 │   ├── mcp/              # MCP integrations (Jira, Notion, GitHub, Slack, Calendar, Base Harness)
 │   ├── rag/              # Document chunking, HyDE transformation, hybrid retriever engine
 │   ├── routes/           # Express API endpoints (api.js, admin.js, docs.js, rag.js, upload.js)
+│   ├── temporal/         # Temporal workflows (workflows.js), activities, and worker
 │   └── utils/            # Response formatters, logger, non-blocking tracer
-├── test/                 # Jasmine unit test specifications (240 specs)
+├── test/                 # Jasmine unit test specifications (269 specs)
 ├── .env.example          # Environment variables template
 └── package.json          # Node.js dependencies & ESM scripts
 ```

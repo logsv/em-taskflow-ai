@@ -45,6 +45,6 @@ features:
     title: 13 Specialized Agent Skills
     details: Standardized operational playbooks for autonomous agents and human developers covering multi-agent routing, MCP harnesses, and database ops.
   - icon: 🛡️
-    title: 240+ Verified Unit Specs
-    details: 240 backend unit test specs and 39 Python AI test specs passing with 0 failures under automated pre-push and CI/CD gates.
+    title: 269+ Verified Unit Specs
+    details: 269 backend unit test specs and 45 Python AI test specs passing with 0 failures under automated pre-push and CI/CD gates.
 ---
