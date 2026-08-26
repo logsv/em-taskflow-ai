@@ -5,6 +5,7 @@
 
 import { Embeddings } from '@langchain/core/embeddings';
 import { getBgeEmbeddings } from './index.js';
+import { error } from '../utils/logger.js';
 
 /**
  * LangChain embeddings adapter for Qwen3-VL embeddings microservice
@@ -36,9 +37,9 @@ export class BGEEmbeddingsAdapter extends Embeddings {
 
       throw new Error('Invalid response format from Qwen3-VL embeddings service');
 
-    } catch (error) {
-      console.error('❌ Qwen3-VL embeddings failed:', error);
-      throw error;
+    } catch (err) {
+      error({ module: 'bgeEmbeddingsAdapter', action: 'embedDocuments', err }, 'Qwen3-VL embeddings failed');
+      throw err;
     }
   }
 
@@ -49,9 +50,9 @@ export class BGEEmbeddingsAdapter extends Embeddings {
     try {
       const embeddings = await this.embedDocuments([text]);
       return embeddings[0];
-    } catch (error) {
-      console.error('❌ Qwen3-VL query embedding failed:', error);
-      throw error;
+    } catch (err) {
+      error({ module: 'bgeEmbeddingsAdapter', action: 'embedQuery', err }, 'Qwen3-VL query embedding failed');
+      throw err;
     }
   }
 

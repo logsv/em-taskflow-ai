@@ -65,7 +65,7 @@ The backend agent uses an **8-stage hybrid architecture** optimized for **Local 
 - **Jira OAuth 2.0 PKCE** (`jiraOAuth.js`, `jira.js`): Automated token refresh, JQL query execution (`jira_search`), issue retrieval (`jira_get_issue`).
 - **Notion REST API & OAuth 2.0** (`notionOAuth.js`, `notion.js`): Workspace search (`notion_search`), page fetch, database queries (`notion_query_database`).
 - **GitHub REST API** (`githubOAuth.js`, `github.js`): Repository-scoped PAT/OAuth authentication, User-Agent header compliance, issue and PR retrieval.
-- **Slack Web API** (`slack.js`): Channel listings (`slack_list_channels`), message search (`slack_search_messages`), posting (`slack_post_message`).
+- **Slack Web API** (`slack.js`): Direct channel listings (`slack_list_channels`) and message searching (`slack_search_messages`), with Temporal Human-in-the-Loop approval governance for posting (`slack_post_message`).
 - **Google Calendar** (`google.js`): Dynamic calendar ID configuration, schedule inspection (`get_calendar_events`), event management.
 - **Base Tool Harness** (`baseToolHarness.js`): Standardized circuit breaker pattern, exponential backoff, and execution metrics.
 

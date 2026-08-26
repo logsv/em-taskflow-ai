@@ -23,7 +23,7 @@ Each micro-agent in EM TaskFlow AI is architected as a specialized ReAct agent b
 | **`sbiAgent`** | `format_sbi_feedback` | Jira tickets + 1-on-1s + Slack | Situation-Behavior-Impact constructive coaching scripts. |
 | **`peopleAgent`** | `analyze_personnel_growth` | Google Calendar + Notion ladders | Career progression, 1-on-1 cadence, and skill competency gaps. |
 | **`sprintAgent`** | `calculate_sprint_plan` | Jira Backlog + Calendar PTOs | Sprint capacity estimation and story point velocity. |
-| **`retroAgent`** | `generate_sprint_retro` | Notion Retro + Jira + Slack + GitHub | Thematic clustering (*What Went Well*, *Areas for Improvement*, *Action Items*). |
+| **`retroAgent`** | `generate_sprint_retro` | Notion Retro + Jira + Slack + GitHub | Thematic clustering (*What Went Well*, *Areas for Improvement*, *Action Items*) with Temporal HITL approval for posting back to Slack. |
 | **`roadmapAgent`** | `get_roadmap_alignment` | Jira Epics + GitHub Milestones + Notion | Milestone alignment, technical dependencies, and roadmap drift. |
 | **`okrAgent`** | `evaluate_okr_progress` | Notion OKRs + Jira + Commits | Objectives & Key Results tracking and pacing scores. |
 | **`sopAgent`** | `query_sop_compliance` | Notion Policies + ADRs + DB | Standard Operating Procedures, review SLAs, and ADR governance. |

@@ -53,11 +53,11 @@ export async function baselineRetrieve(query, options = {}) {
       originalQuery: query,
       executionTime,
     };
-  } catch (error) {
+  } catch (err) {
     const executionTime = Date.now() - startTime;
-    console.error('❌ Baseline retrieval failed:', error);
+    error({ module: 'retriever', action: 'baselineRetrieve', err }, 'Baseline retrieval failed');
     return {
-      answer: `I encountered an error during retrieval: ${error.message}`,
+      answer: `I encountered an error during retrieval: ${err.message}`,
       sources: [],
       originalQuery: query,
       executionTime,
@@ -196,8 +196,8 @@ export async function simpleRetrieve(query, topK = 5) {
       sources: [...new Set(docs.map(doc => doc.metadata.filename || 'unknown'))],
       context: docs.map(doc => doc.pageContent).join('\n\n'),
     };
-  } catch (error) {
-    console.error('❌ Simple retrieval failed:', error);
+  } catch (err) {
+    error({ module: 'retriever', action: 'simpleRetrieve', err }, 'Simple retrieval failed');
     return {
       chunks: [],
       sources: [],
@@ -222,7 +222,7 @@ async function baseRetrieve(query, k, options = {}) {
     });
 
     if (Array.isArray(pgResults) && pgResults.length > 0) {
-      console.log(`🗄️ PostgreSQL Hybrid Search retrieved ${pgResults.length} chunk(s) for query: "${query.slice(0, 50)}..."`);
+      debug({ module: 'retriever', action: 'hybridSearch', chunkCount: pgResults.length, querySnippet: query.slice(0, 50) }, `PostgreSQL Hybrid Search retrieved ${pgResults.length} chunk(s)`);
       span.end({
         output: {
           chunkCount: pgResults.length,
@@ -242,7 +242,7 @@ async function baseRetrieve(query, k, options = {}) {
     span.end({ output: { chunkCount: 0 } });
   } catch (pgErr) {
     span.end({ output: { error: pgErr.message } });
-    console.warn(`⚠️ PostgreSQL hybrid retrieval failed (${pgErr.message})`);
+    warn({ module: 'retriever', action: 'hybridSearchFallback', err: pgErr }, 'PostgreSQL hybrid retrieval failed');
   }
 
   return [];
@@ -275,8 +275,8 @@ Return only the alternative questions, one per line, without numbering or bullet
       .slice(0, maxQueries - 1);
 
     return [originalQuery, ...alternatives];
-  } catch (error) {
-    console.error('⚠️ Query rewriting failed:', error);
+  } catch (err) {
+    warn({ module: 'retriever', action: 'rewriteQueries', err }, 'Query rewriting failed, falling back to original query');
     return [originalQuery];
   }
 }
@@ -312,11 +312,11 @@ async function compressDocuments(query, documents, options = {}) {
       }
     }
     
-    console.log(`🗜️ Compressed ${documents.length} documents to ${compressedDocs.length}`);
+    debug({ module: 'retriever', action: 'compressDocuments', initialCount: documents.length, compressedCount: compressedDocs.length }, `Compressed ${documents.length} documents to ${compressedDocs.length}`);
     return compressedDocs.length > 0 ? compressedDocs : documents.slice(0, 3); // Fallback
     
-  } catch (error) {
-    console.error('⚠️ Contextual compression failed:', error);
+  } catch (err) {
+    warn({ module: 'retriever', action: 'compressDocumentsFallback', err }, 'Contextual compression failed');
     return documents;
   }
 }
@@ -361,8 +361,8 @@ Retrieved Document Context:
 
     const result = await llm.invoke(finalPrompt, { callbacks });
     return typeof result.content === 'string' ? result.content : String(result.content);
-  } catch (error) {
-    console.error('❌ Answer generation failed:', error);
+  } catch (err) {
+    error({ module: 'retriever', action: 'generateAnswer', err }, 'Answer generation failed');
     return 'I apologize, but I encountered an error while generating an answer based on the retrieved context.';
   }
 }
@@ -410,8 +410,8 @@ Question: {query}`]
     const finalPrompt = await prompt.format({ query });
     const result = await llm.invoke(finalPrompt, { callbacks });
     return typeof result.content === 'string' ? result.content : String(result.content);
-  } catch (error) {
-    console.warn('⚠️ HyDE generation failed:', error);
+  } catch (err) {
+    warn({ module: 'retriever', action: 'generateHypotheticalDocumentFallback', err }, 'HyDE generation failed');
     return null;
   }
 }

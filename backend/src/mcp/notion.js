@@ -5,6 +5,7 @@ import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import { getMcpConfig } from "../config.js";
 import { NotionOAuthProvider } from "./notionOAuthProvider.js";
 import settingsService from "../services/settingsService.js";
+import { info, warn, error, debug } from "../utils/logger.js";
 
 let client = null;
 let tools = [];
@@ -25,7 +26,7 @@ function createNativeNotionTools(token) {
     func: async ({ query = "sprint goals working agreements" }) => {
       const activeToken = token || settingsService.getCachedSettings()?.mcp?.notion?.apiKey || process.env.NOTION_API_KEY || null;
       try {
-        console.log(`📓 Notion REST API notion_search: query="${query}"`);
+        debug({ module: "notionMCP", action: "notion_search", query }, `Notion REST API notion_search: query="${query}"`);
         if (activeToken) {
           const res = await axios.post(
             "https://api.notion.com/v1/search",
@@ -34,6 +35,7 @@ function createNativeNotionTools(token) {
           );
           const results = res.data?.results || [];
           if (results.length > 0) {
+            info({ module: "notionMCP", action: "notion_search", count: results.length }, `Notion REST API search returned ${results.length} live item(s)`);
             const formatted = results.map((item) => {
               const titleProp = item.properties?.title || item.properties?.Name || item.properties?.Title;
               const title = titleProp?.title?.[0]?.plain_text || item.title?.[0]?.plain_text || "Untitled Page";
@@ -49,7 +51,7 @@ function createNativeNotionTools(token) {
           }
         }
       } catch (err) {
-        console.warn(`⚠️ Notion REST API search failed (${err?.message}), using cached working agreements fallback...`);
+        warn({ module: "notionMCP", action: "notion_search_fallback", err }, "Notion REST API search failed, using cached working agreements fallback");
       }
 
       return JSON.stringify({
@@ -71,7 +73,7 @@ function createNativeNotionTools(token) {
     func: async ({ page_id }) => {
       const activeToken = token || settingsService.getCachedSettings()?.mcp?.notion?.apiKey || process.env.NOTION_API_KEY || null;
       try {
-        console.log(`📓 Notion REST API notion_get_page: ${page_id}`);
+        debug({ module: "notionMCP", action: "notion_get_page", page_id }, `Notion REST API notion_get_page: ${page_id}`);
         if (activeToken) {
           const cleanId = page_id.replace(/-/g, "");
           const res = await axios.get(`https://api.notion.com/v1/blocks/${cleanId}/children`, {
@@ -95,7 +97,7 @@ function createNativeNotionTools(token) {
           }
         }
       } catch (err) {
-        console.warn(`⚠️ Notion get_page API failed (${err?.message}), using mock fallback...`);
+        warn({ module: "notionMCP", action: "notion_get_page_fallback", err }, "Notion get_page API failed, using mock fallback");
       }
 
       return JSON.stringify({
@@ -127,7 +129,7 @@ function createNativeNotionTools(token) {
             return JSON.stringify({ database_id, records: res.data.results, source: "notion_live_api" }, null, 2);
           }
         } catch (err) {
-          console.warn(`⚠️ Notion query_database API failed (${err?.message})`);
+          warn({ module: "notionMCP", action: "notion_query_database_fallback", err }, "Notion query_database API failed");
         }
       }
       return JSON.stringify({
@@ -180,17 +182,17 @@ async function ensureInit() {
       tools = await client.getTools();
       if (tools.length > 0) {
         initialized = true;
-        console.log("✅ Successfully initialized Remote Notion MCP tools");
+        info({ module: "notionMCP", action: "initRemoteMcp", toolCount: tools.length }, "Successfully initialized Remote Notion MCP tools");
         return;
       }
     } catch (err) {
-      console.warn("⚠️ Remote Notion MCP connection failed, falling back to Native Notion REST tools:", err?.message);
+      warn({ module: "notionMCP", action: "initRemoteMcpFallback", err }, "Remote Notion MCP connection failed, falling back to Native Notion REST tools");
     }
   }
 
   tools = createNativeNotionTools(token);
   initialized = true;
-  console.log(`✅ Loaded ${tools.length} Native Notion REST API tools`);
+  info({ module: "notionMCP", action: "initNativeTools", toolCount: tools.length }, `Loaded ${tools.length} Native Notion REST API tools`);
 }
 
 export async function getNotionTools() {

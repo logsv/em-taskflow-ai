@@ -9,6 +9,7 @@ import {
   getGithubMCPTools,
   getNotionMCPTools,
   getGoogleMCPTools,
+  getSlackMCPTools,
 } from "../mcp/index.js";
 import { config } from "../config.js";
 import { DynamicStructuredTool } from "@langchain/core/tools";
@@ -356,7 +357,7 @@ function createSupervisorLlmWrapper(baseLlm) {
         const isSbi = text.includes("sbi") || text.includes("feedback") || text.includes("coaching") || text.includes("situation");
         const isPeople = text.includes("people") || text.includes("career") || text.includes("burnout") || text.includes("1-on-1") || text.includes("1:1") || text.includes("agenda") || text.includes("promotion") || text.includes("growth");
         const isSprint = text.includes("sprint plan") || text.includes("velocity") || text.includes("capacity");
-        const isRetro = text.includes("retro") || text.includes("retrospective") || text.includes("action items");
+        const isRetro = text.includes("retro") || text.includes("retrospective") || text.includes("action items") || text.includes("slack");
         const isSop = text.includes("sop") || text.includes("adr") || text.includes("compliance") || text.includes("guidelines");
         const isRoadmap = text.includes("roadmap") || text.includes("milestone") || text.includes("drift");
         const isOkr = text.includes("okr") || text.includes("kpi") || text.includes("key result");
@@ -423,7 +424,8 @@ export async function initializeAgent(options = {}) {
     const githubTools = getGithubMCPTools();
     const notionTools = getNotionMCPTools();
     const calendarTools = getGoogleMCPTools();
-    agentTools = [...jiraTools, ...githubTools, ...notionTools, ...calendarTools, getRagTool()];
+    const slackTools = getSlackMCPTools();
+    agentTools = [...jiraTools, ...githubTools, ...notionTools, ...calendarTools, ...slackTools, getRagTool()];
 
     const rawLlm = options.llm || getChatModel();
     const llm = createSupervisorLlmWrapper(rawLlm);

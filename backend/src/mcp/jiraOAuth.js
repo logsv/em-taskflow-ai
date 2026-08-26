@@ -1,6 +1,7 @@
 import { JiraOAuthProvider, getJiraMcpUrl } from './jiraOAuthProvider.js';
 import { closeJiraMcp, getJiraTools } from './jira.js';
 import { getMcpConfig } from '../config.js';
+import { warn } from '../utils/logger.js';
 
 export async function startJiraOAuthFlow() {
   const provider = new JiraOAuthProvider();
@@ -35,7 +36,7 @@ export async function completeJiraOAuthFlow(code) {
       await mcpModule.reconnectMCP();
     }
   } catch (error) {
-    console.warn('⚠️ Failed to reconnect MCP after Jira OAuth:', error?.message || error);
+    warn({ module: 'jiraOAuth', action: 'reconnectMcp', err: error }, 'Failed to reconnect MCP after Jira OAuth');
   }
 
   return {

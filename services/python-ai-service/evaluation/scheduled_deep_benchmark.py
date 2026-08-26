@@ -54,12 +54,12 @@ def run_scheduled_deep_benchmark(
     logger.info("================================================================================")
 
     # 1. Run Official Ragas Multi-Metric Evaluation
-    logger.info("📊 [1/2] Executing Official Ragas Multi-Metric Evaluation (Full RAG Triad)...")
+    logger.info("📊 [1/3] Executing Official Ragas Multi-Metric Evaluation (Full RAG Triad)...")
     ragas_scores = run_ragas_evaluation(sync_to_langfuse=True)
     logger.info(f"✅ Ragas Completed: {ragas_scores}")
 
     # 2. Run Pairwise Arena Calibration
-    logger.info("⚔️ [2/2] Executing Pairwise Arena Calibration (Position-Bias Mitigated)...")
+    logger.info("⚔️ [2/3] Executing Pairwise Arena Calibration (Position-Bias Mitigated)...")
     pairwise_judge = LLMJudgeFactory.create_judge("pairwise", model_name=model_name)
     arena_test_context = {
         "candidate_a": "### 📄 Executive Summary\nFor P0 incidents, the on-call EM must acknowledge within 5 minutes, launch an incident bridge, and broadcast updates to Slack every 15 minutes.",
@@ -68,9 +68,16 @@ def run_scheduled_deep_benchmark(
     arena_res = pairwise_judge.evaluate(arena_test_context)
     logger.info(f"✅ Pairwise Arena Winner: {arena_res.get('winner')}")
 
+    # 3. Run EM-τ-Bench State & Policy Multi-Turn Reliability Simulation
+    logger.info("🏆 [3/3] Executing EM-τ-Bench Multi-Turn State & Policy Benchmark (pass^5)...")
+    from evaluation.em_tau_bench import EMTauBenchmarkRunner
+    tau_runner = EMTauBenchmarkRunner(k_repeats=5)
+    tau_benchmark_res = tau_runner.run_benchmark(sync_to_langfuse=True)
+    logger.info(f"✅ EM-τ-Bench pass^5 Rate: {tau_benchmark_res['pass_k_rate'] * 100:.1f}%")
+
     duration_seconds = round(time.time() - start_time, 2)
 
-    # 3. Sync Aggregate Benchmark Scores to Langfuse
+    # 4. Sync Aggregate Benchmark Scores to Langfuse
     try:
         from langfuse import Langfuse
         host = os.getenv("LANGFUSE_HOST", "http://localhost:3001")
@@ -87,6 +94,7 @@ def run_scheduled_deep_benchmark(
                 "model": model_name,
                 "duration_seconds": duration_seconds,
                 "timestamp": timestamp_str,
+                "em_tau_bench": tau_benchmark_res,
             },
         )
 
@@ -98,12 +106,19 @@ def run_scheduled_deep_benchmark(
                 comment="Scheduled Deep Benchmark Ragas Metric",
             )
 
+        langfuse.score(
+            trace_id=trace.id,
+            name="nightly_em_tau_pass_5",
+            value=float(tau_benchmark_res["pass_k_rate"]),
+            comment="Scheduled EM-τ-Bench pass^5 Reliability Rate",
+        )
+
         langfuse.flush()
         logger.info("🚀 Flushed Scheduled Benchmark summary trace to Langfuse DB!")
     except Exception as e:
         logger.warning(f"⚠️ Langfuse sync skipped: {e}")
 
-    # 4. Generate Daily Markdown and JSON Artifacts
+    # 5. Generate Daily Markdown and JSON Artifacts
     report_data = {
         "date": date_str,
         "timestamp": timestamp_str,
@@ -111,6 +126,7 @@ def run_scheduled_deep_benchmark(
         "duration_seconds": duration_seconds,
         "ragas_metrics": ragas_scores,
         "pairwise_arena": arena_res,
+        "em_tau_bench": tau_benchmark_res,
         "status": "PASS",
     }
 
@@ -169,5 +185,7 @@ def run_scheduled_deep_benchmark(
 
 if __name__ == "__main__":
     results = run_scheduled_deep_benchmark()
-    print("\n📊 Final Benchmark Summary:")
-    print(json.dumps(results, indent=2))
+    logger.info(
+        "Final Benchmark Summary",
+        extra={"details": {"results": results}}
+    )

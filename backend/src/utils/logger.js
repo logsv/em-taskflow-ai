@@ -20,12 +20,26 @@ const pinoLogger = pino(
   transport
 );
 
-function info(message, meta = {}) {
-  if (typeof message === 'object' && message !== null) {
-    pinoLogger.info(message);
-  } else {
-    pinoLogger.info(meta, message ?? '');
+function normalizeArgs(first, second) {
+  if (first instanceof Error) {
+    return [{ err: { message: first.message, stack: first.stack, name: first.name }, ...(typeof second === 'object' && second !== null ? second : {}) }, first.message];
   }
+  if (typeof first === 'object' && first !== null) {
+    const msg = typeof second === 'string' ? second : (first.message || first.msg || '');
+    return [first, msg];
+  }
+  if (typeof first === 'string') {
+    if (typeof second === 'object' && second !== null) {
+      return [second, first];
+    }
+    return [{}, first];
+  }
+  return [{}, String(first ?? '')];
+}
+
+function info(message, meta = {}) {
+  const [ctx, msg] = normalizeArgs(message, meta);
+  pinoLogger.info(ctx, msg);
 }
 
 function log(message, meta = {}) {
@@ -33,16 +47,13 @@ function log(message, meta = {}) {
 }
 
 function error(message, meta = {}) {
-  if (typeof message === 'object' && message !== null) {
-    pinoLogger.error(message);
-  } else {
-    pinoLogger.error(meta, message ?? '');
-  }
+  const [ctx, msg] = normalizeArgs(message, meta);
+  pinoLogger.error(ctx, msg);
 
   if (process.env.SENTRY_DSN) {
     try {
-      const errObj = meta?.err || meta?.error || (message instanceof Error ? message : new Error(typeof message === 'string' ? message : 'Unknown Error'));
-      Sentry.captureException(errObj, { extra: typeof meta === 'object' ? meta : { meta } });
+      const errObj = ctx?.err || ctx?.error || (message instanceof Error ? message : new Error(msg || 'Unknown Error'));
+      Sentry.captureException(errObj, { extra: ctx });
     } catch (_) {
       // Prevent Sentry capture failure from interrupting logging
     }
@@ -50,20 +61,36 @@ function error(message, meta = {}) {
 }
 
 function warn(message, meta = {}) {
-  if (typeof message === 'object' && message !== null) {
-    pinoLogger.warn(message);
-  } else {
-    pinoLogger.warn(meta, message ?? '');
-  }
+  const [ctx, msg] = normalizeArgs(message, meta);
+  pinoLogger.warn(ctx, msg);
 }
 
 function debug(message, meta = {}) {
-  if (typeof message === 'object' && message !== null) {
-    pinoLogger.debug(message);
-  } else {
-    pinoLogger.debug(meta, message ?? '');
-  }
+  const [ctx, msg] = normalizeArgs(message, meta);
+  pinoLogger.debug(ctx, msg);
 }
 
-export { log, info, error, warn, debug, pinoLogger as logger };
+/**
+ * Express HTTP Request logging middleware emitting structured JSON logs.
+ */
+function httpRequestLogger(req, res, next) {
+  const start = Date.now();
+  res.on('finish', () => {
+    const durationMs = Date.now() - start;
+    const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
+    const logFn = level === 'error' ? error : level === 'warn' ? warn : info;
+    logFn({
+      module: 'http',
+      method: req.method,
+      url: req.originalUrl || req.url,
+      statusCode: res.statusCode,
+      durationMs,
+      ip: req.ip || req.socket?.remoteAddress,
+    }, `${req.method} ${req.originalUrl || req.url} ${res.statusCode} (${durationMs}ms)`);
+  });
+  next();
+}
+
+export { log, info, error, warn, debug, pinoLogger as logger, httpRequestLogger };
 export default pinoLogger;
+

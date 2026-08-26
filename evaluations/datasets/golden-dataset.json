@@ -657,5 +657,77 @@
     "expected_tool_calls": [{ "tool_name": "analyze_delivery_bottlenecks" }],
     "is_rag_appropriate": false,
     "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-BFCL-001",
+    "user_query": "What is the capital of France?",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "expected_tool_calls": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "max_latency_ms": 300 }
+  },
+  {
+    "eval_id": "EVAL-BFCL-002",
+    "user_query": "Write a SQL query to extract distinct email domains from users table.",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "expected_tool_calls": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "max_latency_ms": 300 }
+  },
+  {
+    "eval_id": "EVAL-BFCL-003",
+    "user_query": "Summarize the differences between TCP and UDP protocols.",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "expected_tool_calls": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "max_latency_ms": 300 }
+  },
+  {
+    "eval_id": "EVAL-BFCL-004",
+    "user_query": "Calculate the square root of 144 plus 35.",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "expected_tool_calls": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "max_latency_ms": 300 }
+  },
+  {
+    "eval_id": "EVAL-BFCL-005",
+    "user_query": "Give me 5 motivational tips for engineering team morning standup.",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "expected_tool_calls": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "max_latency_ms": 300 }
+  },
+  {
+    "eval_id": "EVAL-BFCL-006",
+    "user_query": "Write a python script to validate IPv4 address strings.",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "expected_tool_calls": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "max_latency_ms": 300 }
+  },
+  {
+    "eval_id": "EVAL-BFCL-007",
+    "user_query": "Explain how the Node.js event loop handles microtasks versus macrotasks.",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "expected_tool_calls": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "max_latency_ms": 300 }
+  },
+  {
+    "eval_id": "EVAL-BFCL-008",
+    "user_query": "Calculate the arithmetic average of 85, 92, 78, and 95.",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "expected_tool_calls": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "max_latency_ms": 300 }
   }
 ]

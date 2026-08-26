@@ -43,6 +43,14 @@ export class MultiAgentTrajectoryStrategy {
     const mustUseTools = plan?.must_use_tools === true;
     const predictedToolGrounded = expectedWorkspace ? mustUseTools : true;
 
+    // BFCL-style Tool Abstention Validation (Zero-tool queries must NOT invoke tools)
+    const isZeroToolExpected = expected_domains.length === 0;
+    const isToolAbstentionValid = isZeroToolExpected ? (!mustUseTools && predicted_domains.length === 0) : true;
+
+    // BFCL-style Tool AST Schema Validation
+    const expectedTools = testCase.expected_tool_calls || [];
+    const isAstValid = expectedTools.every(tc => typeof tc.tool_name === 'string' && /^[a-z_][a-z0-9_]*$/.test(tc.tool_name));
+
     return {
       eval_id: testCase.eval_id || 'UNKNOWN',
       prompt,
@@ -52,6 +60,8 @@ export class MultiAgentTrajectoryStrategy {
       recall,
       is_exact_match,
       is_unnecessary_rag,
+      is_tool_abstention_valid: isToolAbstentionValid,
+      is_ast_valid: isAstValid,
       must_use_tools: plan?.must_use_tools,
       allow_rag: plan?.allow_rag,
       predictedToolGrounded,
@@ -67,12 +77,22 @@ export class MultiAgentTrajectoryStrategy {
   aggregate(results) {
     const total = results.length;
     if (total === 0) {
-      return { domainSelectionAccuracy: 0, unwantedRagRate: 0, toolGroundedRate: 0, avgPrecision: 0, avgRecall: 0 };
+      return { domainSelectionAccuracy: 0, unwantedRagRate: 0, toolGroundedRate: 0, toolAbstentionRate: 0, astValidationRate: 0, avgPrecision: 0, avgRecall: 0 };
     }
 
     const exactMatches = results.filter((r) => r.is_exact_match).length;
     const unwantedRag = results.filter((r) => r.is_unnecessary_rag).length;
     const toolGrounded = results.filter((r) => r.predictedToolGrounded).length;
+    
+    // Zero tool cases for abstention rate
+    const zeroToolCases = results.filter((r) => (r.expected_domains || []).length === 0);
+    const validAbstentions = zeroToolCases.filter((r) => r.is_tool_abstention_valid).length;
+    const toolAbstentionRate = zeroToolCases.length > 0 ? validAbstentions / zeroToolCases.length : 1.0;
+
+    // AST valid rate
+    const validAstCases = results.filter((r) => r.is_ast_valid).length;
+    const astValidationRate = validAstCases / total;
+
     const sumPrecision = results.reduce((acc, r) => acc + r.precision, 0);
     const sumRecall = results.reduce((acc, r) => acc + r.recall, 0);
 
@@ -80,6 +100,8 @@ export class MultiAgentTrajectoryStrategy {
       domainSelectionAccuracy: exactMatches / total,
       unwantedRagRate: unwantedRag / total,
       toolGroundedRate: toolGrounded / total,
+      toolAbstentionRate,
+      astValidationRate,
       avgPrecision: sumPrecision / total,
       avgRecall: sumRecall / total,
     };

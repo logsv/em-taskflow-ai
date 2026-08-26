@@ -2,6 +2,7 @@ import { auth } from '@modelcontextprotocol/sdk/client/auth.js';
 import { GithubOAuthProvider, getGithubMcpUrl } from './githubOAuthProvider.js';
 import { closeGithubMcp, getGithubTools } from './github.js';
 import { getMcpConfig } from '../config.js';
+import { warn } from '../utils/logger.js';
 
 export async function startGithubOAuthFlow() {
   const provider = new GithubOAuthProvider();
@@ -72,7 +73,7 @@ export async function completeGithubOAuthFlow(code) {
       await mcpModule.reconnectMCP();
     }
   } catch (error) {
-    console.warn('⚠️ Failed to reconnect MCP after GitHub OAuth:', error?.message || error);
+    warn({ module: 'githubOAuth', action: 'reconnectMcp', err: error }, 'Failed to reconnect MCP after GitHub OAuth');
   }
   return {
     status: 'authorized',

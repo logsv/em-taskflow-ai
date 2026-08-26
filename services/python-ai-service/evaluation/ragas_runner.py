@@ -203,6 +203,7 @@ def run_ragas_evaluation(
 
 if __name__ == "__main__":
     scores = run_ragas_evaluation()
-    print("\n📊 Ragas Evaluation Scores:")
-    for k, v in scores.items():
-        print(f"  - {k}: {v:.4f}")
+    logger.info(
+        "Ragas Evaluation Scores",
+        extra={"details": {"scores": scores}}
+    )

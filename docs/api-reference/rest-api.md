@@ -45,5 +45,11 @@ Open [`http://localhost:4000/api/docs`](http://localhost:4000/api/docs) in your 
 - **`GET /api/admin/documents/:filename/chunks`**: Retrieves extracted text chunks for inspector modal.
 - **`DELETE /api/admin/documents/:filename`**: Deletes document and purges vector embeddings.
 
+### Temporal Human-in-the-Loop (HITL) Slack Post Governance
+- **`POST /api/admin/temporal/slack-post/request`**: Initiates a draft Slack post workflow held in `PENDING_HUMAN_APPROVAL`.
+- **`POST /api/admin/temporal/slack-post/approve`**: Dispatches human approval signal to trigger `postSlackMessageActivity`.
+- **`POST /api/admin/temporal/slack-post/reject`**: Dispatches human rejection signal to abort draft message.
+- **`GET /api/admin/temporal/slack-post/status`**: Queries execution state of a Slack post Temporal workflow.
+
 ### Telemetry & Feedback
 - **`POST /api/feedback`**: Submits non-blocking thumbs up / down ratings to Langfuse telemetry.

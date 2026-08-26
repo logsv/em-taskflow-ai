@@ -3,6 +3,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { getLlmConfig } from '../config.js';
 import { bgeEmbeddingsClient } from './bgeEmbeddingsClient.js';
+import { info, warn } from '../utils/logger.js';
 
 let chatModel = null;
 let initialized = false;
@@ -110,7 +111,7 @@ export async function initializeLLM(force = false) {
   const providerKey = llmConfig.defaultProvider || 'ollama';
   const modelName = llmConfig.defaultModel || 'hermes3:8b';
 
-  console.log(`🤖 Initializing LLM client (Provider: ${providerKey}, Model: ${modelName})...`);
+  info({ module: 'llm', action: 'initializeLLM', provider: providerKey, model: modelName }, `Initializing LLM client (Provider: ${providerKey}, Model: ${modelName})`);
 
   try {
     chatModel = createChatModelForProvider(providerKey, {
@@ -118,7 +119,7 @@ export async function initializeLLM(force = false) {
       temperature: 0.1,
     });
   } catch (err) {
-    console.warn(`⚠️ Primary LLM provider "${providerKey}" failed (${err.message}). Falling back to local Ollama...`);
+    warn({ module: 'llm', action: 'initializeLLMFallback', provider: providerKey, err }, `Primary LLM provider "${providerKey}" failed. Falling back to local Ollama`);
     chatModel = createChatModelForProvider('ollama', {
       model: modelName || 'hermes3:8b',
       temperature: 0.1,
@@ -126,7 +127,7 @@ export async function initializeLLM(force = false) {
   }
 
   initialized = true;
-  console.log(`✅ LLM client initialized successfully (${modelName})`);
+  info({ module: 'llm', action: 'initializeLLMSuccess', model: modelName }, `LLM client initialized successfully (${modelName})`);
 }
 
 /**

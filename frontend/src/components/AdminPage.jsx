@@ -523,6 +523,7 @@ function AdminPage({ onBackToChat }) {
       else if (type === 'github') credentials = adminSettings.mcp?.github;
       else if (type === 'notion') credentials = adminSettings.mcp?.notion;
       else if (type === 'googleCalendar') credentials = adminSettings.mcp?.googleCalendar;
+      else if (type === 'slack') credentials = adminSettings.mcp?.slack;
 
       const res = await fetch('/api/admin/settings/test-connection', {
         method: 'POST',

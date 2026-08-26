@@ -1,4 +1,5 @@
 import { pipeline } from '@huggingface/transformers';
+import { debug } from '../utils/logger.js';
 
 const EMBEDDINGS_MODEL_ID = 'Xenova/multilingual-e5-large';
 
@@ -98,7 +99,7 @@ export class BgeEmbeddingsClient {
       };
     }
 
-    console.log(`📦 Processing ${texts.length} texts in batches of ${batchSize}`);
+    debug({ module: 'bgeEmbeddingsClient', action: 'batchEmbedStart', count: texts.length, batchSize }, `Processing ${texts.length} texts in batches of ${batchSize}`);
     
     const allEmbeddings = [];
     let totalProcessingTime = 0;
@@ -106,7 +107,6 @@ export class BgeEmbeddingsClient {
 
     for (let i = 0; i < texts.length; i += batchSize) {
       const batch = texts.slice(i, i + batchSize);
-      console.log(`   Processing batch ${batchesProcessed + 1}/${Math.ceil(texts.length / batchSize)}...`);
       
       const result = await this.embed(batch, normalize);
       allEmbeddings.push(...result.embeddings);
@@ -119,7 +119,7 @@ export class BgeEmbeddingsClient {
       }
     }
 
-    console.log(`✅ Completed ${batchesProcessed} batches in ${totalProcessingTime.toFixed(3)}s`);
+    debug({ module: 'bgeEmbeddingsClient', action: 'batchEmbedComplete', batchesProcessed, totalProcessingTime }, `Completed ${batchesProcessed} batches in ${totalProcessingTime.toFixed(3)}s`);
 
     return {
       embeddings: allEmbeddings,

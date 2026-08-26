@@ -1,5 +1,6 @@
 import { getMcpConfig } from '../config.js';
 import legacyPreferenceRepository from '../persistence/legacy/LegacyPreferenceRepository.js';
+import { info } from '../utils/logger.js';
 
 const TOKENS_KEY = 'mcp.github.oauth.tokens';
 const CLIENT_INFO_KEY = 'mcp.github.oauth.clientInfo';
@@ -84,7 +85,7 @@ export class GithubOAuthProvider {
       url,
       createdAt: new Date().toISOString(),
     });
-    console.log('🔐 GitHub OAuth authorization required. Open this URL in browser:', url);
+    info({ module: 'githubOAuthProvider', action: 'redirectToAuthorization', url }, 'GitHub OAuth authorization required. Open authorization URL');
   }
 
   async saveCodeVerifier(codeVerifier) {

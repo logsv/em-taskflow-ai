@@ -27,6 +27,10 @@ Use this skill when developing, testing, or troubleshooting the Standalone Admin
    - `GET /api/admin/documents/:filename/chunks`: Fetches extracted text chunks for PDF chunk inspection modal.
    - `DELETE /api/admin/documents/:filename`: Purges document vector chunks from PostgreSQL.
    - `GET /api/admin/telemetry`: Returns fast-path vs supervisor ratios and feedback ratings.
+   - `POST /api/admin/temporal/slack-post/request`: Initiates a draft Slack post holding in Temporal HITL queue.
+   - `POST /api/admin/temporal/slack-post/approve`: Dispatches human approval signal to release message to Slack channel.
+   - `POST /api/admin/temporal/slack-post/reject`: Dispatches human rejection signal to abort draft message.
+   - `GET /api/admin/temporal/slack-post/status`: Queries execution state of a Slack post Temporal workflow.
 
 4. **DORA Productivity & Engineering Health Matrix**:
    - Live metrics calculation with production tier ratings (*Elite*, *High*, *Medium*, *Low*), uptime monitoring, and SLA compliance.
@@ -45,12 +49,25 @@ curl -s http://localhost:4000/api/admin/system-status
 curl -s http://localhost:4000/api/admin/documents/01-valid.pdf/chunks
 ```
 
+### Test Slack HITL Approval Workflow via API
+```bash
+# 1. Draft post
+curl -X POST http://localhost:4000/api/admin/temporal/slack-post/request \
+  -H "Content-Type: application/json" \
+  -d '{"channel": "#engineering-retro", "message": "Sprint retro completed successfully."}'
+
+# 2. Approve draft post
+curl -X POST http://localhost:4000/api/admin/temporal/slack-post/approve \
+  -H "Content-Type: application/json" \
+  -d '{"workflowId": "slack-post-hitl-12345", "approver": "Alex (EM)"}'
+```
+
 ### Verify Container Services Status
 ```bash
 docker compose ps
 ```
 
-### Run Full Backend Test Suite (240 Specs)
+### Run Full Backend Test Suite (269 Specs)
 ```bash
 cd backend
 npm test

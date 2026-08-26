@@ -245,5 +245,7 @@ def replay_and_evaluate_traces(
 
 if __name__ == "__main__":
     results = replay_and_evaluate_traces()
-    print("\n📊 Final Replay Summary:")
-    print(json.dumps(results, indent=2))
+    logger.info(
+        "Final Replay Summary",
+        extra={"details": {"results": results}}
+    )

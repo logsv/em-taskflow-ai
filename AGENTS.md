@@ -28,7 +28,7 @@ This file provides system guidance, architectural rules, anti-hallucination guid
    - Agents must NEVER write analytics trace tables into application databases.
 
 4. **Rule of Verification**:
-   - Never declare success without executing unit tests. All **240 backend specs** and **39 Python AI specs** must pass with **0 failures**.
+   - Never declare success without executing unit tests. All **269 backend specs** and **45 Python AI specs** must pass with **0 failures**.
 
 5. **No Superficial Symptom Patches**:
    - NEVER resolve errors by masking symptoms, swallowing exceptions silently, returning dummy fallbacks, or commenting out failing unit test assertions.
@@ -64,7 +64,7 @@ This file provides system guidance, architectural rules, anti-hallucination guid
   3. `sbi` (`format_sbi_feedback`): Situation-Behavior-Impact coaching using Jira ticket context, 1-on-1s, and Slack interactions.
   4. `people` (`analyze_personnel_growth`): Career growth, 1-on-1 tracking, Google Calendar frequency, Notion career ladders.
   5. `sprint` (`calculate_sprint_plan`): Sprint capacity, story point velocity, Jira backlog, Google Calendar PTO schedules.
-  6. `retro` (`generate_sprint_retro`): Thematic clustering (*What Went Well*, *Areas for Improvement*, *Action Items*) over Notion retro boards, Jira issues, GitHub DORA events, and Slack discussions.
+  6. `retro` (`generate_sprint_retro`): Thematic clustering (*What Went Well*, *Areas for Improvement*, *Action Items*) over Notion retro boards, Jira issues, GitHub DORA events, and Slack discussions, with optional Temporal HITL approval for posting back.
   7. `roadmap` (`get_roadmap_alignment`): Milestone alignment and drift detection across Jira Epics, GitHub milestones, Notion roadmaps.
   8. `okr` (`evaluate_okr_progress`): Quarterly OKR progress and pacing scores via Notion OKRs, Jira deliverables, GitHub commits.
   9. `sop` (`query_sop_compliance`): SOP compliance, ADR governance, architecture decision records, review SLAs via Notion and PostgreSQL policies.
@@ -77,7 +77,7 @@ This file provides system guidance, architectural rules, anti-hallucination guid
 - **Jira OAuth 2.0 PKCE**: Native Jira REST tool harness (`jira_search`, `jira_get_issue`, `jira_create_issue`) with automated token management.
 - **Notion REST API & OAuth 2.0**: Native workspace search (`notion_search`), page fetch (`notion_get_page`), database queries (`notion_query_database`).
 - **GitHub REST API**: User-Agent headers, repo scoping, pull requests, issue search, and DORA deployment event tracking.
-- **Slack Web API**: Channels listing (`slack_list_channels`), message search (`slack_search_messages`), posting (`slack_post_message`).
+- **Slack Web API**: Channels listing (`slack_list_channels`), message search (`slack_search_messages`), with Temporal Human-in-the-Loop approval governance for posting (`slack_post_message`).
 - **Google Calendar**: Dynamic calendar ID configuration, event retrieval (`get_calendar_events`), event creation, attendee schedule inspection.
 - **Base Tool Harness**: Standardized circuit breaking, exponential backoff, schema validation, and logging across all external MCP endpoints.
 

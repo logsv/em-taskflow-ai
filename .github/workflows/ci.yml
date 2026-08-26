@@ -15,7 +15,7 @@ jobs:
       python_ai: ${{ steps.changes.outputs.python_ai }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v3
         id: changes
         with:
           filters: |

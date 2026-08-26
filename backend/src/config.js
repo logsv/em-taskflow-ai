@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { z } from 'zod';
+import { info, warn, error, debug } from './utils/logger.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -331,12 +332,12 @@ function loadConfig() {
   try {
     const rawData = fs.readFileSync(localConfigPath, 'utf8');
     fileConfig = JSON.parse(rawData);
-    console.log(`✅ Loaded configuration from: ${localConfigPath}`);
-  } catch (error) {
-    if (error.code !== 'ENOENT') {
-      console.warn(`⚠️ Warning loading config file ${localConfigPath}:`, error);
+    debug({ module: 'config', action: 'loadConfig', localConfigPath }, `Loaded configuration from: ${localConfigPath}`);
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      warn({ module: 'config', action: 'loadConfig', localConfigPath, err }, `Warning loading config file ${localConfigPath}`);
     }
-    console.log('📄 Using environment variables and defaults');
+    debug({ module: 'config', action: 'loadConfig' }, 'Using environment variables and defaults');
   }
 
   const config = {
@@ -502,14 +503,8 @@ function loadConfig() {
 
   try {
     return configSchema.parse(mergedConfig);
-  } catch (error) {
-    console.error('❌ Configuration validation failed:', error);
-    if (error instanceof z.ZodError) {
-      console.error('Validation errors:');
-      error.errors.forEach((err) => {
-        console.error(`  - ${err.path.join('.')}: ${err.message}`);
-      });
-    }
+  } catch (err) {
+    error({ module: 'config', action: 'validateSchema', err }, 'Configuration validation failed');
     process.exit(1);
   }
 }
@@ -547,7 +542,7 @@ export const getLlmProviders = () => {
 
 
 export function validateConfig() {
-  console.log('🔍 Validating configuration...');
+  debug({ module: 'config', action: 'validateConfig' }, 'Validating configuration...');
 
   const warnings = [];
 
@@ -578,10 +573,9 @@ export function validateConfig() {
   }
 
   if (warnings.length > 0) {
-    console.log('⚠️ Configuration warnings:');
-    warnings.forEach((warning) => console.log(`  - ${warning}`));
+    warn({ module: 'config', action: 'validateConfig', warnings }, 'Configuration warnings detected');
   } else {
-    console.log('✅ Configuration validation passed');
+    debug({ module: 'config', action: 'validateConfig' }, 'Configuration validation passed');
   }
 
   return warnings.length === 0;

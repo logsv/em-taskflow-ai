@@ -5,6 +5,7 @@
 
 import axios from 'axios';
 import config from '../config.js';
+import { warn, debug } from '../utils/logger.js';
 
 const PYTHON_AI_REST_URL = process.env.PYTHON_AI_SERVICE_URL || 'http://localhost:8000';
 
@@ -39,7 +40,7 @@ class PythonAIServiceClient {
         error_message: response.data?.error_message || 'Extraction failed',
       };
     } catch (error) {
-      console.warn(`⚠️ Python AI Service extraction fallback (${error.message}) for ${filename}`);
+      warn({ module: 'pythonAIServiceClient', action: 'extractDocumentFallback', filename, err: error }, `Python AI Service extraction fallback for ${filename}`);
       try {
         const text = fileBuffer.toString('utf-8');
         return {
@@ -82,7 +83,7 @@ class PythonAIServiceClient {
         };
       }
     } catch (error) {
-      console.warn(`⚠️ Python AI Service chunking fallback (${error.message}) for ${filename}`);
+      warn({ module: 'pythonAIServiceClient', action: 'processRAGIngestionFallback', filename, err: error }, `Python AI Service chunking fallback for ${filename}`);
     }
 
     return null;
@@ -112,7 +113,7 @@ class PythonAIServiceClient {
         }));
       }
     } catch (error) {
-      console.warn(`⚠️ Python AI Service searchRAG fallback (${error.message}) for query: ${query}`);
+      warn({ module: 'pythonAIServiceClient', action: 'searchRAGFallback', query, err: error }, `Python AI Service searchRAG fallback for query`);
     }
     return [];
   }
@@ -127,7 +128,7 @@ class PythonAIServiceClient {
         return response.data.documents;
       }
     } catch (error) {
-      console.warn(`⚠️ Python AI Service listDocuments fallback (${error.message})`);
+      warn({ module: 'pythonAIServiceClient', action: 'listDocumentsFallback', err: error }, 'Python AI Service listDocuments fallback');
     }
     return [];
   }
@@ -169,7 +170,7 @@ class PythonAIServiceClient {
         return response.data;
       }
     } catch (error) {
-      console.warn(`⚠️ Python AI Service deleteDocument fallback (${error.message}) for ${filename}`);
+      warn({ module: 'pythonAIServiceClient', action: 'deleteDocumentFallback', filename, err: error }, `Python AI Service deleteDocument fallback for ${filename}`);
     }
     return { success: false, filename, deleted_chunks: 0 };
   }
@@ -220,7 +221,7 @@ class PythonAIServiceClient {
         }
       }
     } catch (error) {
-      console.warn(`⚠️ Cross-Encoder reranking fallback: ${error.message}`);
+      warn({ module: 'pythonAIServiceClient', action: 'rerankChunksFallback', err: error }, 'Cross-Encoder reranking fallback');
     }
 
     return candidateChunks.slice(0, topN);

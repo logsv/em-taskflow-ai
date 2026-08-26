@@ -4,6 +4,7 @@ import axios from "axios";
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import { getMcpConfig } from "../config.js";
 import settingsService from "../services/settingsService.js";
+import { info, warn, error, debug } from "../utils/logger.js";
 
 let client = null;
 let tools = [];
@@ -37,7 +38,7 @@ function createNativeJiraTools(token, baseUrl, email = "") {
         if (configuredProjectKey && !effectiveJql.toLowerCase().includes("project =") && !effectiveJql.toLowerCase().includes("project in")) {
           effectiveJql = `project = "${configuredProjectKey}" AND (${effectiveJql})`;
         }
-        console.log(`🔷 Jira REST API jira_search: jql="${effectiveJql}"`);
+        debug({ module: "jiraMCP", action: "jira_search", effectiveJql }, `Jira REST API jira_search: jql="${effectiveJql}"`);
         if (baseUrl && (baseUrl.includes("atlassian.net") || baseUrl.includes("/rest/api"))) {
           const searchUrl = baseUrl.endsWith("/rest/api/3")
             ? `${baseUrl}/search`
@@ -49,6 +50,7 @@ function createNativeJiraTools(token, baseUrl, email = "") {
           );
           const issues = res.data?.issues || [];
           if (issues.length > 0) {
+            info({ module: "jiraMCP", action: "jira_search", count: issues.length }, `Jira REST API search returned ${issues.length} live issue(s)`);
             const formatted = issues.map((i) => {
               const blockedBy = (i.fields?.issuelinks || [])
                 .filter((l) => l.type?.inward === "is blocked by" && l.inwardIssue)
@@ -67,7 +69,7 @@ function createNativeJiraTools(token, baseUrl, email = "") {
           }
         }
       } catch (err) {
-        console.warn(`⚠️ Jira REST API search failed (${err?.message}), using PostgreSQL sprint_analytics fallback...`);
+        warn({ module: "jiraMCP", action: "jira_search_fallback", err }, "Jira REST API search failed, using PostgreSQL sprint_analytics fallback");
       }
 
       // Fallback to PostgreSQL Database Cache
@@ -96,7 +98,7 @@ function createNativeJiraTools(token, baseUrl, email = "") {
           }, null, 2);
         }
       } catch (dbErr) {
-        console.error("❌ PostgreSQL sprint_analytics fallback failed:", dbErr?.message);
+        error({ module: "jiraMCP", action: "sprintAnalyticsCacheFallback", err: dbErr }, "PostgreSQL sprint_analytics fallback failed");
       }
 
       return JSON.stringify({
@@ -120,7 +122,7 @@ function createNativeJiraTools(token, baseUrl, email = "") {
     }),
     func: async ({ issue_key = "ENG-104" }) => {
       try {
-        console.log(`🔷 Jira REST API jira_get_issue: ${issue_key}`);
+        debug({ module: "jiraMCP", action: "jira_get_issue", issue_key }, `Jira REST API jira_get_issue: ${issue_key}`);
         if (baseUrl) {
           const issueUrl = `${baseUrl.replace(/\/$/, "")}/rest/api/3/issue/${issue_key}`;
           const res = await axios.get(issueUrl, { headers, timeout: 8000 });
@@ -137,7 +139,7 @@ function createNativeJiraTools(token, baseUrl, email = "") {
           }, null, 2);
         }
       } catch (err) {
-        console.warn(`⚠️ Jira get_issue API failed (${err?.message}), using mock fallback...`);
+        warn({ module: "jiraMCP", action: "jira_get_issue_fallback", err }, "Jira get_issue API failed, using mock fallback");
       }
       return JSON.stringify({
         status: "UNAVAILABLE",
@@ -198,16 +200,16 @@ async function ensureInit() {
       });
       tools = await client.getTools();
       initialized = true;
-      console.log("✅ Successfully initialized Remote Jira MCP tools");
+      info({ module: "jiraMCP", action: "initRemoteMcp", toolCount: tools.length }, "Successfully initialized Remote Jira MCP tools");
       return;
     } catch (err) {
-      console.warn("⚠️ Remote Jira MCP connection failed, falling back to Native Jira REST tools:", err?.message);
+      warn({ module: "jiraMCP", action: "initRemoteMcpFallback", err }, "Remote Jira MCP connection failed, falling back to Native Jira REST tools");
     }
   }
 
   tools = createNativeJiraTools(token, baseUrl, email);
   initialized = true;
-  console.log(`✅ Loaded ${tools.length} Native Jira REST API tools`);
+  info({ module: "jiraMCP", action: "initNativeTools", toolCount: tools.length }, `Loaded ${tools.length} Native Jira REST API tools`);
 }
 
 export async function getJiraTools() {
