@@ -29,9 +29,26 @@ class DatabaseService {
 
     this.initializing = (async () => {
       const databaseConfig = getDatabaseConfig();
-      this.pool = new Pool({
+      const rawPool = new Pool({
         connectionString: databaseConfig.url,
       });
+
+      // Strict Defense-in-Depth query guard protecting app_settings from destructive wipes
+      const originalQuery = rawPool.query.bind(rawPool);
+      rawPool.query = async (text, params) => {
+        const queryStr = typeof text === 'string' ? text : text?.text || '';
+        if (
+          /TRUNCATE\s+(TABLE\s+)?app_settings/i.test(queryStr) ||
+          /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?app_settings/i.test(queryStr) ||
+          /DELETE\s+FROM\s+app_settings\s*(;|\s*$)/i.test(queryStr)
+        ) {
+          warn('PostgreSQL query guard: Blocked destructive wipe query against app_settings table', { query: queryStr });
+          return { rows: [], rowCount: 0, command: 'BLOCKED' };
+        }
+        return originalQuery(text, params);
+      };
+
+      this.pool = rawPool;
 
       await this.pool.query('SELECT 1');
       await this.createTables();

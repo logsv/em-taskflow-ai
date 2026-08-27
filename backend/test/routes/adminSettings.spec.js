@@ -5,11 +5,28 @@ describe('SettingsService & Admin Settings Management', () => {
   beforeEach(async () => {
     // Reset in-memory settings for clean test state
     databaseService.inMemoryAppSettings = {};
-    if (databaseService.pool) {
-      await databaseService.pool.query('TRUNCATE app_settings;').catch(() => {});
-    }
     settingsService.cachedRawSettings = null;
     settingsService.initialized = false;
+
+    // Spy on databaseService to keep SettingsService unit tests 100% in-memory and isolated
+    spyOn(databaseService, 'getAllAppSettings').and.callFake(async () => {
+      const map = {};
+      for (const [k, v] of Object.entries(databaseService.inMemoryAppSettings)) {
+        map[k] = { value: v.value, source: v.source, updated_at: v.updated_at };
+      }
+      return map;
+    });
+
+    spyOn(databaseService, 'getAppSetting').and.callFake(async (key, defVal = null) => {
+      const found = databaseService.inMemoryAppSettings[key];
+      return found || (defVal != null ? { key, value: defVal, source: 'default' } : null);
+    });
+
+    spyOn(databaseService, 'setAppSetting').and.callFake(async (key, value, source = 'database') => {
+      const record = { key, value, source, updated_at: new Date().toISOString() };
+      databaseService.inMemoryAppSettings[key] = record;
+      return record;
+    });
   });
 
   describe('Secret Masking & Detection Utilities', () => {

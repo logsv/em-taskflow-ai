@@ -81,6 +81,96 @@ class SettingsService {
     return rawSettings;
   }
 
+  getBackupFilePath() {
+    const candidateDirs = [
+      path.resolve(process.cwd(), 'data'),
+      path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../data'),
+      path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../data'),
+    ];
+    for (const d of candidateDirs) {
+      try {
+        if (!fs.existsSync(d)) {
+          fs.mkdirSync(d, { recursive: true });
+        }
+        return path.join(d, 'settings-backup.json');
+      } catch (_e) {}
+    }
+    return path.resolve(process.cwd(), 'settings-backup.json');
+  }
+
+  saveBackupToDisk(settings) {
+    if (!settings || process.env.NODE_ENV === 'test') return;
+    try {
+      const filePath = this.getBackupFilePath();
+      const dataToSave = {
+        llm: settings.llm || {},
+        mcp: settings.mcp || {},
+        savedAt: new Date().toISOString(),
+      };
+      fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2), 'utf-8');
+      info('💾 Saved durable settings backup to disk', { filePath });
+    } catch (err) {
+      warn('Failed to save settings backup to disk', { err: err.message });
+    }
+  }
+
+  loadBackupFromDisk() {
+    try {
+      const filePath = this.getBackupFilePath();
+      if (fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        return JSON.parse(content);
+      }
+    } catch (err) {
+      warn('Failed to load settings backup from disk', { err: err.message });
+    }
+    return null;
+  }
+
+  mergeWithBackup(target, backup) {
+    if (!backup || !backup.mcp || !target || !target.mcp) return false;
+    let mutated = false;
+    const tools = ['jira', 'github', 'notion', 'googleCalendar', 'slack'];
+    for (const tool of tools) {
+      const bTool = backup.mcp[tool];
+      if (!bTool) continue;
+      if (!target.mcp[tool]) target.mcp[tool] = {};
+      const tTool = target.mcp[tool];
+
+      if (tool === 'jira') {
+        if ((!tTool.apiToken || tTool.apiToken === 'test_token_12345678') && bTool.apiToken && bTool.apiToken !== 'test_token_12345678') {
+          tTool.apiToken = bTool.apiToken;
+          mutated = true;
+        }
+        if (!tTool.url && bTool.url) { tTool.url = bTool.url; mutated = true; }
+        if (!tTool.email && bTool.email) { tTool.email = bTool.email; mutated = true; }
+      } else if (tool === 'github') {
+        if ((!tTool.token || tTool.token.includes('mock')) && bTool.token && !bTool.token.includes('mock')) {
+          tTool.token = bTool.token;
+          mutated = true;
+        }
+        if (!tTool.owner && bTool.owner) { tTool.owner = bTool.owner; mutated = true; }
+        if (!tTool.repo && bTool.repo) { tTool.repo = bTool.repo; mutated = true; }
+      } else if (tool === 'notion') {
+        if ((!tTool.apiKey || tTool.apiKey.includes('mock')) && bTool.apiKey && !bTool.apiKey.includes('mock')) {
+          tTool.apiKey = bTool.apiKey;
+          mutated = true;
+        }
+      } else if (tool === 'googleCalendar') {
+        if ((!tTool.apiKey || tTool.apiKey.includes('Mock')) && bTool.apiKey && !bTool.apiKey.includes('Mock')) {
+          tTool.apiKey = bTool.apiKey;
+          mutated = true;
+        }
+      } else if (tool === 'slack') {
+        if ((!tTool.botToken || tTool.botToken.includes('mock')) && bTool.botToken && !bTool.botToken.includes('mock')) {
+          tTool.botToken = bTool.botToken;
+          mutated = true;
+        }
+      }
+    }
+    return mutated;
+  }
+
   async initialize() {
     if (this.initialized && this.cachedRawSettings) return this.cachedRawSettings;
 
@@ -99,6 +189,15 @@ class SettingsService {
             mcpUpdatedAt: dbSettings.mcp?.updated_at,
           },
         };
+
+        // Self-heal from durable backup if DB has empty tokens but backup has valid keys
+        if (process.env.NODE_ENV !== 'test') {
+          const backup = this.loadBackupFromDisk();
+          if (backup && this.mergeWithBackup(this.cachedRawSettings, backup)) {
+            info('🔄 Self-healed and restored tool credentials from local backup file into PostgreSQL');
+            await databaseService.setAppSetting('mcp', this.cachedRawSettings.mcp, 'database').catch(() => {});
+          }
+        }
 
         // Migrate legacy dummy placeholders if found in live database
         if (process.env.NODE_ENV !== 'test') {
@@ -525,6 +624,7 @@ class SettingsService {
 
     // Hot reload runtime config and reset active LLM model singleton
     this.applyToRuntimeConfig(this.cachedRawSettings);
+    this.saveBackupToDisk(this.cachedRawSettings);
     resetChatModel();
 
     // Reset MCP cached clients so the next call picks up the new credentials
