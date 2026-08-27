@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { AssistantRuntimeProvider, useLocalRuntime } from '@assistant-ui/react';
 import Chat from './components/Chat';
 import Sidebar from './components/Sidebar';
-import AdminPage from './components/AdminPage';
-import ActionHubPage from './components/ActionHubPage';
 import DevSettingsModal from './components/DevSettingsModal';
 import { apiUrl } from './services/apiClient';
 import logger from './utils/logger';
 import './App.css';
+
+const AdminPage = lazy(() => import('./components/AdminPage'));
+const ActionHubPage = lazy(() => import('./components/ActionHubPage'));
 
 function getUrlParams() {
   const params = new URLSearchParams(window.location.search);
@@ -334,11 +335,19 @@ function App() {
   }, [loadSession]);
 
   if (currentView === 'admin') {
-    return <AdminPage onBackToChat={navigateToChat} />;
+    return (
+      <Suspense fallback={<div className="loading-fallback" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#94a3b8' }}>Loading Admin Portal...</div>}>
+        <AdminPage onBackToChat={navigateToChat} />
+      </Suspense>
+    );
   }
 
   if (currentView === 'actions') {
-    return <ActionHubPage onBackToChat={navigateToChat} onOpenAdmin={navigateToAdmin} />;
+    return (
+      <Suspense fallback={<div className="loading-fallback" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#94a3b8' }}>Loading Action Hub...</div>}>
+        <ActionHubPage onBackToChat={navigateToChat} onOpenAdmin={navigateToAdmin} />
+      </Suspense>
+    );
   }
 
   return (

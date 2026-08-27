@@ -14,4 +14,35 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom') || id.includes('scheduler')) {
+              return 'vendor-react';
+            }
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons';
+            }
+            if (
+              id.includes('markdown') ||
+              id.includes('remark') ||
+              id.includes('rehype') ||
+              id.includes('micromark') ||
+              id.includes('katex')
+            ) {
+              return 'vendor-markdown';
+            }
+            if (id.includes('@assistant-ui')) {
+              return 'vendor-assistant-ui';
+            }
+            return 'vendor-libs';
+          }
+        },
+      },
+    },
+  },
 });
+
