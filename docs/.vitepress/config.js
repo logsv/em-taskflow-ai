@@ -9,6 +9,7 @@ export default withMermaid(
     lastUpdated: true,
     cleanUrls: true,
     ignoreDeadLinks: true,
+    srcExclude: ['**/node_modules/**', '**/node_modules/**/*', 'node_modules/**/*'],
     head: [
       ['link', { rel: 'icon', href: '/favicon.ico' }],
       ['meta', { name: 'theme-color', content: '#38bdf8' }]

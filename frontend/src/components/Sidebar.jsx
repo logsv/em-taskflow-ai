@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { apiUrl } from '../services/apiClient.js';
 import logger from '../utils/logger.js';
 import './Sidebar.css';
 
@@ -145,7 +146,7 @@ function Sidebar({
   const [pendingActionsCount, setPendingActionsCount] = useState(0);
 
   useEffect(() => {
-    fetch('/api/actions/summary')
+    fetch(apiUrl('/actions/summary'))
       .then((res) => res.json())
       .then((data) => {
         if (data?.summary?.criticalPending !== undefined) {

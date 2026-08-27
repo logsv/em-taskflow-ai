@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { apiUrl } from '../services/apiClient.js';
 import logger from '../utils/logger.js';
 import AdminShell from './admin/AdminShell.jsx';
 import './AdminPage.css';
@@ -200,7 +201,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchBenchmarkStatus = async () => {
     try {
-      const res = await fetch('/api/admin/eval/benchmark-status');
+      const res = await fetch(apiUrl('/admin/eval/benchmark-status'));
       const data = await res.json();
       if (data.success) {
         setBenchmarkStatus(data.state);
@@ -215,7 +216,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchReplayStatus = async () => {
     try {
-      const res = await fetch('/api/admin/eval/replay-status');
+      const res = await fetch(apiUrl('/admin/eval/replay-status'));
       const data = await res.json();
       if (data.success) {
         setReplayStatus(data.state);
@@ -230,7 +231,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchSystemStatus = async () => {
     try {
-      const res = await fetch('/api/admin/system-status');
+      const res = await fetch(apiUrl('/admin/system-status'));
       const data = await res.json();
       setSystemStatus(data);
     } catch (err) {
@@ -240,7 +241,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchEvalMetrics = async () => {
     try {
-      const res = await fetch('/api/admin/eval/metrics');
+      const res = await fetch(apiUrl('/admin/eval/metrics'));
       const data = await res.json();
       if (data.success) {
         setEvalMetrics(data.metrics);
@@ -280,7 +281,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchPromptMatrixStatus = async () => {
     try {
-      const res = await fetch('/api/admin/eval/prompt-matrix/status');
+      const res = await fetch(apiUrl('/admin/eval/prompt-matrix/status'));
       const data = await res.json();
       if (data.success) {
         setPromptMatrixStatus(data.state);
@@ -297,7 +298,7 @@ function AdminPage({ onBackToChat }) {
     setIsRunningPromptMatrix(true);
     setEvalActionMsg('⚡ Starting Durable Prompt Matrix Evaluation via Temporal (>= 90% path)...');
     try {
-      const res = await fetch('/api/admin/eval/prompt-matrix', {
+      const res = await fetch(apiUrl('/admin/eval/prompt-matrix'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ modelTarget: 'hermes3:8b', limit: 10, batchSize: 5 }),
@@ -319,7 +320,7 @@ function AdminPage({ onBackToChat }) {
     setIsRunningBenchmark(true);
     setEvalActionMsg('🌙 Starting Deep Evaluation Benchmark (Ragas + DeepEval + Arena) against local Ollama hermes3:8b...');
     try {
-      const res = await fetch('/api/admin/eval/run-deep-benchmark', { method: 'POST' });
+      const res = await fetch(apiUrl('/admin/eval/run-deep-benchmark'), { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setEvalActionMsg(data.message);
@@ -337,7 +338,7 @@ function AdminPage({ onBackToChat }) {
     setIsRunningReplay(true);
     setEvalActionMsg('🔄 Replaying historical Langfuse failure traces & comparing Candidate Model vs Baseline...');
     try {
-      const res = await fetch('/api/admin/eval/replay-traces', { method: 'POST' });
+      const res = await fetch(apiUrl('/admin/eval/replay-traces'), { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setEvalActionMsg(data.message);
@@ -353,7 +354,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchAuditStatus = async () => {
     try {
-      const res = await fetch('/api/admin/audit/status');
+      const res = await fetch(apiUrl('/admin/audit/status'));
       const data = await res.json();
       if (data.success) {
         setAuditStatus(data);
@@ -367,7 +368,7 @@ function AdminPage({ onBackToChat }) {
     setIsRunningAudit(true);
     setAuditActionMsg('🚀 Disagreeing & launching Autonomous EM Task & Health Audit across all 10 domain agents...');
     try {
-      const res = await fetch('/api/admin/audit/trigger', {
+      const res = await fetch(apiUrl('/admin/audit/trigger'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'consolidated' }),
@@ -391,7 +392,7 @@ function AdminPage({ onBackToChat }) {
     setIsSyncingDatasets(true);
     setEvalActionMsg('📦 Syncing Golden & Prompt Matrix Datasets to Langfuse (:3001)...');
     try {
-      const res = await fetch('/api/admin/eval/sync-datasets', { method: 'POST' });
+      const res = await fetch(apiUrl('/admin/eval/sync-datasets'), { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setEvalActionMsg(`✅ ${data.message}`);
@@ -409,7 +410,7 @@ function AdminPage({ onBackToChat }) {
   const fetchDocuments = async () => {
     setLoadingDocs(true);
     try {
-      const res = await fetch('/api/admin/documents');
+      const res = await fetch(apiUrl('/admin/documents'));
       const data = await res.json();
       setDocuments(data.documents || []);
     } catch (err) {
@@ -421,7 +422,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchSyncStatus = async () => {
     try {
-      const res = await fetch('/api/github/sync-status');
+      const res = await fetch(apiUrl('/github/sync-status'));
       const data = await res.json();
       setSyncStatus(data);
     } catch (err) {
@@ -431,7 +432,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchDoraMetrics = async () => {
     try {
-      const res = await fetch('/api/em/dora');
+      const res = await fetch(apiUrl('/em/dora'));
       const data = await res.json();
       setDoraMetrics(data);
     } catch (err) {
@@ -442,7 +443,7 @@ function AdminPage({ onBackToChat }) {
   const fetchAdminSettings = async () => {
     setLoadingSettings(true);
     try {
-      const res = await fetch('/api/admin/settings');
+      const res = await fetch(apiUrl('/admin/settings'));
       const data = await res.json();
       if (data.success && data.settings) {
         setAdminSettings(data.settings);
@@ -456,7 +457,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchJiraOAuthStatus = async () => {
     try {
-      const res = await fetch('/api/mcp/jira/oauth/status');
+      const res = await fetch(apiUrl('/mcp/jira/oauth/status'));
       const data = await res.json();
       if (data.success) {
         setJiraOAuthStatus(data);
@@ -469,7 +470,7 @@ function AdminPage({ onBackToChat }) {
   const handleStartJiraOAuth = async () => {
     setIsConnectingJiraOAuth(true);
     try {
-      const res = await fetch('/api/mcp/jira/oauth/start');
+      const res = await fetch(apiUrl('/mcp/jira/oauth/start'));
       const data = await res.json();
       if (data.authorizationUrl) {
         window.location.href = data.authorizationUrl;
@@ -489,7 +490,7 @@ function AdminPage({ onBackToChat }) {
   const handleDisconnectJiraOAuth = async () => {
     if (!window.confirm('Disconnect Atlassian Jira OAuth and return to API Token mode?')) return;
     try {
-      const res = await fetch('/api/mcp/jira/oauth/disconnect', { method: 'POST' });
+      const res = await fetch(apiUrl('/mcp/jira/oauth/disconnect'), { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         await fetchJiraOAuthStatus();
@@ -505,7 +506,7 @@ function AdminPage({ onBackToChat }) {
     setSavingSettings(true);
     setSettingsSaveMsg('Saving and hot-reloading configurations...');
     try {
-      const res = await fetch('/api/admin/settings', {
+      const res = await fetch(apiUrl('/admin/settings'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -534,7 +535,7 @@ function AdminPage({ onBackToChat }) {
     setSavingSettings(true);
     setSettingsSaveMsg('Restoring .env defaults...');
     try {
-      const res = await fetch('/api/admin/settings/reset', { method: 'POST' });
+      const res = await fetch(apiUrl('/admin/settings/reset'), { method: 'POST' });
       const data = await res.json();
       if (data.success && data.settings) {
         setAdminSettings(data.settings);
@@ -567,7 +568,7 @@ function AdminPage({ onBackToChat }) {
       else if (type === 'googleCalendar') credentials = adminSettings.mcp?.googleCalendar;
       else if (type === 'slack') credentials = adminSettings.mcp?.slack;
 
-      const res = await fetch('/api/admin/settings/test-connection', {
+      const res = await fetch(apiUrl('/admin/settings/test-connection'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type, credentials }),
@@ -670,7 +671,7 @@ function AdminPage({ onBackToChat }) {
     setIsSyncing(true);
     setSyncMessage('Syncing GitHub issues...');
     try {
-      const res = await fetch('/api/github/sync', { method: 'POST' });
+      const res = await fetch(apiUrl('/github/sync'), { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setSyncMessage(`Synced ${data.issuesCount || 0} issues successfully!`);
@@ -690,7 +691,7 @@ function AdminPage({ onBackToChat }) {
     e.stopPropagation();
     if (!window.confirm(`Delete document "${filename}" and all its vector chunks?`)) return;
     try {
-      const res = await fetch(`/api/admin/documents/${encodeURIComponent(filename)}`, {
+      const res = await fetch(apiUrl(`/admin/documents/${encodeURIComponent(filename)}`), {
         method: 'DELETE',
       });
       const data = await res.json();
@@ -716,7 +717,7 @@ function AdminPage({ onBackToChat }) {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('pdf', file);
-      const res = await fetch('/api/rag/upload', {
+      const res = await fetch(apiUrl('/rag/upload'), {
         method: 'POST',
         body: formData,
       });
@@ -729,7 +730,7 @@ function AdminPage({ onBackToChat }) {
         const interval = setInterval(async () => {
           attempts += 1;
           try {
-            const pollRes = await fetch(`/api/rag/workflows/${workflowId}`);
+            const pollRes = await fetch(apiUrl(`/rag/workflows/${workflowId}`));
             if (pollRes.ok) {
               const pollData = await pollRes.json();
               if (pollData.status === 'COMPLETED') {
@@ -780,7 +781,7 @@ function AdminPage({ onBackToChat }) {
     setChunkSearchQuery('');
     setCopySuccess(false);
     try {
-      const res = await fetch(`/api/admin/documents/${encodeURIComponent(filename)}/chunks`);
+      const res = await fetch(apiUrl(`/admin/documents/${encodeURIComponent(filename)}/chunks`));
       const data = await res.json();
       setDocChunks(data.chunks || []);
     } catch (err) {
@@ -839,7 +840,7 @@ function AdminPage({ onBackToChat }) {
   const fetchTeamMembers = async () => {
     setLoadingTeam(true);
     try {
-      const res = await fetch('/api/admin/team');
+      const res = await fetch(apiUrl('/admin/team'));
       if (res.ok) {
         const data = await res.json();
         setTeamMembers(data.members || []);
@@ -855,7 +856,7 @@ function AdminPage({ onBackToChat }) {
     setIsSyncingTeam(true);
     setTeamSyncMsg('');
     try {
-      const res = await fetch('/api/admin/team/sync', { method: 'POST' });
+      const res = await fetch(apiUrl('/admin/team/sync'), { method: 'POST' });
       const data = await res.json();
       if (res.ok && data.success) {
         setTeamMembers(data.members || []);
@@ -937,7 +938,7 @@ function AdminPage({ onBackToChat }) {
         tenureMonths: Number(memberForm.tenureMonths || 12),
       };
 
-      const url = editingMember?.id ? `/api/admin/team/${editingMember.id}` : '/api/admin/team';
+      const url = editingMember?.id ? apiUrl(`/admin/team/${editingMember.id}`) : apiUrl('/admin/team');
       const method = editingMember?.id ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
@@ -960,7 +961,7 @@ function AdminPage({ onBackToChat }) {
   const handleDeleteMember = async (id) => {
     if (!window.confirm('Are you sure you want to remove this team member?')) return;
     try {
-      const res = await fetch(`/api/admin/team/${id}`, { method: 'DELETE' });
+      const res = await fetch(apiUrl(`/admin/team/${id}`), { method: 'DELETE' });
       if (res.ok) {
         fetchTeamMembers();
       }

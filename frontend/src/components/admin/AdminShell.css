@@ -1,8 +1,5 @@
 /* ==========================================================================
    Admin Global Shell Layout (AdminShell.css)
-   ========================================================================== */
-@import './adminTokens.css';
-
 .admin-shell {
   min-height: 100vh;
   background-color: var(--admin-bg);

@@ -2,6 +2,7 @@ import './tracing.js';
 import express from 'express';
 import cors from 'cors';
 import apiRouter from './routes/api.js';
+import v1Router from './routes/v1/index.js';
 import { config, getServerConfig, getRuntimeConfig, getDatabaseConfig, getLlmConfig, getRagConfig, validateConfig } from './config.js';
 import dotenv from 'dotenv';
 import * as Sentry from '@sentry/node';
@@ -77,6 +78,7 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use('/api/v1', v1Router);
 app.use('/api', apiRouter);
 
 app.get('/', (req, res) => {
@@ -163,8 +165,9 @@ async function startServer() {
         database: databaseConfig.url,
         llmProvider: llmConfig.defaultProvider,
         ragEnabled: ragConfig.enabled,
-        healthCheckUrl: `http://${serverConfig.host}:${PORT}/api/health`,
-        chatApiUrl: `http://${serverConfig.host}:${PORT}/api/chat`,
+        healthCheckUrl: `http://${serverConfig.host}:${PORT}/api/v1/health`,
+        chatApiUrl: `http://${serverConfig.host}:${PORT}/api/v1/chat`,
+        docsUrl: `http://${serverConfig.host}:${PORT}/api/v1/docs`,
       });
     });
   } catch (err) {

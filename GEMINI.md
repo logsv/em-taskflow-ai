@@ -96,11 +96,14 @@ The backend agent uses an **8-stage hybrid architecture** optimized for **Local 
   - *Consolidated Mode*: High-impact scorecard summarizing Health Score, DORA tier, sprint pacing, overdue 1-on-1s, and top 4 prioritized actions.
   - *Threaded Breakdown Mode*: Parent scorecard + 4 sub-thread replies (Delivery, People, Sprint, SOP).
   - *Targeted Action Nudges*: Instant Slack ping to assigned engineers with PR/Jira context and recommended next action.
-- **Interactive EM Action Hub UI (`ActionHubPage.jsx`)**:
-  - 🗂️ **Kanban Board**: 3 swimlanes (`Pending Triage`, `In Progress`, `Resolved / Completed`) with 1-click status transitions.
-  - 📑 **Dense Table**: Linear/Jira-style high-density table with multi-select checkboxes for batch triage and Slack sharing.
-  - 🃏 **Rich Card Grid**: Detailed cards with diagnostic descriptions, origin badges, SLA countdowns, and resolution history.
-  - 🔍 **Action Inspection Drawer**: Diagnostic context, root causes, and resolution notes editor with EM attribution.
+- **Interactive EM Action Hub Decision Cockpit (`ActionHubPage.jsx`)**:
+  - 📊 **Executive Summary**: 4 decision metric cards (Needs Attention, Overdue SLAs, Health Score with breakdown drawer, Automation status).
+  - 🚨 **Needs Attention Section**: High-urgency morning triage strip with SLA countdowns and 1-click primary CTAs.
+  - ⚡ **Workspace Controls**: Always-visible search with instant clear, compact Filter Popover (`⚡ Filter (N)`), active filter chips, and segmented view switcher.
+  - 🗂️ **Kanban Board**: 3 swimlanes (`Pending Triage`, `In Progress`, `Resolved / Completed`) with scannable action cards (~35% more compact) and keyboard accessibility.
+  - 📑 **Dense Table**: Linear/Jira-style high-density table with multi-select checkboxes for batch triage.
+  - 📦 **Bulk Action Bar**: Floating bottom-center toolbar for **In Progress**, **Resolve**, **Share to Slack**, **Dismiss**, and **✕ Clear** (`Esc`).
+  - 🔍 **Action Details Drawer**: Slide-out drawer with engineering impact rationale (*Why this matters*), deterministic tool signals, policy rules, and in-place resolution logger (with zero fake AI confidence scores).
   - 👥 **Team Cadence Matrix**: Engineer 1-on-1 tracking table with promotion targets, tenure, and overdue sync alerts.
 
 ### 10. Standalone Admin Portal & Modular UI Architecture (`/admin`)
@@ -108,4 +111,11 @@ The backend agent uses an **8-stage hybrid architecture** optimized for **Local 
 - **Operator-First Top Navigation**: 5 primary domain groups (*Overview*, *People*, *AI Platform*, *Operations*, *Quality*) with nested sub-navigation pills for progressive disclosure (*Models & Tools*, *Services & Storage*).
 - **Reusable UI Design Primitives (`frontend/src/components/admin/ui/`)**: Zero-dependency component library (`Button`, `Badge`, `StatusBadge`, `Card`, `MetricCard`, `Section`, `Tabs`, `Table`, `Drawer`, `Modal`, `Dropdown`, `SearchInput`, `EmptyState`, `Alert`) adhering to semantic dark-theme design tokens (`adminTokens.css`).
 - **Readymade 8-Service Catalog**: Direct deep-links to Langfuse (:3001), Promptfoo Managed Cloud, Adminer (:8080), Temporal (:8233), Sentry, New Relic, Axiom, and Swagger REST API Explorer (:4000/api/docs).
+
+### 11. Low-Distraction EM Copilot UI & Quick Actions (`⌘K`)
+- **Workflow-First Philosophy**: *"Workflows are the product; agents are the implementation."* Primary chat interface is clean and free of implementation distractions (sub-agent selectors, raw tool lists, or vector chunk parameters).
+- **Quick Actions Palette (`⌘K`)**: `AgentPromptPalette.jsx` enables instant workflow launching across Delivery, People, Planning, and Governance, with rich intent keyword matching and progressive disclosure scenario hints (`⋯`).
+- **Decision Action Pills**: Assistant responses feature actionable pills (`[📋 Action Hub]`, `[🎯 Formulate Actions]`) connecting analysis directly to action triage.
+- **Dedicated Dev Settings Modal**: `DevSettingsModal.jsx` isolates Advanced RAG mode, session/thread diagnostic copying, and PostgreSQL cache controls from the main chat viewport.
+
 

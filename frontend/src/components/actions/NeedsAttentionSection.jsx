@@ -149,6 +149,15 @@ function PriorityActionItem({ item, onInspect, onUpdateStatus, onNudge }) {
       <h3
         className="ah-priority-title"
         onClick={() => onInspect(item)}
+        role="button"
+        tabIndex={0}
+        aria-label={`Inspect priority action: ${item.title}`}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onInspect(item);
+          }
+        }}
         title="Click to view details"
       >
         {item.title}
@@ -157,7 +166,20 @@ function PriorityActionItem({ item, onInspect, onUpdateStatus, onNudge }) {
 
       {/* Recommended Action Callout */}
       {item.suggestedAction && (
-        <div className="ah-priority-rec-box">
+        <div
+          className="ah-priority-rec-box"
+          onClick={() => onInspect(item)}
+          role="button"
+          tabIndex={0}
+          aria-label={`Recommended: ${item.suggestedAction}. Click to view details.`}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onInspect(item);
+            }
+          }}
+          title="Click to view details"
+        >
           <span className="ah-rec-icon" aria-hidden="true">💡</span>
           <div className="ah-rec-content">
             <span className="ah-rec-label">Recommended:</span>

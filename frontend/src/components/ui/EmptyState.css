@@ -1,5 +1,3 @@
-@import './tokens.css';
-
 .ah-empty-state {
   display: flex;
   flex-direction: column;

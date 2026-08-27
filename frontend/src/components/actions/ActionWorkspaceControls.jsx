@@ -28,16 +28,25 @@ export function ActionWorkspaceControls({
     (categoryFilter !== 'ALL' ? 1 : 0) +
     (severityFilter !== 'ALL' ? 1 : 0);
 
-  // Close popover on outside click
+  // Close popover on outside click or ESC key
   useEffect(() => {
     if (!filterPopoverOpen) return;
-    const handler = (e) => {
+    const clickHandler = (e) => {
       if (popoverRef.current && !popoverRef.current.contains(e.target)) {
         setFilterPopoverOpen(false);
       }
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    const keyHandler = (e) => {
+      if (e.key === 'Escape') {
+        setFilterPopoverOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', clickHandler);
+    window.addEventListener('keydown', keyHandler);
+    return () => {
+      document.removeEventListener('mousedown', clickHandler);
+      window.removeEventListener('keydown', keyHandler);
+    };
   }, [filterPopoverOpen]);
 
   const hasAnyActiveFilters = activeFiltersCount > 0 || !!searchQuery;
@@ -80,6 +89,9 @@ export function ActionWorkspaceControls({
               icon={<span aria-hidden="true">⚡</span>}
               rightIcon={<span aria-hidden="true" className="ah-filter-caret">▾</span>}
               onClick={() => setFilterPopoverOpen(!filterPopoverOpen)}
+              ariaLabel={`Open filter settings. ${activeFiltersCount} active filters.`}
+              aria-expanded={filterPopoverOpen}
+              aria-haspopup="dialog"
               title="Open filter settings"
             >
               Filter {activeFiltersCount > 0 && `(${activeFiltersCount})`}
@@ -87,7 +99,7 @@ export function ActionWorkspaceControls({
 
             {/* Filter Popover Dropdown */}
             {filterPopoverOpen && (
-              <div className="ah-filter-popover" role="dialog" aria-label="Action Filters">
+              <div id="ah-filter-popover" className="ah-filter-popover" role="dialog" aria-label="Action Filters">
                 <div className="ah-filter-popover-header">
                   <span className="ah-filter-popover-title">Filter Actions</span>
                   {activeFiltersCount > 0 && (

@@ -5,4 +5,3 @@ export { default as IconButton } from './IconButton.jsx';
 export { default as SectionHeader } from './SectionHeader.jsx';
 export { default as EmptyState } from './EmptyState.jsx';
 export { default as Divider } from './Divider.jsx';
-import './tokens.css';

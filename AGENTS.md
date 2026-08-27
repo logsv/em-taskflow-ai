@@ -115,9 +115,12 @@ This file provides system guidance, architectural rules, anti-hallucination guid
   - *Consolidated Mode*: Executive scorecard with Health Score ($20 \le \text{Score} \le 100$), DORA tier, sprint pacing %, overdue 1-on-1s, and top 4 action items.
   - *Threaded Breakdown Mode*: Parent scorecard + 4 threaded replies breaking down Delivery, People, Sprint, and SOP.
   - *Individual Action Item Nudge*: 1-click Slack reminder ping to assigned engineer with PR/Jira deep link.
-- **Interactive EM Action Hub Cockpit**:
-  - Multi-view action triage (**Kanban Board**, **Dense Table** with bulk select, **Rich Card Grid**).
-  - Action item inspection drawer & resolution notes logger.
+- **Interactive EM Action Hub Decision Cockpit**:
+  - Executive Summary strip with 4 decision metric cards (Needs Attention, Overdue SLAs, Health Score with breakdown drawer, Automation status).
+  - High-urgency **Needs Attention** section with SLA countdowns and 1-click primary CTAs.
+  - Multi-view action triage (**Kanban Board** with scannable cards and **Dense Table** with bulk select).
+  - Floating **Bulk Action Bar** (In Progress, Resolve, Share to Slack, Dismiss).
+  - Action Details Drawer with deterministic diagnostic signal mapping, policy rule explanation, source tool attribution, and in-drawer resolution logger (with zero fake AI confidence scores).
   - Team 1-on-1 cadence tracking matrix & career level progression.
   - Live ADR-008 per-service database governance checklist.
 
@@ -126,6 +129,12 @@ This file provides system guidance, architectural rules, anti-hallucination guid
 - **Operator-First Top Navigation**: 5 primary domain groups (*Overview*, *People*, *AI Platform*, *Operations*, *Quality*) with nested sub-navigation pills for progressive disclosure (*Models & Tools*, *Services & Storage*).
 - **Reusable UI Design Primitives (`frontend/src/components/admin/ui/`)**: Zero-dependency component library (`Button`, `Badge`, `StatusBadge`, `Card`, `MetricCard`, `Section`, `Tabs`, `Table`, `Drawer`, `Modal`, `Dropdown`, `SearchInput`, `EmptyState`, `Alert`) adhering to semantic dark-theme design tokens (`adminTokens.css`).
 - **Readymade 8-Service Catalog**: Direct deep-links to Langfuse (:3001), Promptfoo Managed Cloud, Adminer (:8080), Temporal (:8233), Sentry, New Relic, Axiom, and Swagger REST API Explorer (:4000/api/docs).
+
+### 11. Low-Distraction EM Copilot UI & Quick Actions (`⌘K`)
+- **Workflow-First Philosophy**: *"Workflows are the product; agents are the implementation."* Primary chat interface is clean and free of implementation distractions (sub-agent selectors, raw tool lists, or vector chunk parameters).
+- **Quick Actions Palette (`⌘K`)**: `AgentPromptPalette.jsx` enables instant workflow launching across Delivery, People, Planning, and Governance, with rich intent keyword matching and progressive disclosure scenario hints (`⋯`).
+- **Decision Action Pills**: Assistant responses feature actionable pills (`[📋 Action Hub]`, `[🎯 Formulate Actions]`) connecting analysis directly to action triage.
+- **Dedicated Dev Settings Modal**: `DevSettingsModal.jsx` isolates Advanced RAG mode, session/thread diagnostic copying, and PostgreSQL cache controls from the main chat viewport.
 
 ---
 
@@ -139,7 +148,7 @@ npm run dev
 # Build ESM JavaScript output
 npm run build
 
-# Run unit tests with Jasmine & coverage (240 specs, 0 failures)
+# Run unit tests with Jasmine & coverage (319 specs, 0 failures)
 npm test
 
 # Run full evaluation suite (Model: hermes3:8b)
@@ -153,8 +162,17 @@ npm run eval:pre-llm
 
 ### Python AI Service Commands (from `/services/python-ai-service`)
 ```bash
-# Run Python unit & evaluation tests (39 specs, 0 failures)
+# Run Python unit & evaluation tests (45 specs, 0 failures)
 uv run pytest
+```
+
+### Frontend Commands (from `/frontend`)
+```bash
+# Start Vite development server (port 3000)
+npm run dev
+
+# Build production bundle
+npm run build
 ```
 
 ### Full Container Management (from project root)

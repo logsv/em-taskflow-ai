@@ -1,5 +1,3 @@
-@import '../ui/tokens.css';
-
 .ah-needs-attention-section {
   margin-bottom: 24px;
   background: rgba(19, 29, 49, 0.4);
@@ -71,6 +69,15 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 14px;
+}
+
+@media (max-width: 480px) {
+  .ah-needs-attention-section {
+    padding: 12px 14px;
+  }
+  .ah-needs-attention-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Individual Priority Card */

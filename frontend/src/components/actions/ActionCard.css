@@ -1,5 +1,3 @@
-@import '../ui/tokens.css';
-
 .ah-kanban-card {
   display: flex;
   flex-direction: column;

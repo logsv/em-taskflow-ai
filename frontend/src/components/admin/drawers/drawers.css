@@ -1,5 +1,4 @@
 /* Drawer Internal Content Styling */
-@import '../adminTokens.css';
 
 .drawer-diag-grid {
   display: grid;

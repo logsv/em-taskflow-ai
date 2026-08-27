@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { apiUrl } from '../services/apiClient.js';
 import './PDFUpload.css';
 
 function PDFUpload() {
@@ -60,7 +61,7 @@ function PDFUpload() {
         });
       }, 200);
 
-      const res = await fetch('/api/rag/upload', {
+      const res = await fetch(apiUrl('/rag/upload'), {
         method: 'POST',
         body: formData,
       });
@@ -77,7 +78,7 @@ function PDFUpload() {
         const pollInterval = setInterval(async () => {
           attempts += 1;
           try {
-            const pollRes = await fetch(`/api/rag/workflows/${workflowId}`);
+            const pollRes = await fetch(apiUrl(`/rag/workflows/${workflowId}`));
             if (pollRes.ok) {
               const pollData = await pollRes.json();
               if (pollData.status === 'COMPLETED') {

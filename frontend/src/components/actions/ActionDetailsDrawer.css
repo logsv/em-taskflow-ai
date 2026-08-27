@@ -1,0 +1,327 @@
+.ah-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 15, 29, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  display: flex;
+  justify-content: flex-end;
+  animation: ahFadeIn 0.15s ease-out;
+}
+
+.ah-drawer-panel {
+  width: 100%;
+  max-width: 540px;
+  height: 100%;
+  background: var(--ah-bg-surface);
+  border-left: 1px solid var(--ah-border-medium);
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--ah-shadow-dropdown);
+  animation: ahSlideInRight 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes ahSlideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+/* 1. Header */
+.ah-drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--ah-border-subtle);
+  background: var(--ah-bg-elevated);
+}
+
+.ah-drawer-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ah-drawer-sla-tag {
+  background: var(--ah-warning-bg);
+  border: 1px solid var(--ah-warning-border);
+  color: var(--ah-warning-text);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--ah-radius-xs);
+}
+
+/* 2. Scrollable Body */
+.ah-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ah-drawer-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ah-drawer-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ah-text-primary);
+  line-height: 1.35;
+}
+
+.ah-drawer-desc {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--ah-text-secondary);
+  line-height: 1.5;
+}
+
+.ah-drawer-section-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--ah-text-muted);
+}
+
+/* Recommended Action Card */
+.ah-drawer-rec-card {
+  background: var(--ah-bg-elevated);
+  border: 1px solid var(--ah-info-border);
+  border-radius: var(--ah-radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ah-rec-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ah-rec-card-icon {
+  font-size: 13px;
+}
+
+.ah-rec-card-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--ah-info-text);
+}
+
+.ah-rec-card-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ah-text-primary);
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+/* Callout Box (Why this matters) */
+.ah-drawer-callout {
+  background: rgba(30, 41, 59, 0.4);
+  border-left: 3px solid var(--ah-info);
+  border-radius: var(--ah-radius-xs);
+  padding: 10px 12px;
+}
+
+.ah-callout-text {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ah-text-secondary);
+  line-height: 1.45;
+}
+
+/* Evidence Card */
+.ah-evidence-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--ah-bg-subtle);
+  border: 1px solid var(--ah-border-subtle);
+  border-radius: var(--ah-radius-md);
+  padding: 14px;
+}
+
+.ah-evidence-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 480px) {
+  .ah-evidence-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ah-evidence-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ah-evidence-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--ah-text-dim);
+}
+
+.ah-evidence-val {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ah-text-primary);
+  word-break: break-word;
+}
+
+.ah-evidence-sub {
+  font-size: 11px;
+  color: var(--ah-text-muted);
+  margin-left: 4px;
+}
+
+.ah-evidence-rule-box {
+  background: var(--ah-bg-card);
+  border: 1px solid var(--ah-border-medium);
+  border-radius: var(--ah-radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ah-rule-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--ah-warning-text);
+}
+
+.ah-rule-text code {
+  font-size: 11.5px;
+  color: var(--ah-text-primary);
+  font-family: monospace;
+}
+
+.ah-evidence-footer-ref {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ah-border-subtle);
+  font-size: 11.5px;
+}
+
+.ah-ref-static {
+  color: var(--ah-text-muted);
+}
+
+.ah-evidence-link {
+  color: var(--ah-info-text);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.ah-evidence-link:hover {
+  text-decoration: underline;
+}
+
+/* Resolution History */
+.ah-resolution-history-box {
+  background: var(--ah-success-bg);
+  border: 1px solid var(--ah-success-border);
+  border-radius: var(--ah-radius-md);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ah-res-notes {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ah-success-text);
+  line-height: 1.4;
+}
+
+.ah-res-meta {
+  font-size: 11px;
+  color: var(--ah-text-muted);
+  display: flex;
+  gap: 6px;
+}
+
+/* Inline Resolution Form */
+.ah-resolution-form {
+  background: var(--ah-bg-elevated);
+  border: 1px solid var(--ah-border-medium);
+  border-radius: var(--ah-radius-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ah-resolution-textarea {
+  width: 100%;
+  background: var(--ah-bg-card);
+  border: 1px solid var(--ah-border-medium);
+  border-radius: var(--ah-radius-sm);
+  padding: 8px 10px;
+  color: var(--ah-text-primary);
+  font-size: 12.5px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.ah-resolution-textarea:focus {
+  outline: none;
+  border-color: var(--ah-border-focus);
+}
+
+.ah-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* 3. Footer */
+.ah-drawer-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  border-top: 1px solid var(--ah-border-subtle);
+  background: var(--ah-bg-elevated);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ah-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ah-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}

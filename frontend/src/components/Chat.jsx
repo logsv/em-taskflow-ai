@@ -3,6 +3,7 @@ import { useAuiState } from '@assistant-ui/react';
 import { useGithubSync } from '../hooks/useGithubSync.js';
 import { ALL_WORKFLOWS, WORKFLOW_CATEGORIES, FEATURED_WORKFLOW_IDS } from '../constants/agentPrompts.js';
 import AgentPromptPalette from './AgentPromptPalette.jsx';
+import { apiUrl } from '../services/apiClient.js';
 import logger from '../utils/logger.js';
 import './Chat.css';
 
@@ -135,7 +136,7 @@ function Chat({
     formData.append('file', file);
 
     try {
-      const res = await fetch('/api/chat/upload', {
+      const res = await fetch(apiUrl('/chat/upload'), {
         method: 'POST',
         body: formData,
       });
@@ -170,7 +171,7 @@ function Chat({
         const pollInterval = setInterval(async () => {
           attempts += 1;
           try {
-            const pollRes = await fetch(`/api/chat/upload/workflows/${workflowId}`);
+            const pollRes = await fetch(apiUrl(`/chat/upload/workflows/${workflowId}`));
             if (pollRes.ok) {
               const pollData = await pollRes.json();
               if (pollData.status === 'COMPLETED' && pollData.attachment) {
@@ -222,7 +223,7 @@ function Chat({
         messageId: traceMeta.messageId || undefined,
       };
       
-      const res = await fetch('/api/feedback', {
+      const res = await fetch(apiUrl('/feedback'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

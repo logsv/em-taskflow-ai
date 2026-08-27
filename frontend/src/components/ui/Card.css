@@ -1,5 +1,3 @@
-@import './tokens.css';
-
 .ah-card {
   background: var(--ah-bg-card);
   border: 1px solid var(--ah-border-subtle);

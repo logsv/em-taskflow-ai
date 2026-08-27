@@ -52,7 +52,7 @@ npm run dev
 # Build ESM JavaScript output
 npm run build
 
-# Run unit tests with Jasmine (240 specs, 0 failures)
+# Run unit tests with Jasmine (319 specs, 0 failures)
 npm test
 
 # Run full evaluation suite (Model: hermes3:8b)
@@ -64,9 +64,10 @@ npm run eval:pre-llm
 
 ### Python AI Service (from `/services/python-ai-service`)
 ```bash
-# Run Pytest suite (39 specs, 0 failures)
+# Run Pytest suite (45 specs, 0 failures)
 uv run pytest
 ```
+
 
 ### Frontend (from `/frontend`)
 ```bash

@@ -185,7 +185,19 @@ export function ActionCard({
       </div>
 
       {/* 2. Title & Problem Description */}
-      <div className="ah-kcard-body" onClick={() => onInspect(item)}>
+      <div
+        className="ah-kcard-body"
+        onClick={() => onInspect(item)}
+        role="button"
+        tabIndex={0}
+        aria-label={`Inspect action details: ${item.title}`}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onInspect(item);
+          }
+        }}
+      >
         <h4 className="ah-kcard-title" title={item.title}>
           {item.title}
         </h4>
@@ -213,7 +225,20 @@ export function ActionCard({
 
       {/* 4. Recommendation Snippet */}
       {item.suggestedAction && (
-        <div className="ah-kcard-rec-box" onClick={() => onInspect(item)} title="Click to inspect full details">
+        <div
+          className="ah-kcard-rec-box"
+          onClick={() => onInspect(item)}
+          role="button"
+          tabIndex={0}
+          aria-label={`Recommended action: ${item.suggestedAction}. Click to inspect.`}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onInspect(item);
+            }
+          }}
+          title="Click to inspect full details"
+        >
           <span className="ah-kcard-rec-icon" aria-hidden="true">💡</span>
           <span className="ah-kcard-rec-text">{item.suggestedAction}</span>
         </div>

@@ -33,7 +33,15 @@ Open [`http://localhost:4000/api/docs`](http://localhost:4000/api/docs) in your 
 - **`POST /api/sessions/:sessionId/switch`**: Switches active thread.
 - **`GET /api/threads/:threadId/messages`**: Retrieves message history.
 
-### Engineering Management (EM)
+### Engineering Management (EM) & Action Hub
+- **`GET /api/actions`**: Returns list of deduplicated action items with status, severity, category, assignee, and tool references.
+- **`GET /api/actions/summary`**: Aggregated health metrics, pending actions, and overall Engineering Health Score.
+- **`PATCH /api/actions/:id`**: Updates action status (`IN_PROGRESS`, `COMPLETED`, `DISMISSED`) with resolution notes and resolver name.
+- **`POST /api/actions/batch`**: Bulk status transitions or multi-item operations.
+- **`POST /api/actions/audit/trigger`**: Triggers immediate on-demand autonomous audit harvest.
+- **`POST /api/actions/slack/dispatch`**: Dispatches executive briefing to Slack in Consolidated or Threaded format.
+- **`POST /api/actions/:id/nudge`**: Dispatches targeted Slack DM to assigned engineer with PR/Jira deep links.
+- **`GET /api/actions/sop/compliance`**: Returns live ADR-008 per-service DB isolation and SOP compliance checklist.
 - **`GET /api/em/dora`**: Returns DORA 4 metrics with tier ratings (*Elite*, *High*, *Medium*, *Low*).
 - **`GET /api/em/sprints`**: Returns sprint velocity, committed vs completed story points, and WIP limits.
 - **`GET /api/em/okrs`**: Returns quarterly OKR progress and pacing scores.

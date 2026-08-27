@@ -23,13 +23,13 @@ export class JiraOAuthProvider {
     return {
       clientId: cached.clientId || process.env.JIRA_OAUTH_CLIENT_ID || mcpConfig.clientId || '',
       clientSecret: cached.clientSecret || process.env.JIRA_OAUTH_CLIENT_SECRET || mcpConfig.clientSecret || '',
-      redirectUrl: cached.redirectUrl || process.env.JIRA_OAUTH_REDIRECT_URL || mcpConfig.redirectUrl || 'http://localhost:5001/api/mcp/jira/oauth/callback',
+      redirectUrl: cached.redirectUrl || process.env.JIRA_OAUTH_REDIRECT_URL || mcpConfig.redirectUrl || 'http://localhost:5001/api/v1/mcp/jira/oauth/callback',
       scope: cached.scope || mcpConfig.scope || 'read:jira-work read:jira-user offline_access',
     };
   }
 
   get redirectUrl() {
-    return this.oauthConfig.redirectUrl || 'http://localhost:5001/api/mcp/jira/oauth/callback';
+    return this.oauthConfig.redirectUrl || 'http://localhost:5001/api/v1/mcp/jira/oauth/callback';
   }
 
   generateCodeVerifier() {
