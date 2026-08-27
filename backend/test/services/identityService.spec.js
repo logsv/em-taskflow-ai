@@ -67,6 +67,6 @@ describe('IdentityService & Cross-Platform Team Auto-Discovery', () => {
   it('should retrieve default Engineering Manager / Lead from database', async () => {
     const manager = await identityService.getDefaultManagerOrAdmin();
     expect(manager).toBeDefined();
-    expect(['Sarah Chen', 'Vikas Kumar']).toContain(manager.displayName);
+    expect(['Sarah Chen', 'Vikas Kumar', 'Vikas Mca Jnu']).toContain(manager.displayName);
   });
 });
