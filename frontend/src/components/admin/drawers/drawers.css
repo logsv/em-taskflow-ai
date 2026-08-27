@@ -1,0 +1,106 @@
+/* Drawer Internal Content Styling */
+@import '../adminTokens.css';
+
+.drawer-diag-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.drawer-diag-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.drawer-diag-label {
+  font-size: var(--admin-font-size-xs);
+  color: var(--admin-text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.drawer-diag-value {
+  font-size: var(--admin-font-size-base);
+  font-weight: 600;
+  color: var(--admin-text-primary);
+}
+
+.drawer-diag-value.mono-val {
+  font-family: var(--admin-font-mono);
+  color: var(--admin-border-focus);
+}
+
+.domain-agents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.domain-agent-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--admin-surface-subtle);
+  border: 1px solid var(--admin-border-subtle);
+  border-radius: var(--admin-radius-sm);
+  font-size: var(--admin-font-size-sm);
+}
+
+.agent-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--admin-text-primary);
+}
+
+.agent-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--admin-success);
+}
+
+.agent-tool-code {
+  font-family: var(--admin-font-mono);
+  font-size: var(--admin-font-size-xs);
+  color: var(--admin-border-focus);
+  background: rgba(56, 189, 248, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.drawer-portals-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.drawer-portal-link {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--admin-surface-subtle);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-md);
+  color: var(--admin-text-secondary);
+  text-decoration: none;
+  font-size: var(--admin-font-size-sm);
+  font-weight: 500;
+  transition: all var(--admin-transition-fast);
+}
+
+.drawer-portal-link:hover {
+  background: var(--admin-surface-hover);
+  border-color: var(--admin-border-focus);
+  color: var(--admin-text-primary);
+  transform: translateX(2px);
+}
+
+.portal-arrow {
+  color: var(--admin-border-focus);
+  font-weight: 700;
+}

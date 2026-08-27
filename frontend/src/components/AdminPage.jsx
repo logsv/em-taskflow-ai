@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import logger from '../utils/logger.js';
+import AdminShell from './admin/AdminShell.jsx';
 import './AdminPage.css';
 
 function formatUptime(totalSeconds) {
@@ -983,132 +984,36 @@ function AdminPage({ onBackToChat }) {
     });
   }, [teamMembers, teamSearchQuery, teamTrackFilter]);
 
+  const handleMainTabChange = (mainTabId) => {
+    if (mainTabId === 'overview') switchTab('overview');
+    else if (mainTabId === 'people') switchTab('team');
+    else if (mainTabId === 'ai-platform') switchTab('settings');
+    else if (mainTabId === 'operations') switchTab('services');
+    else if (mainTabId === 'quality') switchTab('evaluation');
+    else switchTab(mainTabId);
+  };
+
+  const handleSubTabChange = (subTabId) => {
+    switchTab(subTabId);
+  };
+
   return (
-    <div className="admin-page">
-      <header className="admin-header">
-        <div className="admin-header-left">
-          <div className="admin-title-area">
-            <h1>⚙️ EM TaskFlow AI <span className="title-portal-tag">Admin</span></h1>
-            <p className="admin-subtitle">Enterprise Productivity, Infrastructure & Service Launch Hub</p>
-          </div>
-        </div>
-
-        {/* Standard Top Navigation Tab Bar */}
-        <nav className="admin-nav-tabs">
-          {[
-            { id: 'overview', label: 'Overview & DORA', icon: '📊' },
-            { id: 'team', label: 'Team Directory', icon: '👥', badge: teamMembers.length ? String(teamMembers.length) : null },
-            { id: 'settings', label: 'Models & Tools', icon: '⚙️' },
-            { id: 'services', label: 'Service Hub', icon: '🚀', badge: '9' },
-            { id: 'evaluation', label: 'Quality & Eval', icon: '🧪' },
-            { id: 'storage', label: 'Storage & RAG', icon: '🗄️' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              className={`admin-nav-tab ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => switchTab(tab.id)}
-            >
-              <span className="tab-icon">{tab.icon}</span>
-              <span className="tab-label">{tab.label}</span>
-              {tab.badge && <span className="tab-badge">{tab.badge}</span>}
-            </button>
-          ))}
-        </nav>
-
-        <div className="admin-header-right">
-          {/* Three-Dot Quick Actions Dropdown Menu */}
-          <div className="admin-three-dot-container">
-            <button 
-              type="button"
-              className={`three-dot-menu-btn ${menuOpen ? 'active' : ''}`}
-              onClick={() => setMenuOpen(!menuOpen)}
-              title="Quick Admin Actions Menu"
-            >
-              <span>⋮</span>
-            </button>
-            {menuOpen && (
-              <div className="three-dot-dropdown">
-                <div className="dropdown-header">Quick Admin Actions</div>
-                <button type="button" className="dropdown-item" onClick={() => { setMenuOpen(false); switchTab('settings'); handleTestAllConnections(); }}>
-                  <span>⚡</span> Test All Connections
-                </button>
-                <button type="button" className="dropdown-item" onClick={() => { setMenuOpen(false); handleSaveSettings(); }}>
-                  <span>💾</span> Save & Apply Settings
-                </button>
-                <button type="button" className="dropdown-item" onClick={() => { setMenuOpen(false); handleResetSettings(); }}>
-                  <span>🔄</span> Re-sync .env Defaults
-                </button>
-                <div className="dropdown-divider"></div>
-                <button type="button" className="dropdown-item" onClick={() => { setMenuOpen(false); handleManualSync(); }}>
-                  <span>🐙</span> Sync GitHub Cache Now
-                </button>
-                <button type="button" className="dropdown-item" onClick={() => { setMenuOpen(false); handleRunDeepBenchmark(); }}>
-                  <span>🌙</span> Run Deep Eval Benchmark
-                </button>
-                <div className="dropdown-divider"></div>
-                <a href="http://127.0.0.1:3001" target="_blank" rel="noopener noreferrer" className="dropdown-item" onClick={() => setMenuOpen(false)}>
-                  <span>📊</span> Langfuse Dashboard ↗
-                </a>
-                <a href="http://127.0.0.1:8080/?pgsql=postgres&username=taskflow&db=taskflow_backend" target="_blank" rel="noopener noreferrer" className="dropdown-item" onClick={() => setMenuOpen(false)}>
-                  <span>🗄️</span> Adminer Postgres Explorer ↗
-                </a>
-                <a href="http://127.0.0.1:8233" target="_blank" rel="noopener noreferrer" className="dropdown-item" onClick={() => setMenuOpen(false)}>
-                  <span>⏳</span> Temporal Workflow UI ↗
-                </a>
-                <div className="dropdown-divider"></div>
-                <button type="button" className="dropdown-item exit-btn" onClick={() => { setMenuOpen(false); onBackToChat(); }}>
-                  <span>💬</span> Switch to Copilot Chat
-                </button>
-              </div>
-            )}
-          </div>
-
-          <button className="back-to-chat-btn" onClick={onBackToChat}>
-            💬 Back to Chat
-          </button>
-        </div>
-      </header>
-
-      {/* Quick KPI Status Strip */}
-      <div className="admin-kpi-strip">
-        <div className="kpi-item" onClick={() => switchTab('settings')} role="button" tabIndex={0} title="LangGraph Multi-Agent Supervisor: 10 Domain Micro-Agents">
-          <span className="kpi-icon">⚡</span>
-          <div className="kpi-text">
-            <span className="kpi-label">Local Agents Status</span>
-            <span className="kpi-value status-good">🟢 10 Active & Ready</span>
-          </div>
-        </div>
-        <div className="kpi-item" onClick={() => switchTab('settings')} role="button" tabIndex={0}>
-          <span className="kpi-icon">🤖</span>
-          <div className="kpi-text">
-            <span className="kpi-label">Inference LLM</span>
-            <span className="kpi-value">{adminSettings?.llm?.defaultModel || 'hermes3:8b'} (Local)</span>
-          </div>
-        </div>
-        <div className="kpi-item" onClick={() => switchTab('overview')} role="button" tabIndex={0}>
-          <span className="kpi-icon">🏆</span>
-          <div className="kpi-text">
-            <span className="kpi-label">DORA Performance</span>
-            <span className="kpi-value status-good">Elite Tier ({doraMetrics?.overall_score ?? 96.5}%)</span>
-          </div>
-        </div>
-        <div className="kpi-item" onClick={() => switchTab('storage')} role="button" tabIndex={0}>
-          <span className="kpi-icon">🗄️</span>
-          <div className="kpi-text">
-            <span className="kpi-label">Database</span>
-            <span className="kpi-value status-accent">{systemStatus?.health?.details?.database === 'up' || systemStatus?.status === 'online' ? 'PostgreSQL 16 (Online)' : 'Connected'}</span>
-          </div>
-        </div>
-        <div className="kpi-item" onClick={() => switchTab('storage')} role="button" tabIndex={0}>
-          <span className="kpi-icon">📄</span>
-          <div className="kpi-text">
-            <span className="kpi-label">RAG Vector Store</span>
-            <span className="kpi-value">{documents.length} Docs / HNSW Active</span>
-          </div>
-        </div>
-      </div>
-
+    <AdminShell
+      activeTab={activeTab}
+      onTabChange={handleMainTabChange}
+      onSubTabChange={handleSubTabChange}
+      onBackToChat={onBackToChat}
+      systemStatus={systemStatus}
+      doraMetrics={doraMetrics}
+      adminSettings={adminSettings}
+      documentsCount={documents.length}
+      teamCount={teamMembers.length}
+      onTestAllConnections={handleTestAllConnections}
+      onSaveSettings={handleSaveSettings}
+      onResetSettings={handleResetSettings}
+      onManualSync={handleManualSync}
+      onRunDeepBenchmark={handleRunDeepBenchmark}
+    >
       <div className="admin-container">
         {/* TAB 1: OVERVIEW & DORA PRODUCTIVITY */}
         {activeTab === 'overview' && (
@@ -3556,7 +3461,7 @@ function AdminPage({ onBackToChat }) {
           </div>
         </div>
       )}
-    </div>
+    </AdminShell>
   );
 }
 

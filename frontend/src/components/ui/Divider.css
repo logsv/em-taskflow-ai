@@ -1,0 +1,11 @@
+@import './tokens.css';
+
+.ah-divider {
+  border: none;
+  border-top: 1px solid var(--ah-border-subtle);
+  width: 100%;
+}
+
+.ah-divider-spacing-sm { margin: 8px 0; }
+.ah-divider-spacing-md { margin: 16px 0; }
+.ah-divider-spacing-lg { margin: 24px 0; }

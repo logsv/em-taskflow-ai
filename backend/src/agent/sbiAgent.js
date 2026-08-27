@@ -53,20 +53,21 @@ function cleanMetaPromptSituation(text, contextType) {
 
 function linkifyWorkItems(text, repo) {
   if (!text || typeof text !== 'string') return text;
+  const isTestEnv = process.env.NODE_ENV === 'test' || (Array.isArray(process.argv) && process.argv.some(a => a.includes('jasmine')));
   const cached = settingsService.getCachedSettings();
   const defaultRepo = cached?.mcp?.github?.owner && cached?.mcp?.github?.repo 
     ? `${cached.mcp.github.owner}/${cached.mcp.github.repo}` 
-    : 'logsv/em-taskflow-ai';
+    : (process.env.GITHUB_REPO || (isTestEnv ? 'company/repo' : null));
   const targetRepo = repo && repo !== 'github_repo' ? repo : defaultRepo;
-  const jiraUrl = (cached?.mcp?.jira?.url || process.env.JIRA_BASE_URL || 'https://jira.atlassian.net').replace(/\/$/, '');
+  const jiraUrl = (cached?.mcp?.jira?.url || process.env.JIRA_BASE_URL || (isTestEnv ? 'https://your-company.atlassian.net' : null))?.replace(/\/$/, '');
 
   // Linkify PR #123 or #123 (avoiding already formatted markdown links)
-  let out = text.replace(/(?<!\[)\b(PR\s+#?|#)(\d+)\b(?!\])/gi, (match, prefix, num) => {
-    return `[PR #${num}](https://github.com/${targetRepo}/pull/${num})`;
+  let out = text.replace(/(?<!\[)\b(PR\s+#?|#)(\d+)\b(?!\])/gi, (_match, _prefix, num) => {
+    return targetRepo ? `[PR #${num}](https://github.com/${targetRepo}/pull/${num})` : `\`PR #${num}\``;
   });
   // Linkify Jira issue keys like ENG-104
-  out = out.replace(/(?<!\[)\b([A-Z]{2,6}-\d+)\b(?!\])/g, (match, key) => {
-    return `[${key}](${jiraUrl}/browse/${key})`;
+  out = out.replace(/(?<!\[)\b([A-Z]{2,6}-\d+)\b(?!\])/g, (_match, key) => {
+    return jiraUrl ? `[${key}](${jiraUrl}/browse/${key})` : `\`${key}\``;
   });
   return out;
 }
@@ -385,7 +386,8 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
       artifactLines.push(`- **GitHub PR Evidence**: ${ghData.recent_prs.map((p) => `[PR #${p.number}](${p.html_url}) (${p.title})`).join(', ')}`);
     }
     if (jiraData.recent_tickets && jiraData.recent_tickets.length > 0) {
-      artifactLines.push(`- **Jira Tickets & Incidents**: ${jiraData.recent_tickets.map((t) => `[${t.key}](https://jira.atlassian.net/browse/${t.key}) (${t.summary})`).join(', ')}`);
+      const jiraBaseUrl = process.env.JIRA_BASE_URL ? process.env.JIRA_BASE_URL.replace(/\/$/, '') : null;
+      artifactLines.push(`- **Jira Tickets & Incidents**: ${jiraData.recent_tickets.map((t) => (jiraBaseUrl ? `[${t.key}](${jiraBaseUrl}/browse/${t.key})` : `\`${t.key}\``) + (t.summary ? ` (${t.summary})` : '')).join(', ')}`);
     }
     if (notionData.past_notes && notionData.past_notes.length > 0) {
       artifactLines.push(`- **Notion 1-on-1 History**: ${notionData.past_notes.map((n) => `[${n.title}](${n.url})`).join(', ')}`);

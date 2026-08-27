@@ -1,5 +1,6 @@
 import axios from 'axios';
 import databaseService from '../../src/db/postgres.js';
+import { seedAllTestData } from '../fixtures/seedTestData.js';
 import {
   harvestDoraAndDeliveryActivity,
   harvestPeopleAndCadenceActivity,
@@ -25,6 +26,7 @@ describe('Autonomous EM Task & Health Audit Engine Specs', () => {
   let originalToken;
 
   beforeEach(() => {
+    seedAllTestData(databaseService);
     originalPost = axios.post;
     originalGet = axios.get;
     originalToken = process.env.SLACK_BOT_TOKEN;

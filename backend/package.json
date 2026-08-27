@@ -20,6 +20,7 @@
     "eval:sync-prompts": "node evaluation/sync-prompts-to-langfuse.js",
     "eval:nightly": "bash ../scripts/run-nightly-eval.sh",
     "eval:enterprise": "npm run eval:sync-datasets && npm run eval:sync-prompts && npm run evaluate && npm run eval:deepeval && npm run eval:ragas",
+    "db:clean": "node scripts/clean-database.js",
     "start:google": "pnpm -C ../mcp-servers/google-workspace start",
     "start:mcp": "pnpm start:google"
   },

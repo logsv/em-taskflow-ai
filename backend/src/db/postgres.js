@@ -1211,6 +1211,10 @@ class DatabaseService {
       queryStr += ` ORDER BY issue_number DESC LIMIT 100`;
 
       const result = await this.pool.query(queryStr, params);
+      if (result.rows.length === 0 && this.inMemoryGithubIssues) {
+        const list = Array.isArray(this.inMemoryGithubIssues) ? this.inMemoryGithubIssues : Array.from(this.inMemoryGithubIssues.values());
+        if (list.length > 0) return [...list];
+      }
       return result.rows.map((row) => ({
         id: row.id,
         number: row.number,
@@ -1226,7 +1230,7 @@ class DatabaseService {
     } catch (err) {
       warn("PostgreSQL getGithubIssues failed, using in-memory store fallback", { err: err.message });
       if (!this.inMemoryGithubIssues) return [];
-      let issues = Array.from(this.inMemoryGithubIssues.values());
+      let issues = Array.isArray(this.inMemoryGithubIssues) ? this.inMemoryGithubIssues : Array.from(this.inMemoryGithubIssues.values());
       if (state) {
         issues = issues.filter((i) => i.state === state);
       }
@@ -1236,7 +1240,7 @@ class DatabaseService {
         const cleanWords = sLower.split(/\s+/).filter((w) => w.length > 0 && !stopWords.includes(w));
         if (cleanWords.length > 0) {
           const cleanSearch = cleanWords.join(' ');
-          issues = issues.filter((i) => i.title.toLowerCase().includes(cleanSearch) || i.repo.toLowerCase().includes(cleanSearch));
+          issues = issues.filter((i) => i.title.toLowerCase().includes(cleanSearch) || i.repo?.toLowerCase().includes(cleanSearch));
         }
       }
       return issues;
@@ -1253,7 +1257,7 @@ class DatabaseService {
     } catch (err) {
       warn("PostgreSQL getGithubSyncMetadata failed, using in-memory fallback", { err: err.message });
       if (!this.inMemoryGithubIssues) return { total: 0, last_synced_at: null };
-      const issues = Array.from(this.inMemoryGithubIssues.values());
+      const issues = Array.isArray(this.inMemoryGithubIssues) ? this.inMemoryGithubIssues : Array.from(this.inMemoryGithubIssues.values());
       const maxSync = issues.reduce((max, i) => (i.synced_at > max ? i.synced_at : max), null);
       return { total: issues.length, last_synced_at: maxSync };
     }
@@ -1368,6 +1372,9 @@ class DatabaseService {
       const queryText = teamId ? `SELECT * FROM dora_snapshots WHERE team_id = $1 ORDER BY created_at DESC` : `SELECT * FROM dora_snapshots ORDER BY created_at DESC`;
       const params = teamId ? [teamId] : [];
       const res = await this.pool.query(queryText, params);
+      if (res.rows.length === 0 && this.inMemoryDoraSnapshots.length > 0) {
+        return teamId ? this.inMemoryDoraSnapshots.filter(r => r.team_id === teamId) : [...this.inMemoryDoraSnapshots];
+      }
       return res.rows;
     } catch (err) {
       warn('PostgreSQL getDoraSnapshots failed, using in-memory fallback', { err: err.message });
@@ -1460,6 +1467,9 @@ class DatabaseService {
       const queryText = sprintId ? `SELECT * FROM sprint_analytics WHERE sprint_id = $1` : `SELECT * FROM sprint_analytics ORDER BY created_at DESC`;
       const params = sprintId ? [sprintId] : [];
       const res = await this.pool.query(queryText, params);
+      if (res.rows.length === 0 && this.inMemorySprintAnalytics.length > 0) {
+        return sprintId ? this.inMemorySprintAnalytics.filter(r => r.sprint_id === sprintId) : [...this.inMemorySprintAnalytics];
+      }
       return res.rows;
     } catch (err) {
       warn('PostgreSQL getSprintAnalytics failed, using in-memory fallback', { err: err.message });
@@ -1506,6 +1516,9 @@ class DatabaseService {
       const queryText = quarter ? `SELECT * FROM okr_tracker WHERE quarter = $1 ORDER BY created_at DESC` : `SELECT * FROM okr_tracker ORDER BY created_at DESC`;
       const params = quarter ? [quarter] : [];
       const res = await this.pool.query(queryText, params);
+      if (res.rows.length === 0 && this.inMemoryOkrTracker.length > 0) {
+        return quarter ? this.inMemoryOkrTracker.filter(r => r.quarter === quarter) : [...this.inMemoryOkrTracker];
+      }
       return res.rows;
     } catch (err) {
       warn('PostgreSQL getOkrRecords failed, using in-memory fallback', { err: err.message });

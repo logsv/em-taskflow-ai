@@ -189,6 +189,33 @@ export function seedOkrRecords(databaseService) {
   ];
 }
 
+export function seedGithubIssues(databaseService) {
+  databaseService.inMemoryGithubIssues = [
+    {
+      id: 1,
+      number: 42,
+      title: 'feat: add temporal autonomous audit workflow',
+      user: 'alex-dev',
+      author: 'alex-dev',
+      state: 'open',
+      is_pull_request: true,
+      created_at: new Date(Date.now() - 38.5 * 3600 * 1000).toISOString(),
+      html_url: 'https://github.com/myorg/em-taskflow-ai/pull/42',
+    },
+    {
+      id: 2,
+      number: 45,
+      title: 'fix: database per-service connection pool isolation',
+      user: 'sarah-c',
+      author: 'sarah-c',
+      state: 'open',
+      is_pull_request: true,
+      created_at: new Date(Date.now() - 12 * 3600 * 1000).toISOString(),
+      html_url: 'https://github.com/myorg/em-taskflow-ai/pull/45',
+    },
+  ];
+}
+
 /**
  * Seeds ALL in-memory stores with test fixture data.
  * Call this in test setup to provide baseline data for agent tool execution.
@@ -198,4 +225,5 @@ export function seedAllTestData(databaseService) {
   seedSprintAnalytics(databaseService);
   seedDoraSnapshots(databaseService);
   seedOkrRecords(databaseService);
+  seedGithubIssues(databaseService);
 }

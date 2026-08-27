@@ -6,8 +6,8 @@
   min-height: 100dvh;
   height: 100dvh;
   font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  background: #0d0e12;
-  color: #e3e3e8;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
   overflow: hidden;
   position: relative;
 }
@@ -16,11 +16,11 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  transition: margin-left 0.3s ease, margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: margin-left var(--transition-normal);
   height: 100vh;
   height: 100dvh;
   min-height: 100dvh;
-  background: #0d0e12;
+  background: var(--bg-canvas);
   overflow: hidden;
 }
 
@@ -43,56 +43,6 @@
   overflow: hidden;
 }
 
-* {
-  box-sizing: border-box;
-}
-
-button {
-  font-family: inherit;
-}
-
-input, textarea {
-  font-family: inherit;
-}
-
-/* Global scrollbar styling */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #252630;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #3c3d4e;
-}
-
-/* Focus styles */
-button:focus-visible,
-input:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid #ab68ff;
-  outline-offset: 2px;
-}
-
-/* Selection styles */
-::selection {
-  background: rgba(171, 104, 255, 0.3);
-  color: #ffffff;
-}
-
-/* Smooth transitions */
-* {
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
-}
-
 /* Mobile responsiveness */
 @media (max-width: 768px) {
   .app {
@@ -108,84 +58,6 @@ textarea:focus-visible {
 /* Desktop sidebar behavior */
 @media (min-width: 769px) {
   .main-content.sidebar-closed {
-    margin-left: 60px;
-  }
-}
-
-/* PDF Drawer Layout and Styles */
-.pdf-drawer {
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: 380px;
-  height: 100vh;
-  background: #15161e;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: -4px 0 30px rgba(0, 0, 0, 0.3);
-  z-index: 990;
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  transform: translateX(100%);
-  display: flex;
-  flex-direction: column;
-}
-
-.pdf-drawer.open {
-  transform: translateX(0);
-}
-
-.pdf-drawer-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #1c1d29;
-}
-
-.pdf-drawer-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #ffffff;
-}
-
-.close-drawer-btn {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  color: #8e8ea0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  transition: all 0.2s ease;
-}
-
-.close-drawer-btn:hover {
-  background: #252630;
-  color: #ffffff;
-}
-
-.pdf-drawer-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px;
-}
-
-@media (min-width: 769px) {
-  .main-content {
-    transition: margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1), margin-left 0.3s ease;
-  }
-  .app.drawer-open .main-content {
-    margin-right: 380px;
-  }
-}
-
-@media (max-width: 768px) {
-  .pdf-drawer {
-    width: 100vw;
+    margin-left: 56px;
   }
 }

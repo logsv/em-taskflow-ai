@@ -5,6 +5,7 @@ import { roadmapAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import identityService from '../services/identityService.js';
+import { getDirectOrFormattedJiraUrl, formatMarkdownLinkOrCode } from '../utils/urlHelper.js';
 
 export const roadmapAlignmentTool = createDeterministicToolHarness({
   name: 'get_roadmap_alignment',
@@ -191,9 +192,9 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
 
     if (mode === 'LIST_RAW') {
       const epicRows = epics.map((e) => {
-        const jiraUrl = process.env.JIRA_BASE_URL ? `${process.env.JIRA_BASE_URL.replace(/\/$/, '')}/browse/${e.key}` : '#';
+        const epicLink = formatMarkdownLinkOrCode(`**${e.key}**`, getDirectOrFormattedJiraUrl(e));
         const statusBadge = e.status === 'BLOCKED' ? '🔴 Blocked' : e.progress_pct >= 80 ? '🟢 On Track' : '🟡 In Progress';
-        return `| [**${e.key}**](${jiraUrl}) | **${e.summary}** | **${e.progress_pct}%** | \`@${e.owner}\` | \`${e.target_date}\` | ${statusBadge} |`;
+        return `| ${epicLink} | **${e.summary}** | **${e.progress_pct}%** | \`@${e.owner}\` | \`${e.target_date}\` | ${statusBadge} |`;
       });
       const listSummary = `### 🗺️ Quarterly Roadmap Epics: ${quarter} (${epics.length} Epics)\n\n` +
         `| Epic Key | Summary | Progress | Owner | Target Date | Status |\n| :--- | :--- | :---: | :--- | :---: | :---: |\n` +
