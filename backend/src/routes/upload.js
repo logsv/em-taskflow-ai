@@ -34,7 +34,7 @@ const upload = multer({
  * POST /api/chat/upload
  * Triggers Temporal ChatFileExtractWorkflow with synchronous fallback
  */
-router.post('/', attachSessionContext, upload.single('file'), async (req, res) => {
+router.post('/', upload.single('file'), attachSessionContext, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
