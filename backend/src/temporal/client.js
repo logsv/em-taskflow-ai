@@ -359,5 +359,86 @@ export async function signalSlackPostApproval(workflowId, options = {}) {
   }
 }
 
+export async function startEmAutonomousAuditWorkflow(params = {}) {
+  const client = await getTemporalClient();
+  if (!client) return null;
+
+  const workflowId = `em-audit-${Date.now()}`;
+  try {
+    const handle = await client.workflow.start('emAutonomousAuditWorkflow', {
+      taskQueue: 'team-sync-queue',
+      args: [params],
+      workflowId,
+    });
+    info({ module: 'temporalClient', action: 'startEmAutonomousAuditWorkflow', workflowId: handle.workflowId }, 'Started Temporal Autonomous Audit Workflow');
+    return {
+      workflowId: handle.workflowId,
+      runId: handle.firstExecutionRunId,
+      status: 'RUNNING',
+    };
+  } catch (err) {
+    warn({ module: 'temporalClient', action: 'startEmAutonomousAuditWorkflowFallback', err }, 'Failed to start Temporal Autonomous Audit Workflow');
+    return null;
+  }
+}
+
+export async function executeEmAutonomousAuditWorkflow(params = {}) {
+  const client = await getTemporalClient();
+  if (!client) return null;
+
+  const workflowId = `em-audit-${Date.now()}`;
+  try {
+    const handle = await client.workflow.start('emAutonomousAuditWorkflow', {
+      taskQueue: 'team-sync-queue',
+      args: [params],
+      workflowId,
+    });
+    info({ module: 'temporalClient', action: 'executeEmAutonomousAuditWorkflow', workflowId: handle.workflowId }, 'Executing Temporal Autonomous Audit Workflow');
+    const result = await handle.result();
+    return {
+      workflowId: handle.workflowId,
+      runId: handle.firstExecutionRunId,
+      status: 'COMPLETED',
+      result,
+    };
+  } catch (err) {
+    warn({ module: 'temporalClient', action: 'executeEmAutonomousAuditWorkflowFallback', err }, 'Failed executing Temporal Autonomous Audit Workflow');
+    return null;
+  }
+}
+
+export async function ensureAuditCronSchedule(cronExpression = '0 */4 * * *') {
+  const client = await getTemporalClient();
+  if (!client || !client.schedule) return null;
+
+  const scheduleId = 'em-autonomous-audit-schedule';
+  try {
+    await client.schedule.create({
+      scheduleId,
+      spec: {
+        cronExpressions: [cronExpression],
+      },
+      action: {
+        type: 'startWorkflow',
+        workflowType: 'emAutonomousAuditWorkflow',
+        taskQueue: 'team-sync-queue',
+        args: [{ triggeredBy: 'CRON_4H' }],
+      },
+      policies: {
+        overlap: 'SKIP',
+      },
+    });
+    info({ module: 'temporalClient', action: 'ensureAuditCronScheduleCreated', scheduleId, cronExpression }, 'Registered Temporal Autonomous Audit Cron Schedule');
+    return { status: 'CREATED', scheduleId, cron: cronExpression };
+  } catch (err) {
+    if (String(err.message || '').includes('already exists') || String(err.message || '').includes('ScheduleAlreadyRunning')) {
+      return { status: 'ALREADY_EXISTS', scheduleId, cron: cronExpression };
+    }
+    warn({ module: 'temporalClient', action: 'ensureAuditCronScheduleWarn', err }, 'Could not register Temporal Audit Cron schedule');
+    return { status: 'ERROR', scheduleId, error: err.message };
+  }
+}
+
+
 
 

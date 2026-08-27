@@ -41,10 +41,13 @@ features:
   - icon: 🧪
     title: 3-Phase Enterprise Evaluation
     details: Golden dataset validation, Python LLM-as-a-Judge CoT, DeepEval trajectories, Ragas faithfulness, and TruLens RAG triad benchmarks.
+  - icon: 📋
+    title: Autonomous EM Audit & Action Hub
+    details: 4-hour background cron in Temporal, multi-channel Slack dispatch, Kanban/Table action triage, 1-on-1 cadence tracking, and live ADR-008 governance.
   - icon: 🧰
-    title: 13 Specialized Agent Skills
+    title: 14 Specialized Agent Skills
     details: Standardized operational playbooks for autonomous agents and human developers covering multi-agent routing, MCP harnesses, and database ops.
   - icon: 🛡️
-    title: 269+ Verified Unit Specs
-    details: 269 backend unit test specs and 45 Python AI test specs passing with 0 failures under automated pre-push and CI/CD gates.
+    title: 300+ Verified Unit Specs
+    details: 300 backend unit test specs and 45 Python AI test specs passing with 0 failures under automated pre-push and CI/CD gates.
 ---

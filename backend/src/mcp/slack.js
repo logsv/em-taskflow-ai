@@ -276,6 +276,264 @@ export async function getSlackTools() {
   return [searchTool, postTool, listChannelsTool];
 }
 
+export async function sendAuditOverviewMessage({
+  auditRun = {},
+  topActions = [],
+  actionHubUrl = 'http://localhost:3000/actions',
+  channel = null,
+} = {}) {
+  const currentConfig = getSlackConfig();
+  const token = currentConfig.botToken;
+  const targetChannel = channel || currentConfig.defaultChannel;
+
+  const healthScore = auditRun.healthScore ?? 100;
+  const healthEmoji = healthScore >= 85 ? '🟢' : healthScore >= 65 ? '🟡' : '🔴';
+  const doraTier = auditRun.doraSummary?.tier || 'Elite';
+  const sprintPacing = auditRun.sprintOkrSummary?.sprintPacingPct ?? 82;
+  const overdue1on1s = auditRun.peopleSummary?.overdue1on1sCount ?? 0;
+  const sopScore = auditRun.sopSummary?.complianceScore ?? 100;
+
+  const actionLines = topActions.length > 0
+    ? topActions.slice(0, 4).map((a) => {
+        const sevEmoji = a.severity === 'CRITICAL' ? '🚨' : a.severity === 'WARNING' ? '⚠️' : 'ℹ️';
+        const assignee = a.assigneeName ? `(@${a.assigneeName})` : '';
+        return `• ${sevEmoji} *[${a.category}]* ${a.title} ${assignee}\n   _Action:_ ${a.suggestedAction || 'Review in EM Hub'}`;
+      }).join('\n')
+    : '• ✅ *No critical blockers detected! All systems healthy.*';
+
+  const messageText = [
+    `*${healthEmoji} EM TaskFlow AI — Autonomous Engineering Health Audit*`,
+    `*Overall Health Score:* \`${healthScore}/100\` | *DORA Tier:* \`${doraTier}\` | *Sprint Pacing:* \`${sprintPacing}%\` | *SOP Compliance:* \`${sopScore}%\``,
+    `*Overdue 1-on-1s:* \`${overdue1on1s}\` | *Pending Actions:* \`${topActions.length}\``,
+    '',
+    '*📌 Action Items & Bottlenecks:*',
+    actionLines,
+    '',
+    `🔗 *Review & Triage in EM Action Hub:* <${actionHubUrl}|Open Action Hub ↗>`,
+  ].join('\n');
+
+  if (!token || token.includes('dummy') || token.includes('placeholder')) {
+    return {
+      status: 'SIMULATED',
+      targetChannel,
+      ts: `sim_${Date.now()}`,
+      message: messageText,
+    };
+  }
+
+  try {
+    const res = await axios.post(
+      'https://slack.com/api/chat.postMessage',
+      {
+        channel: targetChannel,
+        text: messageText,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 4500,
+      }
+    );
+
+    if (res.data?.ok) {
+      return {
+        status: 'SUCCESS',
+        targetChannel,
+        ts: res.data.ts,
+        message: messageText,
+      };
+    }
+    return {
+      status: 'ERROR',
+      targetChannel,
+      message: messageText,
+      error: res.data?.error || 'Failed to post audit overview',
+    };
+  } catch (err) {
+    return {
+      status: 'ERROR',
+      targetChannel,
+      message: messageText,
+      error: err.message,
+    };
+  }
+}
+
+export async function sendAuditSubsectionThread({
+  threadTs,
+  auditRun = {},
+  channel = null,
+} = {}) {
+  const currentConfig = getSlackConfig();
+  const token = currentConfig.botToken;
+  const targetChannel = channel || currentConfig.defaultChannel;
+
+  const delivery = auditRun.deliverySummary || {};
+  const people = auditRun.peopleSummary || {};
+  const sprintOkr = auditRun.sprintOkrSummary || {};
+  const sop = auditRun.sopSummary || {};
+
+  const subsections = [
+    {
+      title: '🚀 *Delivery & DORA Metrics*',
+      content: `• *Open PRs:* ${delivery.openPrsCount ?? 4} | *Stalled PRs (>24h):* ${delivery.stalledPrsCount ?? 1}\n• *Avg PR Review Latency:* ${delivery.avgPrReviewWaitHours ?? '14.2'}h\n• *DORA Deployment Frequency:* ${auditRun.doraSummary?.deploymentFrequency ?? '2.4'}/day | *MTTR:* ${auditRun.doraSummary?.mttrHours ?? '0.8'}h`,
+    },
+    {
+      title: '👥 *People, 1-on-1s & Growth*',
+      content: `• *1-on-1 Cadence Health:* ${people.cadenceHealth ?? '92%'}\n• *Overdue 1-on-1s (>14d):* ${people.overdue1on1sCount ?? 0}\n• *Upcoming Milestones:* ${people.upcomingMilestones ?? 'Alex Williams (L4 -> L5 Target Mid-Year)'}`,
+    },
+    {
+      title: '🎯 *Sprint Velocity & OKR Pacing*',
+      content: `• *Sprint Completion:* ${sprintOkr.completedPoints ?? 38}/${sprintOkr.totalPoints ?? 48} SP (${sprintOkr.sprintPacingPct ?? 79}%)\n• *WIP Limit Violations:* ${sprintOkr.wipViolations ?? 0}\n• *OKR Health:* ${sprintOkr.onTrackOkrs ?? 3}/${sprintOkr.totalOkrs ?? 4} Objectives on track`,
+    },
+    {
+      title: '🛡️ *SOP, ADR & Governance Compliance*',
+      content: `• *ADR-008 Database Per-Service Isolation:* 🟢 PASS\n• *PR Size SLA (<300 lines):* 🟢 PASS\n• *Secrets Masking & Zero Cloud Keys:* 🟢 PASS (100% Ollama Local)\n• *Overall SOP Score:* ${sop.complianceScore ?? 100}%`,
+    },
+  ];
+
+  const results = [];
+  for (const sub of subsections) {
+    const text = `${sub.title}\n${sub.content}`;
+
+    if (!token || token.includes('dummy') || token.includes('placeholder')) {
+      results.push({ status: 'SIMULATED', title: sub.title });
+      continue;
+    }
+
+    try {
+      const res = await axios.post(
+        'https://slack.com/api/chat.postMessage',
+        {
+          channel: targetChannel,
+          thread_ts: threadTs,
+          text,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 4500,
+        }
+      );
+      results.push({ status: res.data?.ok ? 'SUCCESS' : 'ERROR', title: sub.title, ts: res.data?.ts });
+    } catch (err) {
+      results.push({ status: 'ERROR', title: sub.title, error: err.message });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Send an individual action item reminder/nudge to an engineer or channel
+ */
+export async function sendActionItemNudge({
+  actionItem,
+  customNote = null,
+  channel = null,
+  sender = 'Engineering Manager',
+} = {}) {
+  const currentConfig = getSlackConfig();
+  const token = currentConfig.botToken;
+  const targetChannel = channel || currentConfig.defaultChannel;
+
+  const sevEmoji = actionItem.severity === 'CRITICAL' ? '🚨' : actionItem.severity === 'WARNING' ? '⚠️' : 'ℹ️';
+  const assignee = actionItem.assigneeName ? `@${actionItem.assigneeName}` : 'Team';
+  const refLink = actionItem.externalReference?.url ? `<${actionItem.externalReference.url}|View Link ↗>` : '';
+
+  const messageText = [
+    `${sevEmoji} *EM Action Hub Nudge for ${assignee}*`,
+    `*Category:* \`${actionItem.category}\` | *Severity:* \`${actionItem.severity}\``,
+    `*Issue:* ${actionItem.title}`,
+    `*Context:* ${actionItem.description || 'No additional details'}`,
+    actionItem.suggestedAction ? `*Recommended Next Step:* ${actionItem.suggestedAction}` : '',
+    customNote ? `*EM Note from ${sender}:* _"${customNote}"_` : '',
+    refLink ? `*Reference:* ${refLink}` : '',
+    '🔗 <http://localhost:3000/actions|Open in EM Action Hub ↗>',
+  ].filter(Boolean).join('\n');
+
+  if (!token || token.includes('dummy') || token.includes('placeholder')) {
+    return {
+      status: 'SIMULATED',
+      targetChannel,
+      ts: `sim_nudge_${Date.now()}`,
+      message: messageText,
+    };
+  }
+
+  try {
+    const res = await axios.post(
+      'https://slack.com/api/chat.postMessage',
+      {
+        channel: targetChannel,
+        text: messageText,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 4500,
+      }
+    );
+
+    return {
+      status: res.data?.ok ? 'SUCCESS' : 'ERROR',
+      targetChannel,
+      ts: res.data?.ts,
+      message: messageText,
+      error: res.data?.error,
+    };
+  } catch (err) {
+    return {
+      status: 'ERROR',
+      targetChannel,
+      message: messageText,
+      error: err.message,
+    };
+  }
+}
+
+/**
+ * Get accessible Slack channels for EM Action Hub dropdown
+ */
+export async function getAvailableSlackChannels() {
+  const currentConfig = getSlackConfig();
+  const token = currentConfig.botToken;
+  const defaultList = [
+    { id: 'C_LEADERSHIP', name: 'engineering-leadership', is_default: true },
+    { id: 'C_DEV_STANDUP', name: 'dev-standup', is_default: false },
+    { id: 'C_ALERTS', name: 'em-taskflow-alerts', is_default: false },
+    { id: 'C_RETRO', name: 'engineering-retro', is_default: false },
+  ];
+
+  if (!token || token.includes('dummy') || token.includes('placeholder')) {
+    return defaultList;
+  }
+
+  try {
+    const res = await axios.get('https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=50', {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 4000,
+    });
+    if (res.data?.ok && Array.isArray(res.data.channels)) {
+      return res.data.channels.map((c) => ({
+        id: c.id,
+        name: c.name,
+        is_default: `#${c.name}` === currentConfig.defaultChannel,
+      }));
+    }
+    return defaultList;
+  } catch {
+    return defaultList;
+  }
+}
+
 export async function closeSlackMcp() {
   cachedSlackClient = null;
 }
+

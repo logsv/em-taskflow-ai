@@ -3,6 +3,7 @@ import { AssistantRuntimeProvider, useLocalRuntime } from '@assistant-ui/react';
 import Chat from './components/Chat';
 import Sidebar from './components/Sidebar';
 import AdminPage from './components/AdminPage';
+import ActionHubPage from './components/ActionHubPage';
 import logger from './utils/logger';
 import './App.css';
 
@@ -15,7 +16,7 @@ function getUrlParams() {
 }
 
 function syncUrl(sessionId, threadId) {
-  if (window.location.pathname === '/admin') return;
+  if (window.location.pathname === '/admin' || window.location.pathname === '/actions') return;
   const currentParams = new URLSearchParams(window.location.search);
   const currentSession = currentParams.get('session') || currentParams.get('sessionId');
   const currentThread = currentParams.get('thread') || currentParams.get('threadId');
@@ -37,7 +38,11 @@ function App() {
   const [sourcesMap, setSourcesMap] = useState({});
   const [traceMap, setTraceMap] = useState({});
   const [currentView, setCurrentView] = useState(
-    window.location.pathname === '/admin' ? 'admin' : 'chat'
+    window.location.pathname === '/admin'
+      ? 'admin'
+      : window.location.pathname === '/actions'
+      ? 'actions'
+      : 'chat'
   );
 
   // Paginated session history state
@@ -75,6 +80,11 @@ function App() {
   const navigateToAdmin = () => {
     window.history.pushState({}, '', '/admin');
     setCurrentView('admin');
+  };
+
+  const navigateToActionHub = () => {
+    window.history.pushState({}, '', '/actions');
+    setCurrentView('actions');
   };
 
   const navigateToChat = () => {
@@ -295,6 +305,8 @@ function App() {
     const handlePopState = () => {
       if (window.location.pathname === '/admin') {
         setCurrentView('admin');
+      } else if (window.location.pathname === '/actions') {
+        setCurrentView('actions');
       } else {
         setCurrentView('chat');
         const { sessionId, threadId } = getUrlParams();
@@ -307,6 +319,10 @@ function App() {
 
   if (currentView === 'admin') {
     return <AdminPage onBackToChat={navigateToChat} />;
+  }
+
+  if (currentView === 'actions') {
+    return <ActionHubPage onBackToChat={navigateToChat} onOpenAdmin={navigateToAdmin} />;
   }
 
   return (
@@ -324,6 +340,7 @@ function App() {
           isOpen={sidebarOpen} 
           setIsOpen={setSidebarOpen} 
           onOpenAdmin={navigateToAdmin}
+          onOpenActionHub={navigateToActionHub}
           onNewChat={handleNewChat}
         />
         <main className={`main-content ${sidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>

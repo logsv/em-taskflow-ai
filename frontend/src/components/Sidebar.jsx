@@ -138,10 +138,23 @@ function Sidebar({
   isOpen, 
   setIsOpen, 
   onOpenAdmin, 
+  onOpenActionHub,
   onNewChat 
 }) {
   const { syncStatus, syncMessage } = useGithubSync();
   const [showMetadata, setShowMetadata] = useState(false);
+  const [pendingActionsCount, setPendingActionsCount] = useState(0);
+
+  useEffect(() => {
+    fetch('/api/actions/summary')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.summary?.criticalPending !== undefined) {
+          setPendingActionsCount(data.summary.criticalPending + (data.summary.warningPending || 0));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const toggleSidebar = () => setIsOpen(!isOpen);
 
@@ -287,17 +300,63 @@ function Sidebar({
               <div className="user-status">PostgreSQL Isolated DB</div>
             </div>
           </div>
+          <button
+            type="button"
+            className="action-hub-sidebar-btn"
+            onClick={() => {
+              if (typeof onOpenActionHub === 'function') {
+                onOpenActionHub();
+              } else {
+                window.location.href = '/actions';
+              }
+            }}
+            style={{
+              marginTop: '10px',
+              width: '100%',
+              padding: '8px 12px',
+              backgroundColor: '#0f172a',
+              color: '#38bdf8',
+              border: '1px solid #334155',
+              borderRadius: '6px',
+              fontSize: '13px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              boxSizing: 'border-box',
+            }}
+            title="Open EM Action Hub & Audit Cockpit"
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>📋</span> EM Action Hub
+            </span>
+            {pendingActionsCount > 0 && (
+              <span
+                style={{
+                  backgroundColor: '#ef4444',
+                  color: '#ffffff',
+                  borderRadius: '9999px',
+                  padding: '2px 7px',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                }}
+              >
+                {pendingActionsCount}
+              </span>
+            )}
+          </button>
           <a
             href="/admin"
             target="_blank"
             rel="noopener noreferrer"
             className="admin-portal-link-btn"
             style={{
-              marginTop: '10px',
+              marginTop: '6px',
               width: '100%',
               padding: '8px 12px',
               backgroundColor: '#1e293b',
-              color: '#38bdf8',
+              color: '#94a3b8',
               border: '1px solid #334155',
               borderRadius: '6px',
               fontSize: '13px',
