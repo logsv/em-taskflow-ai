@@ -471,13 +471,16 @@
   background: var(--admin-surface);
   border-left: 1px solid var(--admin-border);
   height: 100vh;
+  height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
   display: flex;
   flex-direction: column;
   box-shadow: var(--admin-shadow-drawer);
   animation: adminSlideInRight 0.2s ease-out;
   overflow: hidden;
   position: relative;
+  touch-action: pan-y;
 }
 .admin-drawer-lg {
   max-width: 720px;
@@ -507,14 +510,16 @@
   padding: 24px;
   overflow-y: auto;
   overflow-x: hidden;
-  flex: 1 1 auto;
+  flex: 1 1 0px;
   min-height: 0;
-  max-height: 100%;
+  height: 0;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--admin-border-focus) transparent;
 }
 .admin-drawer-body::-webkit-scrollbar {
   width: 6px;
@@ -566,6 +571,8 @@
   overflow: hidden;
   animation: adminModalPop 0.18s ease-out;
   max-height: 90vh;
+  max-height: 90dvh;
+  touch-action: pan-y;
 }
 .admin-modal-lg {
   max-width: 900px;
@@ -583,11 +590,13 @@
   padding: 20px;
   overflow-y: auto;
   overflow-x: hidden;
-  flex: 1 1 auto;
+  flex: 1 1 0px;
   min-height: 0;
-  max-height: 100%;
-  overscroll-behavior: contain;
+  height: 0;
+  overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--admin-border-focus) transparent;
 }
 .admin-modal-body::-webkit-scrollbar {
   width: 6px;
