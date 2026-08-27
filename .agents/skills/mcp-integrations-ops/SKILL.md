@@ -45,6 +45,11 @@ All tools and agents standardize link generation using `urlHelper.js`:
 - **Configured Base URLs**: Construct issue/ticket links only when `JIRA_BASE_URL` or repository paths are validly configured in `app_settings`.
 - **Zero Broken Links / No Fake Domains**: If an integration is unconfigured or a URL cannot be verified, tools MUST format as plain monospace code (e.g. `` `ENG-104` `` or `` `#42` ``) via `formatMarkdownLinkOrCode()`. Never output fake domains (`jira.atlassian.net`, `company/repo`) or dead anchor links (`#`).
 
+### 6. 🔒 Database Key & Credential Preservation Standard
+- **Never Purge Keys in `app_settings`**: Under no circumstances should test runs, database syncs, or schema migrations clear or truncate `app_settings`.
+- **Masked Token Retainment**: When settings are saved from the UI or API, existing tokens (`JIRA_API_TOKEN`, `GITHUB_TOKEN`, `NOTION_API_KEY`, `SLACK_BOT_TOKEN`, `GOOGLE_CALENDAR_API_KEY`) must be preserved if masked (`******`) values are submitted.
+- **Fail Loudly with Accurate Codes**: Live credential verification tests must fail loudly with exact HTTP error codes (e.g. 401 Unauthorized for expired/invalid tokens) rather than silently returning mock success.
+
 ---
 
 ## 🧪 Operational & Verification Commands

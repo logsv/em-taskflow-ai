@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { SystemStatusDrawer } from './drawers/SystemStatusDrawer.jsx';
 import { Dropdown } from './ui/Dropdown.jsx';
 import { Button } from './ui/Button.jsx';
+import './adminTokens.css';
 import './AdminShell.css';
 
 export function AdminShell({
@@ -17,6 +18,7 @@ export function AdminShell({
   teamCount = 0,
   onTestAllConnections,
   isTestingConnections = false,
+  connTestStatus = {},
   onSaveSettings,
   onResetSettings,
   onManualSync,
@@ -236,6 +238,7 @@ export function AdminShell({
         documentsCount={documentsCount}
         onTestAllConnections={onTestAllConnections}
         isTestingConnections={isTestingConnections}
+        connTestStatus={connTestStatus}
         onOpenActionHub={onOpenActionHub}
       />
     </div>

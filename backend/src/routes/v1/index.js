@@ -40,15 +40,16 @@ router.get('/mcp/jira/oauth/start', async (req, res) => {
 });
 
 router.get('/mcp/jira/oauth/callback', async (req, res) => {
+  const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
   try {
     const code = req.query.code;
     if (!code) {
-      return res.status(400).send('<h3>Error: Missing authorization code from Atlassian OAuth callback</h3>');
+      return res.status(400).send(`<h3>Error: Missing authorization code from Atlassian OAuth callback</h3><p><a href="${frontendBase}/admin?tab=settings">Back to Admin</a></p>`);
     }
     await completeJiraOAuthFlow(code);
-    res.redirect('/admin?tab=settings&jira_oauth=success');
+    res.redirect(`${frontendBase}/admin?tab=settings&jira_oauth=success`);
   } catch (error) {
-    res.status(500).send(`<h3>Atlassian OAuth Failed: ${error.message}</h3><p><a href="/admin">Back to Admin</a></p>`);
+    res.status(500).send(`<h3>Atlassian OAuth Notice: ${error.message}</h3><p><a href="${frontendBase}/admin?tab=settings">Back to Admin Settings</a></p>`);
   }
 });
 

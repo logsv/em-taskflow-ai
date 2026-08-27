@@ -8,7 +8,7 @@ describe('Admin Team Members Service & Identity Management', () => {
   });
 
   it('should auto-populate baseline when team roster is empty', async () => {
-    const syncRes = await identityService.autoDiscoverAndSync();
+    const syncRes = await identityService.autoDiscoverAndSync({ seedFixtures: true });
 
     expect(syncRes.syncedCount).toBeGreaterThanOrEqual(3);
     const members = await identityService.getAllMembers();

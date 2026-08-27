@@ -28,6 +28,7 @@ export function SystemStatusDrawer({
   documentsCount = 0,
   onTestAllConnections,
   isTestingConnections = false,
+  connTestStatus = {},
   onOpenActionHub,
 }) {
   const isPostgresUp =
@@ -51,6 +52,8 @@ export function SystemStatusDrawer({
     { id: 'critic', name: 'Critic & Dossier Audit', tool: 'audit_em_report', status: 'ready' },
   ];
 
+  const hasTestResults = connTestStatus && Object.keys(connTestStatus).length > 0;
+
   return (
     <Drawer
       isOpen={isOpen}
@@ -67,7 +70,7 @@ export function SystemStatusDrawer({
             loading={isTestingConnections}
             icon="🧪"
           >
-            Test All Connections
+            {isTestingConnections ? 'Testing All...' : 'Test All Connections'}
           </Button>
           <Button variant="primary" onClick={onClose}>
             Done
@@ -75,6 +78,29 @@ export function SystemStatusDrawer({
         </>
       }
     >
+      {/* 0. Live Connection Test Results (when triggered) */}
+      {hasTestResults && (
+        <Card>
+          <CardHeader
+            title="Service Connection Diagnostics"
+            icon="🧪"
+            action={isTestingConnections ? <StatusBadge status="warning" label="Testing..." /> : <StatusBadge status="healthy" label="Tests Run" />}
+          />
+          <CardBody>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {Object.entries(connTestStatus).map(([key, val]) => (
+                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--admin-surface-subtle)', border: '1px solid var(--admin-border-subtle)', borderRadius: '6px', fontSize: '0.8125rem' }}>
+                  <strong style={{ textTransform: 'capitalize', color: 'var(--admin-text-primary)' }}>{key}</strong>
+                  <span style={{ color: val.loading ? 'var(--admin-warning)' : val.success ? 'var(--admin-success)' : 'var(--admin-danger)', fontWeight: 500 }}>
+                    {val.loading ? '⏳ Testing...' : (val.success ? '✅ ' : '❌ ') + val.message}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
       {/* 1. Uptime & Core Infrastructure Card */}
       <Card>
         <CardHeader

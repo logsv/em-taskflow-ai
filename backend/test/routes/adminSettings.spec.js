@@ -5,6 +5,9 @@ describe('SettingsService & Admin Settings Management', () => {
   beforeEach(async () => {
     // Reset in-memory settings for clean test state
     databaseService.inMemoryAppSettings = {};
+    if (databaseService.pool) {
+      await databaseService.pool.query('TRUNCATE app_settings;').catch(() => {});
+    }
     settingsService.cachedRawSettings = null;
     settingsService.initialized = false;
   });

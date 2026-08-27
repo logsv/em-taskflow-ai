@@ -1,5 +1,7 @@
 /* ==========================================================================
    Admin Global Shell Layout (AdminShell.css)
+   ========================================================================== */
+
 .admin-shell {
   min-height: 100vh;
   background-color: var(--admin-bg);

@@ -520,7 +520,7 @@ export async function getAvailableSlackChannels() {
       headers: { Authorization: `Bearer ${token}` },
       timeout: 4000,
     });
-    if (res.data?.ok && Array.isArray(res.data.channels)) {
+    if (res.data?.ok && Array.isArray(res.data.channels) && res.data.channels.length > 0) {
       return res.data.channels.map((c) => ({
         id: c.id,
         name: c.name,

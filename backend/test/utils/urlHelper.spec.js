@@ -4,8 +4,13 @@ import {
   getDirectOrFormattedNotionUrl,
   formatMarkdownLinkOrCode,
 } from '../../src/utils/urlHelper.js';
+import settingsService from '../../src/services/settingsService.js';
 
 describe('urlHelper Utility Specs', () => {
+  beforeEach(() => {
+    settingsService.cachedRawSettings = null;
+    settingsService.initialized = false;
+  });
   describe('getDirectOrFormattedGithubUrl', () => {
     it('should return direct html_url when present', () => {
       const item = { html_url: 'https://github.com/myorg/myrepo/pull/123' };

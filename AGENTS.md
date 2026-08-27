@@ -34,6 +34,12 @@ This file provides system guidance, architectural rules, anti-hallucination guid
 5. **No Superficial Symptom Patches**:
    - NEVER resolve errors by masking symptoms, swallowing exceptions silently, returning dummy fallbacks, or commenting out failing unit test assertions.
 
+6. **Rule of Database Key & Credential Preservation (STRICT ENFORCEMENT)**:
+   - `app_settings` in `taskflow_backend` houses live user API keys (`JIRA_API_TOKEN`, `GITHUB_TOKEN`, `NOTION_API_KEY`, `GOOGLE_CALENDAR_API_KEY`, `SLACK_BOT_TOKEN`), Ollama host URLs, and model selection lists.
+   - It is strictly FORBIDDEN to drop, truncate, or wipe `app_settings` during database cleanup, migration, runtime reset, or testing.
+   - Real user profiles (`logsv`, admin emails, lead engineering managers) in `team_members` must NEVER be deleted during test cleanup routines.
+   - When updating settings via UI or API, existing masked secret fields (`******`) in PostgreSQL must always be retained and never replaced with empty strings.
+
 ---
 
 ## 🏛️ Architecture Blueprint

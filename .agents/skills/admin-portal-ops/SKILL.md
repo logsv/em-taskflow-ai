@@ -64,6 +64,11 @@ Use this skill when developing, testing, or troubleshooting the Standalone Admin
 - `POST /api/admin/eval/replay-traces`: Replays historical Langfuse failure traces for model upgrade comparison.
 - `POST /api/admin/audit/trigger`: Dispatches autonomous 10-domain audit and Slack notifications.
 
+### 5. 🔒 Database Credential & Key Persistence Rules
+- **`app_settings` Protection**: Never delete or overwrite configured API keys (`JIRA_API_TOKEN`, `GITHUB_TOKEN`, `NOTION_API_KEY`, etc.) when saving or updating model/tool configs. Masked secret fields (`******`) must always retain their existing database values.
+- **Dynamic Identity Protection**: Real lead user profiles in `team_members` (`logsv`, admin emails) must never be purged during mock test fixture cleanups.
+- **Docker Ollama Bridge**: On Docker environments, Ollama connectivity from backend automatically bridges to `http://host.docker.internal:11434` if `http://localhost:11434` fails.
+
 ---
 
 ## 🧪 Verification Commands

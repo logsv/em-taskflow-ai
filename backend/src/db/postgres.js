@@ -1678,12 +1678,12 @@ class DatabaseService {
   async upsertTeamMember(memberData) {
     const id = memberData.id || createOpaqueId('mem');
     const displayName = memberData.displayName || memberData.display_name || 'Team Member';
-    const email = memberData.email || `${id}@company.internal`;
+    const email = memberData.email || '';
     const aliases = JSON.stringify(memberData.aliases || [displayName]);
     const githubUsername = memberData.githubUsername || memberData.github_username || null;
-    const jiraEmail = memberData.jiraEmail || memberData.jira_email || email;
+    const jiraEmail = memberData.jiraEmail || memberData.jira_email || (email || null);
     const jiraAccountId = memberData.jiraAccountId || memberData.jira_account_id || null;
-    const gcalEmail = memberData.gcalEmail || memberData.gcal_email || email;
+    const gcalEmail = memberData.gcalEmail || memberData.gcal_email || (email || null);
     const notionName = memberData.notionName || memberData.notion_name || displayName;
     const currentLevel = memberData.currentLevel || memberData.current_level || 'L4_MID';
     const targetLevel = memberData.targetLevel || memberData.target_level || 'L5_SENIOR';
@@ -1771,6 +1771,22 @@ class DatabaseService {
       return true;
     } catch (err) {
       this.inMemoryTeamMembers = this.inMemoryTeamMembers.filter((m) => m.id !== id);
+      return true;
+    }
+  }
+
+  async purgeMockTeamMembers() {
+    try {
+      await this.ensureInitialized();
+      await this.pool.query("DELETE FROM team_members WHERE email LIKE '%@company.internal' OR id IN ('mem_alex', 'mem_sarah', 'mem_taylor', 'mem_elena', 'mem_marcus')");
+      this.inMemoryTeamMembers = this.inMemoryTeamMembers.filter(
+        (m) => !m.email?.endsWith('@company.internal') && !['mem_alex', 'mem_sarah', 'mem_taylor', 'mem_elena', 'mem_marcus'].includes(m.id)
+      );
+      return true;
+    } catch (err) {
+      this.inMemoryTeamMembers = this.inMemoryTeamMembers.filter(
+        (m) => !m.email?.endsWith('@company.internal') && !['mem_alex', 'mem_sarah', 'mem_taylor', 'mem_elena', 'mem_marcus'].includes(m.id)
+      );
       return true;
     }
   }

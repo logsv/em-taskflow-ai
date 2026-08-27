@@ -1,5 +1,7 @@
 /* ==========================================================================
    Admin UI Primitives Styles (ui.css)
+   ========================================================================== */
+
 /* 🔘 BUTTONS */
 .admin-btn {
   display: inline-flex;
@@ -469,11 +471,13 @@
   background: var(--admin-surface);
   border-left: 1px solid var(--admin-border);
   height: 100vh;
+  max-height: 100vh;
   display: flex;
   flex-direction: column;
   box-shadow: var(--admin-shadow-drawer);
   animation: adminSlideInRight 0.2s ease-out;
   overflow: hidden;
+  position: relative;
 }
 .admin-drawer-lg {
   max-width: 720px;
@@ -486,6 +490,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 .admin-drawer-title-group h3 {
   margin: 0;
@@ -501,10 +506,29 @@
 .admin-drawer-body {
   padding: 24px;
   overflow-y: auto;
-  flex: 1;
+  overflow-x: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   gap: 20px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.admin-drawer-body::-webkit-scrollbar {
+  width: 6px;
+}
+.admin-drawer-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.admin-drawer-body::-webkit-scrollbar-thumb {
+  background: var(--admin-border-focus);
+  border-radius: 3px;
+  opacity: 0.6;
+}
+.admin-drawer-body::-webkit-scrollbar-thumb:hover {
+  background: var(--admin-primary);
 }
 .admin-drawer-footer {
   padding: 16px 24px;
@@ -514,6 +538,7 @@
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 /* 🖼️ MODALS */
@@ -552,11 +577,27 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
 .admin-modal-body {
   padding: 20px;
   overflow-y: auto;
-  flex: 1;
+  overflow-x: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.admin-modal-body::-webkit-scrollbar {
+  width: 6px;
+}
+.admin-modal-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.admin-modal-body::-webkit-scrollbar-thumb {
+  background: var(--admin-border-focus);
+  border-radius: 3px;
 }
 .admin-modal-footer {
   padding: 14px 20px;
@@ -565,6 +606,7 @@
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 /* 🔍 SEARCH INPUT */

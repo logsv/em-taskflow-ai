@@ -83,6 +83,8 @@ The backend agent uses an **8-stage hybrid architecture** optimized for **Local 
 
 ### 8. Resilient Per-Service Database Isolation (`postgres.js`)
 - **`taskflow_backend`**: Houses application sessions, chat threads, messages, `em_audit_runs`, `em_action_items`, and cached MCP fallback data (`github_issues`, `dora_snapshots`, `sprint_analytics`, `okr_records`, `team_members`, `app_settings`).
+- **🔒 Strict `app_settings` Immunity**: Live API keys (`JIRA_API_TOKEN`, `GITHUB_TOKEN`, `NOTION_API_KEY`, `GOOGLE_CALENDAR_API_KEY`, `SLACK_BOT_TOKEN`) and LLM model configurations stored in `app_settings` are strictly immune to drops, wipes, or truncation.
+- **🔒 Real User Identity Immunity**: Real user accounts (`logsv`, admin profiles) in `team_members` must never be deleted during mock fixture resets.
 - **`taskflow_test` & `taskflow_eval`**: Dedicated, isolated databases for Jasmine unit test specs and evaluation benchmark runs on port 5432.
 - **`taskflow_ai`** (with `taskflow_ai_test` / `taskflow_ai_eval`): Houses vector document chunks (`pdf_chunks`).
 - **`temporal` & `temporal_visibility`**: Houses workflow state.

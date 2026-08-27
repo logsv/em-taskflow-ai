@@ -68,8 +68,7 @@ export function getDirectOrFormattedJiraUrl(itemOrKey) {
   const key = typeof itemOrKey === 'string' ? itemOrKey : itemOrKey.key;
   if (!key) return null;
 
-  const cachedSettings = settingsService.getCachedSettings()?.mcp?.jira || {};
-  const baseUrl = process.env.JIRA_BASE_URL || cachedSettings.url || null;
+  const baseUrl = process.env.JIRA_BASE_URL || null;
   
   const isPlaceholder = (u) => !u || 
     u.includes('dummy') || 

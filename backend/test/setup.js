@@ -21,6 +21,7 @@ beforeAll(async () => {
   try {
     const databaseService = (await import('../src/db/postgres.js')).default;
     seedAllTestData(databaseService);
+    await databaseService.initialize().catch(() => {});
   } catch (_e) {
     // Database service may not be available in all test contexts
   }

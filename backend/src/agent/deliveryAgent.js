@@ -268,19 +268,7 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
       }
 
       if (target === 'WIP_ITEMS' || filter === 'WIP_ITEMS' || filter === 'WIP_VIOLATION') {
-        const isTestEnv = process.env.NODE_ENV === 'test' || (Array.isArray(process.argv) && process.argv.some(a => a.includes('jasmine')));
-        let wipTickets = Array.isArray(jira.blocked_tickets) && jira.blocked_tickets.length > 0 ? jira.blocked_tickets : [];
-        if (wipTickets.length === 0 && isTestEnv) {
-          wipTickets = [
-            { key: 'ENG-101', summary: 'Core Auth OAuth v2 PKCE flow migration', assignee: 'alex.williams', status: 'In Progress', days: 3 },
-            { key: 'ENG-104', summary: 'PostgreSQL pgvector HNSW index tuning', assignee: 'sarah.chen', status: 'In Progress', days: 2 },
-            { key: 'ENG-108', summary: 'Temporal durable retry policy hardening', assignee: 'vikas.kumar', status: 'In Progress', days: 4 },
-            { key: 'ENG-112', summary: 'LangGraph multi-agent domain policy guardrails', assignee: 'elena.rostova', status: 'In Progress', days: 1 },
-            { key: 'ENG-115', summary: 'Redis semantic vector similarity caching', assignee: 'alex.williams', status: 'In Progress', days: 3 },
-            { key: 'ENG-119', summary: 'Admin Portal team synchronization tab', assignee: 'sarah.chen', status: 'In Progress', days: 2 },
-            { key: 'ENG-124', summary: 'RAG single-pass Markdown streaming synthesizer', assignee: 'elena.rostova', status: 'In Progress', days: 1 },
-          ];
-        }
+        const wipTickets = Array.isArray(jira.blocked_tickets) && jira.blocked_tickets.length > 0 ? jira.blocked_tickets : [];
 
         const wipRows = wipTickets.map((t) => {
           const url = getDirectOrFormattedJiraUrl(t);

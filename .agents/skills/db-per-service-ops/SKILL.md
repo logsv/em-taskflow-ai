@@ -36,7 +36,7 @@ CREATE DATABASE taskflow_eval;
 CREATE DATABASE taskflow_ai_eval;
 ```
 
-### Safe Database State Reset (Preserving Tool API Keys)
+### Safe Database State Reset (Strictly Preserving Tool API Keys & Credentials)
 To clear legacy dummy data, action items, audit runs, or test residue without affecting saved tool API tokens:
 ```bash
 # From backend directory
@@ -45,6 +45,17 @@ npm run db:clean
 # Dry-run inspection mode
 node scripts/clean-database.js --dry-run
 ```
+
+### 🔒 Strict Credential & Database Key Preservation Rules
+1. **`app_settings` Table Immunity**:
+   - `app_settings` contains live LLM configurations, inference models, and third-party MCP authentication tokens (`JIRA_API_TOKEN`, `GITHUB_TOKEN`, `NOTION_API_KEY`, `GOOGLE_CALENDAR_API_KEY`, `SLACK_BOT_TOKEN`).
+   - Under **NO** circumstances should `app_settings` be dropped, truncated, or wiped during database cleanups, schema migrations, unit tests, or runtime resets.
+2. **Real User Identity Immunity in `team_members`**:
+   - Real user profiles (e.g. `logsv`, admin emails, lead engineering managers) must **NEVER** be purged when cleaning mock fixture data. Only test mock entries (e.g. dummy accounts from tests) may be purged, while primary user/admin identity is always preserved.
+3. **Zero Secret Overwrites**:
+   - When updating partial settings, existing stored credentials must be retained if incoming payload fields are masked (`******`) or omitted.
+4. **Test Database Isolation**:
+   - DDL and `TRUNCATE` operations during tests are strictly restricted to isolated test databases (`taskflow_test`, `taskflow_eval`, `taskflow_ai_test`, `taskflow_ai_eval`) and must never run against `taskflow_backend`.
 
 ### Inspect Database Tables via CLI
 ```bash

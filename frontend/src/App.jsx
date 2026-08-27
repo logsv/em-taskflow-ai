@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
 import { AssistantRuntimeProvider, useLocalRuntime } from '@assistant-ui/react';
 import Chat from './components/Chat';
 import Sidebar from './components/Sidebar';

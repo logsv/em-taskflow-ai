@@ -291,51 +291,30 @@ export async function reconcileAndPersistTeamActivity(params = {}) {
     }
   }
 
-  // In test suites only, supply sample test fixtures if no external MCP tokens are provided
-  const isTestEnv = process.env.NODE_ENV === 'test' || process.argv.some(a => a.includes('jasmine'));
-  if (mergedMap.size === 0 && isTestEnv) {
-    mergedMap.set('alex', {
-      id: 'mem_alex',
-      displayName: 'Alex Williams',
-      email: 'alex.williams@company.internal',
-      githubUsername: 'alex-dev99',
-      jiraEmail: 'alex.williams@company.internal',
-      gcalEmail: 'alex.williams@company.internal',
-      notionName: 'Alex Williams',
-      aliases: ['Alex', 'alexw', 'eng_alex', 'alex-dev99'],
-      currentLevel: 'L4_MID',
-      targetLevel: 'L5_SENIOR',
-      track: 'INDIVIDUAL_CONTRIBUTOR',
-      tenureMonths: 18,
-    });
-    mergedMap.set('sarah', {
-      id: 'mem_sarah',
-      displayName: 'Sarah Chen',
-      email: 'sarah.chen@company.internal',
-      githubUsername: 'sarah-c',
-      jiraEmail: 'sarah.chen@company.internal',
-      gcalEmail: 'sarah.chen@company.internal',
-      notionName: 'Sarah Chen',
-      aliases: ['Sarah', 'sarahc', 'eng_sarah', 'sarah-c'],
-      currentLevel: 'L5_SENIOR',
-      targetLevel: 'M1_EM',
-      track: 'ENGINEERING_MANAGEMENT',
-      tenureMonths: 24,
-    });
-    mergedMap.set('taylor', {
-      id: 'mem_taylor',
-      displayName: 'Taylor Morgan',
-      email: 'taylor.morgan@company.internal',
-      githubUsername: 'taylor-dev',
-      jiraEmail: 'taylor.morgan@company.internal',
-      gcalEmail: 'taylor.morgan@company.internal',
-      notionName: 'Taylor Morgan',
-      aliases: ['Taylor', 'taylorm', 'eng_taylor', 'taylor-dev'],
-      currentLevel: 'L6_STAFF',
-      targetLevel: 'L7_PRINCIPAL',
-      track: 'INDIVIDUAL_CONTRIBUTOR',
-      tenureMonths: 36,
-    });
+  // Ensure Primary Administrator & Lead Profile is included if configured
+  const primaryGcal = process.env.GOOGLE_CALENDAR_ID || process.env.PRIMARY_ADMIN_EMAIL || process.env.JIRA_USER_EMAIL;
+  const primaryGh = process.env.GITHUB_OWNER;
+  const primaryName = process.env.PRIMARY_ADMIN_NAME || process.env.EM_LEAD_NAME || (primaryGcal ? primaryGcal.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : (primaryGh || ''));
+
+  if (primaryGcal || primaryGh) {
+    const primaryKey = (primaryGcal || primaryGh).toLowerCase().trim();
+    if (!mergedMap.has(primaryKey)) {
+      mergedMap.set(primaryKey, {
+        id: `mem_${primaryKey.replace(/[@.]/g, '_')}`,
+        displayName: primaryName,
+        email: primaryGcal || '',
+        githubUsername: primaryGh || '',
+        jiraEmail: process.env.JIRA_USER_EMAIL || primaryGcal || '',
+        jiraAccountId: process.env.JIRA_ACCOUNT_ID || '',
+        gcalEmail: primaryGcal || '',
+        notionName: primaryName,
+        currentLevel: 'M1_EM',
+        targetLevel: 'M2_DIR',
+        track: 'ENGINEERING_MANAGEMENT',
+        tenureMonths: 24,
+        aliases: [primaryName, primaryName.split(' ')[0], primaryGh, primaryGh ? `@${primaryGh}` : null, primaryGcal].filter(Boolean),
+      });
+    }
   }
 
   let persistedCount = 0;

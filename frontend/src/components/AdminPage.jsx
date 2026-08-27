@@ -552,8 +552,9 @@ function AdminPage({ onBackToChat }) {
     }
   };
 
+  const [isTestingAll, setIsTestingAll] = useState(false);
+
   const handleTestConnection = async (type) => {
-    if (!adminSettings) return;
     setConnTestStatus((prev) => ({
       ...prev,
       [type]: { loading: true, message: 'Testing connection...' },
@@ -561,12 +562,14 @@ function AdminPage({ onBackToChat }) {
 
     try {
       let credentials = {};
-      if (type === 'ollama') credentials = { baseUrl: adminSettings.llm?.ollama?.baseUrl };
-      else if (type === 'jira') credentials = adminSettings.mcp?.jira;
-      else if (type === 'github') credentials = adminSettings.mcp?.github;
-      else if (type === 'notion') credentials = adminSettings.mcp?.notion;
-      else if (type === 'googleCalendar') credentials = adminSettings.mcp?.googleCalendar;
-      else if (type === 'slack') credentials = adminSettings.mcp?.slack;
+      if (adminSettings) {
+        if (type === 'ollama') credentials = { baseUrl: adminSettings.llm?.ollama?.baseUrl };
+        else if (type === 'jira') credentials = adminSettings.mcp?.jira;
+        else if (type === 'github') credentials = adminSettings.mcp?.github;
+        else if (type === 'notion') credentials = adminSettings.mcp?.notion;
+        else if (type === 'googleCalendar') credentials = adminSettings.mcp?.googleCalendar;
+        else if (type === 'slack') credentials = adminSettings.mcp?.slack;
+      }
 
       const res = await fetch(apiUrl('/admin/settings/test-connection'), {
         method: 'POST',
@@ -593,14 +596,19 @@ function AdminPage({ onBackToChat }) {
   };
 
   const handleTestAllConnections = async () => {
-    await Promise.all([
-      handleTestConnection('ollama'),
-      handleTestConnection('jira'),
-      handleTestConnection('github'),
-      handleTestConnection('notion'),
-      handleTestConnection('googleCalendar'),
-      handleTestConnection('slack'),
-    ]);
+    setIsTestingAll(true);
+    try {
+      await Promise.all([
+        handleTestConnection('ollama'),
+        handleTestConnection('jira'),
+        handleTestConnection('github'),
+        handleTestConnection('notion'),
+        handleTestConnection('googleCalendar'),
+        handleTestConnection('slack'),
+      ]);
+    } finally {
+      setIsTestingAll(false);
+    }
   };
 
   const updateLlmField = (field, value) => {
@@ -1010,6 +1018,8 @@ function AdminPage({ onBackToChat }) {
       documentsCount={documents.length}
       teamCount={teamMembers.length}
       onTestAllConnections={handleTestAllConnections}
+      isTestingConnections={isTestingAll}
+      connTestStatus={connTestStatus}
       onSaveSettings={handleSaveSettings}
       onResetSettings={handleResetSettings}
       onManualSync={handleManualSync}
@@ -2012,7 +2022,7 @@ function AdminPage({ onBackToChat }) {
                             </div>
                           </div>
                           <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                            ℹ️ Create a 3LO App at <a href="https://developer.atlassian.com/console/myapps" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'underline' }}>developer.atlassian.com/console/myapps</a> with Callback URL <code>http://localhost:5001/api/mcp/jira/oauth/callback</code>.
+                            ℹ️ Create a 3LO App at <a href="https://developer.atlassian.com/console/myapps" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'underline' }}>developer.atlassian.com/console/myapps</a> with Callback URL <code>http://localhost:4000/api/mcp/jira/oauth/callback</code>.
                             <br />
                             <em>Note: If you don't have an OAuth App, direct Jira Cloud connection is active using your API Token above.</em>
                           </div>

@@ -13,6 +13,9 @@ describe('EM Action Hub & Audit REST API Routes', () => {
     app.use('/api', apiRouter);
     request = supertest(app);
 
+    if (databaseService.pool) {
+      await databaseService.pool.query('DELETE FROM em_action_items; DELETE FROM em_audit_runs;').catch(() => {});
+    }
     databaseService.inMemoryActionItems = [];
     databaseService.inMemoryAuditRuns = [];
 
