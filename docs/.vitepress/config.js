@@ -31,7 +31,7 @@ export default withMermaid(
         { text: 'API Reference', link: '/api-reference/rest-api' },
         { text: 'Evaluations', link: '/evaluations/overview' },
         { text: 'Operations & Skills', link: '/operations/agent-skills' },
-        { text: 'Swagger Explorer ↗', link: 'http://localhost:4000/api/docs', target: '_blank' }
+        { text: 'Swagger Explorer ↗', link: 'http://localhost:4000/api/v1/docs', target: '_blank' }
       ],
       sidebar: {
         '/getting-started/': [
@@ -49,6 +49,7 @@ export default withMermaid(
             text: '🏛️ Architecture Blueprint',
             items: [
               { text: 'High-Level Design & Pipeline', link: '/architecture/high-level-design' },
+              { text: 'Autonomous EM Audit Engine & Hub', link: '/architecture/autonomous-audit-engine' },
               { text: 'LangGraph Multi-Agent Supervisor', link: '/architecture/langgraph-supervisor' },
               { text: 'Database Per-Service Isolation', link: '/architecture/database-isolation' },
               { text: 'Production Hybrid RAG Engine', link: '/architecture/hybrid-rag' },

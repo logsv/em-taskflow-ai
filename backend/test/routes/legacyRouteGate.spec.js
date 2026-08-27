@@ -57,5 +57,28 @@ describe('legacyRouteGate', () => {
       requestId: 'req_123',
     });
   });
+
+  describe('attachLegacyDeprecationHeaders', () => {
+    it('sets standard HTTP deprecation headers and calls next()', async () => {
+      const { attachLegacyDeprecationHeaders } = await import('../../src/routes/legacyRouteGate.js');
+      const headers = {};
+      const req = { originalUrl: '/api/health' };
+      const res = {
+        setHeader: jasmine.createSpy('setHeader').and.callFake((key, val) => {
+          headers[key] = val;
+        }),
+      };
+      const next = jasmine.createSpy('next');
+
+      attachLegacyDeprecationHeaders(req, res, next);
+
+      expect(next).toHaveBeenCalled();
+      expect(headers['Deprecation']).toBe('true');
+      expect(headers['Sunset']).toContain('2026');
+      expect(headers['X-API-Version']).toBe('v1');
+      expect(headers['Link']).toBe('</api/v1/health>; rel="successor-version"');
+    });
+  });
 });
+
 

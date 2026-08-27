@@ -128,7 +128,12 @@ This file provides system guidance, architectural rules, anti-hallucination guid
 - **Global Shell & De-cluttered Viewport (`AdminShell.jsx`)**: Replaced repeated KPI strips with a compact `● System Healthy` status pill in the header. Clicking opens the slide-out **System Diagnostics Drawer** (`SystemStatusDrawer.jsx`) showing real-time health across 10 domain micro-agents, Ollama, PostgreSQL 5432, Langfuse DB 5433, and RAG vector storage.
 - **Operator-First Top Navigation**: 5 primary domain groups (*Overview*, *People*, *AI Platform*, *Operations*, *Quality*) with nested sub-navigation pills for progressive disclosure (*Models & Tools*, *Services & Storage*).
 - **Reusable UI Design Primitives (`frontend/src/components/admin/ui/`)**: Zero-dependency component library (`Button`, `Badge`, `StatusBadge`, `Card`, `MetricCard`, `Section`, `Tabs`, `Table`, `Drawer`, `Modal`, `Dropdown`, `SearchInput`, `EmptyState`, `Alert`) adhering to semantic dark-theme design tokens (`adminTokens.css`).
-- **Readymade 8-Service Catalog**: Direct deep-links to Langfuse (:3001), Promptfoo Managed Cloud, Adminer (:8080), Temporal (:8233), Sentry, New Relic, Axiom, and Swagger REST API Explorer (:4000/api/docs).
+- **Readymade 8-Service Catalog**: Direct deep-links to Langfuse (:3001), Promptfoo Managed Cloud, Adminer (:8080), Temporal (:8233), Sentry, New Relic, Axiom, and Swagger REST API Explorer (:4000/api/v1/docs).
+
+### 12. Canonical REST API Versioning & Deprecation Policy (`ADR-009`)
+- **Canonical Namespace**: All REST endpoints reside under `/api/v1/*` (`/api/v1/chat`, `/api/v1/sessions`, `/api/v1/actions`, `/api/v1/admin`, `/api/v1/docs`).
+- **Backward Compatibility**: Legacy `/api/*` requests are aliased and forwarded to `/api/v1/*` with HTTP `Deprecation: true`, `Sunset: Sat, 01 Nov 2026 00:00:00 GMT`, and `Link: </api/v1/...>; rel="successor-version"` headers.
+- **Frontend Client Centralization**: Single `apiClient.js` module standardizes base path and session token injection.
 
 ### 11. Low-Distraction EM Copilot UI & Quick Actions (`⌘K`)
 - **Workflow-First Philosophy**: *"Workflows are the product; agents are the implementation."* Primary chat interface is clean and free of implementation distractions (sub-agent selectors, raw tool lists, or vector chunk parameters).
