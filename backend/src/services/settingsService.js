@@ -16,7 +16,7 @@ export function maskSecret(secret) {
   if (!secret || typeof secret !== 'string') return '';
   const trimmed = secret.trim();
   if (trimmed.length === 0) return '';
-  if (trimmed.length <= 8) return '••••••••';
+  if (trimmed.length <= 8) return '******';
   if (trimmed.startsWith('ghp_')) {
     return `ghp_******${trimmed.slice(-4)}`;
   }
@@ -43,7 +43,7 @@ export function maskSecret(secret) {
 
 export function isMasked(value) {
   if (!value || typeof value !== 'string') return false;
-  return value.includes('******') || value.includes('••••');
+  return value.includes('******') || value.includes('••••') || value.includes('•');
 }
 
 class SettingsService {
@@ -385,7 +385,13 @@ class SettingsService {
         notion: {
           apiKey: maskSecret(raw.mcp.notion?.apiKey),
           mcpUrl: raw.mcp.notion?.mcpUrl || '',
-},
+          okrPageId: raw.mcp.notion?.okrPageId || '',
+          retroPageId: raw.mcp.notion?.retroPageId || '',
+          sopPageId: raw.mcp.notion?.sopPageId || '',
+          careerPageId: raw.mcp.notion?.careerPageId || '',
+          sprintGoalsPageId: raw.mcp.notion?.sprintGoalsPageId || '',
+          enabled: raw.mcp.notion?.enabled ?? true,
+        },
         googleCalendar: {
           apiKey: maskSecret(raw.mcp.googleCalendar?.apiKey),
           calendarId: raw.mcp.googleCalendar?.calendarId || process.env.GOOGLE_CALENDAR_ID || 'primary',

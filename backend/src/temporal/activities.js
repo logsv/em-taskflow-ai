@@ -649,16 +649,17 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
     for (const pr of delivery.openPrs) {
       if (pr.isStalled || pr.waitHours > 24.0) {
         score -= pr.waitHours > 36.0 ? 10 : 5;
-        const prCleanId = (pr.id || pr.number || 'unknown').toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+        const rawPrId = String(pr.number || pr.id || 'unknown').replace(/^#/, '').trim();
+        const prCleanId = rawPrId.replace(/[^a-zA-Z0-9_-]/g, '_');
         actionItems.push({
           id: `act_pr_${prCleanId}`,
-          title: `Stalled PR ${pr.id || ''}: ${pr.title || 'Untitled PR'}`.trim(),
+          title: `Stalled PR #${prCleanId}: ${pr.title || 'Untitled PR'}`.trim(),
           description: `PR has been waiting for review for ${pr.waitHours} hours (SLA is <24 hours).`,
           category: 'DELIVERY',
           severity: pr.waitHours > 36.0 ? 'CRITICAL' : 'WARNING',
           suggestedAction: `Ping code reviewers on Slack or reassign review to unblock merge queue.`,
           assigneeName: pr.author || 'unassigned',
-          externalReference: { source: 'github', id: pr.id, url: pr.url || null },
+          externalReference: { source: 'github', id: `#${prCleanId}`, url: pr.url || null },
         });
       }
     }
@@ -669,7 +670,7 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
     for (const t of delivery.blockedTickets) {
       if (!t.key) continue;
       score -= 5;
-      const keyClean = t.key.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const keyClean = String(t.key).trim().replace(/[^a-zA-Z0-9_-]/g, '_');
       actionItems.push({
         id: `act_jira_${keyClean}`,
         title: `Blocked Jira Ticket ${t.key}: ${t.summary || 'Blocked Issue'}`,
@@ -687,9 +688,11 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
   if (Array.isArray(people.overdue1on1s)) {
     for (const o of people.overdue1on1s) {
       score -= 5;
-      const memberClean = (o.memberId || o.email || o.name || 'unknown').toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+      const rawMember = (o.memberId ? o.memberId.replace(/^mem_/, '') : o.email ? o.email.split('@')[0] : o.name || 'member')
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, '_');
       actionItems.push({
-        id: `act_1on1_${memberClean}`,
+        id: `act_1on1_${rawMember}`,
         title: `Overdue 1-on-1 Sync: ${o.name || 'Team Member'}`,
         description: `Last 1-on-1 was ${o.daysSinceLast1on1 || 15} days ago (recommended cadence is <=14 days).`,
         category: 'PEOPLE',
@@ -706,9 +709,16 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
   if (Array.isArray(sprintOkr.atRiskOkrs)) {
     for (const okr of sprintOkr.atRiskOkrs) {
       score -= 5;
-      const okrClean = (okr.id || okr.keyResult || okr.objective || 'okr').toString().slice(0, 20).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const rawOkr = (okr.keyResult || okr.objective || okr.id || 'okr')
+        .toString()
+        .toLowerCase()
+        .replace(/^kr\d*[:\s_-]*/i, '')
+        .trim()
+        .slice(0, 30)
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
       actionItems.push({
-        id: `act_okr_${okrClean}`,
+        id: `act_okr_${rawOkr || okr.id || 'target'}`,
         title: `At-Risk Key Result: ${okr.keyResult || okr.objective || 'OKR Target'}`,
         description: `Objective '${okr.objective || 'Quarterly OKR'}' is pacing behind quarterly target.`,
         category: 'OKR_VELOCITY',

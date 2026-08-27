@@ -240,4 +240,12 @@ describe('Autonomous EM Task & Health Audit Engine Specs', () => {
       expect(res === null || res.status === 'CREATED' || res.status === 'ALREADY_EXISTS').toBe(true);
     });
   });
+
+  afterAll(async () => {
+    if (databaseService.pool) {
+      await databaseService.pool.query('DELETE FROM em_action_items; DELETE FROM em_audit_runs;').catch(() => {});
+    }
+    databaseService.inMemoryActionItems = [];
+    databaseService.inMemoryAuditRuns = [];
+  });
 });

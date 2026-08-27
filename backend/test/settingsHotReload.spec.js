@@ -132,8 +132,8 @@ describe('SettingsService & LLM Model Hot-Reload Contract', () => {
     const masked = await settingsService.getMaskedSettings();
     expect(masked.mcp.github.owner).toBe('acme-corp');
     expect(masked.mcp.github.repo).toBe('enterprise-core');
-    expect(masked.mcp.github.token).toContain('•');
-    expect(masked.mcp.notion.apiKey).toContain('•');
+    expect(masked.mcp.github.token).toContain('******');
+    expect(masked.mcp.notion.apiKey).toContain('******');
     expect(masked.mcp.notion.okrPageId).toBe('page_okr_999');
   });
 });
