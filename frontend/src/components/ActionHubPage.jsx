@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import ActionHubHeader from './actions/ActionHubHeader.jsx';
+import ExecutiveSummary from './actions/ExecutiveSummary.jsx';
 import logger from '../utils/logger.js';
 import './ActionHubPage.css';
 
@@ -286,219 +288,38 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
   return (
     <div className="action-hub-page">
       {/* 1. TOP HEADER & EM CONTROLS */}
-      <header className="action-hub-header">
-        <div className="header-left">
-          <button className="back-btn" onClick={onBackToChat} title="Back to Chat & SLM Assistant">
-            ← Back to Chat
-          </button>
-          <div className="title-group">
-            <div className="title-row">
-              <h1>📋 EM Action Hub & Audit Cockpit</h1>
-              <span className="live-sync-indicator" title="Temporal 4-hour cron active">
-                <span className="sync-pulse"></span> Auto-Sync Active
-              </span>
-            </div>
-            <p className="subtitle">
-              Continuous multi-tool audit across PR bottlenecks, 1-on-1 cadences, Sprint velocity, and ADR-008 governance.
-            </p>
-          </div>
-        </div>
-
-        <div className="header-right">
-          {/* Health Score Pill with Popover Trigger */}
-          <div className="health-score-container">
-            <button
-              type="button"
-              className={`health-score-pill ${healthTierClass}`}
-              onClick={() => setShowHealthScorePopover(!showHealthScorePopover)}
-              title="Click to view Engineering Health Score breakdown"
-            >
-              <span className="health-dot"></span>
-              <span>Health Score: <strong>{healthScore}/100</strong></span>
-              <span className="info-caret">▾</span>
-            </button>
-
-            {showHealthScorePopover && (
-              <div className="health-score-popover">
-                <div className="popover-header">
-                  <strong>Engineering Health Breakdown</strong>
-                  <button className="close-mini-btn" onClick={() => setShowHealthScorePopover(false)}>×</button>
-                </div>
-                <div className="popover-metric-row">
-                  <span>🚀 DORA Velocity:</span>
-                  <strong className="text-good">Elite (96.5%)</strong>
-                </div>
-                <div className="popover-metric-row">
-                  <span>⏱️ PR Turnaround SLA:</span>
-                  <strong className="text-warn">14.2h avg (1 Stalled)</strong>
-                </div>
-                <div className="popover-metric-row">
-                  <span>👥 1-on-1 Cadence:</span>
-                  <strong className="text-warn">85% (1 Overdue)</strong>
-                </div>
-                <div className="popover-metric-row">
-                  <span>🎯 Sprint Pacing:</span>
-                  <strong className="text-good">79% (3/4 OKRs On-Track)</strong>
-                </div>
-                <div className="popover-metric-row">
-                  <span>🛡️ SOP & ADR-008 Isolation:</span>
-                  <strong className="text-good">100% Pass</strong>
-                </div>
-                <div className="popover-footer">
-                  <small>Calculated durably via Temporal every 4 hours.</small>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Send to Slack Button */}
-          <button
-            type="button"
-            className="btn-slack-dispatch"
-            onClick={() => setShowSlackModal(true)}
-            title="Dispatch Executive Briefing or Action Item to Slack"
-          >
-            <span className="slack-icon">💬</span>
-            <span>Send to Slack</span>
-          </button>
-
-          {/* Manual Run Audit Button */}
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={handleTriggerAudit}
-            disabled={isAuditing}
-            title="Trigger an on-demand audit across all 10 domain tools"
-          >
-            {isAuditing ? (
-              <>
-                <span className="btn-spinner"></span>
-                <span>Auditing Tools...</span>
-              </>
-            ) : (
-              <>
-                <span>🚀 Run Audit Now</span>
-              </>
-            )}
-          </button>
-
-          {/* Admin Portal Link */}
-          <button type="button" className="btn-secondary" onClick={onOpenAdmin} title="Go to System Admin Portal">
-            ⚙️ Admin Portal ↗
-          </button>
-        </div>
-      </header>
+      <ActionHubHeader
+        lastAuditAt={summary?.lastAuditAt}
+        isAuditing={isAuditing}
+        onTriggerAudit={handleTriggerAudit}
+        onSendToSlack={() => setShowSlackModal(true)}
+        onOpenAdmin={onOpenAdmin}
+        onBackToChat={onBackToChat}
+      />
 
       {/* Notification Toast */}
       {auditMessage && (
-        <div className="audit-notification-banner">
+        <div className="audit-notification-banner" role="status">
           <span>{auditMessage}</span>
         </div>
       )}
 
-      {/* 2. EXECUTIVE SCORECARDS / KPI STRIP */}
-      <section className="action-hub-scorecards">
-        <div
-          className={`scorecard-card card-critical ${severityFilter === 'CRITICAL' ? 'scorecard-active' : ''}`}
-          onClick={() => {
-            setSeverityFilter(severityFilter === 'CRITICAL' ? 'ALL' : 'CRITICAL');
-            setActiveTab('actions');
-          }}
-          title="Click to filter critical actions"
-        >
-          <div className="card-top-row">
-            <span className="card-icon">🚨</span>
-            <span className="card-val">{summary?.summary?.criticalPending ?? 0}</span>
-          </div>
-          <div className="card-label">Critical Actions</div>
-          <div className="card-sub">Immediate EM attention required</div>
-          <div className="mini-progress-bar">
-            <div className="bar-fill bar-fill-critical" style={{ width: `${Math.min(100, (summary?.summary?.criticalPending || 0) * 50)}%` }}></div>
-          </div>
-        </div>
-
-        <div
-          className={`scorecard-card card-warning ${severityFilter === 'WARNING' ? 'scorecard-active' : ''}`}
-          onClick={() => {
-            setSeverityFilter(severityFilter === 'WARNING' ? 'ALL' : 'WARNING');
-            setActiveTab('actions');
-          }}
-          title="Click to filter warning actions"
-        >
-          <div className="card-top-row">
-            <span className="card-icon">⚠️</span>
-            <span className="card-val">{summary?.summary?.warningPending ?? 2}</span>
-          </div>
-          <div className="card-label">Warnings Pending</div>
-          <div className="card-sub">PR review delays & OKR pacing</div>
-          <div className="mini-progress-bar">
-            <div className="bar-fill bar-fill-warn" style={{ width: '65%' }}></div>
-          </div>
-        </div>
-
-        <div
-          className={`scorecard-card card-completed ${statusFilter === 'COMPLETED' ? 'scorecard-active' : ''}`}
-          onClick={() => {
-            setStatusFilter(statusFilter === 'COMPLETED' ? 'ALL' : 'COMPLETED');
-            setActiveTab('actions');
-          }}
-          title="Click to view completed tasks"
-        >
-          <div className="card-top-row">
-            <span className="card-icon">✅</span>
-            <span className="card-val">{summary?.summary?.completed ?? 0}</span>
-          </div>
-          <div className="card-label">Resolved & Completed</div>
-          <div className="card-sub">Triaged by EM</div>
-          <div className="mini-progress-bar">
-            <div className="bar-fill bar-fill-completed" style={{ width: `${Math.min(100, (summary?.summary?.completed || 0) * 20)}%` }}></div>
-          </div>
-        </div>
-
-        <div
-          className="scorecard-card card-sop"
-          onClick={() => setActiveTab('sop')}
-          title="Click to view SOP compliance checklist"
-        >
-          <div className="card-top-row">
-            <span className="card-icon">🛡️</span>
-            <span className="card-val">{sopData?.complianceScore ?? 100}%</span>
-          </div>
-          <div className="card-label">SOP & ADR Score</div>
-          <div className="card-sub">ADR-008 & Review SLAs</div>
-          <div className="mini-progress-bar">
-            <div className="bar-fill bar-fill-sop" style={{ width: `${sopData?.complianceScore ?? 100}%` }}></div>
-          </div>
-        </div>
-
-        <div
-          className="scorecard-card card-people"
-          onClick={() => setActiveTab('people')}
-          title="Click to view Team Cadence & 1-on-1 matrix"
-        >
-          <div className="card-top-row">
-            <span className="card-icon">👥</span>
-            <span className="card-val">85%</span>
-          </div>
-          <div className="card-label">1-on-1 Cadence Health</div>
-          <div className="card-sub">1 overdue sync (&gt;14d)</div>
-          <div className="mini-progress-bar">
-            <div className="bar-fill bar-fill-people" style={{ width: '85%' }}></div>
-          </div>
-        </div>
-
-        <div className="scorecard-card card-cron">
-          <div className="card-top-row">
-            <span className="card-icon">⏱️</span>
-            <span className="card-val">4h Cron</span>
-          </div>
-          <div className="card-label">Temporal Automation</div>
-          <div className="card-sub">Next scheduled run in ~3h 48m</div>
-          <div className="mini-progress-bar">
-            <div className="bar-fill bar-fill-cron" style={{ width: '100%' }}></div>
-          </div>
-        </div>
-      </section>
+      {/* 2. DECISION-ORIENTED EXECUTIVE SUMMARY */}
+      <ExecutiveSummary
+        summary={summary}
+        actionItems={actionItems}
+        sopData={sopData}
+        onSelectSeverityFilter={(sev) => {
+          setSeverityFilter(sev);
+          setActiveTab('actions');
+        }}
+        onSelectStatusFilter={(st) => {
+          setStatusFilter(st);
+          setActiveTab('actions');
+        }}
+        activeSeverityFilter={severityFilter}
+        activeStatusFilter={statusFilter}
+      />
 
       {/* 3. TABS NAVIGATION */}
       <nav className="action-hub-tabs">
