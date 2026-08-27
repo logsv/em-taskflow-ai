@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import ActionHubHeader from './actions/ActionHubHeader.jsx';
 import ExecutiveSummary from './actions/ExecutiveSummary.jsx';
+import NeedsAttentionSection from './actions/NeedsAttentionSection.jsx';
+import ActionCard from './actions/ActionCard.jsx';
 import logger from '../utils/logger.js';
 import './ActionHubPage.css';
 
@@ -363,6 +365,21 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
       {/* TAB 1: ACTION ITEMS & TRIAGE */}
       {activeTab === 'actions' && (
         <div className="actions-tab-container">
+          {/* Top Priority Needs Attention Experience */}
+          <NeedsAttentionSection
+            actionItems={actionItems}
+            onInspect={(item) => setInspectingItem(item)}
+            onUpdateStatus={handleUpdateStatus}
+            onNudge={(item) => {
+              setNudgingItem(item);
+              setNudgeCustomNote(`Hi ${item.assigneeName || 'team'}, please look into: ${item.title}`);
+            }}
+            onViewAll={() => {
+              setStatusFilter('PENDING');
+              setSeverityFilter('ALL');
+            }}
+          />
+
           {/* Controls Bar: Search, Filters, View Switcher & Bulk Actions */}
           <div className="actions-controls-bar">
             <div className="search-box-wrapper">
@@ -513,7 +530,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
                 </div>
                 <div className="kanban-cards-stack">
                   {kanbanColumns.pending.map((item) => (
-                    <ActionCardItem
+                    <ActionCard
                       key={item.id}
                       item={item}
                       onInspect={() => setInspectingItem(item)}
@@ -547,7 +564,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
                 </div>
                 <div className="kanban-cards-stack">
                   {kanbanColumns.in_progress.map((item) => (
-                    <ActionCardItem
+                    <ActionCard
                       key={item.id}
                       item={item}
                       onInspect={() => setInspectingItem(item)}
@@ -581,7 +598,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
                 </div>
                 <div className="kanban-cards-stack">
                   {kanbanColumns.completed.map((item) => (
-                    <ActionCardItem
+                    <ActionCard
                       key={item.id}
                       item={item}
                       onInspect={() => setInspectingItem(item)}
@@ -712,7 +729,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
           {!isLoading && filteredActions.length > 0 && viewMode === 'grid' && (
             <div className="action-cards-grid">
               {filteredActions.map((item) => (
-                <ActionCardItem
+                <ActionCard
                   key={item.id}
                   item={item}
                   onInspect={() => setInspectingItem(item)}
@@ -1267,117 +1284,6 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * Sub-component for rendering individual action item cards
- */
-function ActionCardItem({ item, onInspect, onUpdateStatus, onNudge, isSelected, onToggleSelect }) {
-  const sevClass = `severity-${item.severity?.toLowerCase() || 'info'}`;
-  const statusClass = `status-${item.status?.toLowerCase() || 'pending'}`;
-
-  return (
-    <div className={`action-card ${sevClass} ${statusClass}`}>
-      <div className="card-top">
-        <div className="badges-row">
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={() => onToggleSelect && onToggleSelect(item.id)}
-            className="card-checkbox"
-          />
-          <span className={`badge-severity badge-${item.severity?.toLowerCase()}`}>
-            {item.severity}
-          </span>
-          <span className="badge-category">{item.category}</span>
-          <span className={`badge-status ${statusClass}`}>{item.status}</span>
-        </div>
-        {item.assigneeName && (
-          <span className="assignee-badge" title={`Assigned to ${item.assigneeName}`}>
-            👤 @{item.assigneeName}
-          </span>
-        )}
-      </div>
-
-      <h3 className="card-title" onClick={onInspect} title="Click to view details">
-        {item.title}
-      </h3>
-      <p className="card-desc">{item.description}</p>
-
-      {item.suggestedAction && (
-        <div className="suggested-action-box" onClick={onInspect}>
-          💡 <strong>Suggested Action:</strong> {item.suggestedAction}
-        </div>
-      )}
-
-      {item.resolutionNotes && (
-        <div className="resolution-notes-box">
-          <strong>Resolution:</strong> {item.resolutionNotes}
-          {item.completedBy && <span className="resolver"> — {item.completedBy}</span>}
-        </div>
-      )}
-
-      <div className="card-footer">
-        <div className="footer-left">
-          {item.externalReference?.url ? (
-            <a
-              href={item.externalReference.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="external-link"
-            >
-              🔗 {item.externalReference.id || 'View in Tool ↗'}
-            </a>
-          ) : item.externalReference?.id ? (
-            <span className="ref-tag">Ref: {item.externalReference.id}</span>
-          ) : (
-            <span className="date-tag">{new Date(item.createdAt).toLocaleDateString()}</span>
-          )}
-        </div>
-
-        <div className="footer-actions">
-          {item.status === 'PENDING' && (
-            <button
-              type="button"
-              className="btn-status-action btn-in-progress"
-              onClick={() => onUpdateStatus(item, 'IN_PROGRESS')}
-              title="Start progress"
-            >
-              ⏳ In Progress
-            </button>
-          )}
-          {item.status !== 'COMPLETED' && (
-            <button
-              type="button"
-              className="btn-status-action btn-complete"
-              onClick={() => onUpdateStatus(item, 'COMPLETED')}
-              title="Mark completed"
-            >
-              ✅ Mark Done
-            </button>
-          )}
-          <button
-            type="button"
-            className="btn-nudge-action"
-            onClick={onNudge}
-            title="Nudge on Slack"
-          >
-            💬 Nudge
-          </button>
-          {item.status !== 'DISMISSED' && (
-            <button
-              type="button"
-              className="btn-status-action btn-dismiss"
-              onClick={() => onUpdateStatus(item, 'DISMISSED')}
-              title="Dismiss"
-            >
-              🚫
-            </button>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

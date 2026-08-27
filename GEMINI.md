@@ -68,6 +68,7 @@ The backend agent uses an **8-stage hybrid architecture** optimized for **Local 
 - **Slack Web API** (`slack.js`): Direct channel listings (`slack_list_channels`) and message searching (`slack_search_messages`), with Temporal Human-in-the-Loop approval governance for posting (`slack_post_message`).
 - **Google Calendar** (`google.js`): Dynamic calendar ID configuration, schedule inspection (`get_calendar_events`), event management.
 - **Base Tool Harness** (`baseToolHarness.js`): Standardized circuit breaker pattern, exponential backoff, and execution metrics.
+- **Direct API URL Resolution & Standard** (`urlHelper.js`): Resolves native URLs from API responses directly and eliminates fake domains/broken links by rendering safe monospace code blocks when unconfigured.
 
 ### 6. LangGraph Supervisor (`graph.js`)
 - Uses `@langchain/langgraph-supervisor` to manage worker agent handoffs across 10 domain micro-agents.
@@ -82,7 +83,8 @@ The backend agent uses an **8-stage hybrid architecture** optimized for **Local 
 
 ### 8. Resilient Per-Service Database Isolation (`postgres.js`)
 - **`taskflow_backend`**: Houses application sessions, chat threads, messages, `em_audit_runs`, `em_action_items`, and cached MCP fallback data (`github_issues`, `dora_snapshots`, `sprint_analytics`, `okr_records`, `team_members`, `app_settings`).
-- **`taskflow_ai`**: Houses vector document chunks (`pdf_chunks`).
+- **`taskflow_test` & `taskflow_eval`**: Dedicated, isolated databases for Jasmine unit test specs and evaluation benchmark runs on port 5432.
+- **`taskflow_ai`** (with `taskflow_ai_test` / `taskflow_ai_eval`): Houses vector document chunks (`pdf_chunks`).
 - **`temporal` & `temporal_visibility`**: Houses workflow state.
 - **`langfuse_db`**: Houses telemetry traces on port 5433.
 - If live MCP tool servers time out, automatic fallback retrieves cached data from PostgreSQL, presenting stale-data warnings to the user.
@@ -100,4 +102,10 @@ The backend agent uses an **8-stage hybrid architecture** optimized for **Local 
   - 🃏 **Rich Card Grid**: Detailed cards with diagnostic descriptions, origin badges, SLA countdowns, and resolution history.
   - 🔍 **Action Inspection Drawer**: Diagnostic context, root causes, and resolution notes editor with EM attribution.
   - 👥 **Team Cadence Matrix**: Engineer 1-on-1 tracking table with promotion targets, tenure, and overdue sync alerts.
+
+### 10. Standalone Admin Portal & Modular UI Architecture (`/admin`)
+- **Global Shell & De-cluttered Viewport (`AdminShell.jsx`)**: Replaced repeated KPI strips with a compact `● System Healthy` status pill in the header. Clicking opens the slide-out **System Diagnostics Drawer** (`SystemStatusDrawer.jsx`) showing real-time health across 10 domain micro-agents, Ollama, PostgreSQL 5432, Langfuse DB 5433, and RAG vector storage.
+- **Operator-First Top Navigation**: 5 primary domain groups (*Overview*, *People*, *AI Platform*, *Operations*, *Quality*) with nested sub-navigation pills for progressive disclosure (*Models & Tools*, *Services & Storage*).
+- **Reusable UI Design Primitives (`frontend/src/components/admin/ui/`)**: Zero-dependency component library (`Button`, `Badge`, `StatusBadge`, `Card`, `MetricCard`, `Section`, `Tabs`, `Table`, `Drawer`, `Modal`, `Dropdown`, `SearchInput`, `EmptyState`, `Alert`) adhering to semantic dark-theme design tokens (`adminTokens.css`).
+- **Readymade 8-Service Catalog**: Direct deep-links to Langfuse (:3001), Promptfoo Managed Cloud, Adminer (:8080), Temporal (:8233), Sentry, New Relic, Axiom, and Swagger REST API Explorer (:4000/api/docs).
 

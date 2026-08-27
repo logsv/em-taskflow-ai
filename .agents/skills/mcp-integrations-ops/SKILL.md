@@ -39,6 +39,12 @@ When live third-party services are offline or rate-limited:
 - The tool harness intercepts failures and queries PostgreSQL tables (`github_issues`, `dora_snapshots`, `sprint_analytics`, `okr_records`).
 - If PostgreSQL is temporarily unreachable, memory stores (`inMemoryGithubIssues`) provide a fail-safe fallback.
 
+### 5. Direct API URL Resolution & Zero Broken Links Standard (`backend/src/utils/urlHelper.js`)
+All tools and agents standardize link generation using `urlHelper.js`:
+- **Direct URLs**: Always prefer native `html_url` or `url` directly from the provider REST API.
+- **Configured Base URLs**: Construct issue/ticket links only when `JIRA_BASE_URL` or repository paths are validly configured in `app_settings`.
+- **Zero Broken Links / No Fake Domains**: If an integration is unconfigured or a URL cannot be verified, tools MUST format as plain monospace code (e.g. `` `ENG-104` `` or `` `#42` ``) via `formatMarkdownLinkOrCode()`. Never output fake domains (`jira.atlassian.net`, `company/repo`) or dead anchor links (`#`).
+
 ---
 
 ## 🧪 Operational & Verification Commands

@@ -22,13 +22,14 @@ This file provides system guidance, architectural rules, anti-hallucination guid
 
 3. **Rule of Database Per-Service Isolation**:
    - **Backend API DB** (`taskflow_backend` on port 5432): Application state, sessions, chat threads, messages, issue caches, OKRs, sprint analytics, DORA metrics, team profiles, app settings.
+   - **Isolated Test & Eval DBs** (`taskflow_test`, `taskflow_eval`, `taskflow_ai_test`, `taskflow_ai_eval` on port 5432): Strictly separated databases for Jasmine unit tests, evaluation gates, and Python Pytests to prevent polluting runtime state.
    - **Python AI DB** (`taskflow_ai` on port 5432): Dedicated strictly to RAG document embeddings (`pdf_chunks`), HNSW vector indexes, and `pg_trgm` full-text search indexes.
    - **Temporal Workflows DB** (`temporal` & `temporal_visibility` on port 5432): Dedicated strictly to Temporal activity execution and task queue state.
    - **Analytics DB** (`langfuse_db` on port 5433): Dedicated strictly to trace graphs, token counts, and latency telemetry on an isolated container (`analytics-db`).
    - Agents must NEVER write analytics trace tables into application databases.
 
 4. **Rule of Verification**:
-   - Never declare success without executing unit tests. All **300 backend specs** and **45 Python AI specs** must pass with **0 failures**.
+   - Never declare success without executing unit tests. All **319 backend specs** and **39 Python AI specs** must pass with **0 failures**.
 
 5. **No Superficial Symptom Patches**:
    - NEVER resolve errors by masking symptoms, swallowing exceptions silently, returning dummy fallbacks, or commenting out failing unit test assertions.
@@ -119,6 +120,12 @@ This file provides system guidance, architectural rules, anti-hallucination guid
   - Action item inspection drawer & resolution notes logger.
   - Team 1-on-1 cadence tracking matrix & career level progression.
   - Live ADR-008 per-service database governance checklist.
+
+### 10. Standalone Admin Portal & Modular UI Architecture (`/admin`)
+- **Global Shell & De-cluttered Viewport (`AdminShell.jsx`)**: Replaced repeated KPI strips with a compact `● System Healthy` status pill in the header. Clicking opens the slide-out **System Diagnostics Drawer** (`SystemStatusDrawer.jsx`) showing real-time health across 10 domain micro-agents, Ollama, PostgreSQL 5432, Langfuse DB 5433, and RAG vector storage.
+- **Operator-First Top Navigation**: 5 primary domain groups (*Overview*, *People*, *AI Platform*, *Operations*, *Quality*) with nested sub-navigation pills for progressive disclosure (*Models & Tools*, *Services & Storage*).
+- **Reusable UI Design Primitives (`frontend/src/components/admin/ui/`)**: Zero-dependency component library (`Button`, `Badge`, `StatusBadge`, `Card`, `MetricCard`, `Section`, `Tabs`, `Table`, `Drawer`, `Modal`, `Dropdown`, `SearchInput`, `EmptyState`, `Alert`) adhering to semantic dark-theme design tokens (`adminTokens.css`).
+- **Readymade 8-Service Catalog**: Direct deep-links to Langfuse (:3001), Promptfoo Managed Cloud, Adminer (:8080), Temporal (:8233), Sentry, New Relic, Axiom, and Swagger REST API Explorer (:4000/api/docs).
 
 ---
 
