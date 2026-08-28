@@ -481,12 +481,13 @@ export async function executeAgentQuery(query, options = {}) {
   }
 
   try {
-    const historyMessages = Array.isArray(options.history)
-      ? options.history.map((m) => ({
-          role: m.role === 'assistant' ? 'assistant' : m.role === 'system' ? 'system' : 'user',
-          content: typeof m.content === 'string' ? m.content : String(m.content || ''),
-        }))
-      : [];
+    const rawHistory = Array.isArray(options.history) && options.history.length > 0
+      ? options.history
+      : (Array.isArray(options.messages) ? options.messages : []);
+    const historyMessages = rawHistory.map((m) => ({
+      role: m.role === 'assistant' ? 'assistant' : m.role === 'system' ? 'system' : 'user',
+      content: typeof m.content === 'string' ? m.content : String(m.content || ''),
+    }));
 
     const input = {
       messages: [

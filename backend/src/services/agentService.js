@@ -902,22 +902,31 @@ export class LangGraphAgentService {
     const llm = getChatModel();
     const callbacks = getTracerCallbacks(options);
     
-    const inputMessages = [
-      new SM("You are an expert Engineering Management AI assistant. Answer the user's question clearly, thoroughly, and concisely using the conversation history context where relevant."),
+    const systemInstructions = [
+      "You are an expert Engineering Management AI assistant. Answer the user's question clearly, thoroughly, and concisely using the conversation history context where relevant.",
     ];
+
+    const inputMessages = [];
 
     if (Array.isArray(options.messages) && options.messages.length > 0) {
       for (const m of options.messages) {
-        if (m.role === "user" || m._getType?.() === "human") {
-          inputMessages.push(new HM(m.content));
+        if (m.role === "system" || m._getType?.() === "system") {
+          systemInstructions.push(typeof m.content === "string" ? m.content : String(m.content || ""));
+        } else if (m.role === "user" || m._getType?.() === "human") {
+          inputMessages.push(new HM(typeof m.content === "string" ? m.content : String(m.content || "")));
         } else if (m.role === "assistant" || m._getType?.() === "ai") {
-          inputMessages.push(new AM(m.content));
+          inputMessages.push(new AM(typeof m.content === "string" ? m.content : String(m.content || "")));
         }
       }
     }
     inputMessages.push(new HM(query));
 
-    const response = await llm.invoke(inputMessages, { callbacks });
+    const finalMessages = [
+      new SM(systemInstructions.join("\n\n")),
+      ...inputMessages,
+    ];
+
+    const response = await llm.invoke(finalMessages, { callbacks });
     const answer = typeof response.content === "string" ? response.content : String(response.content || "");
     return {
       answer: answer || "No response generated.",
