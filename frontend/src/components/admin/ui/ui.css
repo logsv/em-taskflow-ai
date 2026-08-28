@@ -510,9 +510,8 @@
   padding: 24px;
   overflow-y: auto;
   overflow-x: hidden;
-  flex: 1 1 0px;
+  flex: 1 1 auto;
   min-height: 0;
-  height: 0;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -520,6 +519,9 @@
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: var(--admin-border-focus) transparent;
+}
+.admin-drawer-body > * {
+  flex-shrink: 0;
 }
 .admin-drawer-body::-webkit-scrollbar {
   width: 6px;
@@ -590,13 +592,18 @@
   padding: 20px;
   overflow-y: auto;
   overflow-x: hidden;
-  flex: 1 1 0px;
+  flex: 1 1 auto;
   min-height: 0;
-  height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: var(--admin-border-focus) transparent;
+}
+.admin-modal-body > * {
+  flex-shrink: 0;
 }
 .admin-modal-body::-webkit-scrollbar {
   width: 6px;

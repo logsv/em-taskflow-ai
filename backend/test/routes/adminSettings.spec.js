@@ -29,6 +29,12 @@ describe('SettingsService & Admin Settings Management', () => {
     });
   });
 
+  afterEach(async () => {
+    databaseService.inMemoryAppSettings = {};
+    settingsService.cachedRawSettings = null;
+    settingsService.initialized = false;
+  });
+
   describe('Secret Masking & Detection Utilities', () => {
     it('should mask GitHub personal access tokens correctly', () => {
       const masked = maskSecret('ghp_abcdef1234567890XYZ');
@@ -74,7 +80,7 @@ describe('SettingsService & Admin Settings Management', () => {
         mcp: {
           jira: {
             url: 'https://testcompany.atlassian.net',
-            email: 'lead@testcompany.com',
+            email: 'admin.lead@myenterprise.internal',
             apiToken: 'test_token_12345678',
           },
         },
@@ -83,7 +89,7 @@ describe('SettingsService & Admin Settings Management', () => {
       expect(updated.llm.defaultModel).toBe('mistral:latest');
       expect(updated.llm.temperature).toBe(0.15);
       expect(updated.mcp.jira.url).toBe('https://testcompany.atlassian.net');
-      expect(updated.mcp.jira.email).toBe('lead@testcompany.com');
+      expect(updated.mcp.jira.email).toBe('admin.lead@myenterprise.internal');
       expect(updated.metadata.llmSource).toBe('database');
     });
 

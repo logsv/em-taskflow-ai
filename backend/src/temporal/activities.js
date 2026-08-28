@@ -292,8 +292,30 @@ export async function reconcileAndPersistTeamActivity(params = {}) {
   }
 
   // Ensure Primary Administrator & Lead Profile is included if configured
-  const primaryGcal = process.env.GOOGLE_CALENDAR_ID || process.env.PRIMARY_ADMIN_EMAIL || process.env.JIRA_USER_EMAIL;
-  const primaryGh = process.env.GITHUB_OWNER;
+  const isDummyEmail = (email) => {
+    if (!email || typeof email !== 'string') return true;
+    const lower = email.toLowerCase().trim();
+    return (
+      lower.includes('placeholder') ||
+      lower.includes('testcompany.com') ||
+      lower.includes('example.com') ||
+      lower === 'primary' ||
+      lower === 'lead@testcompany.com' ||
+      lower === 'alex@company.com' ||
+      lower.endsWith('@company.internal')
+    );
+  };
+
+  const isDummyOwner = (owner) => {
+    if (!owner || typeof owner !== 'string') return true;
+    const lower = owner.toLowerCase().trim();
+    return lower.includes('placeholder') || lower === 'owner' || lower === 'mock' || lower === 'org' || lower === 'myorg';
+  };
+
+  const rawGcal = process.env.GOOGLE_CALENDAR_ID || process.env.PRIMARY_ADMIN_EMAIL || process.env.JIRA_USER_EMAIL;
+  const rawGh = process.env.GITHUB_OWNER;
+  const primaryGcal = (rawGcal && !isDummyEmail(rawGcal)) ? rawGcal : null;
+  const primaryGh = (rawGh && !isDummyOwner(rawGh)) ? rawGh : null;
   const primaryName = process.env.PRIMARY_ADMIN_NAME || process.env.EM_LEAD_NAME || (primaryGcal ? primaryGcal.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : (primaryGh || ''));
 
   if (primaryGcal || primaryGh) {
@@ -304,7 +326,7 @@ export async function reconcileAndPersistTeamActivity(params = {}) {
         displayName: primaryName,
         email: primaryGcal || '',
         githubUsername: primaryGh || '',
-        jiraEmail: process.env.JIRA_USER_EMAIL || primaryGcal || '',
+        jiraEmail: (process.env.JIRA_USER_EMAIL && !isDummyEmail(process.env.JIRA_USER_EMAIL)) ? process.env.JIRA_USER_EMAIL : (primaryGcal || ''),
         jiraAccountId: process.env.JIRA_ACCOUNT_ID || '',
         gcalEmail: primaryGcal || '',
         notionName: primaryName,

@@ -173,11 +173,35 @@ class IdentityService {
     await databaseService.purgeMockTeamMembers().catch(() => {});
 
     // 0. Primary Administrator & Lead Profile Auto-Resolution
-    const primaryGcal = rawSettings.mcp?.googleCalendar?.calendarId || process.env.GOOGLE_CALENDAR_ID;
-    const primaryJiraEmail = rawSettings.mcp?.jira?.email || process.env.JIRA_USER_EMAIL;
-    const primaryGhOwner = process.env.GITHUB_OWNER || rawSettings.mcp?.github?.owner;
-    const primaryEmail = (primaryGcal && primaryGcal.includes('@')) ? primaryGcal : (primaryJiraEmail && primaryJiraEmail.includes('@') ? primaryJiraEmail : (process.env.PRIMARY_ADMIN_EMAIL || ''));
-    const primaryAdminName = process.env.PRIMARY_ADMIN_NAME || process.env.EM_LEAD_NAME || (primaryEmail ? primaryEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : (primaryGhOwner || 'Engineering Manager'));
+    const isDummyEmail = (email) => {
+      if (!email || typeof email !== 'string') return true;
+      const lower = email.toLowerCase().trim();
+      return (
+        lower.includes('placeholder') ||
+        lower.includes('testcompany.com') ||
+        lower.includes('example.com') ||
+        lower === 'lead@testcompany.com' ||
+        lower === 'alex@company.com' ||
+        lower.endsWith('@company.internal')
+      );
+    };
+
+    const isDummyOwner = (owner) => {
+      if (!owner || typeof owner !== 'string') return true;
+      const lower = owner.toLowerCase().trim();
+      return lower.includes('placeholder') || lower === 'owner' || lower === 'mock' || lower === 'org' || lower === 'myorg';
+    };
+
+    const rawGcal = rawSettings.mcp?.googleCalendar?.calendarId || process.env.GOOGLE_CALENDAR_ID;
+    const rawJiraEmail = rawSettings.mcp?.jira?.email || process.env.JIRA_USER_EMAIL;
+    const rawGhOwner = process.env.GITHUB_OWNER || rawSettings.mcp?.github?.owner;
+
+    const primaryGcal = (rawGcal && rawGcal.includes('@') && !isDummyEmail(rawGcal)) ? rawGcal : null;
+    const primaryJiraEmail = (rawJiraEmail && rawJiraEmail.includes('@') && !isDummyEmail(rawJiraEmail)) ? rawJiraEmail : null;
+    const primaryGhOwner = (rawGhOwner && !isDummyOwner(rawGhOwner)) ? rawGhOwner : null;
+
+    const primaryEmail = primaryGcal || primaryJiraEmail || ((process.env.PRIMARY_ADMIN_EMAIL && !isDummyEmail(process.env.PRIMARY_ADMIN_EMAIL)) ? process.env.PRIMARY_ADMIN_EMAIL : '');
+    const primaryAdminName = process.env.PRIMARY_ADMIN_NAME || process.env.EM_LEAD_NAME || (primaryEmail ? primaryEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : (primaryGhOwner || ''));
     const primaryJiraAccountId = process.env.JIRA_ACCOUNT_ID || rawSettings.mcp?.jira?.accountId || '';
 
     if (primaryEmail || primaryGhOwner) {

@@ -1795,14 +1795,14 @@ class DatabaseService {
   async purgeMockTeamMembers() {
     try {
       await this.ensureInitialized();
-      await this.pool.query("DELETE FROM team_members WHERE email LIKE '%@company.internal' OR id IN ('mem_alex', 'mem_sarah', 'mem_taylor', 'mem_elena', 'mem_marcus')");
+      await this.pool.query("DELETE FROM team_members WHERE email LIKE '%@company.internal' OR email LIKE '%@testcompany.com' OR id IN ('mem_alex', 'mem_sarah', 'mem_taylor', 'mem_elena', 'mem_marcus', 'mem_lead')");
       this.inMemoryTeamMembers = this.inMemoryTeamMembers.filter(
-        (m) => !m.email?.endsWith('@company.internal') && !['mem_alex', 'mem_sarah', 'mem_taylor', 'mem_elena', 'mem_marcus'].includes(m.id)
+        (m) => !m.email?.endsWith('@company.internal') && !m.email?.endsWith('@testcompany.com') && !['mem_alex', 'mem_sarah', 'mem_taylor', 'mem_elena', 'mem_marcus', 'mem_lead'].includes(m.id)
       );
       return true;
     } catch (err) {
       this.inMemoryTeamMembers = this.inMemoryTeamMembers.filter(
-        (m) => !m.email?.endsWith('@company.internal') && !['mem_alex', 'mem_sarah', 'mem_taylor', 'mem_elena', 'mem_marcus'].includes(m.id)
+        (m) => !m.email?.endsWith('@company.internal') && !m.email?.endsWith('@testcompany.com') && !['mem_alex', 'mem_sarah', 'mem_taylor', 'mem_elena', 'mem_marcus', 'mem_lead'].includes(m.id)
       );
       return true;
     }

@@ -14,6 +14,9 @@ describe('SettingsService & LLM Model Hot-Reload Contract', () => {
     // Restore baseline model
     config.llm.defaultModel = initialModel;
     resetChatModel();
+    databaseService.inMemoryAppSettings = {};
+    settingsService.cachedRawSettings = null;
+    settingsService.initialized = false;
   });
 
   it('should dynamically hot-reload model into getChatModel when settings are updated', async () => {

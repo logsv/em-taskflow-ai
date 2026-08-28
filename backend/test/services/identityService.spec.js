@@ -1,10 +1,19 @@
 import identityService from '../../src/services/identityService.js';
+import settingsService from '../../src/services/settingsService.js';
 import databaseService from '../../src/db/postgres.js';
 
 describe('IdentityService & Cross-Platform Team Auto-Discovery', () => {
   beforeEach(async () => {
     databaseService.inMemoryTeamMembers = [];
+    settingsService.cachedRawSettings = null;
+    settingsService.initialized = false;
     await identityService.autoDiscoverAndSync({ seedFixtures: true });
+  });
+
+  afterEach(async () => {
+    databaseService.inMemoryTeamMembers = [];
+    settingsService.cachedRawSettings = null;
+    settingsService.initialized = false;
   });
 
   it('should auto-discover and seed initial team members when external APIs return baseline', async () => {
