@@ -27,12 +27,15 @@ Use this skill when creating, modifying, testing, or auditing any of the 10 Engi
    - **`sopAgent`** $\rightarrow$ `query_sop_compliance`: Queries SOP compliance, ADR governance, architecture decision records, and review SLAs.
    - **`criticAgent`** $\rightarrow$ `audit_em_report`: Audits and critiques draft EM status reports, dossiers, and promotion nomination packets.
 
-3. **`VALID_DOMAINS` Set & Policy Alignment**:
-   - `agentService.js` maps each domain micro-agent to its tool names (`domainToolNames`) so `mapInvokedDomains()` and `validatePolicy()` validate execution without false `unexpected_domains` policy guardrail blocks.
+3. **5-Tier Dispatch & Parallel Multi-Agent Execution**:
+   - **Tier 1 (Fast-Path <300ms)**: Conversational, math, and code generation queries.
+   - **Tier 2 / 3 (Dedicated RAG)**: Direct vector search with structured zero-hit onboarding guides.
+   - **Tier 4 (Direct Single-Domain Dispatch ≈1.5s)**: Direct execution of single domain tools (`sbi`, `people`, `dora`, etc.) avoiding supervisor latency.
+   - **Tier 5 (Parallel Multi-Domain Fan-Out ≈3.5s)**: Concurrent multi-agent execution (`Promise.all`) aggregating DORA, Delivery, and SBI into a unified briefing.
 
-4. **Zero Misleading Fallbacks Enforcement**:
-   - All tool harnesses use PostgreSQL database snapshots (`github_issues`, `dora_snapshots`, `sprint_analytics`, `okr_records`, `team_members`) as real DB fallbacks if live MCP tools are offline or return 0 items.
-   - System never outputs hardcoded generic placeholder strings (such as fake `@logsv` or fake GitHub issues on non-GitHub queries).
+4. **Zero Misleading Fallbacks & Situational Synthesis**:
+   - When live MCP tools are unconfigured, `sbiAgent` and `peopleAgent` extract situation context from prompts and synthesize complete Situation-Behavior-Impact cards, 12-dimension competency radars, and multi-horizon development roadmaps.
+   - Real PostgreSQL database snapshots (`github_issues`, `dora_snapshots`, `sprint_analytics`, `okr_records`, `team_members`) serve as authoritative offline fallbacks.
 
 ---
 
@@ -43,11 +46,11 @@ Use this skill when creating, modifying, testing, or auditing any of the 10 Engi
 cd backend
 node -e "import('./src/agent/doraAgent.js').then(async (m) => { console.log('DORA Harness:', await m.doraMetricsTool.invoke({})); });"
 node -e "import('./src/agent/deliveryAgent.js').then(async (m) => { console.log('Delivery Harness:', await m.deliveryBottlenecksTool.invoke({})); });"
-node -e "import('./src/agent/retroAgent.js').then(async (m) => { console.log('Retro Harness:', await m.sprintRetroTool.invoke({})); });"
-node -e "import('./src/agent/okrAgent.js').then(async (m) => { console.log('OKR Harness:', await m.okrProgressTool.invoke({})); });"
+node -e "import('./src/agent/sbiAgent.js').then(async (m) => { console.log('SBI Harness:', await m.sbiFeedbackTool.invoke({ situation: 'unblocking code reviews' })); });"
+node -e "import('./src/agent/peopleAgent.js').then(async (m) => { console.log('People Harness:', await m.peopleGrowthTool.invoke({ engineer_id: 'eng_alex' })); });"
 ```
 
-### 2. Run Backend Unit Tests (269 Specs)
+### 2. Run Backend Unit Tests (342 Specs)
 ```bash
 cd backend
 npm test

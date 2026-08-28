@@ -729,5 +729,55 @@
     "expected_tool_calls": [],
     "is_rag_appropriate": false,
     "success_criteria_gates": { "max_latency_ms": 300 }
+  },
+  {
+    "eval_id": "EVAL-COMP-001",
+    "user_query": "Evaluate overall engineering health: calculate team DORA metrics, check active delivery bottlenecks, and draft an SBI coaching feedback for the on-call lead.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["dora", "delivery", "sbi"],
+    "expected_tool_calls": [
+      { "tool_name": "calculate_dora_metrics" },
+      { "tool_name": "analyze_delivery_bottlenecks" },
+      { "tool_name": "format_sbi_feedback" }
+    ],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-COMP-002",
+    "user_query": "Evaluate active sprint capacity velocity, quarterly OKR pacing scores, and roadmap milestone drift.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["sprint", "okr", "roadmap"],
+    "expected_tool_calls": [
+      { "tool_name": "calculate_sprint_plan" },
+      { "tool_name": "evaluate_okr_progress" },
+      { "tool_name": "get_roadmap_alignment" }
+    ],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-COMP-003",
+    "user_query": "Review 1-on-1 career progression notes and promotion readiness for our senior developer, and audit draft feedback against engineering SOP.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["people", "sop"],
+    "expected_tool_calls": [
+      { "tool_name": "analyze_personnel_growth" },
+      { "tool_name": "query_sop_compliance" }
+    ],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
+  },
+  {
+    "eval_id": "EVAL-COMP-004",
+    "user_query": "Generate sprint retrospective summary with action items and calculate team DORA throughput metrics for the past sprint release.",
+    "domain_category": "multi_agent",
+    "expected_domains": ["retro", "dora"],
+    "expected_tool_calls": [
+      { "tool_name": "generate_sprint_retro" },
+      { "tool_name": "calculate_dora_metrics" }
+    ],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": { "min_domain_precision": 1.0 }
   }
 ]

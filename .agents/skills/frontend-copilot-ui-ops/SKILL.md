@@ -101,12 +101,12 @@ All components MUST utilize the central CSS design tokens rather than hardcoded 
 ## ⚡ Quick Actions Workflow Catalog (`agentPrompts.js`)
 
 All workflows in `frontend/src/constants/agentPrompts.js` MUST contain:
-1. `id`: Unique identifier (e.g. `dora-metrics`, `delivery-bottlenecks`, `sbi-feedback`).
+1. `id`: Unique identifier (e.g. `team-health-audit`, `dora-metrics`, `sbi-feedback`).
 2. `title`: Outcome-oriented title.
-3. `category`: Normalized category (`delivery`, `people`, `planning`, `governance`).
+3. `category`: Normalized category (`multi-agent`, `delivery`, `people`, `planning`, `governance`).
 4. `description`: Brief 1-line description of the outcome.
 5. `prompt`: Exact initial prompt sent to the LLM agent.
-6. `keywords`: Array of search keywords for rich intent matching (e.g. `["dora", "lead time", "deployment frequency"]`).
+6. `keywords`: Array of search keywords for rich intent matching (e.g. `["multi-agent", "dora", "health", "audit"]`).
 7. `scenarios`: Array of 2–3 specific scenarios/examples for progressive disclosure (`⋯` hints).
 
 ---

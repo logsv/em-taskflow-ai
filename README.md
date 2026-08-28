@@ -9,7 +9,7 @@
 [![Ollama](https://img.shields.io/badge/LLM-100%25%20Local%20(Ollama)-orange.svg)](https://ollama.ai)
 [![Documentation](https://img.shields.io/badge/Docs-VitePress-brightgreen.svg)](https://logsv.github.io/em-taskflow-ai/)
 [![API Explorer](https://img.shields.io/badge/API%20Docs-Swagger%20OpenAPI%203.1-38bdf8.svg)](http://localhost:4000/api/docs)
-[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-319%20passed-success.svg)](backend)
+[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-342%20passed-success.svg)](backend)
 [![Python AI Tests](https://img.shields.io/badge/Python%20AI%20Tests-45%20passed-success.svg)](services/python-ai-service)
 [![Docker Compose](https://img.shields.io/badge/Deployment-Docker%20Compose-2496ED.svg)](docker-compose.yml)
 
@@ -19,6 +19,7 @@
 - [📖 Documentation Portal & Swagger Explorer](#-documentation-portal--swagger-explorer)
 - [💡 Why EM TaskFlow AI?](#-why-em-taskflow-ai)
 - [🎯 What is EM TaskFlow AI?](#-what-is-em-taskflow-ai)
+- [⚡ 5-Tier Dispatch & Multi-Agent Architecture](#-5-tier-dispatch--multi-agent-architecture)
 - [📋 Autonomous EM Action Hub & Audit Cockpit](#-autonomous-em-action-hub--audit-cockpit)
 - [⚙️ Standalone Admin Portal & Service Hub](#️-standalone-admin-portal--service-hub)
 - [🏗️ High-Level System Architecture (HLD)](#️-high-level-system-architecture-hld)
@@ -50,10 +51,14 @@ Modern enterprise productivity tools often require sending sensitive internal wo
 1. **🔒 100% Privacy & Zero Cloud Dependency**: Operates entirely locally via Ollama (`hermes3:8b`, `mistral`, `nomic-embed-text`). No external cloud API keys required, ensuring zero data leaves your local network.
 2. **🗄️ Database Per-Service Isolation**: Strict schema separation into dedicated databases (`taskflow_backend`, `taskflow_ai`, `temporal`, `langfuse_db`) ensuring zero noise, strict domain boundaries, and high security.
 3. **🔍 Production RAG Engine (HyDE + RRF + Redis Cache)**: Features Dense Cosine Vector Search (HNSW) + Sparse BM25 Keyword Search (`pg_trgm`) merged via Reciprocal Rank Fusion (RRF), enriched by HyDE query expansion and Redis semantic caching (0.95 similarity threshold).
-4. **🎯 Bounded Tool Scoping for High SLM Accuracy**: Small Language Models (3B-7B parameters) often degrade when presented with multiple tools simultaneously. EM TaskFlow AI enforces a **single-tool restriction per sub-agent**, boosting execution accuracy past **95%**.
-5. **⚡ Fast-Path Pre-Classification (<300ms)**: Conversational, coding, mathematical, and attachment queries bypass agent routing overhead entirely via an ultra-fast pre-classifier, delivering near-instant responses.
-6. **🔌 Multi-Source Model Context Protocol (MCP) Ecosystem**: Native integration with Jira OAuth 2.0 PKCE, Notion REST, GitHub PAT/OAuth, Slack Web API, and Google Calendar.
-7. **🎨 Low-Distraction EM Copilot UI**: Follows *"Workflows are the product; agents are the implementation"* with Quick Actions (`⌘K`), starter workflow grid, Decision Action Pills (`[📋 Action Hub]`), quiet sync telemetry, and dedicated Dev Settings Modal.
+4. **🎯 5-Tier Dispatch Model & Single-Tool Bounding**:
+   - **Tier 1 (Fast-Path <300ms)**: Conversational, coding, and math queries bypass routing entirely.
+   - **Tier 2 / 3 (Dedicated RAG)**: Direct vector retrieval with structured zero-hit onboarding guides.
+   - **Tier 4 (Direct Single-Domain Dispatch ≈1.5s)**: Direct execution of specialized domain tools (`sbi`, `people`, `dora`, `sprint`, `okr`, `sop`, etc.) avoiding supervisor handoff latency.
+   - **Tier 5 (Parallel Multi-Domain Fan-Out ≈3.5s)**: Concurrent multi-agent execution (`Promise.all`) aggregating DORA, Delivery, SBI, and OKRs into a unified executive scorecard.
+   - **Single-Tool Scoping**: Limits sub-agents to 1 tool definition at a time, boosting SLM accuracy past **95%**.
+5. **🔌 Multi-Source Model Context Protocol (MCP) Ecosystem**: Native integration with Jira OAuth 2.0 PKCE, Notion REST, GitHub PAT/OAuth, Slack Web API, and Google Calendar.
+6. **🎨 Low-Distraction EM Copilot UI**: Follows *"Workflows are the product; agents are the implementation"* with Quick Actions (`⌘K`), Multi-Agent workflow cards, Decision Action Pills (`[📋 Action Hub]`), and quiet sync telemetry.
 
 ---
 
@@ -61,8 +66,8 @@ Modern enterprise productivity tools often require sending sensitive internal wo
 
 **EM TaskFlow AI** integrates multi-agent AI orchestration, local vector search, multi-format document ingestion (PDF, CSV, Images, Text), and developer workflow tools into a single cohesive cockpit.
 
-- **Frontend**: Responsive React UI built with Vite, `@assistant-ui/react`, restrained enterprise dark design tokens (`index.css`), Quick Actions palette (`⌘K`), multi-session management with sidebar pagination and context menus, an Autonomous EM Action Hub (`/actions`), and a Standalone Admin Portal (`/admin`).
-- **Backend Services**: Node.js microservices platform powered by LangChain, `@langchain/langgraph-supervisor`, Redis semantic cache, Temporal 4-hour background cron engine, and Ollama (`hermes3:8b`).
+- **Frontend**: Responsive React UI built with Vite, `@assistant-ui/react`, restrained enterprise dark design tokens (`index.css`), Quick Actions palette (`⌘K`) with Multi-Agent composite workflows, multi-session management with sidebar pagination, an Autonomous EM Action Hub (`/actions`), and a Standalone Admin Portal (`/admin`).
+- **Backend Services**: Node.js microservices platform powered by LangChain, 5-Tier routing engine, `@langchain/langgraph-supervisor`, Redis semantic cache, Temporal 4-hour background cron engine, and Ollama (`hermes3:8b`).
 - **Python AI RAG Service**: Dedicated Python gRPC/REST service managing parent-child chunking, Cross-Encoder reranking, and `taskflow_ai` vector persistence.
 - **Multi-Agent Orchestrator**: LangGraph supervisor routing queries across specialized micro-agents with bounded execution scopes.
 

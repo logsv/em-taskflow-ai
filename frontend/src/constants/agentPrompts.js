@@ -5,6 +5,7 @@
 
 export const WORKFLOW_CATEGORIES = [
   { id: "all", label: "All" },
+  { id: "multi-agent", label: "Multi-Agent" },
   { id: "delivery", label: "Delivery" },
   { id: "people", label: "People" },
   { id: "planning", label: "Planning" },
@@ -14,10 +15,56 @@ export const WORKFLOW_CATEGORIES = [
 // Backwards compatibility alias
 export const AGENT_CATEGORIES = WORKFLOW_CATEGORIES;
 
-export const FEATURED_WORKFLOW_IDS = ["dora", "delivery", "sbi", "sprint"];
+export const FEATURED_WORKFLOW_IDS = ["team-health-audit", "dora", "delivery", "sbi", "people", "sprint"];
 export const FEATURED_AGENT_IDS = FEATURED_WORKFLOW_IDS;
 
 export const ALL_WORKFLOWS = [
+  // 0. Multi-Agent Composite Workflows (Tier 5 Parallel Fan-Out/Fan-In)
+  {
+    id: "team-health-audit",
+    category: "multi-agent",
+    icon: "⚡",
+    title: "Full Team Health Audit",
+    domain: "Multi-Agent",
+    shortDescription: "Parallel audit of DORA metrics, delivery bottlenecks & SBI coaching",
+    text: "Evaluate overall engineering health: calculate team DORA metrics, check active delivery bottlenecks, and draft an SBI coaching feedback for the on-call lead",
+    keywords: ["multi-agent", "composite", "health", "audit", "dora", "delivery", "sbi", "bottleneck", "coaching", "overview", "all-in-one"],
+    hints: [
+      "Evaluate team health: calculate DORA metrics, check delivery bottlenecks, and draft an SBI coaching feedback",
+      "Run full engineering health scorecard across DORA deployment frequency, active PR stalls, and 1-on-1 career progression",
+      "Audit sprint performance, inspect Jira blockers, and formulate an SBI growth plan for the team lead"
+    ]
+  },
+  {
+    id: "sprint-okr-alignment",
+    category: "multi-agent",
+    icon: "🎯",
+    title: "Sprint & OKR Alignment",
+    domain: "Multi-Agent",
+    shortDescription: "Cross-domain review of sprint capacity, OKR pacing & roadmap drift",
+    text: "Evaluate active sprint capacity velocity, quarterly OKR pacing scores, and roadmap milestone drift",
+    keywords: ["multi-agent", "sprint", "okr", "roadmap", "pacing", "capacity", "milestone", "drift", "planning"],
+    hints: [
+      "Check active sprint commitment against Q4 engineering OKR pacing scores and epic delivery timelines",
+      "Analyze sprint capacity velocity stability and cross-team roadmap dependencies in Jira",
+      "Evaluate quarterly OKRs and forecast sprint commitment points for the next milestone"
+    ]
+  },
+  {
+    id: "promotion-governance",
+    category: "multi-agent",
+    icon: "🛡️",
+    title: "Promotion & SOP Audit",
+    domain: "Multi-Agent",
+    shortDescription: "Evaluate engineer promotion readiness and audit against SOP guidelines",
+    text: "Review 1-on-1 career progression notes and promotion readiness for our senior developer, and audit draft feedback against engineering SOP",
+    keywords: ["multi-agent", "people", "sop", "critic", "promotion", "readiness", "governance", "career", "audit"],
+    hints: [
+      "Assess engineer promotion readiness across 12 dimensions and audit performance dossier against SOP standards",
+      "Review 1:1 meeting career notes and check compliance with engineering career ladder guidelines",
+      "Evaluate senior dev promotion packet and audit for objective tone and zero vanity metrics"
+    ]
+  },
   // 1. DORA Metrics Workflow
   {
     id: "dora",

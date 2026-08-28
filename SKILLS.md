@@ -49,5 +49,5 @@ This document provides a comprehensive sitemap and directory of operational skil
 When performing complex development or operational tasks:
 1. Locate the relevant skill from the categorized directory above.
 2. Read the skill's `SKILL.md` using `view_file` before executing changes.
-3. Follow the empirical verification commands listed in the skill to ensure zero regressions across all **319 backend unit test specs** and **45 Python AI test specs**.
+3. Follow the empirical verification commands listed in the skill to ensure zero regressions across all **342 backend unit test specs** and **45 Python AI test specs**.
 
