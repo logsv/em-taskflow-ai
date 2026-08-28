@@ -291,51 +291,52 @@ export async function reconcileAndPersistTeamActivity(params = {}) {
     }
   }
 
-  // In test suites only, supply sample test fixtures if no external MCP tokens are provided
-  const isTestEnv = process.env.NODE_ENV === 'test' || process.argv.some(a => a.includes('jasmine'));
-  if (mergedMap.size === 0 && isTestEnv) {
-    mergedMap.set('alex', {
-      id: 'mem_alex',
-      displayName: 'Alex Williams',
-      email: 'alex.williams@company.internal',
-      githubUsername: 'alex-dev99',
-      jiraEmail: 'alex.williams@company.internal',
-      gcalEmail: 'alex.williams@company.internal',
-      notionName: 'Alex Williams',
-      aliases: ['Alex', 'alexw', 'eng_alex', 'alex-dev99'],
-      currentLevel: 'L4_MID',
-      targetLevel: 'L5_SENIOR',
-      track: 'INDIVIDUAL_CONTRIBUTOR',
-      tenureMonths: 18,
-    });
-    mergedMap.set('sarah', {
-      id: 'mem_sarah',
-      displayName: 'Sarah Chen',
-      email: 'sarah.chen@company.internal',
-      githubUsername: 'sarah-c',
-      jiraEmail: 'sarah.chen@company.internal',
-      gcalEmail: 'sarah.chen@company.internal',
-      notionName: 'Sarah Chen',
-      aliases: ['Sarah', 'sarahc', 'eng_sarah', 'sarah-c'],
-      currentLevel: 'L5_SENIOR',
-      targetLevel: 'M1_EM',
-      track: 'ENGINEERING_MANAGEMENT',
-      tenureMonths: 24,
-    });
-    mergedMap.set('taylor', {
-      id: 'mem_taylor',
-      displayName: 'Taylor Morgan',
-      email: 'taylor.morgan@company.internal',
-      githubUsername: 'taylor-dev',
-      jiraEmail: 'taylor.morgan@company.internal',
-      gcalEmail: 'taylor.morgan@company.internal',
-      notionName: 'Taylor Morgan',
-      aliases: ['Taylor', 'taylorm', 'eng_taylor', 'taylor-dev'],
-      currentLevel: 'L6_STAFF',
-      targetLevel: 'L7_PRINCIPAL',
-      track: 'INDIVIDUAL_CONTRIBUTOR',
-      tenureMonths: 36,
-    });
+  // Ensure Primary Administrator & Lead Profile is included if configured
+  const isDummyEmail = (email) => {
+    if (!email || typeof email !== 'string') return true;
+    const lower = email.toLowerCase().trim();
+    return (
+      lower.includes('placeholder') ||
+      lower.includes('testcompany.com') ||
+      lower.includes('example.com') ||
+      lower === 'primary' ||
+      lower === 'lead@testcompany.com' ||
+      lower === 'alex@company.com' ||
+      lower.endsWith('@company.internal')
+    );
+  };
+
+  const isDummyOwner = (owner) => {
+    if (!owner || typeof owner !== 'string') return true;
+    const lower = owner.toLowerCase().trim();
+    return lower.includes('placeholder') || lower === 'owner' || lower === 'mock' || lower === 'org' || lower === 'myorg';
+  };
+
+  const rawGcal = process.env.GOOGLE_CALENDAR_ID || process.env.PRIMARY_ADMIN_EMAIL || process.env.JIRA_USER_EMAIL;
+  const rawGh = process.env.GITHUB_OWNER;
+  const primaryGcal = (rawGcal && !isDummyEmail(rawGcal)) ? rawGcal : null;
+  const primaryGh = (rawGh && !isDummyOwner(rawGh)) ? rawGh : null;
+  const primaryName = process.env.PRIMARY_ADMIN_NAME || process.env.EM_LEAD_NAME || (primaryGcal ? primaryGcal.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : (primaryGh || ''));
+
+  if (primaryGcal || primaryGh) {
+    const primaryKey = (primaryGcal || primaryGh).toLowerCase().trim();
+    if (!mergedMap.has(primaryKey)) {
+      mergedMap.set(primaryKey, {
+        id: `mem_${primaryKey.replace(/[@.]/g, '_')}`,
+        displayName: primaryName,
+        email: primaryGcal || '',
+        githubUsername: primaryGh || '',
+        jiraEmail: (process.env.JIRA_USER_EMAIL && !isDummyEmail(process.env.JIRA_USER_EMAIL)) ? process.env.JIRA_USER_EMAIL : (primaryGcal || ''),
+        jiraAccountId: process.env.JIRA_ACCOUNT_ID || '',
+        gcalEmail: primaryGcal || '',
+        notionName: primaryName,
+        currentLevel: 'M1_EM',
+        targetLevel: 'M2_DIR',
+        track: 'ENGINEERING_MANAGEMENT',
+        tenureMonths: 24,
+        aliases: [primaryName, primaryName.split(' ')[0], primaryGh, primaryGh ? `@${primaryGh}` : null, primaryGcal].filter(Boolean),
+      });
+    }
   }
 
   let persistedCount = 0;
@@ -470,24 +471,48 @@ export async function harvestDoraAndDeliveryActivity(params = {}) {
     }
 
     if (openPrs.length === 0) {
-      openPrs = [
-        { id: '#42', title: 'feat: add temporal autonomous audit workflow', author: 'alex-dev', waitHours: 38.5, isStalled: true, url: 'https://github.com/company/repo/pull/42' },
-        { id: '#45', title: 'fix: database per-service connection pool isolation', author: 'sarah-c', waitHours: 12.0, isStalled: false, url: 'https://github.com/company/repo/pull/45' },
-        { id: '#47', title: 'chore: update DORA metrics calculation formula', author: 'taylor-dev', waitHours: 4.5, isStalled: false, url: 'https://github.com/company/repo/pull/47' },
-      ];
-      stalledPrsCount = 1;
-      avgWaitHours = 18.3;
+      const cachedIssues = databaseService.getGithubIssues ? await databaseService.getGithubIssues({ state: 'open' }).catch(() => []) : [];
+      const now = Date.now();
+      let totalWait = 0;
+      openPrs = cachedIssues
+        .filter((i) => i.is_pull_request || (i.html_url && i.html_url.includes('/pull/')))
+        .map((pr) => {
+          const created = pr.created_at ? new Date(pr.created_at).getTime() : now;
+          const waitHours = Number(Math.max(1, (now - created) / 3600000).toFixed(1));
+          totalWait += waitHours;
+          const isStalled = waitHours > 24.0;
+          if (isStalled) stalledPrsCount++;
+          return {
+            id: `#${pr.number || pr.id || ''}`,
+            title: pr.title,
+            author: pr.user || pr.author || 'engineer',
+            waitHours,
+            isStalled,
+            url: pr.html_url || null,
+          };
+        });
+      if (openPrs.length > 0) avgWaitHours = Number((totalWait / openPrs.length).toFixed(1));
     }
 
     const doraSnapshotsList = databaseService.getDoraSnapshots ? await databaseService.getDoraSnapshots('main_team').catch(() => []) : [];
     const doraSnapshots = Array.isArray(doraSnapshotsList) ? doraSnapshotsList[0] : doraSnapshotsList;
     const doraSummary = {
-      tier: 'Elite',
-      deploymentFrequency: doraSnapshots?.deploymentFrequency ? Number(doraSnapshots.deploymentFrequency) : 2.4,
-      leadTimeHours: doraSnapshots?.leadTimeHours ? Number(doraSnapshots.leadTimeHours) : 18.5,
-      changeFailureRate: doraSnapshots?.changeFailureRate ? Number(doraSnapshots.changeFailureRate) : 4.2,
-      mttrHours: doraSnapshots?.mttrHours ? Number(doraSnapshots.mttrHours) : 0.8,
+      tier: doraSnapshots?.tier || 'Elite',
+      deploymentFrequency: doraSnapshots?.deploymentFrequency ? Number(doraSnapshots.deploymentFrequency) : 0,
+      leadTimeHours: doraSnapshots?.leadTimeHours ? Number(doraSnapshots.leadTimeHours) : 0,
+      changeFailureRate: doraSnapshots?.changeFailureRate ? Number(doraSnapshots.changeFailureRate) : 0,
+      mttrHours: doraSnapshots?.mttrHours ? Number(doraSnapshots.mttrHours) : 0,
     };
+
+    const sprintAnalyticsList = databaseService.getSprintAnalytics ? await databaseService.getSprintAnalytics().catch(() => []) : [];
+    const blockedTickets = Array.isArray(sprintAnalyticsList) && sprintAnalyticsList[0]?.blocked_tickets
+      ? sprintAnalyticsList[0].blocked_tickets.map((t) => ({
+          key: t.key,
+          summary: t.summary || 'Blocked ticket',
+          assignee: t.assignee || 'unassigned',
+          daysBlocked: t.days_blocked || t.daysBlocked || 1,
+        }))
+      : [];
 
     return {
       source: 'dora_and_delivery',
@@ -496,21 +521,17 @@ export async function harvestDoraAndDeliveryActivity(params = {}) {
       avgPrReviewWaitHours: avgWaitHours,
       openPrs,
       doraSummary,
-      blockedTickets: [
-        { key: 'ENG-108', summary: 'Temporal durable retry policy hardening', assignee: 'alex-dev', daysBlocked: 3 },
-      ],
+      blockedTickets,
     };
   } catch (err) {
     warn({ module: 'temporalActivities', action: 'harvestDoraAndDeliveryActivity', err }, 'DORA/Delivery harvest fallback');
     return {
       source: 'dora_and_delivery',
-      openPrsCount: 3,
-      stalledPrsCount: 1,
-      avgPrReviewWaitHours: 18.3,
-      openPrs: [
-        { id: '#42', title: 'feat: add temporal autonomous audit workflow', author: 'alex-dev', waitHours: 38.5, isStalled: true, url: 'https://github.com/company/repo/pull/42' },
-      ],
-      doraSummary: { tier: 'Elite', deploymentFrequency: 2.4, leadTimeHours: 18.5, changeFailureRate: 4.2, mttrHours: 0.8 },
+      openPrsCount: 0,
+      stalledPrsCount: 0,
+      avgPrReviewWaitHours: 0,
+      openPrs: [],
+      doraSummary: { tier: 'Unknown', deploymentFrequency: 0, leadTimeHours: 0, changeFailureRate: 0, mttrHours: 0 },
       blockedTickets: [],
     };
   }
@@ -523,24 +544,19 @@ export async function harvestPeopleAndCadenceActivity(params = {}) {
   try {
     const teamMembers = databaseService.getTeamMembers ? await databaseService.getTeamMembers().catch(() => []) : [];
     const overdue1on1s = [];
-    const now = Date.now();
 
-    // Check cadence (simulate/evaluate based on last recorded sync or member profiles)
-    const membersToCheck = teamMembers.length > 0 ? teamMembers : [
-      { id: 'mem_alex', displayName: 'Alex Williams', email: 'alex.williams@company.internal', currentLevel: 'L4_MID', targetLevel: 'L5_SENIOR', tenureMonths: 18 },
-      { id: 'mem_sarah', displayName: 'Sarah Chen', email: 'sarah.chen@company.internal', currentLevel: 'L5_SENIOR', targetLevel: 'M1_EM', tenureMonths: 24 },
-      { id: 'mem_taylor', displayName: 'Taylor Morgan', email: 'taylor.morgan@company.internal', currentLevel: 'L6_STAFF', targetLevel: 'L7_PRINCIPAL', tenureMonths: 36 },
-    ];
-
-    for (const m of membersToCheck) {
-      if (m.displayName && (m.displayName.includes('Sarah') || m.tenureMonths > 20)) {
-        overdue1on1s.push({
-          memberId: m.id,
-          name: m.displayName,
-          email: m.email,
-          daysSinceLast1on1: 16,
-          status: 'OVERDUE',
-        });
+    for (const m of teamMembers) {
+      if (m.tenureMonths > 20 && m.last1on1Date) {
+        const days = Math.round((Date.now() - new Date(m.last1on1Date).getTime()) / 86400000);
+        if (days > 14) {
+          overdue1on1s.push({
+            memberId: m.id,
+            name: m.displayName,
+            email: m.email,
+            daysSinceLast1on1: days,
+            status: 'OVERDUE',
+          });
+        }
       }
     }
 
@@ -549,19 +565,17 @@ export async function harvestPeopleAndCadenceActivity(params = {}) {
       cadenceHealth: overdue1on1s.length === 0 ? '100%' : '85%',
       overdue1on1sCount: overdue1on1s.length,
       overdue1on1s,
-      totalTeamMembers: membersToCheck.length,
-      growthOpportunities: [
-        { name: 'Alex Williams', currentLevel: 'L4_MID', targetLevel: 'L5_SENIOR', recommendation: 'Schedule promotion readiness review (tenure >18m)' },
-      ],
+      totalTeamMembers: teamMembers.length,
+      growthOpportunities: [],
     };
   } catch (err) {
     warn({ module: 'temporalActivities', action: 'harvestPeopleAndCadenceActivity', err }, 'People harvest fallback');
     return {
       source: 'people_and_cadence',
-      cadenceHealth: '85%',
-      overdue1on1sCount: 1,
-      overdue1on1s: [{ name: 'Sarah Chen', daysSinceLast1on1: 16 }],
-      totalTeamMembers: 3,
+      cadenceHealth: '100%',
+      overdue1on1sCount: 0,
+      overdue1on1s: [],
+      totalTeamMembers: 0,
       growthOpportunities: [],
     };
   }
@@ -572,21 +586,15 @@ export async function harvestPeopleAndCadenceActivity(params = {}) {
  */
 export async function harvestSprintAndOkrActivity(params = {}) {
   try {
-    const sprintAnalytics = databaseService.getSprintAnalytics ? await databaseService.getSprintAnalytics('current_sprint').catch(() => null) : null;
-    const totalPoints = sprintAnalytics?.totalPoints ?? 48;
-    const completedPoints = sprintAnalytics?.completedPoints ?? 38;
+    const sprintAnalyticsList = databaseService.getSprintAnalytics ? await databaseService.getSprintAnalytics().catch(() => []) : [];
+    const sprintAnalytics = Array.isArray(sprintAnalyticsList) ? (sprintAnalyticsList[0] || null) : sprintAnalyticsList;
+    const totalPoints = sprintAnalytics?.totalPoints ?? (sprintAnalytics?.total_points ?? 0);
+    const completedPoints = sprintAnalytics?.completedPoints ?? (sprintAnalytics?.completed_points ?? 0);
     const wipViolations = sprintAnalytics?.wipViolations ?? 0;
-    const sprintPacingPct = Math.round((completedPoints / Math.max(1, totalPoints)) * 100);
+    const sprintPacingPct = totalPoints > 0 ? Math.round((completedPoints / totalPoints) * 100) : 100;
 
-    const okrs = databaseService.getOkrsByQuarter 
-      ? await databaseService.getOkrsByQuarter('Q3-2026').catch(() => []) 
-      : (databaseService.getOkrRecords ? await databaseService.getOkrRecords('Q3-2026').catch(() => []) : []);
-    const okrsList = Array.isArray(okrs) && okrs.length > 0 ? okrs : [
-      { id: 1, objective: 'Platform Resilience & 99.9% Uptime', keyResult: 'Zero database isolation leaks', status: 'ON_TRACK' },
-      { id: 2, objective: 'DORA Velocity Excellence', keyResult: 'PR review turnaround <12 hours', status: 'AT_RISK' },
-      { id: 3, objective: '100% Local SLM Zero Cloud Cost', keyResult: 'Ollama hermes3:8b single pass RAG', status: 'ON_TRACK' },
-    ];
-
+    const okrs = databaseService.getOkrRecords ? await databaseService.getOkrRecords().catch(() => []) : [];
+    const okrsList = Array.isArray(okrs) ? okrs : [];
     const atRiskOkrs = okrsList.filter((o) => o.status === 'AT_RISK' || o.status === 'OFF_TRACK');
 
     return {
@@ -603,13 +611,13 @@ export async function harvestSprintAndOkrActivity(params = {}) {
     warn({ module: 'temporalActivities', action: 'harvestSprintAndOkrActivity', err }, 'Sprint/OKR harvest fallback');
     return {
       source: 'sprint_and_okr',
-      totalPoints: 48,
-      completedPoints: 38,
-      sprintPacingPct: 79,
+      totalPoints: 0,
+      completedPoints: 0,
+      sprintPacingPct: 100,
       wipViolations: 0,
-      totalOkrs: 3,
-      onTrackOkrs: 2,
-      atRiskOkrs: [{ objective: 'DORA Velocity Excellence', keyResult: 'PR turnaround <12h', status: 'AT_RISK' }],
+      totalOkrs: 0,
+      onTrackOkrs: 0,
+      atRiskOkrs: [],
     };
   }
 }
@@ -621,7 +629,7 @@ export async function harvestSopAndGovernanceActivity(params = {}) {
   try {
     const checks = [
       { id: 'ADR-008', title: 'Database Per-Service Isolation', status: 'PASS', details: 'All 4 services isolated (taskflow_backend, taskflow_ai, temporal, langfuse_db)' },
-      { id: 'SOP-01', title: 'PR Code Review Turnaround SLA (<24h)', status: params.stalledPrsCount > 0 ? 'WARN' : 'PASS', details: 'PR #42 review wait time > 24 hours' },
+      { id: 'SOP-01', title: 'PR Code Review Turnaround SLA (<24h)', status: params.stalledPrsCount > 0 ? 'WARN' : 'PASS', details: params.stalledPrsCount > 0 ? `${params.stalledPrsCount} stalled PR(s) exceeding 24h SLA` : 'All open PRs within review SLA' },
       { id: 'SOP-04', title: 'Zero Cloud Key & Secret Masking', status: 'PASS', details: '100% Ollama local inference; secrets masked in API & UI' },
       { id: 'SOP-09', title: 'Zero-Downtime Telemetry Non-Blocking', status: 'PASS', details: 'Langfuse tracing operates in async background' },
     ];
@@ -638,7 +646,7 @@ export async function harvestSopAndGovernanceActivity(params = {}) {
   } catch (err) {
     return {
       source: 'sop_and_governance',
-      complianceScore: 90,
+      complianceScore: 100,
       checks: [],
       activeViolations: [],
     };
@@ -658,68 +666,83 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
   const actionItems = [];
   let score = 100;
 
-  // 1. Delivery & PR Bottlenecks -> Actions
+  // 1. Delivery & PR Bottlenecks -> Actions (Deduplicated with Deterministic ID)
   if (Array.isArray(delivery.openPrs)) {
     for (const pr of delivery.openPrs) {
       if (pr.isStalled || pr.waitHours > 24.0) {
         score -= pr.waitHours > 36.0 ? 10 : 5;
+        const rawPrId = String(pr.number || pr.id || 'unknown').replace(/^#/, '').trim();
+        const prCleanId = rawPrId.replace(/[^a-zA-Z0-9_-]/g, '_');
         actionItems.push({
-          id: `act_pr_${(pr.id || '').replace('#', '')}_${Date.now().toString(36)}`,
-          title: `Stalled PR ${pr.id}: ${pr.title}`,
+          id: `act_pr_${prCleanId}`,
+          title: `Stalled PR #${prCleanId}: ${pr.title || 'Untitled PR'}`.trim(),
           description: `PR has been waiting for review for ${pr.waitHours} hours (SLA is <24 hours).`,
           category: 'DELIVERY',
           severity: pr.waitHours > 36.0 ? 'CRITICAL' : 'WARNING',
           suggestedAction: `Ping code reviewers on Slack or reassign review to unblock merge queue.`,
-          assigneeName: pr.author,
-          externalReference: { source: 'github', id: pr.id, url: pr.url },
+          assigneeName: pr.author || 'unassigned',
+          externalReference: { source: 'github', id: `#${prCleanId}`, url: pr.url || null },
         });
       }
     }
   }
 
-  // 2. Blocked Jira Tickets -> Actions
+  // 2. Blocked Jira Tickets -> Actions (Deduplicated with Deterministic ID)
   if (Array.isArray(delivery.blockedTickets)) {
     for (const t of delivery.blockedTickets) {
+      if (!t.key) continue;
       score -= 5;
+      const keyClean = String(t.key).trim().replace(/[^a-zA-Z0-9_-]/g, '_');
       actionItems.push({
-        id: `act_jira_${t.key}_${Date.now().toString(36)}`,
-        title: `Blocked Jira Ticket ${t.key}: ${t.summary}`,
-        description: `Ticket has been blocked for ${t.daysBlocked} days.`,
+        id: `act_jira_${keyClean}`,
+        title: `Blocked Jira Ticket ${t.key}: ${t.summary || 'Blocked Issue'}`,
+        description: `Ticket has been blocked for ${t.daysBlocked || 1} days.`,
         category: 'DELIVERY',
         severity: 'WARNING',
         suggestedAction: `Triage impediment in daily standup and review dependency chain.`,
-        assigneeName: t.assignee,
+        assigneeName: t.assignee || 'unassigned',
         externalReference: { source: 'jira', id: t.key },
       });
     }
   }
 
-  // 3. Overdue 1-on-1s -> Actions
+  // 3. Overdue 1-on-1s -> Actions (Deduplicated with Deterministic ID)
   if (Array.isArray(people.overdue1on1s)) {
     for (const o of people.overdue1on1s) {
       score -= 5;
+      const rawMember = (o.memberId ? o.memberId.replace(/^mem_/, '') : o.email ? o.email.split('@')[0] : o.name || 'member')
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, '_');
       actionItems.push({
-        id: `act_1on1_${o.memberId || o.name.replace(/\s+/g, '_')}_${Date.now().toString(36)}`,
-        title: `Overdue 1-on-1 Sync: ${o.name}`,
-        description: `Last 1-on-1 was ${o.daysSinceLast1on1} days ago (recommended cadence is <=14 days).`,
+        id: `act_1on1_${rawMember}`,
+        title: `Overdue 1-on-1 Sync: ${o.name || 'Team Member'}`,
+        description: `Last 1-on-1 was ${o.daysSinceLast1on1 || 15} days ago (recommended cadence is <=14 days).`,
         category: 'PEOPLE',
-        severity: o.daysSinceLast1on1 > 20 ? 'CRITICAL' : 'WARNING',
+        severity: (o.daysSinceLast1on1 || 15) > 20 ? 'CRITICAL' : 'WARNING',
         suggestedAction: `Schedule 30-minute 1-on-1 check-in via Google Calendar.`,
-        assigneeName: o.name,
-        assigneeEmail: o.email,
+        assigneeName: o.name || 'Team Member',
+        assigneeEmail: o.email || null,
         externalReference: { source: 'gcal', type: '1on1_meeting' },
       });
     }
   }
 
-  // 4. At-Risk OKRs -> Actions
+  // 4. At-Risk OKRs -> Actions (Deduplicated with Deterministic ID)
   if (Array.isArray(sprintOkr.atRiskOkrs)) {
     for (const okr of sprintOkr.atRiskOkrs) {
       score -= 5;
+      const rawOkr = (okr.keyResult || okr.objective || okr.id || 'okr')
+        .toString()
+        .toLowerCase()
+        .replace(/^kr\d*[:\s_-]*/i, '')
+        .trim()
+        .slice(0, 30)
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
       actionItems.push({
-        id: `act_okr_${(okr.id || okr.keyResult).toString().slice(0, 10)}_${Date.now().toString(36)}`,
-        title: `At-Risk Key Result: ${okr.keyResult || okr.objective}`,
-        description: `Objective '${okr.objective}' is pacing behind quarterly target.`,
+        id: `act_okr_${rawOkr || okr.id || 'target'}`,
+        title: `At-Risk Key Result: ${okr.keyResult || okr.objective || 'OKR Target'}`,
+        description: `Objective '${okr.objective || 'Quarterly OKR'}' is pacing behind quarterly target.`,
         category: 'OKR_VELOCITY',
         severity: 'WARNING',
         suggestedAction: `Review sprint deliverables alignment with team in next sprint planning.`,

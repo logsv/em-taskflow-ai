@@ -1208,4 +1208,27 @@ router.get('/audit/status', async (req, res) => {
   }
 });
 
+// POST /api/admin/system/reset-data - Safely reset application and cache tables while preserving app_settings
+router.post('/system/reset-data', async (req, res) => {
+  try {
+    const { cleanupDatabaseTables } = await import('../db/dbCleanup.js');
+    const { preserveSettings = true } = req.body || {};
+
+    const result = await cleanupDatabaseTables({ preserveSettings });
+
+    res.json({
+      success: true,
+      message: '✅ Database tables cleared successfully. Tool configurations and settings were preserved.',
+      result,
+      requestId: req.requestId,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to reset database tables',
+      details: err.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
 export default router;

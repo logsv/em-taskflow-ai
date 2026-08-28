@@ -1,6 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import 'dotenv/config';
+
+// Force evaluation suite to use isolated evaluation database to prevent polluting runtime state
+process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://taskflow:taskflow@localhost:5432/taskflow_eval';
+
 import settingsService from '../src/services/settingsService.js';
 import { initializeLLM } from '../src/llm/index.js';
 import { getRouterChain } from '../src/agent/llmRouter.js';

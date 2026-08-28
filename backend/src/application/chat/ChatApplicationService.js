@@ -293,33 +293,117 @@ function createMessageRepoAdapter(dbService) {
 }
 
 /**
+ * Strips trailing JSON metadata, notice callouts, and debug provenance from assistant text.
+ */
+export function sanitizeMessagePayload(content) {
+  if (typeof content !== 'string') return '';
+  return content
+    .replace(/\s*\{[\s\r\n]*"(?:selectedPath|intent_type|domains|routingPlan|mcpReady)"[\s\S]*\}\s*$/g, '')
+    .replace(/\s*\{[\s\r\n]*"(?:meta|reasons|successGates|policy)"[\s\S]*\}\s*$/g, '')
+    .replace(/^>\s*(?:✅|⚠️|💡|ℹ️|\[!NOTE\]|\[!TIP\]|\[!IMPORTANT\])\s*\*\*Notice\*\*:[^\n]*\n?/gmi, '')
+    .trim();
+}
+
+/**
+ * Robustly collapses all <details> accordions regardless of internal HTML formatting variations.
+ */
+export function collapseDetailsAccordions(text) {
+  if (typeof text !== 'string') return '';
+  return text.replace(/<details>[\s\S]*?<summary>([\s\S]*?)<\/summary>[\s\S]*?<\/details>/gi, (_match, summaryContent) => {
+    const cleanTitle = summaryContent.replace(/<[^>]+>/g, '').replace(/[*_`#]/g, '').trim();
+    return `[Collapsed Section: ${cleanTitle || 'Details'}]`;
+  });
+}
+
+/**
+ * Converts bulky markdown tables into concise key-value lines.
+ */
+export function condenseMarkdownTables(text) {
+  if (typeof text !== 'string') return '';
+  const tableRegex = /(\|[^\n]+\|\n\|[\s:|-]+\|\n(?:\|[^\n]+\|\n?)+)/g;
+  return text.replace(tableRegex, (fullTable) => {
+    const lines = fullTable.trim().split('\n').filter(Boolean);
+    if (lines.length < 3) return fullTable;
+    
+    const headers = lines[0].split('|').map(s => s.trim()).filter(Boolean);
+    const dataRows = lines.slice(2);
+    
+    const extractedPairs = [];
+    for (const row of dataRows) {
+      const cols = row.split('|').map(s => s.replace(/[*_`]/g, '').trim()).filter(Boolean);
+      if (cols.length >= 2) {
+        extractedPairs.push(`${cols[0]}: ${cols[1]}`);
+      }
+    }
+    
+    if (extractedPairs.length > 0) {
+      return `[Table Summary: ${extractedPairs.slice(0, 6).join(' | ')}]`;
+    }
+    return `[Table: ${headers.join(', ')} (${dataRows.length} rows)]`;
+  });
+}
+
+/**
+ * Condenses an assistant response according to its recency distance from active turn.
+ */
+export function condenseAssistantContent(content, recencyIndex, totalMessages) {
+  const sanitized = sanitizeMessagePayload(content);
+  // Immediate previous turn: keep high-resolution, but collapse accordions
+  if (recencyIndex >= totalMessages - 2) {
+    return collapseDetailsAccordions(sanitized);
+  }
+
+  // Older assistant messages in active window: collapse accordions and condense tables
+  let condensed = collapseDetailsAccordions(sanitized);
+  condensed = condenseMarkdownTables(condensed);
+
+  // If still long (>300 chars), extract executive bottom line or first 280 chars
+  if (condensed.length > 300) {
+    const bottomLineMatch = condensed.match(/(?:Executive (?:Summary|Bottom Line)|Bottom Line|Key Insights)[^\n]*\n+([^\n]+)/i);
+    if (bottomLineMatch && bottomLineMatch[1]) {
+      condensed = `[Summary: ${bottomLineMatch[1].replace(/[*_`>]/g, '').trim().slice(0, 200)}]`;
+    } else {
+      condensed = condensed.slice(0, 280).trim() + '... [Condensed]';
+    }
+  }
+
+  return condensed;
+}
+
+/**
  * Sliding Window + State Anchoring for Chat History with Progressive Disclosure Condensation
  * Keeps the latest N turns active, compressing older turns and collapsing <details> accordions.
  */
-export function optimizeChatHistory(messages = [], maxActiveTurns = 8) {
-  if (!Array.isArray(messages)) {
+export function optimizeChatHistory(messages = [], maxActiveTurns = 8, maxBudgetChars = 2500) {
+  if (!Array.isArray(messages) || messages.length === 0) {
     return [];
   }
 
-  // Condense older assistant accordion blocks (<details>...</details>) in working memory to save tokens
+  // Step 1: Pre-process and progressively condense assistant & user messages
   const processedMessages = messages.map((m, idx) => {
-    if (m.role === 'assistant' && typeof m.content === 'string' && idx < messages.length - 2) {
-      const condensed = m.content.replace(/<details>[\s\S]*?<summary><b>(.*?)<\/b><\/summary>[\s\S]*?<\/details>/gi, '[Collapsed Section: $1]');
+    if (m.role === 'assistant' && typeof m.content === 'string') {
+      const condensed = condenseAssistantContent(m.content, idx, messages.length);
       return { ...m, content: condensed };
+    }
+    if (m.role === 'user' && typeof m.content === 'string') {
+      const sanitized = sanitizeMessagePayload(m.content);
+      return { ...m, content: sanitized };
     }
     return m;
   });
 
-  if (processedMessages.length <= maxActiveTurns + 2) {
+  if (processedMessages.length <= maxActiveTurns) {
     return processedMessages;
   }
 
+  // Step 2: Split into archived older messages and active window
   const activeMessages = processedMessages.slice(-maxActiveTurns);
   const olderMessages = processedMessages.slice(0, -maxActiveTurns);
 
+  // Step 3: Extract structured conversation state anchor from older turns
   const keyTopics = olderMessages
     .filter((m) => m.role === 'user')
-    .map((m) => String(m.content || '').slice(0, 40))
+    .map((m) => String(m.content || '').replace(/\[Attachment:[^\]]+\]/gi, '').slice(0, 45).trim())
     .filter(Boolean)
     .slice(-4);
 
@@ -328,7 +412,24 @@ export function optimizeChatHistory(messages = [], maxActiveTurns = 8) {
     content: `[System Memory: Conversation Summary Anchor]\nPrior topics discussed in this session: ${keyTopics.join(' | ')}. (${olderMessages.length} earlier turns archived)`,
   };
 
-  return [summaryAnchor, ...activeMessages];
+  const result = [summaryAnchor, ...activeMessages];
+
+  // Step 4: Strict Context Budget Enforcer (maxBudgetChars)
+  let totalChars = result.reduce((sum, msg) => sum + (typeof msg.content === 'string' ? msg.content.length : 0), 0);
+  if (totalChars > maxBudgetChars) {
+    for (let i = 1; i < result.length - 2; i++) {
+      if (result[i].role === 'assistant' && result[i].content.length > 150) {
+        result[i] = {
+          ...result[i],
+          content: result[i].content.slice(0, 140).trim() + '... [Condensed]',
+        };
+        totalChars = result.reduce((sum, msg) => sum + (typeof msg.content === 'string' ? msg.content.length : 0), 0);
+        if (totalChars <= maxBudgetChars) break;
+      }
+    }
+  }
+
+  return result;
 }
 
 /**

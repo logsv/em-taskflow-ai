@@ -1,6 +1,6 @@
 # 🧰 Agent Skills & Operational Playbooks
 
-This guide provides documentation for the **13 Specialized Operational Skills** configured for autonomous AI agents (Codex, Claude Code, Gemini CLI, Antigravity) and human software engineers maintaining the EM TaskFlow AI platform.
+This guide provides documentation for the **14 Specialized Operational Skills** configured for autonomous AI agents (Codex, Claude Code, Gemini CLI, Antigravity) and human software engineers maintaining the EM TaskFlow AI platform.
 
 All skills are maintained as standard Markdown operational playbooks under [`.agents/skills/`](https://github.com/logsv/em-taskflow-ai/tree/main/.agents/skills) with an index in [`SKILLS.md`](https://github.com/logsv/em-taskflow-ai/blob/main/SKILLS.md).
 
@@ -68,6 +68,10 @@ All skills are maintained as standard Markdown operational playbooks under [`.ag
 
 ### 4. 📊 Observability, Evaluations & Operations
 
+#### `autonomous-em-audit-ops`
+- **Location**: `.agents/skills/autonomous-em-audit-ops/SKILL.md`
+- **Purpose**: Operational management of the Autonomous EM Task & Health Audit Engine, 4-hour background cron in Temporal, multi-channel Slack notifications, and the interactive EM Action Hub UI (`/actions`).
+
 #### `admin-portal-ops`
 - **Location**: `.agents/skills/admin-portal-ops/SKILL.md`
 - **Purpose**: Operational management of the Standalone Admin Portal (`/admin`), external service launchers (Langfuse, Promptfoo, Adminer, Temporal), DORA metrics tier ratings, vector chunk inspection, and Express admin APIs.
@@ -94,4 +98,4 @@ All skills are maintained as standard Markdown operational playbooks under [`.ag
 
 1. **Autonomous Discovery**: Agents inspect `SKILLS.md` and match user requests to the appropriate operational skill.
 2. **Context Ingestion**: The agent loads the designated `SKILL.md` into context using file viewing tools before making source code edits.
-3. **Deterministic Verification**: Every skill defines exact CLI test commands that must be executed upon completing code changes, ensuring all **240 backend unit test specs** and **39 Python AI test specs** pass with 0 failures.
+3. **Deterministic Verification**: Every skill defines exact CLI test commands that must be executed upon completing code changes, ensuring all **300 backend unit test specs** and **45 Python AI test specs** pass with 0 failures.

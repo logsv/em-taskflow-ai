@@ -22,16 +22,23 @@ This file provides system guidance, architectural rules, anti-hallucination guid
 
 3. **Rule of Database Per-Service Isolation**:
    - **Backend API DB** (`taskflow_backend` on port 5432): Application state, sessions, chat threads, messages, issue caches, OKRs, sprint analytics, DORA metrics, team profiles, app settings.
+   - **Isolated Test & Eval DBs** (`taskflow_test`, `taskflow_eval`, `taskflow_ai_test`, `taskflow_ai_eval` on port 5432): Strictly separated databases for Jasmine unit tests, evaluation gates, and Python Pytests to prevent polluting runtime state.
    - **Python AI DB** (`taskflow_ai` on port 5432): Dedicated strictly to RAG document embeddings (`pdf_chunks`), HNSW vector indexes, and `pg_trgm` full-text search indexes.
    - **Temporal Workflows DB** (`temporal` & `temporal_visibility` on port 5432): Dedicated strictly to Temporal activity execution and task queue state.
    - **Analytics DB** (`langfuse_db` on port 5433): Dedicated strictly to trace graphs, token counts, and latency telemetry on an isolated container (`analytics-db`).
    - Agents must NEVER write analytics trace tables into application databases.
 
 4. **Rule of Verification**:
-   - Never declare success without executing unit tests. All **300 backend specs** and **45 Python AI specs** must pass with **0 failures**.
+   - Never declare success without executing unit tests. All **319 backend specs** and **39 Python AI specs** must pass with **0 failures**.
 
 5. **No Superficial Symptom Patches**:
    - NEVER resolve errors by masking symptoms, swallowing exceptions silently, returning dummy fallbacks, or commenting out failing unit test assertions.
+
+6. **Rule of Database Key & Credential Preservation (STRICT ENFORCEMENT)**:
+   - `app_settings` in `taskflow_backend` houses live user API keys (`JIRA_API_TOKEN`, `GITHUB_TOKEN`, `NOTION_API_KEY`, `GOOGLE_CALENDAR_API_KEY`, `SLACK_BOT_TOKEN`), Ollama host URLs, and model selection lists.
+   - It is strictly FORBIDDEN to drop, truncate, or wipe `app_settings` during database cleanup, migration, runtime reset, or testing.
+   - Real user profiles (`logsv`, admin emails, lead engineering managers) in `team_members` must NEVER be deleted during test cleanup routines.
+   - When updating settings via UI or API, existing masked secret fields (`******`) in PostgreSQL must always be retained and never replaced with empty strings.
 
 ---
 
@@ -114,11 +121,31 @@ This file provides system guidance, architectural rules, anti-hallucination guid
   - *Consolidated Mode*: Executive scorecard with Health Score ($20 \le \text{Score} \le 100$), DORA tier, sprint pacing %, overdue 1-on-1s, and top 4 action items.
   - *Threaded Breakdown Mode*: Parent scorecard + 4 threaded replies breaking down Delivery, People, Sprint, and SOP.
   - *Individual Action Item Nudge*: 1-click Slack reminder ping to assigned engineer with PR/Jira deep link.
-- **Interactive EM Action Hub Cockpit**:
-  - Multi-view action triage (**Kanban Board**, **Dense Table** with bulk select, **Rich Card Grid**).
-  - Action item inspection drawer & resolution notes logger.
+- **Interactive EM Action Hub Decision Cockpit**:
+  - Executive Summary strip with 4 decision metric cards (Needs Attention, Overdue SLAs, Health Score with breakdown drawer, Automation status).
+  - High-urgency **Needs Attention** section with SLA countdowns and 1-click primary CTAs.
+  - Multi-view action triage (**Kanban Board** with scannable cards and **Dense Table** with bulk select).
+  - Floating **Bulk Action Bar** (In Progress, Resolve, Share to Slack, Dismiss).
+  - Action Details Drawer with deterministic diagnostic signal mapping, policy rule explanation, source tool attribution, and in-drawer resolution logger (with zero fake AI confidence scores).
   - Team 1-on-1 cadence tracking matrix & career level progression.
   - Live ADR-008 per-service database governance checklist.
+
+### 10. Standalone Admin Portal & Modular UI Architecture (`/admin`)
+- **Global Shell & De-cluttered Viewport (`AdminShell.jsx`)**: Replaced repeated KPI strips with a compact `● System Healthy` status pill in the header. Clicking opens the slide-out **System Diagnostics Drawer** (`SystemStatusDrawer.jsx`) showing real-time health across 10 domain micro-agents, Ollama, PostgreSQL 5432, Langfuse DB 5433, and RAG vector storage.
+- **Operator-First Top Navigation**: 5 primary domain groups (*Overview*, *People*, *AI Platform*, *Operations*, *Quality*) with nested sub-navigation pills for progressive disclosure (*Models & Tools*, *Services & Storage*).
+- **Reusable UI Design Primitives (`frontend/src/components/admin/ui/`)**: Zero-dependency component library (`Button`, `Badge`, `StatusBadge`, `Card`, `MetricCard`, `Section`, `Tabs`, `Table`, `Drawer`, `Modal`, `Dropdown`, `SearchInput`, `EmptyState`, `Alert`) adhering to semantic dark-theme design tokens (`adminTokens.css`).
+- **Readymade 8-Service Catalog**: Direct deep-links to Langfuse (:3001), Promptfoo Managed Cloud, Adminer (:8080), Temporal (:8233), Sentry, New Relic, Axiom, and Swagger REST API Explorer (:4000/api/v1/docs).
+
+### 12. Canonical REST API Versioning & Deprecation Policy (`ADR-009`)
+- **Canonical Namespace**: All REST endpoints reside under `/api/v1/*` (`/api/v1/chat`, `/api/v1/sessions`, `/api/v1/actions`, `/api/v1/admin`, `/api/v1/docs`).
+- **Backward Compatibility**: Legacy `/api/*` requests are aliased and forwarded to `/api/v1/*` with HTTP `Deprecation: true`, `Sunset: Sat, 01 Nov 2026 00:00:00 GMT`, and `Link: </api/v1/...>; rel="successor-version"` headers.
+- **Frontend Client Centralization**: Single `apiClient.js` module standardizes base path and session token injection.
+
+### 11. Low-Distraction EM Copilot UI & Quick Actions (`⌘K`)
+- **Workflow-First Philosophy**: *"Workflows are the product; agents are the implementation."* Primary chat interface is clean and free of implementation distractions (sub-agent selectors, raw tool lists, or vector chunk parameters).
+- **Quick Actions Palette (`⌘K`)**: `AgentPromptPalette.jsx` enables instant workflow launching across Delivery, People, Planning, and Governance, with rich intent keyword matching and progressive disclosure scenario hints (`⋯`).
+- **Decision Action Pills**: Assistant responses feature actionable pills (`[📋 Action Hub]`, `[🎯 Formulate Actions]`) connecting analysis directly to action triage.
+- **Dedicated Dev Settings Modal**: `DevSettingsModal.jsx` isolates Advanced RAG mode, session/thread diagnostic copying, and PostgreSQL cache controls from the main chat viewport.
 
 ---
 
@@ -132,7 +159,7 @@ npm run dev
 # Build ESM JavaScript output
 npm run build
 
-# Run unit tests with Jasmine & coverage (240 specs, 0 failures)
+# Run unit tests with Jasmine & coverage (319 specs, 0 failures)
 npm test
 
 # Run full evaluation suite (Model: hermes3:8b)
@@ -146,8 +173,17 @@ npm run eval:pre-llm
 
 ### Python AI Service Commands (from `/services/python-ai-service`)
 ```bash
-# Run Python unit & evaluation tests (39 specs, 0 failures)
+# Run Python unit & evaluation tests (45 specs, 0 failures)
 uv run pytest
+```
+
+### Frontend Commands (from `/frontend`)
+```bash
+# Start Vite development server (port 3000)
+npm run dev
+
+# Build production bundle
+npm run build
 ```
 
 ### Full Container Management (from project root)

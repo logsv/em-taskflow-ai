@@ -14,6 +14,9 @@ describe('SettingsService & LLM Model Hot-Reload Contract', () => {
     // Restore baseline model
     config.llm.defaultModel = initialModel;
     resetChatModel();
+    databaseService.inMemoryAppSettings = {};
+    settingsService.cachedRawSettings = null;
+    settingsService.initialized = false;
   });
 
   it('should dynamically hot-reload model into getChatModel when settings are updated', async () => {
@@ -132,8 +135,8 @@ describe('SettingsService & LLM Model Hot-Reload Contract', () => {
     const masked = await settingsService.getMaskedSettings();
     expect(masked.mcp.github.owner).toBe('acme-corp');
     expect(masked.mcp.github.repo).toBe('enterprise-core');
-    expect(masked.mcp.github.token).toContain('•');
-    expect(masked.mcp.notion.apiKey).toContain('•');
+    expect(masked.mcp.github.token).toContain('******');
+    expect(masked.mcp.notion.apiKey).toContain('******');
     expect(masked.mcp.notion.okrPageId).toBe('page_okr_999');
   });
 });

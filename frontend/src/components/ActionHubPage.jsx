@@ -1,4 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import ActionHubHeader from './actions/ActionHubHeader.jsx';
+import ExecutiveSummary from './actions/ExecutiveSummary.jsx';
+import NeedsAttentionSection from './actions/NeedsAttentionSection.jsx';
+import ActionWorkspaceControls from './actions/ActionWorkspaceControls.jsx';
+import ActionCard from './actions/ActionCard.jsx';
+import ActionDetailsDrawer from './actions/ActionDetailsDrawer.jsx';
+import BulkActionBar from './actions/BulkActionBar.jsx';
+import { apiUrl } from '../services/apiClient.js';
 import logger from '../utils/logger.js';
 import './ActionHubPage.css';
 
@@ -48,12 +56,12 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
     try {
       setIsLoading(true);
       const [actionsRes, summaryRes, runsRes, sopRes, teamRes, channelsRes] = await Promise.all([
-        fetch(`/api/actions?status=${statusFilter}&category=${categoryFilter}&severity=${severityFilter}`),
-        fetch('/api/actions/summary'),
-        fetch('/api/actions/audit-runs?limit=10'),
-        fetch('/api/actions/sop/compliance'),
-        fetch('/api/admin/team'),
-        fetch('/api/actions/slack/channels'),
+        fetch(apiUrl(`/actions?status=${statusFilter}&category=${categoryFilter}&severity=${severityFilter}`)),
+        fetch(apiUrl('/actions/summary')),
+        fetch(apiUrl('/actions/audit-runs?limit=10')),
+        fetch(apiUrl('/actions/sop/compliance')),
+        fetch(apiUrl('/admin/team')),
+        fetch(apiUrl('/actions/slack/channels')),
       ]);
 
       if (actionsRes.ok) {
@@ -96,7 +104,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
     try {
       setIsAuditing(true);
       setAuditMessage('🚀 Initiating autonomous audit across DORA, Jira, GitHub, Slack, and Notion...');
-      const res = await fetch('/api/actions/audit/trigger', {
+      const res = await fetch(apiUrl('/actions/audit/trigger'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'consolidated' }),
@@ -125,7 +133,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
     }
 
     try {
-      const res = await fetch(`/api/actions/${item.id}`, {
+      const res = await fetch(apiUrl(`/actions/${item.id}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
@@ -145,7 +153,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
     if (!resolvingItem) return;
     try {
       setIsSavingResolution(true);
-      const res = await fetch(`/api/actions/${resolvingItem.id}`, {
+      const res = await fetch(apiUrl(`/actions/${resolvingItem.id}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -170,7 +178,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
   const handleBatchUpdate = async (status) => {
     if (selectedActionIds.length === 0) return;
     try {
-      const res = await fetch('/api/actions/batch', {
+      const res = await fetch(apiUrl('/actions/batch'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -193,7 +201,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
   const handleDispatchToSlack = async () => {
     try {
       setIsDispatchingSlack(true);
-      const res = await fetch('/api/actions/slack/dispatch', {
+      const res = await fetch(apiUrl('/actions/slack/dispatch'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -230,7 +238,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
     if (!nudgingItem) return;
     try {
       setIsSendingNudge(true);
-      const res = await fetch(`/api/actions/${nudgingItem.id}/nudge`, {
+      const res = await fetch(apiUrl(`/actions/${nudgingItem.id}/nudge`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -286,219 +294,38 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
   return (
     <div className="action-hub-page">
       {/* 1. TOP HEADER & EM CONTROLS */}
-      <header className="action-hub-header">
-        <div className="header-left">
-          <button className="back-btn" onClick={onBackToChat} title="Back to Chat & SLM Assistant">
-            ← Back to Chat
-          </button>
-          <div className="title-group">
-            <div className="title-row">
-              <h1>📋 EM Action Hub & Audit Cockpit</h1>
-              <span className="live-sync-indicator" title="Temporal 4-hour cron active">
-                <span className="sync-pulse"></span> Auto-Sync Active
-              </span>
-            </div>
-            <p className="subtitle">
-              Continuous multi-tool audit across PR bottlenecks, 1-on-1 cadences, Sprint velocity, and ADR-008 governance.
-            </p>
-          </div>
-        </div>
-
-        <div className="header-right">
-          {/* Health Score Pill with Popover Trigger */}
-          <div className="health-score-container">
-            <button
-              type="button"
-              className={`health-score-pill ${healthTierClass}`}
-              onClick={() => setShowHealthScorePopover(!showHealthScorePopover)}
-              title="Click to view Engineering Health Score breakdown"
-            >
-              <span className="health-dot"></span>
-              <span>Health Score: <strong>{healthScore}/100</strong></span>
-              <span className="info-caret">▾</span>
-            </button>
-
-            {showHealthScorePopover && (
-              <div className="health-score-popover">
-                <div className="popover-header">
-                  <strong>Engineering Health Breakdown</strong>
-                  <button className="close-mini-btn" onClick={() => setShowHealthScorePopover(false)}>×</button>
-                </div>
-                <div className="popover-metric-row">
-                  <span>🚀 DORA Velocity:</span>
-                  <strong className="text-good">Elite (96.5%)</strong>
-                </div>
-                <div className="popover-metric-row">
-                  <span>⏱️ PR Turnaround SLA:</span>
-                  <strong className="text-warn">14.2h avg (1 Stalled)</strong>
-                </div>
-                <div className="popover-metric-row">
-                  <span>👥 1-on-1 Cadence:</span>
-                  <strong className="text-warn">85% (1 Overdue)</strong>
-                </div>
-                <div className="popover-metric-row">
-                  <span>🎯 Sprint Pacing:</span>
-                  <strong className="text-good">79% (3/4 OKRs On-Track)</strong>
-                </div>
-                <div className="popover-metric-row">
-                  <span>🛡️ SOP & ADR-008 Isolation:</span>
-                  <strong className="text-good">100% Pass</strong>
-                </div>
-                <div className="popover-footer">
-                  <small>Calculated durably via Temporal every 4 hours.</small>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Send to Slack Button */}
-          <button
-            type="button"
-            className="btn-slack-dispatch"
-            onClick={() => setShowSlackModal(true)}
-            title="Dispatch Executive Briefing or Action Item to Slack"
-          >
-            <span className="slack-icon">💬</span>
-            <span>Send to Slack</span>
-          </button>
-
-          {/* Manual Run Audit Button */}
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={handleTriggerAudit}
-            disabled={isAuditing}
-            title="Trigger an on-demand audit across all 10 domain tools"
-          >
-            {isAuditing ? (
-              <>
-                <span className="btn-spinner"></span>
-                <span>Auditing Tools...</span>
-              </>
-            ) : (
-              <>
-                <span>🚀 Run Audit Now</span>
-              </>
-            )}
-          </button>
-
-          {/* Admin Portal Link */}
-          <button type="button" className="btn-secondary" onClick={onOpenAdmin} title="Go to System Admin Portal">
-            ⚙️ Admin Portal ↗
-          </button>
-        </div>
-      </header>
+      <ActionHubHeader
+        lastAuditAt={summary?.lastAuditAt}
+        isAuditing={isAuditing}
+        onTriggerAudit={handleTriggerAudit}
+        onSendToSlack={() => setShowSlackModal(true)}
+        onOpenAdmin={onOpenAdmin}
+        onBackToChat={onBackToChat}
+      />
 
       {/* Notification Toast */}
       {auditMessage && (
-        <div className="audit-notification-banner">
+        <div className="audit-notification-banner" role="status">
           <span>{auditMessage}</span>
         </div>
       )}
 
-      {/* 2. EXECUTIVE SCORECARDS / KPI STRIP */}
-      <section className="action-hub-scorecards">
-        <div
-          className={`scorecard-card card-critical ${severityFilter === 'CRITICAL' ? 'scorecard-active' : ''}`}
-          onClick={() => {
-            setSeverityFilter(severityFilter === 'CRITICAL' ? 'ALL' : 'CRITICAL');
-            setActiveTab('actions');
-          }}
-          title="Click to filter critical actions"
-        >
-          <div className="card-top-row">
-            <span className="card-icon">🚨</span>
-            <span className="card-val">{summary?.summary?.criticalPending ?? 0}</span>
-          </div>
-          <div className="card-label">Critical Actions</div>
-          <div className="card-sub">Immediate EM attention required</div>
-          <div className="mini-progress-bar">
-            <div className="bar-fill bar-fill-critical" style={{ width: `${Math.min(100, (summary?.summary?.criticalPending || 0) * 50)}%` }}></div>
-          </div>
-        </div>
-
-        <div
-          className={`scorecard-card card-warning ${severityFilter === 'WARNING' ? 'scorecard-active' : ''}`}
-          onClick={() => {
-            setSeverityFilter(severityFilter === 'WARNING' ? 'ALL' : 'WARNING');
-            setActiveTab('actions');
-          }}
-          title="Click to filter warning actions"
-        >
-          <div className="card-top-row">
-            <span className="card-icon">⚠️</span>
-            <span className="card-val">{summary?.summary?.warningPending ?? 2}</span>
-          </div>
-          <div className="card-label">Warnings Pending</div>
-          <div className="card-sub">PR review delays & OKR pacing</div>
-          <div className="mini-progress-bar">
-            <div className="bar-fill bar-fill-warn" style={{ width: '65%' }}></div>
-          </div>
-        </div>
-
-        <div
-          className={`scorecard-card card-completed ${statusFilter === 'COMPLETED' ? 'scorecard-active' : ''}`}
-          onClick={() => {
-            setStatusFilter(statusFilter === 'COMPLETED' ? 'ALL' : 'COMPLETED');
-            setActiveTab('actions');
-          }}
-          title="Click to view completed tasks"
-        >
-          <div className="card-top-row">
-            <span className="card-icon">✅</span>
-            <span className="card-val">{summary?.summary?.completed ?? 0}</span>
-          </div>
-          <div className="card-label">Resolved & Completed</div>
-          <div className="card-sub">Triaged by EM</div>
-          <div className="mini-progress-bar">
-            <div className="bar-fill bar-fill-completed" style={{ width: `${Math.min(100, (summary?.summary?.completed || 0) * 20)}%` }}></div>
-          </div>
-        </div>
-
-        <div
-          className="scorecard-card card-sop"
-          onClick={() => setActiveTab('sop')}
-          title="Click to view SOP compliance checklist"
-        >
-          <div className="card-top-row">
-            <span className="card-icon">🛡️</span>
-            <span className="card-val">{sopData?.complianceScore ?? 100}%</span>
-          </div>
-          <div className="card-label">SOP & ADR Score</div>
-          <div className="card-sub">ADR-008 & Review SLAs</div>
-          <div className="mini-progress-bar">
-            <div className="bar-fill bar-fill-sop" style={{ width: `${sopData?.complianceScore ?? 100}%` }}></div>
-          </div>
-        </div>
-
-        <div
-          className="scorecard-card card-people"
-          onClick={() => setActiveTab('people')}
-          title="Click to view Team Cadence & 1-on-1 matrix"
-        >
-          <div className="card-top-row">
-            <span className="card-icon">👥</span>
-            <span className="card-val">85%</span>
-          </div>
-          <div className="card-label">1-on-1 Cadence Health</div>
-          <div className="card-sub">1 overdue sync (&gt;14d)</div>
-          <div className="mini-progress-bar">
-            <div className="bar-fill bar-fill-people" style={{ width: '85%' }}></div>
-          </div>
-        </div>
-
-        <div className="scorecard-card card-cron">
-          <div className="card-top-row">
-            <span className="card-icon">⏱️</span>
-            <span className="card-val">4h Cron</span>
-          </div>
-          <div className="card-label">Temporal Automation</div>
-          <div className="card-sub">Next scheduled run in ~3h 48m</div>
-          <div className="mini-progress-bar">
-            <div className="bar-fill bar-fill-cron" style={{ width: '100%' }}></div>
-          </div>
-        </div>
-      </section>
+      {/* 2. DECISION-ORIENTED EXECUTIVE SUMMARY */}
+      <ExecutiveSummary
+        summary={summary}
+        actionItems={actionItems}
+        sopData={sopData}
+        onSelectSeverityFilter={(sev) => {
+          setSeverityFilter(sev);
+          setActiveTab('actions');
+        }}
+        onSelectStatusFilter={(st) => {
+          setStatusFilter(st);
+          setActiveTab('actions');
+        }}
+        activeSeverityFilter={severityFilter}
+        activeStatusFilter={statusFilter}
+      />
 
       {/* 3. TABS NAVIGATION */}
       <nav className="action-hub-tabs">
@@ -542,112 +369,51 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
       {/* TAB 1: ACTION ITEMS & TRIAGE */}
       {activeTab === 'actions' && (
         <div className="actions-tab-container">
-          {/* Controls Bar: Search, Filters, View Switcher & Bulk Actions */}
-          <div className="actions-controls-bar">
-            <div className="search-box-wrapper">
-              <span className="search-icon">🔍</span>
-              <input
-                type="text"
-                className="search-input"
-                placeholder="Search actions by title, engineer, PR, or category..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              {searchQuery && (
-                <button className="clear-search-btn" onClick={() => setSearchQuery('')}>×</button>
-              )}
-            </div>
+          {/* Top Priority Needs Attention Experience */}
+          <NeedsAttentionSection
+            actionItems={actionItems}
+            onInspect={(item) => setInspectingItem(item)}
+            onUpdateStatus={handleUpdateStatus}
+            onNudge={(item) => {
+              setNudgingItem(item);
+              setNudgeCustomNote(`Hi ${item.assigneeName || 'team'}, please look into: ${item.title}`);
+            }}
+            onViewAll={() => {
+              setStatusFilter('PENDING');
+              setSeverityFilter('ALL');
+            }}
+          />
 
-            <div className="filter-dropdowns-group">
-              <div className="filter-group">
-                <label>Status:</label>
-                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="filter-select">
-                  <option value="ALL">All Statuses</option>
-                  <option value="PENDING">Pending Triage</option>
-                  <option value="IN_PROGRESS">In Progress</option>
-                  <option value="COMPLETED">Completed</option>
-                  <option value="DISMISSED">Dismissed</option>
-                </select>
-              </div>
+          {/* Controls Bar: Search, Filters Popover, Active Chips, View Switcher */}
+          <ActionWorkspaceControls
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            categoryFilter={categoryFilter}
+            onCategoryFilterChange={setCategoryFilter}
+            severityFilter={severityFilter}
+            onSeverityFilterChange={setSeverityFilter}
+            onResetFilters={() => {
+              setSearchQuery('');
+              setStatusFilter('ALL');
+              setCategoryFilter('ALL');
+              setSeverityFilter('ALL');
+            }}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+          />
 
-              <div className="filter-group">
-                <label>Category:</label>
-                <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="filter-select">
-                  <option value="ALL">All Categories</option>
-                  <option value="DELIVERY">Delivery & PRs</option>
-                  <option value="PEOPLE">People & 1-on-1s</option>
-                  <option value="OKR_VELOCITY">OKRs & Sprint</option>
-                  <option value="SOP_COMPLIANCE">SOP & ADR</option>
-                </select>
-              </div>
-
-              <div className="filter-group">
-                <label>Severity:</label>
-                <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value)} className="filter-select">
-                  <option value="ALL">All Severities</option>
-                  <option value="CRITICAL">🚨 Critical Only</option>
-                  <option value="WARNING">⚠️ Warning</option>
-                  <option value="INFO">ℹ️ Info</option>
-                </select>
-              </div>
-
-              {/* View Switcher: Kanban / Dense Table / Grid */}
-              <div className="view-mode-switcher">
-                <button
-                  type="button"
-                  className={`view-mode-btn ${viewMode === 'kanban' ? 'active' : ''}`}
-                  onClick={() => setViewMode('kanban')}
-                  title="Kanban Board View"
-                >
-                  🗂️ Kanban
-                </button>
-                <button
-                  type="button"
-                  className={`view-mode-btn ${viewMode === 'table' ? 'active' : ''}`}
-                  onClick={() => setViewMode('table')}
-                  title="Dense Table View"
-                >
-                  📑 Table
-                </button>
-                <button
-                  type="button"
-                  className={`view-mode-btn ${viewMode === 'grid' ? 'active' : ''}`}
-                  onClick={() => setViewMode('grid')}
-                  title="Rich Card Grid View"
-                >
-                  🃏 Grid
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Bulk Action Bar (when items selected) */}
-          {selectedActionIds.length > 0 && (
-            <div className="bulk-actions-bar">
-              <span>{selectedActionIds.length} action item(s) selected</span>
-              <div className="bulk-btns-group">
-                <button type="button" className="btn-bulk-complete" onClick={() => handleBatchUpdate('COMPLETED')}>
-                  ✅ Mark Completed ({selectedActionIds.length})
-                </button>
-                <button type="button" className="btn-bulk-dismiss" onClick={() => handleBatchUpdate('DISMISSED')}>
-                  🚫 Dismiss ({selectedActionIds.length})
-                </button>
-                <button
-                  type="button"
-                  className="btn-bulk-slack"
-                  onClick={() => {
-                    setSlackCustomNote(`Bulk Action Update: ${selectedActionIds.length} items addressed by EM.`);
-                    setShowSlackModal(true);
-                  }}
-                >
-                  💬 Share Selected to Slack
-                </button>
-                <button type="button" className="btn-bulk-clear" onClick={() => setSelectedActionIds([])}>
-                  Clear Selection
-                </button>
-              </div>
-            </div>
-          )}
+          {/* Floating Bulk Action Bar (when items selected) */}
+          <BulkActionBar
+            selectedCount={selectedActionIds.length}
+            onUpdateStatus={handleBatchUpdate}
+            onShareSlack={() => {
+              setSlackCustomNote(`Bulk Action Update: ${selectedActionIds.length} items addressed by EM.`);
+              setShowSlackModal(true);
+            }}
+            onClear={() => setSelectedActionIds([])}
+          />
 
           {/* Loading Indicator */}
           {isLoading && (
@@ -692,7 +458,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
                 </div>
                 <div className="kanban-cards-stack">
                   {kanbanColumns.pending.map((item) => (
-                    <ActionCardItem
+                    <ActionCard
                       key={item.id}
                       item={item}
                       onInspect={() => setInspectingItem(item)}
@@ -726,7 +492,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
                 </div>
                 <div className="kanban-cards-stack">
                   {kanbanColumns.in_progress.map((item) => (
-                    <ActionCardItem
+                    <ActionCard
                       key={item.id}
                       item={item}
                       onInspect={() => setInspectingItem(item)}
@@ -760,7 +526,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
                 </div>
                 <div className="kanban-cards-stack">
                   {kanbanColumns.completed.map((item) => (
-                    <ActionCardItem
+                    <ActionCard
                       key={item.id}
                       item={item}
                       onInspect={() => setInspectingItem(item)}
@@ -884,30 +650,6 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
                   ))}
                 </tbody>
               </table>
-            </div>
-          )}
-
-          {/* 3. RICH CARD GRID VIEW */}
-          {!isLoading && filteredActions.length > 0 && viewMode === 'grid' && (
-            <div className="action-cards-grid">
-              {filteredActions.map((item) => (
-                <ActionCardItem
-                  key={item.id}
-                  item={item}
-                  onInspect={() => setInspectingItem(item)}
-                  onUpdateStatus={handleUpdateStatus}
-                  onNudge={() => {
-                    setNudgingItem(item);
-                    setNudgeCustomNote(`Hi ${item.assigneeName || 'team'}, please look into: ${item.title}`);
-                  }}
-                  isSelected={selectedActionIds.includes(item.id)}
-                  onToggleSelect={(id) =>
-                    setSelectedActionIds((prev) =>
-                      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-                    )
-                  }
-                />
-              ))}
             </div>
           )}
         </div>
@@ -1145,15 +887,33 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
             {auditRuns.map((run) => (
               <div key={run.id} className="history-item">
                 <div className="history-header">
-                  <span className="history-id">Audit Run #{run.id}</span>
-                  <span className="history-trigger">{run.triggeredBy}</span>
-                  <span className="history-score-badge good">
-                    Score: {run.healthScore}/100
-                  </span>
+                  <div className="history-header-left">
+                    <span className="history-id">Audit Run #{run.id}</span>
+                    <span className="history-trigger-badge">
+                      {run.triggeredBy === 'cron' ? '⏱ 4h Cron' : '⚡ On-Demand'}
+                    </span>
+                    <span className={`history-score-badge ${run.healthScore >= 80 ? 'good' : 'warning'}`}>
+                      Health Score: {run.healthScore}/100
+                    </span>
+                  </div>
                   <span className="history-time">
-                    {new Date(run.createdAt).toLocaleString()}
+                    {new Date(run.createdAt).toLocaleString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
                   </span>
                 </div>
+
+                <div className="history-domains-row">
+                  <span className="history-domain-chip">📦 DORA & PR Delivery: <strong>Harvested</strong></span>
+                  <span className="history-domain-chip">👥 People & 1-on-1s: <strong>Harvested</strong></span>
+                  <span className="history-domain-chip">📊 Sprint & OKRs: <strong>Harvested</strong></span>
+                  <span className="history-domain-chip">🛡️ SOP & ADR-008: <strong>Harvested</strong></span>
+                </div>
+
                 <div className="history-summary">
                   <pre>{run.summaryMarkdown || 'Audit execution completed successfully.'}</pre>
                 </div>
@@ -1161,7 +921,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
             ))}
             {auditRuns.length === 0 && (
               <div className="empty-state">
-                <p>No audit runs recorded yet. Click "Run Audit Now" to trigger your first run.</p>
+                <p>No audit runs recorded yet. Click "Run Audit" to trigger your first run.</p>
               </div>
             )}
           </div>
@@ -1351,212 +1111,18 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
         </div>
       )}
 
-      {/* D. ACTION ITEM INSPECTION DRAWER */}
+      {/* D. ACTION ITEM DETAILS DRAWER */}
       {inspectingItem && (
-        <div className="modal-overlay" onClick={() => setInspectingItem(null)}>
-          <div className="action-drawer" onClick={(e) => e.stopPropagation()}>
-            <div className="drawer-header">
-              <div className="drawer-title-left">
-                <span className={`badge-severity badge-${inspectingItem.severity?.toLowerCase()}`}>
-                  {inspectingItem.severity}
-                </span>
-                <span className="badge-category">{inspectingItem.category}</span>
-              </div>
-              <button className="modal-close-btn" onClick={() => setInspectingItem(null)}>×</button>
-            </div>
-
-            <div className="drawer-body">
-              <h2 className="drawer-title">{inspectingItem.title}</h2>
-              <p className="drawer-desc">{inspectingItem.description}</p>
-
-              <div className="drawer-section">
-                <h4>🎯 Recommended Next Step:</h4>
-                <div className="suggested-action-box">
-                  💡 {inspectingItem.suggestedAction || 'Review in EM Hub'}
-                </div>
-              </div>
-
-              <div className="drawer-section">
-                <h4>📋 Diagnostic Details & Attribution:</h4>
-                <div className="drawer-meta-grid">
-                  <div className="meta-box">
-                    <span className="meta-lbl">Assignee:</span>
-                    <span className="meta-val">👤 @{inspectingItem.assigneeName || 'Unassigned'}</span>
-                  </div>
-                  <div className="meta-box">
-                    <span className="meta-lbl">Status:</span>
-                    <span className="meta-val">{inspectingItem.status}</span>
-                  </div>
-                  <div className="meta-box">
-                    <span className="meta-lbl">Created At:</span>
-                    <span className="meta-val">{new Date(inspectingItem.createdAt).toLocaleDateString()}</span>
-                  </div>
-                  {inspectingItem.externalReference && (
-                    <div className="meta-box">
-                      <span className="meta-lbl">Reference:</span>
-                      <span className="meta-val">
-                        {inspectingItem.externalReference.url ? (
-                          <a href={inspectingItem.externalReference.url} target="_blank" rel="noreferrer" className="external-link">
-                            {inspectingItem.externalReference.id || 'Link ↗'}
-                          </a>
-                        ) : (
-                          inspectingItem.externalReference.id || 'External Tool'
-                        )}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {inspectingItem.resolutionNotes && (
-                <div className="drawer-section">
-                  <h4>✅ Resolution Notes:</h4>
-                  <div className="resolution-notes-box">
-                    {inspectingItem.resolutionNotes}
-                    <div className="resolver">Resolved by {inspectingItem.completedBy || 'EM'}</div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="drawer-footer">
-              <button
-                type="button"
-                className="btn-slack-dispatch"
-                onClick={() => {
-                  setNudgingItem(inspectingItem);
-                  setNudgeCustomNote(`Hi ${inspectingItem.assigneeName || 'team'}, please look into: ${inspectingItem.title}`);
-                }}
-              >
-                💬 Nudge on Slack
-              </button>
-              {inspectingItem.status !== 'COMPLETED' && (
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => {
-                    setResolvingItem({ ...inspectingItem, targetStatus: 'COMPLETED' });
-                    setInspectingItem(null);
-                  }}
-                >
-                  ✅ Mark Done
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        <ActionDetailsDrawer
+          item={inspectingItem}
+          onClose={() => setInspectingItem(null)}
+          onUpdateStatus={handleUpdateStatus}
+          onNudge={(item) => {
+            setNudgingItem(item);
+            setNudgeCustomNote(`Hi ${item.assigneeName || 'team'}, please look into: ${item.title}`);
+          }}
+        />
       )}
-    </div>
-  );
-}
-
-/**
- * Sub-component for rendering individual action item cards
- */
-function ActionCardItem({ item, onInspect, onUpdateStatus, onNudge, isSelected, onToggleSelect }) {
-  const sevClass = `severity-${item.severity?.toLowerCase() || 'info'}`;
-  const statusClass = `status-${item.status?.toLowerCase() || 'pending'}`;
-
-  return (
-    <div className={`action-card ${sevClass} ${statusClass}`}>
-      <div className="card-top">
-        <div className="badges-row">
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={() => onToggleSelect && onToggleSelect(item.id)}
-            className="card-checkbox"
-          />
-          <span className={`badge-severity badge-${item.severity?.toLowerCase()}`}>
-            {item.severity}
-          </span>
-          <span className="badge-category">{item.category}</span>
-          <span className={`badge-status ${statusClass}`}>{item.status}</span>
-        </div>
-        {item.assigneeName && (
-          <span className="assignee-badge" title={`Assigned to ${item.assigneeName}`}>
-            👤 @{item.assigneeName}
-          </span>
-        )}
-      </div>
-
-      <h3 className="card-title" onClick={onInspect} title="Click to view details">
-        {item.title}
-      </h3>
-      <p className="card-desc">{item.description}</p>
-
-      {item.suggestedAction && (
-        <div className="suggested-action-box" onClick={onInspect}>
-          💡 <strong>Suggested Action:</strong> {item.suggestedAction}
-        </div>
-      )}
-
-      {item.resolutionNotes && (
-        <div className="resolution-notes-box">
-          <strong>Resolution:</strong> {item.resolutionNotes}
-          {item.completedBy && <span className="resolver"> — {item.completedBy}</span>}
-        </div>
-      )}
-
-      <div className="card-footer">
-        <div className="footer-left">
-          {item.externalReference?.url ? (
-            <a
-              href={item.externalReference.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="external-link"
-            >
-              🔗 {item.externalReference.id || 'View in Tool ↗'}
-            </a>
-          ) : item.externalReference?.id ? (
-            <span className="ref-tag">Ref: {item.externalReference.id}</span>
-          ) : (
-            <span className="date-tag">{new Date(item.createdAt).toLocaleDateString()}</span>
-          )}
-        </div>
-
-        <div className="footer-actions">
-          {item.status === 'PENDING' && (
-            <button
-              type="button"
-              className="btn-status-action btn-in-progress"
-              onClick={() => onUpdateStatus(item, 'IN_PROGRESS')}
-              title="Start progress"
-            >
-              ⏳ In Progress
-            </button>
-          )}
-          {item.status !== 'COMPLETED' && (
-            <button
-              type="button"
-              className="btn-status-action btn-complete"
-              onClick={() => onUpdateStatus(item, 'COMPLETED')}
-              title="Mark completed"
-            >
-              ✅ Mark Done
-            </button>
-          )}
-          <button
-            type="button"
-            className="btn-nudge-action"
-            onClick={onNudge}
-            title="Nudge on Slack"
-          >
-            💬 Nudge
-          </button>
-          {item.status !== 'DISMISSED' && (
-            <button
-              type="button"
-              className="btn-status-action btn-dismiss"
-              onClick={() => onUpdateStatus(item, 'DISMISSED')}
-              title="Dismiss"
-            >
-              🚫
-            </button>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

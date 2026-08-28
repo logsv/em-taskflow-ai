@@ -13,6 +13,10 @@ describe('EM Action Hub & Audit REST API Routes', () => {
     app.use('/api', apiRouter);
     request = supertest(app);
 
+    await databaseService.ensureInitialized().catch(() => {});
+    if (databaseService.pool) {
+      await databaseService.pool.query('DELETE FROM em_action_items; DELETE FROM em_audit_runs;').catch(() => {});
+    }
     databaseService.inMemoryActionItems = [];
     databaseService.inMemoryAuditRuns = [];
 
@@ -265,5 +269,13 @@ describe('EM Action Hub & Audit REST API Routes', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.updatedCount).toBe(2);
     });
+  });
+
+  afterAll(async () => {
+    if (databaseService.pool) {
+      await databaseService.pool.query('DELETE FROM em_action_items; DELETE FROM em_audit_runs;').catch(() => {});
+    }
+    databaseService.inMemoryActionItems = [];
+    databaseService.inMemoryAuditRuns = [];
   });
 });

@@ -81,10 +81,10 @@ router.get('/', (req, res) => {
 </head>
 <body>
   <div class="header-banner">
-    <div class="header-title">⚡ EM TaskFlow AI &bull; Interactive API Explorer</div>
+    <div class="header-title">⚡ EM TaskFlow AI &bull; Interactive API Explorer (v1)</div>
     <div class="header-links">
-      <a href="/api/health" target="_blank">Health Check</a>
-      <a href="/api/docs/openapi.json" target="_blank">OpenAPI JSON</a>
+      <a href="/api/v1/health" target="_blank">Health Check</a>
+      <a href="/api/v1/docs/openapi.json" target="_blank">OpenAPI JSON</a>
       <a href="http://localhost:3000/admin" target="_blank">Admin Portal ↗</a>
     </div>
   </div>
@@ -94,7 +94,7 @@ router.get('/', (req, res) => {
   <script>
     window.onload = function() {
       SwaggerUIBundle({
-        url: "/api/docs/openapi.json",
+        url: "/api/v1/docs/openapi.json",
         dom_id: '#swagger-ui',
         deepLinking: true,
         presets: [

@@ -10,7 +10,7 @@ import { getRagConfig, getRagAdvancedConfig } from '../config.js';
 import databaseService from '../db/postgres.js';
 import { getTracerCallbacks, createSpan } from '../utils/tracer.js';
 import pythonAIServiceClient from '../grpc/client.js';
-import { info, warn, error } from '../utils/logger.js';
+import { debug, info, warn, error } from '../utils/logger.js';
 import { checkSemanticCache, setSemanticCache } from '../cache/semanticCache.js';
 
 /**

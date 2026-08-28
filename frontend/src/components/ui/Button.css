@@ -1,0 +1,146 @@
+.ah-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: var(--ah-radius-md);
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all var(--ah-transition-fast);
+  white-space: nowrap;
+  user-select: none;
+  text-decoration: none;
+}
+
+.ah-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.ah-btn:focus-visible {
+  outline: 2px solid var(--ah-border-focus);
+  outline-offset: 2px;
+}
+
+/* Button Sizes */
+.ah-btn-sm {
+  height: var(--ah-btn-h-sm);
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.ah-btn-md {
+  height: var(--ah-btn-h-md);
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.ah-btn-lg {
+  height: var(--ah-btn-h-lg);
+  padding: 0 18px;
+  font-size: 14px;
+}
+
+/* Button Variants */
+.ah-btn-primary {
+  background: var(--ah-primary);
+  color: #ffffff;
+  border-color: var(--ah-primary);
+}
+
+.ah-btn-primary:hover:not(:disabled) {
+  background: var(--ah-primary-hover);
+  border-color: var(--ah-primary-hover);
+}
+
+.ah-btn-secondary {
+  background: var(--ah-bg-elevated);
+  color: var(--ah-text-secondary);
+  border-color: var(--ah-border-medium);
+}
+
+.ah-btn-secondary:hover:not(:disabled) {
+  background: var(--ah-border-medium);
+  color: var(--ah-text-primary);
+}
+
+.ah-btn-outline {
+  background: transparent;
+  color: var(--ah-text-secondary);
+  border-color: var(--ah-border-medium);
+}
+
+.ah-btn-outline:hover:not(:disabled) {
+  background: var(--ah-bg-elevated);
+  color: var(--ah-text-primary);
+}
+
+.ah-btn-ghost {
+  background: transparent;
+  color: var(--ah-text-muted);
+  border-color: transparent;
+}
+
+.ah-btn-ghost:hover:not(:disabled) {
+  background: var(--ah-bg-elevated);
+  color: var(--ah-text-primary);
+}
+
+.ah-btn-danger {
+  background: var(--ah-critical-bg);
+  color: var(--ah-critical-text);
+  border-color: var(--ah-critical-border);
+}
+
+.ah-btn-danger:hover:not(:disabled) {
+  background: var(--ah-critical);
+  color: #ffffff;
+  border-color: var(--ah-critical);
+}
+
+.ah-btn-success {
+  background: var(--ah-success-bg);
+  color: var(--ah-success-text);
+  border-color: var(--ah-success-border);
+}
+
+.ah-btn-success:hover:not(:disabled) {
+  background: var(--ah-success);
+  color: #ffffff;
+  border-color: var(--ah-success);
+}
+
+.ah-btn-slack {
+  background: var(--ah-slack);
+  color: #ffffff;
+  border-color: var(--ah-slack-border);
+}
+
+.ah-btn-slack:hover:not(:disabled) {
+  background: var(--ah-slack-hover);
+}
+
+/* Spinner for Loading State */
+.ah-btn-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: var(--ah-radius-full);
+  animation: ahSpin 0.75s linear infinite;
+  display: inline-block;
+}
+
+@keyframes ahSpin {
+  to { transform: rotate(360deg); }
+}
+
+.ah-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}

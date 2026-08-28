@@ -29,9 +29,26 @@ class DatabaseService {
 
     this.initializing = (async () => {
       const databaseConfig = getDatabaseConfig();
-      this.pool = new Pool({
+      const rawPool = new Pool({
         connectionString: databaseConfig.url,
       });
+
+      // Strict Defense-in-Depth query guard protecting app_settings from destructive wipes
+      const originalQuery = rawPool.query.bind(rawPool);
+      rawPool.query = async (text, params) => {
+        const queryStr = typeof text === 'string' ? text : text?.text || '';
+        if (
+          /TRUNCATE\s+(TABLE\s+)?app_settings/i.test(queryStr) ||
+          /DROP\s+TABLE\s+(IF\s+EXISTS\s+)?app_settings/i.test(queryStr) ||
+          /DELETE\s+FROM\s+app_settings\s*(;|\s*$)/i.test(queryStr)
+        ) {
+          warn('PostgreSQL query guard: Blocked destructive wipe query against app_settings table', { query: queryStr });
+          return { rows: [], rowCount: 0, command: 'BLOCKED' };
+        }
+        return originalQuery(text, params);
+      };
+
+      this.pool = rawPool;
 
       await this.pool.query('SELECT 1');
       await this.createTables();
@@ -1211,6 +1228,10 @@ class DatabaseService {
       queryStr += ` ORDER BY issue_number DESC LIMIT 100`;
 
       const result = await this.pool.query(queryStr, params);
+      if (result.rows.length === 0 && this.inMemoryGithubIssues) {
+        const list = Array.isArray(this.inMemoryGithubIssues) ? this.inMemoryGithubIssues : Array.from(this.inMemoryGithubIssues.values());
+        if (list.length > 0) return [...list];
+      }
       return result.rows.map((row) => ({
         id: row.id,
         number: row.number,
@@ -1226,7 +1247,7 @@ class DatabaseService {
     } catch (err) {
       warn("PostgreSQL getGithubIssues failed, using in-memory store fallback", { err: err.message });
       if (!this.inMemoryGithubIssues) return [];
-      let issues = Array.from(this.inMemoryGithubIssues.values());
+      let issues = Array.isArray(this.inMemoryGithubIssues) ? this.inMemoryGithubIssues : Array.from(this.inMemoryGithubIssues.values());
       if (state) {
         issues = issues.filter((i) => i.state === state);
       }
@@ -1236,7 +1257,7 @@ class DatabaseService {
         const cleanWords = sLower.split(/\s+/).filter((w) => w.length > 0 && !stopWords.includes(w));
         if (cleanWords.length > 0) {
           const cleanSearch = cleanWords.join(' ');
-          issues = issues.filter((i) => i.title.toLowerCase().includes(cleanSearch) || i.repo.toLowerCase().includes(cleanSearch));
+          issues = issues.filter((i) => i.title.toLowerCase().includes(cleanSearch) || i.repo?.toLowerCase().includes(cleanSearch));
         }
       }
       return issues;
@@ -1253,7 +1274,7 @@ class DatabaseService {
     } catch (err) {
       warn("PostgreSQL getGithubSyncMetadata failed, using in-memory fallback", { err: err.message });
       if (!this.inMemoryGithubIssues) return { total: 0, last_synced_at: null };
-      const issues = Array.from(this.inMemoryGithubIssues.values());
+      const issues = Array.isArray(this.inMemoryGithubIssues) ? this.inMemoryGithubIssues : Array.from(this.inMemoryGithubIssues.values());
       const maxSync = issues.reduce((max, i) => (i.synced_at > max ? i.synced_at : max), null);
       return { total: issues.length, last_synced_at: maxSync };
     }
@@ -1368,6 +1389,9 @@ class DatabaseService {
       const queryText = teamId ? `SELECT * FROM dora_snapshots WHERE team_id = $1 ORDER BY created_at DESC` : `SELECT * FROM dora_snapshots ORDER BY created_at DESC`;
       const params = teamId ? [teamId] : [];
       const res = await this.pool.query(queryText, params);
+      if (res.rows.length === 0 && this.inMemoryDoraSnapshots.length > 0) {
+        return teamId ? this.inMemoryDoraSnapshots.filter(r => r.team_id === teamId) : [...this.inMemoryDoraSnapshots];
+      }
       return res.rows;
     } catch (err) {
       warn('PostgreSQL getDoraSnapshots failed, using in-memory fallback', { err: err.message });
@@ -1460,6 +1484,9 @@ class DatabaseService {
       const queryText = sprintId ? `SELECT * FROM sprint_analytics WHERE sprint_id = $1` : `SELECT * FROM sprint_analytics ORDER BY created_at DESC`;
       const params = sprintId ? [sprintId] : [];
       const res = await this.pool.query(queryText, params);
+      if (res.rows.length === 0 && this.inMemorySprintAnalytics.length > 0) {
+        return sprintId ? this.inMemorySprintAnalytics.filter(r => r.sprint_id === sprintId) : [...this.inMemorySprintAnalytics];
+      }
       return res.rows;
     } catch (err) {
       warn('PostgreSQL getSprintAnalytics failed, using in-memory fallback', { err: err.message });
@@ -1506,6 +1533,9 @@ class DatabaseService {
       const queryText = quarter ? `SELECT * FROM okr_tracker WHERE quarter = $1 ORDER BY created_at DESC` : `SELECT * FROM okr_tracker ORDER BY created_at DESC`;
       const params = quarter ? [quarter] : [];
       const res = await this.pool.query(queryText, params);
+      if (res.rows.length === 0 && this.inMemoryOkrTracker.length > 0) {
+        return quarter ? this.inMemoryOkrTracker.filter(r => r.quarter === quarter) : [...this.inMemoryOkrTracker];
+      }
       return res.rows;
     } catch (err) {
       warn('PostgreSQL getOkrRecords failed, using in-memory fallback', { err: err.message });
@@ -1665,12 +1695,12 @@ class DatabaseService {
   async upsertTeamMember(memberData) {
     const id = memberData.id || createOpaqueId('mem');
     const displayName = memberData.displayName || memberData.display_name || 'Team Member';
-    const email = memberData.email || `${id}@company.internal`;
+    const email = memberData.email || '';
     const aliases = JSON.stringify(memberData.aliases || [displayName]);
     const githubUsername = memberData.githubUsername || memberData.github_username || null;
-    const jiraEmail = memberData.jiraEmail || memberData.jira_email || email;
+    const jiraEmail = memberData.jiraEmail || memberData.jira_email || (email || null);
     const jiraAccountId = memberData.jiraAccountId || memberData.jira_account_id || null;
-    const gcalEmail = memberData.gcalEmail || memberData.gcal_email || email;
+    const gcalEmail = memberData.gcalEmail || memberData.gcal_email || (email || null);
     const notionName = memberData.notionName || memberData.notion_name || displayName;
     const currentLevel = memberData.currentLevel || memberData.current_level || 'L4_MID';
     const targetLevel = memberData.targetLevel || memberData.target_level || 'L5_SENIOR';
@@ -1758,6 +1788,22 @@ class DatabaseService {
       return true;
     } catch (err) {
       this.inMemoryTeamMembers = this.inMemoryTeamMembers.filter((m) => m.id !== id);
+      return true;
+    }
+  }
+
+  async purgeMockTeamMembers() {
+    try {
+      await this.ensureInitialized();
+      await this.pool.query("DELETE FROM team_members WHERE email LIKE '%@company.internal' OR email LIKE '%@testcompany.com' OR id IN ('mem_alex', 'mem_sarah', 'mem_taylor', 'mem_elena', 'mem_marcus', 'mem_lead')");
+      this.inMemoryTeamMembers = this.inMemoryTeamMembers.filter(
+        (m) => !m.email?.endsWith('@company.internal') && !m.email?.endsWith('@testcompany.com') && !['mem_alex', 'mem_sarah', 'mem_taylor', 'mem_elena', 'mem_marcus', 'mem_lead'].includes(m.id)
+      );
+      return true;
+    } catch (err) {
+      this.inMemoryTeamMembers = this.inMemoryTeamMembers.filter(
+        (m) => !m.email?.endsWith('@company.internal') && !m.email?.endsWith('@testcompany.com') && !['mem_alex', 'mem_sarah', 'mem_taylor', 'mem_elena', 'mem_marcus', 'mem_lead'].includes(m.id)
+      );
       return true;
     }
   }

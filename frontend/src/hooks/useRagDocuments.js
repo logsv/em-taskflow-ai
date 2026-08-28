@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { apiUrl } from '../services/apiClient.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -16,7 +17,7 @@ export function useRagDocuments() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/rag/documents');
+      const res = await fetch(apiUrl('/rag/documents'));
       if (res.ok) {
         const data = await res.json();
         setDocuments(Array.isArray(data.documents) ? data.documents : []);
@@ -44,7 +45,7 @@ export function useRagDocuments() {
     formData.append('pdf', file);
 
     try {
-      const res = await fetch('/api/rag/upload', {
+      const res = await fetch(apiUrl('/rag/upload'), {
         method: 'POST',
         body: formData,
       });
@@ -57,7 +58,7 @@ export function useRagDocuments() {
         const interval = setInterval(async () => {
           attempts += 1;
           try {
-            const pollRes = await fetch(`/api/rag/workflows/${workflowId}`);
+            const pollRes = await fetch(apiUrl(`/rag/workflows/${workflowId}`));
             if (pollRes.ok) {
               const pollData = await pollRes.json();
               if (pollData.status === 'COMPLETED') {

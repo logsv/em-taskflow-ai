@@ -35,10 +35,13 @@ flowchart TD
 
     subgraph UI ["📋 EM Action Hub & Cockpit (/actions)"]
         DB --> REST["REST API: /api/actions/*"]
-        REST --> KANBAN["🗂️ Kanban Board (Pending / In Progress / Resolved)"]
-        REST --> TABLE["📑 Dense Table (Multi-select batch triage)"]
-        REST --> GRID["🃏 Rich Cards Grid (Diagnostic context & SLA timer)"]
-        REST --> DRAWER["🔍 Action Inspection Drawer & Resolution Notes"]
+        REST --> EXEC["📊 ExecutiveSummary (4 decision cards + Health breakdown drawer)"]
+        REST --> NA["🚨 NeedsAttentionSection (Top critical/warning risks with 1-click CTA)"]
+        REST --> CTRL["⚡ ActionWorkspaceControls (Always-visible Search + Filter Popover + View Switcher)"]
+        REST --> KANBAN["🗂️ Kanban Board (Pending / In Progress / Resolved with scannable ActionCards)"]
+        REST --> TABLE["📑 Dense List Table (High-density review)"]
+        REST --> BULK["📦 BulkActionBar (Floating toolbar: In Progress, Resolve, Share to Slack, Dismiss)"]
+        REST --> DRAWER["🔍 ActionDetailsDrawer (Diagnostic signals, policy rules, freshness, resolution editor)"]
     end
 ```
 
@@ -58,7 +61,11 @@ flowchart TD
 3. **Rule of Deterministic Action Item Deduplication**:
    - Action item IDs must follow predictable deterministic patterns (e.g. `act_pr_42`, `act_1on1_sarah_chen`, `act_okr_dora`) to prevent duplicate cards during successive 4-hour cron runs.
 
-4. **Health Score Calculation Formula**:
+4. **Rule of Strict Explainability & Zero Hallucinated Metrics**:
+   - Every action item maps directly to a deterministic diagnostic signal (`PR Review Turnaround Latency`, `1-on-1 Cadence Sync Gap`, `ADR Architecture Governance & Isolation`), exact policy evaluation rule, tool source attribution, and real freshness timestamp.
+   - System must NEVER fabricate artificial AI confidence scores or arbitrary percentages.
+
+5. **Health Score Calculation Formula**:
    $$\text{Health Score} = \max\left(20, \min\left(100, 100 - (10 \times N_{\text{critical}}) - (5 \times N_{\text{warning}})\right)\right)$$
    - *Critical triggers*: Stalled PR >36 hours, blocked Jira ticket >3 days, severe SOP violation.
    - *Warning triggers*: Stalled PR >24 hours, overdue 1-on-1 >14 days, at-risk OKR pacing.
@@ -89,19 +96,23 @@ Allows the EM to click **"💬 Nudge"** on any action item to send a targeted re
 
 ## 🗂️ Interactive EM Action Hub UI (`/actions`)
 
-The Action Hub provides an elite, industry-standard cockpit for Engineering Managers:
+The Action Hub provides an elite, industry-standard decision cockpit for Engineering Managers:
 
-| View Mode | Best Used For | Features |
+| Component | Best Used For | Features |
 | :--- | :--- | :--- |
-| **🗂️ Kanban Board** | Daily Standup & Workflow Triage | 3 swimlanes (`Pending Triage`, `In Progress`, `Resolved / Completed`) with 1-click movement buttons (**⏳ In Progress**, **✅ Mark Done**, **🚫 Dismiss**). |
-| **📑 Dense Table** | High-Volume Review & Bulk Operations | Linear/Jira-style table with multi-select checkboxes for batch actions: **"✅ Mark Completed (N)"**, **"🚫 Dismiss (N)"**, **"💬 Share Selected to Slack"**. |
-| **🃏 Rich Card Grid** | Deep Diagnostic Inspection | Detailed cards with origin badges (GitHub, Jira, GCal, Notion), SLA countdown, and suggested EM talking points. |
+| **📊 Executive Summary** | At-a-glance Health & Status | 4 decision metric cards (Needs Attention, Overdue, Health Score with weighted breakdown drawer, Automation status). |
+| **🚨 Needs Attention Strip** | High-Urgency Morning Triage | Top priority critical/warning cards with SLA countdowns, 1 primary CTA, and secondary overflow actions. |
+| **⚡ Workspace Controls** | Instant Filtering & Layout | Always-visible search input with 1-click clear, compact Filter Popover (`⚡ Filter (N)`), active filter chips, and segmented view switcher. |
+| **🗂️ Kanban Board** | Daily Standup & Workflow Triage | 3 swimlanes (`Pending Triage`, `In Progress`, `Resolved / Completed`) with scannable action cards (~35% more compact) and keyboard accessibility. |
+| **📑 Dense Table** | High-Volume Review & Bulk Operations | Linear/Jira-style table with multi-select checkboxes for batch actions. |
+| **📦 Bulk Action Bar** | Multi-Item Batch Operations | Floating bottom-center toolbar for **In Progress**, **Resolve**, **Share to Slack**, **Dismiss**, and **✕ Clear** (`Esc`). |
+| **🔍 Action Details Drawer** | Deep Diagnostic Inspection | Slide-out drawer with engineering impact rationale (*Why this matters*), source tool evidence, policy rule explanation, and in-place resolution notes logger. |
 
 ### Additional Cockpit Tabs:
 - **🛡️ SOP & Architecture Matrix**: Live verification of ADR-008 DB isolation, PR review SLAs, and zero cloud keys.
 - **👥 Team Cadence & People Pulse**: Engineer 1-on-1 matrix tracking tenure, career level targets (`L4 Mid → L5 Senior`), and overdue cadence warnings (`⚠️ OVERDUE - 16 Days Ago`).
 - **📊 Sprint & DORA Velocity**: DORA 4 metrics with 2024 State of DevOps rubric tier ratings (*Elite*, *High*, *Medium*, *Low*).
-- **⏱️ Audit Run History**: Historical timeline of cron runs with health score diffs.
+- **⏱️ Audit Run History**: Historical timeline of cron runs with domain harvest status chips and trigger attribution.
 
 ---
 
@@ -125,7 +136,7 @@ The Action Hub provides an elite, industry-standard cockpit for Engineering Mana
 
 ## 🧪 Verification & Operational Commands
 
-### 1. Execute Backend Unit Test Suite (300 specs)
+### 1. Execute Backend Unit Test Suite (319 specs)
 ```bash
 cd backend
 npm test

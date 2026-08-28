@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
 import { AssistantRuntimeProvider, useLocalRuntime } from '@assistant-ui/react';
 import Chat from './components/Chat';
 import Sidebar from './components/Sidebar';
-import AdminPage from './components/AdminPage';
-import ActionHubPage from './components/ActionHubPage';
+import DevSettingsModal from './components/DevSettingsModal';
+import { apiUrl } from './services/apiClient';
 import logger from './utils/logger';
 import './App.css';
+
+const AdminPage = lazy(() => import('./components/AdminPage'));
+const ActionHubPage = lazy(() => import('./components/ActionHubPage'));
 
 function getUrlParams() {
   const params = new URLSearchParams(window.location.search);
@@ -37,6 +40,8 @@ function App() {
   const [useAdvancedMode, setUseAdvancedMode] = useState(false);
   const [sourcesMap, setSourcesMap] = useState({});
   const [traceMap, setTraceMap] = useState({});
+  const [isDevSettingsOpen, setIsDevSettingsOpen] = useState(false);
+  const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
   const [currentView, setCurrentView] = useState(
     window.location.pathname === '/admin'
       ? 'admin'
@@ -57,10 +62,22 @@ function App() {
   });
   const [isSessionsLoading, setIsSessionsLoading] = useState(false);
 
+  // Global keyboard shortcuts (Cmd+K / Ctrl+K) for Quick Actions
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsQuickActionsOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
+
   const fetchSessions = useCallback(async (page = 1) => {
     try {
       setIsSessionsLoading(true);
-      const res = await fetch(`/api/sessions?page=${page}&limit=10`);
+      const res = await fetch(apiUrl(`/sessions?page=${page}&limit=10`));
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data?.sessions)) {
@@ -118,7 +135,7 @@ function App() {
         headers['x-session-id'] = sessionSummary.sessionId;
       }
 
-      const res = await fetch('/api/chat', {
+      const res = await fetch(apiUrl('/chat'), {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
@@ -176,7 +193,7 @@ function App() {
       if (targetSessionId) params.set('sessionId', targetSessionId);
       if (targetThreadId) params.set('threadId', targetThreadId);
 
-      const url = params.toString() ? `/api/session?${params.toString()}` : '/api/session';
+      const url = params.toString() ? apiUrl(`/session?${params.toString()}`) : apiUrl('/session');
       const headers = {};
       if (targetSessionId) headers['x-session-id'] = targetSessionId;
       const response = await fetch(url, { headers });
@@ -233,7 +250,7 @@ function App() {
 
   const handleNewChat = async () => {
     try {
-      const res = await fetch('/api/sessions', {
+      const res = await fetch(apiUrl('/sessions'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: 'New Chat' }),
@@ -273,7 +290,7 @@ function App() {
 
   const handleDeleteSession = useCallback(async (sessionId) => {
     try {
-      await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+      await fetch(apiUrl(`/sessions/${sessionId}`), { method: 'DELETE' });
       // If deleting the active session, start a fresh one
       if (sessionId === sessionSummary?.sessionId) {
         await handleNewChat();
@@ -286,7 +303,7 @@ function App() {
 
   const handleArchiveSession = useCallback(async (sessionId) => {
     try {
-      await fetch(`/api/sessions/${sessionId}/archive`, { method: 'PATCH' });
+      await fetch(apiUrl(`/sessions/${sessionId}/archive`), { method: 'PATCH' });
       fetchSessions(sessionsPagination.page || 1);
     } catch (err) {
       logger.error('Failed to archive session', { error: err.message });
@@ -318,11 +335,19 @@ function App() {
   }, [loadSession]);
 
   if (currentView === 'admin') {
-    return <AdminPage onBackToChat={navigateToChat} />;
+    return (
+      <Suspense fallback={<div className="loading-fallback" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#94a3b8' }}>Loading Admin Portal...</div>}>
+        <AdminPage onBackToChat={navigateToChat} />
+      </Suspense>
+    );
   }
 
   if (currentView === 'actions') {
-    return <ActionHubPage onBackToChat={navigateToChat} onOpenAdmin={navigateToAdmin} />;
+    return (
+      <Suspense fallback={<div className="loading-fallback" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#94a3b8' }}>Loading Action Hub...</div>}>
+        <ActionHubPage onBackToChat={navigateToChat} onOpenAdmin={navigateToAdmin} />
+      </Suspense>
+    );
   }
 
   return (
@@ -341,6 +366,8 @@ function App() {
           setIsOpen={setSidebarOpen} 
           onOpenAdmin={navigateToAdmin}
           onOpenActionHub={navigateToActionHub}
+          onOpenSettings={() => setIsDevSettingsOpen(true)}
+          onOpenQuickActions={() => setIsQuickActionsOpen(true)}
           onNewChat={handleNewChat}
         />
         <main className={`main-content ${sidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
@@ -354,12 +381,29 @@ function App() {
               setSourcesMap={setSourcesMap}
               traceMap={traceMap}
               runtime={runtime}
+              sessionsList={sessionsList}
+              onSwitchSession={handleSwitchSession}
+              onOpenActionHub={navigateToActionHub}
+              onOpenDevSettings={() => setIsDevSettingsOpen(true)}
+              isPaletteOpen={isQuickActionsOpen}
+              setIsPaletteOpen={setIsQuickActionsOpen}
             />
           </div>
         </main>
+
+        {/* Developer Diagnostics & Settings Modal */}
+        <DevSettingsModal 
+          isOpen={isDevSettingsOpen}
+          onClose={() => setIsDevSettingsOpen(false)}
+          useAdvancedMode={useAdvancedMode}
+          setUseAdvancedMode={setUseAdvancedMode}
+          sessionSummary={sessionSummary}
+          onOpenAdmin={navigateToAdmin}
+        />
       </div>
     </AssistantRuntimeProvider>
   );
 }
 
 export default App;
+

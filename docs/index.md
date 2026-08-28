@@ -17,7 +17,7 @@ hero:
       link: /operations/agent-skills
     - theme: alt
       text: Swagger API Explorer ↗
-      link: http://localhost:4000/api/docs
+      link: http://localhost:4000/api/v1/docs
 
 features:
   - icon: 🔒

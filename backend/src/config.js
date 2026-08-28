@@ -514,7 +514,9 @@ export default config;
 
 export const getServerConfig = () => config.server;
 export const getRuntimeConfig = () => config.runtime;
-export const getDatabaseConfig = () => config.database;
+export const getDatabaseConfig = () => ({
+  url: process.env.DATABASE_URL || config.database.url,
+});
 export const getVectorDbConfig = () => config.vectorDb;
 export const getRagConfig = () => config.rag;
 export const getRagAdvancedConfig = () => config.ragAdvanced;

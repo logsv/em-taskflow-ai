@@ -1,0 +1,152 @@
+.ah-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+@media (max-width: 1024px) {
+  .ah-summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .ah-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ah-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ah-summary-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.ah-summary-card-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ah-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.ah-summary-card-icon {
+  font-size: 14px;
+}
+
+.ah-summary-card-caret {
+  font-size: 11px;
+  color: var(--ah-text-dim);
+}
+
+.ah-summary-card-val {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--ah-text-primary);
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+}
+
+.ah-summary-card-val.ah-val-sm {
+  font-size: 20px;
+}
+
+.ah-val-denom {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ah-text-muted);
+  margin-left: 2px;
+}
+
+.ah-summary-card-sub {
+  font-size: 12px;
+  color: var(--ah-text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.text-critical { color: var(--ah-critical-text); font-weight: 600; }
+.text-warning { color: var(--ah-warning-text); font-weight: 600; }
+.text-success { color: var(--ah-success-text); font-weight: 600; }
+.text-info { color: var(--ah-info-text); font-weight: 600; }
+
+/* Health Popover */
+.ah-health-card-wrapper {
+  position: relative;
+}
+
+.ah-health-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 320px;
+  background: var(--ah-bg-elevated);
+  border: 1px solid var(--ah-border-medium);
+  border-radius: var(--ah-radius-lg);
+  padding: 16px;
+  box-shadow: var(--ah-shadow-lg);
+  z-index: 120;
+  animation: ahFadeIn 0.15s ease-out;
+}
+
+@keyframes ahFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ah-popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ah-border-subtle);
+  font-size: 13px;
+  color: var(--ah-text-primary);
+}
+
+.ah-popover-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--ah-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.ah-popover-close-btn:hover {
+  color: var(--ah-text-primary);
+}
+
+.ah-popover-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ah-popover-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--ah-text-secondary);
+}
+
+.ah-popover-footer {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ah-border-subtle);
+  color: var(--ah-text-dim);
+  font-size: 11px;
+}

@@ -6,3 +6,7 @@ CREATE DATABASE taskflow_ai;
 CREATE DATABASE taskflow_test;
 CREATE DATABASE taskflow_ai_test;
 
+-- Initialize isolated evaluation databases (never share with runtime)
+CREATE DATABASE taskflow_eval;
+CREATE DATABASE taskflow_ai_eval;
+

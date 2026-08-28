@@ -6,6 +6,7 @@ import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import identityService from '../services/identityService.js';
 import settingsService from '../services/settingsService.js';
+import { evaluateDoraTier, identifyDoraBottlenecks } from '../utils/doraMetrics.js';
 
 export const doraMetricsTool = createDeterministicToolHarness({
   name: 'calculate_dora_metrics',
@@ -168,31 +169,20 @@ export const doraMetricsTool = createDeterministicToolHarness({
     const syncedAt = ghData.synced_at || new Date().toISOString();
 
     // Industry Benchmark 4-Tier Evaluation
-    let rating = 'HIGH';
-    if (deploymentFrequencyWeeks < 0.25 || averageLeadTimeHours > 720.0 || changeFailureRatePct > 30.0 || mttrHours > 168.0) {
-      rating = 'LOW';
-    } else if (deploymentFrequencyWeeks < 1.0 || averageLeadTimeHours > 168.0 || changeFailureRatePct > 15.0 || mttrHours > 24.0) {
-      rating = 'MEDIUM';
-    } else if (deploymentFrequencyWeeks >= 7.0 && averageLeadTimeHours <= 24.0 && changeFailureRatePct <= 5.0 && mttrHours <= 1.0) {
-      rating = 'ELITE';
-    } else {
-      rating = 'HIGH';
-    }
+    const rating = evaluateDoraTier({
+      deploymentFrequencyWeeks,
+      averageLeadTimeHours,
+      changeFailureRatePct,
+      mttrHours,
+    });
 
     // Identify Flow Bottlenecks
-    const bottlenecks = [];
-    if (reviewWaitTimeHours > 12.0) {
-      bottlenecks.push(`PR review latency averages ${reviewWaitTimeHours}h (${Math.round((reviewWaitTimeHours / Math.max(averageLeadTimeHours, 1)) * 100)}% of total lead time).`);
-    }
-    if (changeFailureRatePct > 15.0) {
-      bottlenecks.push(`Elevated Change Failure Rate (${changeFailureRatePct}%) indicates insufficient pre-merge automated testing or staging verification.`);
-    }
-    if (mttrHours > 4.0) {
-      bottlenecks.push(`Recovery time (${mttrHours}h) exceeds the 4-hour SLA. Recommend automated rollback triggers.`);
-    }
-    if (bottlenecks.length === 0) {
-      bottlenecks.push('Deployment pipeline and review throughput are operating within healthy SLA bounds.');
-    }
+    const bottlenecks = identifyDoraBottlenecks({
+      reviewWaitTimeHours,
+      averageLeadTimeHours,
+      changeFailureRatePct,
+      mttrHours,
+    });
 
     const mode = inputArgs.mode || 'ANALYZE';
     const targetMetric = inputArgs.metric || 'ALL';

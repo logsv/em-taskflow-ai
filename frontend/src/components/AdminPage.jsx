@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { apiUrl } from '../services/apiClient.js';
 import logger from '../utils/logger.js';
+import AdminShell from './admin/AdminShell.jsx';
 import './AdminPage.css';
 
 function formatUptime(totalSeconds) {
@@ -199,7 +201,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchBenchmarkStatus = async () => {
     try {
-      const res = await fetch('/api/admin/eval/benchmark-status');
+      const res = await fetch(apiUrl('/admin/eval/benchmark-status'));
       const data = await res.json();
       if (data.success) {
         setBenchmarkStatus(data.state);
@@ -214,7 +216,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchReplayStatus = async () => {
     try {
-      const res = await fetch('/api/admin/eval/replay-status');
+      const res = await fetch(apiUrl('/admin/eval/replay-status'));
       const data = await res.json();
       if (data.success) {
         setReplayStatus(data.state);
@@ -229,7 +231,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchSystemStatus = async () => {
     try {
-      const res = await fetch('/api/admin/system-status');
+      const res = await fetch(apiUrl('/admin/system-status'));
       const data = await res.json();
       setSystemStatus(data);
     } catch (err) {
@@ -239,7 +241,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchEvalMetrics = async () => {
     try {
-      const res = await fetch('/api/admin/eval/metrics');
+      const res = await fetch(apiUrl('/admin/eval/metrics'));
       const data = await res.json();
       if (data.success) {
         setEvalMetrics(data.metrics);
@@ -279,7 +281,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchPromptMatrixStatus = async () => {
     try {
-      const res = await fetch('/api/admin/eval/prompt-matrix/status');
+      const res = await fetch(apiUrl('/admin/eval/prompt-matrix/status'));
       const data = await res.json();
       if (data.success) {
         setPromptMatrixStatus(data.state);
@@ -296,7 +298,7 @@ function AdminPage({ onBackToChat }) {
     setIsRunningPromptMatrix(true);
     setEvalActionMsg('⚡ Starting Durable Prompt Matrix Evaluation via Temporal (>= 90% path)...');
     try {
-      const res = await fetch('/api/admin/eval/prompt-matrix', {
+      const res = await fetch(apiUrl('/admin/eval/prompt-matrix'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ modelTarget: 'hermes3:8b', limit: 10, batchSize: 5 }),
@@ -318,7 +320,7 @@ function AdminPage({ onBackToChat }) {
     setIsRunningBenchmark(true);
     setEvalActionMsg('🌙 Starting Deep Evaluation Benchmark (Ragas + DeepEval + Arena) against local Ollama hermes3:8b...');
     try {
-      const res = await fetch('/api/admin/eval/run-deep-benchmark', { method: 'POST' });
+      const res = await fetch(apiUrl('/admin/eval/run-deep-benchmark'), { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setEvalActionMsg(data.message);
@@ -336,7 +338,7 @@ function AdminPage({ onBackToChat }) {
     setIsRunningReplay(true);
     setEvalActionMsg('🔄 Replaying historical Langfuse failure traces & comparing Candidate Model vs Baseline...');
     try {
-      const res = await fetch('/api/admin/eval/replay-traces', { method: 'POST' });
+      const res = await fetch(apiUrl('/admin/eval/replay-traces'), { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setEvalActionMsg(data.message);
@@ -352,7 +354,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchAuditStatus = async () => {
     try {
-      const res = await fetch('/api/admin/audit/status');
+      const res = await fetch(apiUrl('/admin/audit/status'));
       const data = await res.json();
       if (data.success) {
         setAuditStatus(data);
@@ -366,7 +368,7 @@ function AdminPage({ onBackToChat }) {
     setIsRunningAudit(true);
     setAuditActionMsg('🚀 Disagreeing & launching Autonomous EM Task & Health Audit across all 10 domain agents...');
     try {
-      const res = await fetch('/api/admin/audit/trigger', {
+      const res = await fetch(apiUrl('/admin/audit/trigger'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'consolidated' }),
@@ -390,7 +392,7 @@ function AdminPage({ onBackToChat }) {
     setIsSyncingDatasets(true);
     setEvalActionMsg('📦 Syncing Golden & Prompt Matrix Datasets to Langfuse (:3001)...');
     try {
-      const res = await fetch('/api/admin/eval/sync-datasets', { method: 'POST' });
+      const res = await fetch(apiUrl('/admin/eval/sync-datasets'), { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setEvalActionMsg(`✅ ${data.message}`);
@@ -408,7 +410,7 @@ function AdminPage({ onBackToChat }) {
   const fetchDocuments = async () => {
     setLoadingDocs(true);
     try {
-      const res = await fetch('/api/admin/documents');
+      const res = await fetch(apiUrl('/admin/documents'));
       const data = await res.json();
       setDocuments(data.documents || []);
     } catch (err) {
@@ -420,7 +422,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchSyncStatus = async () => {
     try {
-      const res = await fetch('/api/github/sync-status');
+      const res = await fetch(apiUrl('/github/sync-status'));
       const data = await res.json();
       setSyncStatus(data);
     } catch (err) {
@@ -430,7 +432,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchDoraMetrics = async () => {
     try {
-      const res = await fetch('/api/em/dora');
+      const res = await fetch(apiUrl('/em/dora'));
       const data = await res.json();
       setDoraMetrics(data);
     } catch (err) {
@@ -441,7 +443,7 @@ function AdminPage({ onBackToChat }) {
   const fetchAdminSettings = async () => {
     setLoadingSettings(true);
     try {
-      const res = await fetch('/api/admin/settings');
+      const res = await fetch(apiUrl('/admin/settings'));
       const data = await res.json();
       if (data.success && data.settings) {
         setAdminSettings(data.settings);
@@ -455,7 +457,7 @@ function AdminPage({ onBackToChat }) {
 
   const fetchJiraOAuthStatus = async () => {
     try {
-      const res = await fetch('/api/mcp/jira/oauth/status');
+      const res = await fetch(apiUrl('/mcp/jira/oauth/status'));
       const data = await res.json();
       if (data.success) {
         setJiraOAuthStatus(data);
@@ -468,7 +470,7 @@ function AdminPage({ onBackToChat }) {
   const handleStartJiraOAuth = async () => {
     setIsConnectingJiraOAuth(true);
     try {
-      const res = await fetch('/api/mcp/jira/oauth/start');
+      const res = await fetch(apiUrl('/mcp/jira/oauth/start'));
       const data = await res.json();
       if (data.authorizationUrl) {
         window.location.href = data.authorizationUrl;
@@ -488,7 +490,7 @@ function AdminPage({ onBackToChat }) {
   const handleDisconnectJiraOAuth = async () => {
     if (!window.confirm('Disconnect Atlassian Jira OAuth and return to API Token mode?')) return;
     try {
-      const res = await fetch('/api/mcp/jira/oauth/disconnect', { method: 'POST' });
+      const res = await fetch(apiUrl('/mcp/jira/oauth/disconnect'), { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         await fetchJiraOAuthStatus();
@@ -504,7 +506,7 @@ function AdminPage({ onBackToChat }) {
     setSavingSettings(true);
     setSettingsSaveMsg('Saving and hot-reloading configurations...');
     try {
-      const res = await fetch('/api/admin/settings', {
+      const res = await fetch(apiUrl('/admin/settings'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -533,7 +535,7 @@ function AdminPage({ onBackToChat }) {
     setSavingSettings(true);
     setSettingsSaveMsg('Restoring .env defaults...');
     try {
-      const res = await fetch('/api/admin/settings/reset', { method: 'POST' });
+      const res = await fetch(apiUrl('/admin/settings/reset'), { method: 'POST' });
       const data = await res.json();
       if (data.success && data.settings) {
         setAdminSettings(data.settings);
@@ -550,8 +552,9 @@ function AdminPage({ onBackToChat }) {
     }
   };
 
+  const [isTestingAll, setIsTestingAll] = useState(false);
+
   const handleTestConnection = async (type) => {
-    if (!adminSettings) return;
     setConnTestStatus((prev) => ({
       ...prev,
       [type]: { loading: true, message: 'Testing connection...' },
@@ -559,14 +562,16 @@ function AdminPage({ onBackToChat }) {
 
     try {
       let credentials = {};
-      if (type === 'ollama') credentials = { baseUrl: adminSettings.llm?.ollama?.baseUrl };
-      else if (type === 'jira') credentials = adminSettings.mcp?.jira;
-      else if (type === 'github') credentials = adminSettings.mcp?.github;
-      else if (type === 'notion') credentials = adminSettings.mcp?.notion;
-      else if (type === 'googleCalendar') credentials = adminSettings.mcp?.googleCalendar;
-      else if (type === 'slack') credentials = adminSettings.mcp?.slack;
+      if (adminSettings) {
+        if (type === 'ollama') credentials = { baseUrl: adminSettings.llm?.ollama?.baseUrl };
+        else if (type === 'jira') credentials = adminSettings.mcp?.jira;
+        else if (type === 'github') credentials = adminSettings.mcp?.github;
+        else if (type === 'notion') credentials = adminSettings.mcp?.notion;
+        else if (type === 'googleCalendar') credentials = adminSettings.mcp?.googleCalendar;
+        else if (type === 'slack') credentials = adminSettings.mcp?.slack;
+      }
 
-      const res = await fetch('/api/admin/settings/test-connection', {
+      const res = await fetch(apiUrl('/admin/settings/test-connection'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type, credentials }),
@@ -591,14 +596,19 @@ function AdminPage({ onBackToChat }) {
   };
 
   const handleTestAllConnections = async () => {
-    await Promise.all([
-      handleTestConnection('ollama'),
-      handleTestConnection('jira'),
-      handleTestConnection('github'),
-      handleTestConnection('notion'),
-      handleTestConnection('googleCalendar'),
-      handleTestConnection('slack'),
-    ]);
+    setIsTestingAll(true);
+    try {
+      await Promise.all([
+        handleTestConnection('ollama'),
+        handleTestConnection('jira'),
+        handleTestConnection('github'),
+        handleTestConnection('notion'),
+        handleTestConnection('googleCalendar'),
+        handleTestConnection('slack'),
+      ]);
+    } finally {
+      setIsTestingAll(false);
+    }
   };
 
   const updateLlmField = (field, value) => {
@@ -669,7 +679,7 @@ function AdminPage({ onBackToChat }) {
     setIsSyncing(true);
     setSyncMessage('Syncing GitHub issues...');
     try {
-      const res = await fetch('/api/github/sync', { method: 'POST' });
+      const res = await fetch(apiUrl('/github/sync'), { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setSyncMessage(`Synced ${data.issuesCount || 0} issues successfully!`);
@@ -689,7 +699,7 @@ function AdminPage({ onBackToChat }) {
     e.stopPropagation();
     if (!window.confirm(`Delete document "${filename}" and all its vector chunks?`)) return;
     try {
-      const res = await fetch(`/api/admin/documents/${encodeURIComponent(filename)}`, {
+      const res = await fetch(apiUrl(`/admin/documents/${encodeURIComponent(filename)}`), {
         method: 'DELETE',
       });
       const data = await res.json();
@@ -715,7 +725,7 @@ function AdminPage({ onBackToChat }) {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('pdf', file);
-      const res = await fetch('/api/rag/upload', {
+      const res = await fetch(apiUrl('/rag/upload'), {
         method: 'POST',
         body: formData,
       });
@@ -728,7 +738,7 @@ function AdminPage({ onBackToChat }) {
         const interval = setInterval(async () => {
           attempts += 1;
           try {
-            const pollRes = await fetch(`/api/rag/workflows/${workflowId}`);
+            const pollRes = await fetch(apiUrl(`/rag/workflows/${workflowId}`));
             if (pollRes.ok) {
               const pollData = await pollRes.json();
               if (pollData.status === 'COMPLETED') {
@@ -779,7 +789,7 @@ function AdminPage({ onBackToChat }) {
     setChunkSearchQuery('');
     setCopySuccess(false);
     try {
-      const res = await fetch(`/api/admin/documents/${encodeURIComponent(filename)}/chunks`);
+      const res = await fetch(apiUrl(`/admin/documents/${encodeURIComponent(filename)}/chunks`));
       const data = await res.json();
       setDocChunks(data.chunks || []);
     } catch (err) {
@@ -838,7 +848,7 @@ function AdminPage({ onBackToChat }) {
   const fetchTeamMembers = async () => {
     setLoadingTeam(true);
     try {
-      const res = await fetch('/api/admin/team');
+      const res = await fetch(apiUrl('/admin/team'));
       if (res.ok) {
         const data = await res.json();
         setTeamMembers(data.members || []);
@@ -854,7 +864,7 @@ function AdminPage({ onBackToChat }) {
     setIsSyncingTeam(true);
     setTeamSyncMsg('');
     try {
-      const res = await fetch('/api/admin/team/sync', { method: 'POST' });
+      const res = await fetch(apiUrl('/admin/team/sync'), { method: 'POST' });
       const data = await res.json();
       if (res.ok && data.success) {
         setTeamMembers(data.members || []);
@@ -936,7 +946,7 @@ function AdminPage({ onBackToChat }) {
         tenureMonths: Number(memberForm.tenureMonths || 12),
       };
 
-      const url = editingMember?.id ? `/api/admin/team/${editingMember.id}` : '/api/admin/team';
+      const url = editingMember?.id ? apiUrl(`/admin/team/${editingMember.id}`) : apiUrl('/admin/team');
       const method = editingMember?.id ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
@@ -959,7 +969,7 @@ function AdminPage({ onBackToChat }) {
   const handleDeleteMember = async (id) => {
     if (!window.confirm('Are you sure you want to remove this team member?')) return;
     try {
-      const res = await fetch(`/api/admin/team/${id}`, { method: 'DELETE' });
+      const res = await fetch(apiUrl(`/admin/team/${id}`), { method: 'DELETE' });
       if (res.ok) {
         fetchTeamMembers();
       }
@@ -983,132 +993,38 @@ function AdminPage({ onBackToChat }) {
     });
   }, [teamMembers, teamSearchQuery, teamTrackFilter]);
 
+  const handleMainTabChange = (mainTabId) => {
+    if (mainTabId === 'overview') switchTab('overview');
+    else if (mainTabId === 'people') switchTab('team');
+    else if (mainTabId === 'ai-platform') switchTab('settings');
+    else if (mainTabId === 'operations') switchTab('services');
+    else if (mainTabId === 'quality') switchTab('evaluation');
+    else switchTab(mainTabId);
+  };
+
+  const handleSubTabChange = (subTabId) => {
+    switchTab(subTabId);
+  };
+
   return (
-    <div className="admin-page">
-      <header className="admin-header">
-        <div className="admin-header-left">
-          <div className="admin-title-area">
-            <h1>⚙️ EM TaskFlow AI <span className="title-portal-tag">Admin</span></h1>
-            <p className="admin-subtitle">Enterprise Productivity, Infrastructure & Service Launch Hub</p>
-          </div>
-        </div>
-
-        {/* Standard Top Navigation Tab Bar */}
-        <nav className="admin-nav-tabs">
-          {[
-            { id: 'overview', label: 'Overview & DORA', icon: '📊' },
-            { id: 'team', label: 'Team Directory', icon: '👥', badge: teamMembers.length ? String(teamMembers.length) : null },
-            { id: 'settings', label: 'Models & Tools', icon: '⚙️' },
-            { id: 'services', label: 'Service Hub', icon: '🚀', badge: '9' },
-            { id: 'evaluation', label: 'Quality & Eval', icon: '🧪' },
-            { id: 'storage', label: 'Storage & RAG', icon: '🗄️' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              className={`admin-nav-tab ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => switchTab(tab.id)}
-            >
-              <span className="tab-icon">{tab.icon}</span>
-              <span className="tab-label">{tab.label}</span>
-              {tab.badge && <span className="tab-badge">{tab.badge}</span>}
-            </button>
-          ))}
-        </nav>
-
-        <div className="admin-header-right">
-          {/* Three-Dot Quick Actions Dropdown Menu */}
-          <div className="admin-three-dot-container">
-            <button 
-              type="button"
-              className={`three-dot-menu-btn ${menuOpen ? 'active' : ''}`}
-              onClick={() => setMenuOpen(!menuOpen)}
-              title="Quick Admin Actions Menu"
-            >
-              <span>⋮</span>
-            </button>
-            {menuOpen && (
-              <div className="three-dot-dropdown">
-                <div className="dropdown-header">Quick Admin Actions</div>
-                <button type="button" className="dropdown-item" onClick={() => { setMenuOpen(false); switchTab('settings'); handleTestAllConnections(); }}>
-                  <span>⚡</span> Test All Connections
-                </button>
-                <button type="button" className="dropdown-item" onClick={() => { setMenuOpen(false); handleSaveSettings(); }}>
-                  <span>💾</span> Save & Apply Settings
-                </button>
-                <button type="button" className="dropdown-item" onClick={() => { setMenuOpen(false); handleResetSettings(); }}>
-                  <span>🔄</span> Re-sync .env Defaults
-                </button>
-                <div className="dropdown-divider"></div>
-                <button type="button" className="dropdown-item" onClick={() => { setMenuOpen(false); handleManualSync(); }}>
-                  <span>🐙</span> Sync GitHub Cache Now
-                </button>
-                <button type="button" className="dropdown-item" onClick={() => { setMenuOpen(false); handleRunDeepBenchmark(); }}>
-                  <span>🌙</span> Run Deep Eval Benchmark
-                </button>
-                <div className="dropdown-divider"></div>
-                <a href="http://127.0.0.1:3001" target="_blank" rel="noopener noreferrer" className="dropdown-item" onClick={() => setMenuOpen(false)}>
-                  <span>📊</span> Langfuse Dashboard ↗
-                </a>
-                <a href="http://127.0.0.1:8080/?pgsql=postgres&username=taskflow&db=taskflow_backend" target="_blank" rel="noopener noreferrer" className="dropdown-item" onClick={() => setMenuOpen(false)}>
-                  <span>🗄️</span> Adminer Postgres Explorer ↗
-                </a>
-                <a href="http://127.0.0.1:8233" target="_blank" rel="noopener noreferrer" className="dropdown-item" onClick={() => setMenuOpen(false)}>
-                  <span>⏳</span> Temporal Workflow UI ↗
-                </a>
-                <div className="dropdown-divider"></div>
-                <button type="button" className="dropdown-item exit-btn" onClick={() => { setMenuOpen(false); onBackToChat(); }}>
-                  <span>💬</span> Switch to Copilot Chat
-                </button>
-              </div>
-            )}
-          </div>
-
-          <button className="back-to-chat-btn" onClick={onBackToChat}>
-            💬 Back to Chat
-          </button>
-        </div>
-      </header>
-
-      {/* Quick KPI Status Strip */}
-      <div className="admin-kpi-strip">
-        <div className="kpi-item" onClick={() => switchTab('settings')} role="button" tabIndex={0} title="LangGraph Multi-Agent Supervisor: 10 Domain Micro-Agents">
-          <span className="kpi-icon">⚡</span>
-          <div className="kpi-text">
-            <span className="kpi-label">Local Agents Status</span>
-            <span className="kpi-value status-good">🟢 10 Active & Ready</span>
-          </div>
-        </div>
-        <div className="kpi-item" onClick={() => switchTab('settings')} role="button" tabIndex={0}>
-          <span className="kpi-icon">🤖</span>
-          <div className="kpi-text">
-            <span className="kpi-label">Inference LLM</span>
-            <span className="kpi-value">{adminSettings?.llm?.defaultModel || 'hermes3:8b'} (Local)</span>
-          </div>
-        </div>
-        <div className="kpi-item" onClick={() => switchTab('overview')} role="button" tabIndex={0}>
-          <span className="kpi-icon">🏆</span>
-          <div className="kpi-text">
-            <span className="kpi-label">DORA Performance</span>
-            <span className="kpi-value status-good">Elite Tier ({doraMetrics?.overall_score ?? 96.5}%)</span>
-          </div>
-        </div>
-        <div className="kpi-item" onClick={() => switchTab('storage')} role="button" tabIndex={0}>
-          <span className="kpi-icon">🗄️</span>
-          <div className="kpi-text">
-            <span className="kpi-label">Database</span>
-            <span className="kpi-value status-accent">{systemStatus?.health?.details?.database === 'up' || systemStatus?.status === 'online' ? 'PostgreSQL 16 (Online)' : 'Connected'}</span>
-          </div>
-        </div>
-        <div className="kpi-item" onClick={() => switchTab('storage')} role="button" tabIndex={0}>
-          <span className="kpi-icon">📄</span>
-          <div className="kpi-text">
-            <span className="kpi-label">RAG Vector Store</span>
-            <span className="kpi-value">{documents.length} Docs / HNSW Active</span>
-          </div>
-        </div>
-      </div>
-
+    <AdminShell
+      activeTab={activeTab}
+      onTabChange={handleMainTabChange}
+      onSubTabChange={handleSubTabChange}
+      onBackToChat={onBackToChat}
+      systemStatus={systemStatus}
+      doraMetrics={doraMetrics}
+      adminSettings={adminSettings}
+      documentsCount={documents.length}
+      teamCount={teamMembers.length}
+      onTestAllConnections={handleTestAllConnections}
+      isTestingConnections={isTestingAll}
+      connTestStatus={connTestStatus}
+      onSaveSettings={handleSaveSettings}
+      onResetSettings={handleResetSettings}
+      onManualSync={handleManualSync}
+      onRunDeepBenchmark={handleRunDeepBenchmark}
+    >
       <div className="admin-container">
         {/* TAB 1: OVERVIEW & DORA PRODUCTIVITY */}
         {activeTab === 'overview' && (
@@ -2106,7 +2022,7 @@ function AdminPage({ onBackToChat }) {
                             </div>
                           </div>
                           <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                            ℹ️ Create a 3LO App at <a href="https://developer.atlassian.com/console/myapps" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'underline' }}>developer.atlassian.com/console/myapps</a> with Callback URL <code>http://localhost:5001/api/mcp/jira/oauth/callback</code>.
+                            ℹ️ Create a 3LO App at <a href="https://developer.atlassian.com/console/myapps" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'underline' }}>developer.atlassian.com/console/myapps</a> with Callback URL <code>http://localhost:4000/api/mcp/jira/oauth/callback</code>.
                             <br />
                             <em>Note: If you don't have an OAuth App, direct Jira Cloud connection is active using your API Token above.</em>
                           </div>
@@ -3556,7 +3472,7 @@ function AdminPage({ onBackToChat }) {
           </div>
         </div>
       )}
-    </div>
+    </AdminShell>
   );
 }
 

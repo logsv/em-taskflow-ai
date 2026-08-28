@@ -394,7 +394,9 @@ const getRouterChain = () => {
       let content = "";
       try {
         const options = input.options || input;
-        const historyMessages = Array.isArray(options.messages) ? options.messages : [];
+        const historyMessages = Array.isArray(options.messages) && options.messages.length > 0
+          ? options.messages
+          : (Array.isArray(options.history) ? options.history : []);
         const priorContext = historyMessages.length > 0
           ? `[Prior Conversation Context: ${historyMessages.slice(-2).map((m) => `${m.role || 'speaker'}: ${String(m.content || '').slice(0, 120)}`).join(' | ')}]\n`
           : '';

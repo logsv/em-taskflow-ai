@@ -44,4 +44,4 @@ if (process.env.CI || process.env.NODE_ENV === 'test') {
   console.log('✅ CI test environment configured');
 }
 
-module.exports = mockServices;
+export default mockServices;

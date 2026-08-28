@@ -41,3 +41,15 @@ This document records the foundational architectural decisions, rationale, and t
 - **Context**: Repeated similar queries create redundant SLM inference latency and GPU overhead.
 - **Decision**: Intercept incoming queries using Redis vector similarity with a 0.95 cosine threshold and 1-hour TTL.
 - **Consequences**: Sub-50ms response times for recurring team queries with zero LLM generation cost.
+
+---
+
+## 📜 ADR-009: API Versioning Strategy & URI Namespace Policy
+- **Status**: Accepted
+- **Context**: As EM TaskFlow AI expands to multi-domain agents, autonomous audits, and external MCP tool harnesses, contract evolution requires strict version boundaries to prevent breaking existing sessions, webhooks, and client UI.
+- **Decision**: 
+  1. Adopt canonical URI path versioning: `/api/v1/*` for all REST endpoints and OpenAPI 3.1 specifications (`/api/v1/docs/openapi.json`).
+  2. Maintain legacy unversioned `/api/*` as an aliased backward-compatibility proxy that emits standard HTTP `Deprecation: true`, `Sunset: Sat, 01 Nov 2026 00:00:00 GMT`, and `Link: </api/v1/...>; rel="successor-version"` headers alongside `X-API-Version: v1`.
+  3. Centralize frontend API communication via `apiClient.js` with configurable base path prefixing.
+- **Consequences**: Ensures non-breaking zero-downtime migrations, clear deprecation schedules, and first-class Swagger UI exploration.
+

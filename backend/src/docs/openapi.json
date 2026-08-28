@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "EM TaskFlow AI - API Reference",
+    "title": "EM TaskFlow AI - API Reference (v1)",
     "version": "1.0.0",
-    "description": "Interactive API specification for the EM TaskFlow AI polyglot microservices platform. Powers local multi-agent supervisor reasoning (Ollama hermes3:8b), Hybrid RAG (HyDE + RRF), multi-source MCP integrations (Jira OAuth PKCE, Notion, GitHub, Slack, Google Calendar), and multi-session persistence."
+    "description": "Interactive REST API specification for the EM TaskFlow AI platform (v1). Powers local multi-agent supervisor reasoning (Ollama hermes3:8b), Hybrid RAG (HyDE + RRF), multi-source MCP integrations (Jira OAuth PKCE, Notion, GitHub, Slack, Google Calendar), Action Hub triage, and multi-session persistence."
   },
   "servers": [
     {
@@ -15,13 +15,14 @@
     { "name": "System & Health", "description": "Core system status, health checks, and metrics" },
     { "name": "Chat & Multi-Agent", "description": "Multi-agent conversational reasoning, RAG inference, and fast-path execution" },
     { "name": "Session & Thread", "description": "Multi-session persistence, chat threads, and message history" },
+    { "name": "Action Hub & Autonomous Audit", "description": "Autonomous EM task triage, health audits, and Slack dispatch notifications" },
     { "name": "MCP OAuth & Integrations", "description": "Atlassian Jira OAuth 2.0 PKCE, Notion, GitHub, Slack, and Google Calendar tool management" },
     { "name": "Engineering Management (EM)", "description": "DORA tier metrics, sprint velocity, OKR progress, and SBI feedback" },
     { "name": "RAG & Documents", "description": "Document ingestion, chunk inspection, and vector store management" },
-    { "name": "Administration", "description": "Standalone Admin Portal endpoints and system telemetry" }
+    { "name": "Administration", "description": "Standalone Admin Portal endpoints, team directory, and system telemetry" }
   ],
   "paths": {
-    "/api/health": {
+    "/api/v1/health": {
       "get": {
         "tags": ["System & Health"],
         "summary": "System Health Status",
@@ -48,7 +49,7 @@
         }
       }
     },
-    "/api/chat": {
+    "/api/v1/chat": {
       "post": {
         "tags": ["Chat & Multi-Agent"],
         "summary": "Execute Chat Inference",
@@ -102,7 +103,7 @@
         }
       }
     },
-    "/api/sessions": {
+    "/api/v1/sessions": {
       "get": {
         "tags": ["Session & Thread"],
         "summary": "List Paginated Sessions",
@@ -132,11 +133,11 @@
           }
         },
         "responses": {
-          "200": { "description": "Session created successfully" }
+          "201": { "description": "Session created successfully" }
         }
       }
     },
-    "/api/session": {
+    "/api/v1/session": {
       "get": {
         "tags": ["Session & Thread"],
         "summary": "Resolve Current Session Context",
@@ -146,7 +147,7 @@
         }
       }
     },
-    "/api/threads": {
+    "/api/v1/threads": {
       "post": {
         "tags": ["Session & Thread"],
         "summary": "Create Thread in Current Session",
@@ -163,11 +164,11 @@
           }
         },
         "responses": {
-          "200": { "description": "Thread created" }
+          "201": { "description": "Thread created" }
         }
       }
     },
-    "/api/sessions/{sessionId}/switch": {
+    "/api/v1/sessions/{sessionId}/switch": {
       "post": {
         "tags": ["Session & Thread"],
         "summary": "Switch Active Session Thread",
@@ -193,7 +194,7 @@
         }
       }
     },
-    "/api/threads/{threadId}/messages": {
+    "/api/v1/threads/{threadId}/messages": {
       "get": {
         "tags": ["Session & Thread"],
         "summary": "Get Thread Message History",
@@ -206,50 +207,47 @@
         }
       }
     },
-    "/api/oauth/jira/authorize": {
+    "/api/v1/mcp/jira/oauth/start": {
       "get": {
         "tags": ["MCP OAuth & Integrations"],
         "summary": "Initiate Jira OAuth 2.0 PKCE Flow",
-        "description": "Generates PKCE code challenge and redirects user to Atlassian authorization consent screen.",
+        "description": "Generates PKCE code challenge and returns Atlassian authorization consent URL.",
         "responses": {
-          "302": { "description": "Redirects to auth.atlassian.com" }
+          "200": { "description": "Returns authorizationUrl and codeVerifier" }
         }
       }
     },
-    "/api/oauth/jira/callback": {
+    "/api/v1/mcp/jira/oauth/callback": {
       "get": {
         "tags": ["MCP OAuth & Integrations"],
         "summary": "Jira OAuth Callback",
         "parameters": [
-          { "name": "code", "in": "query", "required": true, "schema": { "type": "string" } },
-          { "name": "state", "in": "query", "required": true, "schema": { "type": "string" } }
+          { "name": "code", "in": "query", "required": true, "schema": { "type": "string" } }
         ],
         "responses": {
-          "200": { "description": "Token exchanged and persisted" }
+          "302": { "description": "Redirects to Admin settings on success" }
         }
       }
     },
-    "/api/oauth/jira/status": {
+    "/api/v1/mcp/jira/oauth/status": {
       "get": {
         "tags": ["MCP OAuth & Integrations"],
         "summary": "Get Jira OAuth Status",
         "responses": {
-          "200": {
-            "description": "Current connection status, workspace details, and token expiration"
-          }
+          "200": { "description": "Connection status, cloud ID, and token expiration" }
         }
       }
     },
-    "/api/oauth/jira/disconnect": {
+    "/api/v1/mcp/jira/oauth/disconnect": {
       "post": {
         "tags": ["MCP OAuth & Integrations"],
         "summary": "Disconnect Jira OAuth",
         "responses": {
-          "200": { "description": "Jira credentials purged" }
+          "200": { "description": "Jira credentials purged and reverted to API token" }
         }
       }
     },
-    "/api/em/dora": {
+    "/api/v1/em/dora": {
       "get": {
         "tags": ["Engineering Management (EM)"],
         "summary": "Get DORA Productivity Metrics",
@@ -259,7 +257,7 @@
         }
       }
     },
-    "/api/em/sprints": {
+    "/api/v1/em/sprints": {
       "get": {
         "tags": ["Engineering Management (EM)"],
         "summary": "Get Sprint Health & Velocity",
@@ -268,7 +266,7 @@
         }
       }
     },
-    "/api/em/okrs": {
+    "/api/v1/em/okrs": {
       "get": {
         "tags": ["Engineering Management (EM)"],
         "summary": "Get OKR Progress & Pacing",
@@ -277,7 +275,7 @@
         }
       }
     },
-    "/api/em/sbi": {
+    "/api/v1/em/sbi": {
       "get": {
         "tags": ["Engineering Management (EM)"],
         "summary": "Get Situation-Behavior-Impact Logs",
@@ -286,11 +284,70 @@
         }
       }
     },
-    "/api/rag/upload": {
+    "/api/v1/actions": {
+      "get": {
+        "tags": ["Action Hub & Autonomous Audit"],
+        "summary": "List Action Items",
+        "description": "Returns deduplicated, prioritized EM action items with filter and pagination support.",
+        "responses": {
+          "200": { "description": "List of action items and aggregate counters" }
+        }
+      }
+    },
+    "/api/v1/actions/summary": {
+      "get": {
+        "tags": ["Action Hub & Autonomous Audit"],
+        "summary": "Get Action Hub Health & Summary",
+        "responses": {
+          "200": { "description": "Executive health score (20-100) and pending severity counts" }
+        }
+      }
+    },
+    "/api/v1/actions/audit/trigger": {
+      "post": {
+        "tags": ["Action Hub & Autonomous Audit"],
+        "summary": "Trigger Autonomous EM Audit",
+        "description": "Dispatches 4-domain audit across DORA, People, Sprint/OKR, and SOP governance.",
+        "responses": {
+          "200": { "description": "Audit executed and persisted" }
+        }
+      }
+    },
+    "/api/v1/actions/slack/dispatch": {
+      "post": {
+        "tags": ["Action Hub & Autonomous Audit"],
+        "summary": "Dispatch Executive Briefing to Slack",
+        "responses": {
+          "200": { "description": "Scorecard and action items posted to Slack channel" }
+        }
+      }
+    },
+    "/api/v1/actions/{id}/nudge": {
+      "post": {
+        "tags": ["Action Hub & Autonomous Audit"],
+        "summary": "Send Slack Nudge to Assignee",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Slack reminder sent directly to assignee" }
+        }
+      }
+    },
+    "/api/v1/actions/batch": {
+      "post": {
+        "tags": ["Action Hub & Autonomous Audit"],
+        "summary": "Batch Update Action Items",
+        "responses": {
+          "200": { "description": "Action items updated in batch" }
+        }
+      }
+    },
+    "/api/v1/rag/upload": {
       "post": {
         "tags": ["RAG & Documents"],
         "summary": "Upload Document for Ingestion",
-        "description": "Processes document (PDF, CSV, TXT, PNG/JPG), extracts text, generates parent-child chunks, and persists embeddings to taskflow_ai.",
+        "description": "Processes document (PDF, CSV, TXT, PNG/JPG), extracts text, generates chunks, and persists embeddings to taskflow_ai.",
         "requestBody": {
           "required": true,
           "content": {
@@ -298,7 +355,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "pdf": { "type": "string", "format": "binary" }
+                  "file": { "type": "string", "format": "binary" }
                 }
               }
             }
@@ -306,11 +363,12 @@
         },
         "responses": {
           "200": { "description": "Document ingested and tokenized" },
+          "202": { "description": "Ingestion dispatched to Temporal background workflow" },
           "400": { "description": "Missing file or invalid format" }
         }
       }
     },
-    "/api/admin/documents": {
+    "/api/v1/admin/documents": {
       "get": {
         "tags": ["Administration", "RAG & Documents"],
         "summary": "List Ingested Documents",
@@ -319,7 +377,7 @@
         }
       }
     },
-    "/api/admin/documents/{filename}/chunks": {
+    "/api/v1/admin/documents/{filename}/chunks": {
       "get": {
         "tags": ["Administration", "RAG & Documents"],
         "summary": "Get Document Chunks",
@@ -331,7 +389,7 @@
         }
       }
     },
-    "/api/admin/documents/{filename}": {
+    "/api/v1/admin/documents/{filename}": {
       "delete": {
         "tags": ["Administration", "RAG & Documents"],
         "summary": "Delete Document & Embeddings",
@@ -343,16 +401,25 @@
         }
       }
     },
-    "/api/admin/system-status": {
+    "/api/v1/admin/system-status": {
       "get": {
         "tags": ["Administration"],
         "summary": "System Health & Uptime Status",
         "responses": {
-          "200": { "description": "Aggregated process, DB, and Ollama status" }
+          "200": { "description": "Aggregated process, DB, Ollama, and probe status" }
         }
       }
     },
-    "/api/feedback": {
+    "/api/v1/admin/team": {
+      "get": {
+        "tags": ["Administration"],
+        "summary": "List Team Directory",
+        "responses": {
+          "200": { "description": "List of synced engineering team members and identity mapping" }
+        }
+      }
+    },
+    "/api/v1/feedback": {
       "post": {
         "tags": ["Chat & Multi-Agent"],
         "summary": "Submit User Feedback",
@@ -374,7 +441,7 @@
           }
         },
         "responses": {
-          "200": { "description": "Feedback submitted asynchronously" }
+          "201": { "description": "Feedback submitted asynchronously" }
         }
       }
     }

@@ -4,6 +4,8 @@ import { getChatModel } from '../llm/index.js';
 import { sprintAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
+import identityService from '../services/identityService.js';
+import { getDirectOrFormattedJiraUrl, formatMarkdownLinkOrCode } from '../utils/urlHelper.js';
 
 export const sprintPlanTool = createDeterministicToolHarness({
   name: 'calculate_sprint_plan',
@@ -247,7 +249,7 @@ export const sprintPlanTool = createDeterministicToolHarness({
         { key: 'ENG-201', summary: 'Core Auth OAuth v2 token refresh pipeline', story_points: 5, assignee: 'Alex Williams', is_tech_debt: false },
         { key: 'ENG-204', summary: 'PostgreSQL connection pool & pgvector HNSW index tuning', story_points: 5, assignee: 'Sarah Chen', is_tech_debt: true },
         { key: 'ENG-208', summary: 'RAG single-pass Markdown streaming response optimization', story_points: 8, assignee: 'Alex Williams', is_tech_debt: false },
-        { key: 'ENG-212', summary: 'Temporal durable workflow timeout retry policy hardening', story_points: 3, assignee: 'Vikas Kumar', is_tech_debt: true },
+        { key: 'ENG-212', summary: 'Temporal durable workflow timeout retry policy hardening', story_points: 3, assignee: 'Lead Engineer', is_tech_debt: true },
         { key: 'ENG-215', summary: 'LangGraph multi-agent supervisor domain policy validator', story_points: 5, assignee: 'Elena Rostova', is_tech_debt: false },
         { key: 'ENG-219', summary: 'Redis semantic vector cache invalidation hooks', story_points: 3, assignee: 'Sarah Chen', is_tech_debt: true },
         { key: 'ENG-222', summary: 'Admin Portal team member sync & role management tab', story_points: 5, assignee: 'Elena Rostova', is_tech_debt: false },
@@ -348,7 +350,7 @@ ${riskWarnings.length > 0 ? riskWarnings.map((w) => `  * ${w}`).join('\n') : '  
 
 | Issue Key | Summary | Type | Points | Assignee |
 | :--- | :--- | :---: | :---: | :--- |
-${candidateTickets.map((t) => `| [${t.key}](https://jira.atlassian.net/browse/${t.key}) | ${t.summary} | ${t.is_tech_debt ? '🛠️ Tech Debt' : '🚀 Feature'} | **${t.story_points} pts** | ${t.assignee} |`).join('\n')}
+${candidateTickets.map((t) => `| ${formatMarkdownLinkOrCode(t.key, getDirectOrFormattedJiraUrl(t))} | ${t.summary} | ${t.is_tech_debt ? '🛠️ Tech Debt' : '🚀 Feature'} | **${t.story_points} pts** | ${t.assignee} |`).join('\n')}
 
 - **Ceremony Next Steps**: Ensure peer pairing for issues $\ge 5$ story points.
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { apiUrl } from '../services/apiClient.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -12,7 +13,7 @@ export function useGithubSync() {
 
   const fetchSyncStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/github/sync-status');
+      const res = await fetch(apiUrl('/github/sync-status'));
       if (res.ok) {
         const data = await res.json();
         setSyncStatus(data);
@@ -32,7 +33,7 @@ export function useGithubSync() {
     setSyncMessage('Syncing GitHub issues...');
 
     try {
-      const res = await fetch('/api/github/sync', {
+      const res = await fetch(apiUrl('/github/sync'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repo }),

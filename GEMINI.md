@@ -68,6 +68,7 @@ The backend agent uses an **8-stage hybrid architecture** optimized for **Local 
 - **Slack Web API** (`slack.js`): Direct channel listings (`slack_list_channels`) and message searching (`slack_search_messages`), with Temporal Human-in-the-Loop approval governance for posting (`slack_post_message`).
 - **Google Calendar** (`google.js`): Dynamic calendar ID configuration, schedule inspection (`get_calendar_events`), event management.
 - **Base Tool Harness** (`baseToolHarness.js`): Standardized circuit breaker pattern, exponential backoff, and execution metrics.
+- **Direct API URL Resolution & Standard** (`urlHelper.js`): Resolves native URLs from API responses directly and eliminates fake domains/broken links by rendering safe monospace code blocks when unconfigured.
 
 ### 6. LangGraph Supervisor (`graph.js`)
 - Uses `@langchain/langgraph-supervisor` to manage worker agent handoffs across 10 domain micro-agents.
@@ -82,7 +83,10 @@ The backend agent uses an **8-stage hybrid architecture** optimized for **Local 
 
 ### 8. Resilient Per-Service Database Isolation (`postgres.js`)
 - **`taskflow_backend`**: Houses application sessions, chat threads, messages, `em_audit_runs`, `em_action_items`, and cached MCP fallback data (`github_issues`, `dora_snapshots`, `sprint_analytics`, `okr_records`, `team_members`, `app_settings`).
-- **`taskflow_ai`**: Houses vector document chunks (`pdf_chunks`).
+- **🔒 Strict `app_settings` Immunity**: Live API keys (`JIRA_API_TOKEN`, `GITHUB_TOKEN`, `NOTION_API_KEY`, `GOOGLE_CALENDAR_API_KEY`, `SLACK_BOT_TOKEN`) and LLM model configurations stored in `app_settings` are strictly immune to drops, wipes, or truncation.
+- **🔒 Real User Identity Immunity**: Real user accounts (`logsv`, admin profiles) in `team_members` must never be deleted during mock fixture resets.
+- **`taskflow_test` & `taskflow_eval`**: Dedicated, isolated databases for Jasmine unit test specs and evaluation benchmark runs on port 5432.
+- **`taskflow_ai`** (with `taskflow_ai_test` / `taskflow_ai_eval`): Houses vector document chunks (`pdf_chunks`).
 - **`temporal` & `temporal_visibility`**: Houses workflow state.
 - **`langfuse_db`**: Houses telemetry traces on port 5433.
 - If live MCP tool servers time out, automatic fallback retrieves cached data from PostgreSQL, presenting stale-data warnings to the user.
@@ -94,10 +98,32 @@ The backend agent uses an **8-stage hybrid architecture** optimized for **Local 
   - *Consolidated Mode*: High-impact scorecard summarizing Health Score, DORA tier, sprint pacing, overdue 1-on-1s, and top 4 prioritized actions.
   - *Threaded Breakdown Mode*: Parent scorecard + 4 sub-thread replies (Delivery, People, Sprint, SOP).
   - *Targeted Action Nudges*: Instant Slack ping to assigned engineers with PR/Jira context and recommended next action.
-- **Interactive EM Action Hub UI (`ActionHubPage.jsx`)**:
-  - 🗂️ **Kanban Board**: 3 swimlanes (`Pending Triage`, `In Progress`, `Resolved / Completed`) with 1-click status transitions.
-  - 📑 **Dense Table**: Linear/Jira-style high-density table with multi-select checkboxes for batch triage and Slack sharing.
-  - 🃏 **Rich Card Grid**: Detailed cards with diagnostic descriptions, origin badges, SLA countdowns, and resolution history.
-  - 🔍 **Action Inspection Drawer**: Diagnostic context, root causes, and resolution notes editor with EM attribution.
+- **Interactive EM Action Hub Decision Cockpit (`ActionHubPage.jsx`)**:
+  - 📊 **Executive Summary**: 4 decision metric cards (Needs Attention, Overdue SLAs, Health Score with breakdown drawer, Automation status).
+  - 🚨 **Needs Attention Section**: High-urgency morning triage strip with SLA countdowns and 1-click primary CTAs.
+  - ⚡ **Workspace Controls**: Always-visible search with instant clear, compact Filter Popover (`⚡ Filter (N)`), active filter chips, and segmented view switcher.
+  - 🗂️ **Kanban Board**: 3 swimlanes (`Pending Triage`, `In Progress`, `Resolved / Completed`) with scannable action cards (~35% more compact) and keyboard accessibility.
+  - 📑 **Dense Table**: Linear/Jira-style high-density table with multi-select checkboxes for batch triage.
+  - 📦 **Bulk Action Bar**: Floating bottom-center toolbar for **In Progress**, **Resolve**, **Share to Slack**, **Dismiss**, and **✕ Clear** (`Esc`).
+  - 🔍 **Action Details Drawer**: Slide-out drawer with engineering impact rationale (*Why this matters*), deterministic tool signals, policy rules, and in-place resolution logger (with zero fake AI confidence scores).
   - 👥 **Team Cadence Matrix**: Engineer 1-on-1 tracking table with promotion targets, tenure, and overdue sync alerts.
+
+### 10. Standalone Admin Portal & Modular UI Architecture (`/admin`)
+- **Global Shell & De-cluttered Viewport (`AdminShell.jsx`)**: Replaced repeated KPI strips with a compact `● System Healthy` status pill in the header. Clicking opens the slide-out **System Diagnostics Drawer** (`SystemStatusDrawer.jsx`) showing real-time health across 10 domain micro-agents, Ollama, PostgreSQL 5432, Langfuse DB 5433, and RAG vector storage.
+- **Operator-First Top Navigation**: 5 primary domain groups (*Overview*, *People*, *AI Platform*, *Operations*, *Quality*) with nested sub-navigation pills for progressive disclosure (*Models & Tools*, *Services & Storage*).
+- **Reusable UI Design Primitives (`frontend/src/components/admin/ui/`)**: Zero-dependency component library (`Button`, `Badge`, `StatusBadge`, `Card`, `MetricCard`, `Section`, `Tabs`, `Table`, `Drawer`, `Modal`, `Dropdown`, `SearchInput`, `EmptyState`, `Alert`) adhering to semantic dark-theme design tokens (`adminTokens.css`).
+- **Readymade 8-Service Catalog**: Direct deep-links to Langfuse (:3001), Promptfoo Managed Cloud, Adminer (:8080), Temporal (:8233), Sentry, New Relic, Axiom, and Swagger REST API Explorer (:4000/api/v1/docs).
+
+### 11. Low-Distraction EM Copilot UI & Quick Actions (`⌘K`)
+- **Workflow-First Philosophy**: *"Workflows are the product; agents are the implementation."* Primary chat interface is clean and free of implementation distractions (sub-agent selectors, raw tool lists, or vector chunk parameters).
+- **Quick Actions Palette (`⌘K`)**: `AgentPromptPalette.jsx` enables instant workflow launching across Delivery, People, Planning, and Governance, with rich intent keyword matching and progressive disclosure scenario hints (`⋯`).
+- **Decision Action Pills**: Assistant responses feature actionable pills (`[📋 Action Hub]`, `[🎯 Formulate Actions]`) connecting analysis directly to action triage.
+- **Dedicated Dev Settings Modal**: `DevSettingsModal.jsx` isolates Advanced RAG mode, session/thread diagnostic copying, and PostgreSQL cache controls from the main chat viewport.
+
+### 12. Canonical REST API Versioning & Deprecation Policy (`ADR-009`)
+- **Canonical Namespace**: All REST endpoints reside under `/api/v1/*` (`/api/v1/chat`, `/api/v1/sessions`, `/api/v1/actions`, `/api/v1/admin`, `/api/v1/docs`).
+- **Backward Compatibility**: Legacy `/api/*` requests are aliased and forwarded to `/api/v1/*` with HTTP `Deprecation: true`, `Sunset: Sat, 01 Nov 2026 00:00:00 GMT`, and `Link: </api/v1/...>; rel="successor-version"` headers.
+- **Frontend Client Centralization**: Single `apiClient.js` module standardizes base path and session token injection.
+
+
 

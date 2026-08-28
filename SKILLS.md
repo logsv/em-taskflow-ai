@@ -27,14 +27,20 @@ This document provides a comprehensive sitemap and directory of operational skil
 | **`rag-pdf-ingestion`** | [`.agents/skills/rag-pdf-ingestion/SKILL.md`](file://.agents/skills/rag-pdf-ingestion/SKILL.md) | Testing multi-format document ingestion (PDF, CSV, Images OCR, Text), HyDE query transformation, CTE-based RRF hybrid search, Redis semantic cache, and single-pass RAG synthesis. |
 | **`session-thread-management-ops`** | [`.agents/skills/session-thread-management-ops/SKILL.md`](file://.agents/skills/session-thread-management-ops/SKILL.md) | Procedures for managing PostgreSQL session persistence, chat threads, pagination, context menus, thread renaming, and dynamic title derivation. |
 
-### 4. 📊 Observability, Evaluations & Operations
+### 4. 🎨 Frontend, Copilot UI & Admin Operations
 | Skill Name | Path | Description |
 | :--- | :--- | :--- |
-| **`autonomous-em-audit-ops`** | [`.agents/skills/autonomous-em-audit-ops/SKILL.md`](file://.agents/skills/autonomous-em-audit-ops/SKILL.md) | Managing, executing, and testing the Autonomous EM Task & Health Audit Engine, 4-hour background cron in Temporal, multi-channel Slack notification dispatch, and interactive EM Action Hub UI (`/actions`). |
+| **`frontend-copilot-ui-ops`** | [`.agents/skills/frontend-copilot-ui-ops/SKILL.md`](file://.agents/skills/frontend-copilot-ui-ops/SKILL.md) | Managing, styling, and verifying the EM TaskFlow AI Copilot UI, CSS design tokens, Quick Actions (`⌘K`), Dev Settings Modal, and Vite builds. |
 | **`admin-portal-ops`** | [`.agents/skills/admin-portal-ops/SKILL.md`](file://.agents/skills/admin-portal-ops/SKILL.md) | Managing the Standalone Admin Portal (`/admin`), external service hubs (Langfuse, Promptfoo, Adminer, Temporal), DORA tier ratings, vector chunk inspection, and Express admin APIs. |
+| **`autonomous-em-audit-ops`** | [`.agents/skills/autonomous-em-audit-ops/SKILL.md`](file://.agents/skills/autonomous-em-audit-ops/SKILL.md) | Managing, executing, and testing the Autonomous EM Task & Health Audit Engine, 4-hour background cron in Temporal, multi-channel Slack notification dispatch, and interactive EM Action Hub UI (`/actions`). |
+
+### 5. 📊 Observability, Evaluations & Operations
+| Skill Name | Path | Description |
+| :--- | :--- | :--- |
 | **`em-dora-productivity-ops`** | [`.agents/skills/em-dora-productivity-ops/SKILL.md`](file://.agents/skills/em-dora-productivity-ops/SKILL.md) | Tracking, testing, and managing Engineering Manager (EM) DORA productivity metrics (tier ratings), Sprint health analytics, OKRs, and SBI feedback records. |
 | **`enterprise-evaluation-framework-ops`** | [`.agents/skills/enterprise-evaluation-framework-ops/SKILL.md`](file://.agents/skills/enterprise-evaluation-framework-ops/SKILL.md) | Managing, executing, and calibrating the 3-Phase Enterprise Evaluation Framework (`hermes3:8b`), strategy evaluators, DeepEval, Ragas, TruLens, and CI/CD pre-push gates. |
 | **`langfuse-analytics-migration`** | [`.agents/skills/langfuse-analytics-migration/SKILL.md`](file://.agents/skills/langfuse-analytics-migration/SKILL.md) | Guidelines for self-hosted Langfuse telemetry (port 3001), non-blocking tracing, and isolated `analytics-db` (`langfuse_db` on port 5433). |
+| **`structured-json-logging-ops`** | [`.agents/skills/structured-json-logging-ops/SKILL.md`](file://.agents/skills/structured-json-logging-ops/SKILL.md) | Configuring and verifying leveled structured JSON logging across Node.js Pino and Python AI logging handlers. |
 
 ---
 
@@ -43,4 +49,5 @@ This document provides a comprehensive sitemap and directory of operational skil
 When performing complex development or operational tasks:
 1. Locate the relevant skill from the categorized directory above.
 2. Read the skill's `SKILL.md` using `view_file` before executing changes.
-3. Follow the empirical verification commands listed in the skill to ensure zero regressions across all **300 backend unit test specs** and **45 Python AI test specs**.
+3. Follow the empirical verification commands listed in the skill to ensure zero regressions across all **319 backend unit test specs** and **45 Python AI test specs**.
+

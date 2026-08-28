@@ -7,8 +7,7 @@
   "scripts": {
     "build": "echo \"No build step needed for JS backend\"",
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
-    "test": "NODE_OPTIONS='--loader @istanbuljs/esm-loader-hook' npx nyc jasmine test/**/*.js",
+    "test": "DATABASE_URL=postgresql://taskflow:taskflow@localhost:5432/taskflow_test NODE_ENV=test NODE_OPTIONS='--loader @istanbuljs/esm-loader-hook' npx nyc jasmine --config=jasmine.json",
     "evaluate": "node evaluation/run-evaluation.js",
     "eval:multi-agent": "node evaluation/evaluators/multi-agent-eval.js",
     "eval:rag": "node evaluation/evaluators/rag-eval.js",
@@ -20,6 +19,7 @@
     "eval:sync-prompts": "node evaluation/sync-prompts-to-langfuse.js",
     "eval:nightly": "bash ../scripts/run-nightly-eval.sh",
     "eval:enterprise": "npm run eval:sync-datasets && npm run eval:sync-prompts && npm run evaluate && npm run eval:deepeval && npm run eval:ragas",
+    "db:clean": "node scripts/clean-database.js",
     "start:google": "pnpm -C ../mcp-servers/google-workspace start",
     "start:mcp": "pnpm start:google"
   },

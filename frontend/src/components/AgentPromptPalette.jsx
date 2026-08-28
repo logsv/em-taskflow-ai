@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { ALL_AGENT_PROMPTS, AGENT_CATEGORIES } from "../constants/agentPrompts.js";
+import { ALL_WORKFLOWS, WORKFLOW_CATEGORIES } from "../constants/agentPrompts.js";
 import "./AgentPromptPalette.css";
 
 function AgentPromptPalette({ isOpen, onClose, onSelectPrompt, onInsertPrompt, isRunning }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [expandedAgentId, setExpandedAgentId] = useState(null);
+  const [expandedWorkflowId, setExpandedWorkflowId] = useState(null);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const searchInputRef = useRef(null);
 
   useEffect(() => {
@@ -13,55 +14,81 @@ function AgentPromptPalette({ isOpen, onClose, onSelectPrompt, onInsertPrompt, i
       setTimeout(() => {
         searchInputRef.current?.focus();
       }, 50);
+      setHighlightedIndex(0);
     } else {
       setSearchQuery("");
       setSelectedCategory("all");
-      setExpandedAgentId(null);
+      setExpandedWorkflowId(null);
+      setHighlightedIndex(0);
     }
   }, [isOpen]);
 
+  const filteredWorkflows = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return ALL_WORKFLOWS.filter((wf) => {
+      const matchesCategory = selectedCategory === "all" || wf.category === selectedCategory;
+      if (!matchesCategory) return false;
+      if (!query) return true;
+
+      const inTitle = wf.title.toLowerCase().includes(query);
+      const inDomain = (wf.domain || "").toLowerCase().includes(query);
+      const inDesc = (wf.shortDescription || "").toLowerCase().includes(query);
+      const inText = (wf.text || "").toLowerCase().includes(query);
+      const inKeywords = wf.keywords?.some((k) => k.toLowerCase().includes(query));
+      const inHints = wf.hints?.some((h) => h.toLowerCase().includes(query));
+
+      return inTitle || inDomain || inDesc || inText || inKeywords || inHints;
+    });
+  }, [searchQuery, selectedCategory]);
+
+  // Keyboard navigation within modal
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === "Escape" && isOpen) {
+      if (!isOpen) return;
+
+      if (e.key === "Escape") {
         onClose();
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlightedIndex((prev) => 
+          prev < filteredWorkflows.length - 1 ? prev + 1 : 0
+        );
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlightedIndex((prev) => 
+          prev > 0 ? prev - 1 : Math.max(0, filteredWorkflows.length - 1)
+        );
+      } else if (e.key === "Enter" && !e.shiftKey) {
+        if (filteredWorkflows[highlightedIndex]) {
+          e.preventDefault();
+          onSelectPrompt(filteredWorkflows[highlightedIndex].text);
+          onClose();
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
-
-  const filteredAgents = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    return ALL_AGENT_PROMPTS.filter((agent) => {
-      const matchesCategory = selectedCategory === "all" || agent.category === selectedCategory;
-      if (!matchesCategory) return false;
-      if (!query) return true;
-
-      const inTitle = agent.title.toLowerCase().includes(query);
-      const inDomain = agent.domain.toLowerCase().includes(query);
-      const inDesc = (agent.shortDescription || "").toLowerCase().includes(query);
-      const inText = agent.text.toLowerCase().includes(query);
-      const inHints = agent.hints?.some((h) => h.toLowerCase().includes(query));
-
-      return inTitle || inDomain || inDesc || inText || inHints;
-    });
-  }, [searchQuery, selectedCategory]);
+  }, [isOpen, onClose, filteredWorkflows, highlightedIndex, onSelectPrompt]);
 
   if (!isOpen) return null;
 
-  const handleCardClick = (promptText, autoSend = true) => {
-    if (autoSend) {
-      onSelectPrompt(promptText);
-      onClose();
-    } else {
-      onInsertPrompt(promptText);
-      onClose();
-    }
+  const handleRunWorkflow = (promptText) => {
+    onSelectPrompt(promptText);
+    onClose();
   };
 
-  const toggleExpand = (e, agentId) => {
+  const handleEditWorkflow = (promptText) => {
+    if (typeof onInsertPrompt === 'function') {
+      onInsertPrompt(promptText);
+    } else {
+      onSelectPrompt(promptText);
+    }
+    onClose();
+  };
+
+  const toggleOptions = (e, wfId) => {
     e.stopPropagation();
-    setExpandedAgentId((prev) => (prev === agentId ? null : agentId));
+    setExpandedWorkflowId((prev) => (prev === wfId ? null : wfId));
   };
 
   return (
@@ -72,13 +99,16 @@ function AgentPromptPalette({ isOpen, onClose, onSelectPrompt, onInsertPrompt, i
           <div className="palette-header-title">
             <span className="palette-header-icon">⚡</span>
             <div>
-              <h3>Fast Agent Prompts & Hints</h3>
-              <p>1-click launch for all 10 Local Micro-Agents + Docs RAG</p>
+              <h3>Quick Actions</h3>
+              <p>Launch engineering management workflows, audits, and coaching</p>
             </div>
           </div>
-          <button className="palette-close-btn" onClick={onClose} title="Close (Esc)">
-            ✕
-          </button>
+          <div className="palette-header-right">
+            <span className="palette-esc-hint">Esc</span>
+            <button className="palette-close-btn" onClick={onClose} title="Close (Esc)">
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Search & Category Filter Bar */}
@@ -89,9 +119,12 @@ function AgentPromptPalette({ isOpen, onClose, onSelectPrompt, onInsertPrompt, i
               ref={searchInputRef}
               type="text"
               className="palette-search-input"
-              placeholder="Search prompts (e.g. DORA, bottleneck, 1:1, sprint, retro, okr, security)..."
+              placeholder="Search workflows, metrics, people, or actions..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setHighlightedIndex(0);
+              }}
             />
             {searchQuery && (
               <button className="clear-search-btn" onClick={() => setSearchQuery("")}>
@@ -101,99 +134,110 @@ function AgentPromptPalette({ isOpen, onClose, onSelectPrompt, onInsertPrompt, i
           </div>
 
           <div className="palette-category-pills">
-            {AGENT_CATEGORIES.map((cat) => (
+            {WORKFLOW_CATEGORIES.map((cat) => (
               <button
                 key={cat.id}
+                type="button"
                 className={`category-pill ${selectedCategory === cat.id ? "active" : ""}`}
-                onClick={() => setSelectedCategory(cat.id)}
+                onClick={() => {
+                  setSelectedCategory(cat.id);
+                  setHighlightedIndex(0);
+                }}
               >
-                <span>{cat.icon}</span>
                 <span>{cat.label}</span>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Agent Cards List */}
+        {/* Workflow Cards List */}
         <div className="palette-agent-list">
-          {filteredAgents.length === 0 ? (
+          {filteredWorkflows.length === 0 ? (
             <div className="palette-empty-state">
-              <span>🔍 No agent prompts match "{searchQuery}"</span>
-              <button className="reset-filter-btn" onClick={() => { setSearchQuery(""); setSelectedCategory("all"); }}>
+              <span>No workflows match "{searchQuery}"</span>
+              <button
+                type="button"
+                className="reset-filter-btn"
+                onClick={() => {
+                  setSearchQuery("");
+                  setSelectedCategory("all");
+                }}
+              >
                 Reset Filters
               </button>
             </div>
           ) : (
-            filteredAgents.map((agent) => {
-              const isExpanded = expandedAgentId === agent.id;
-              return (
-                <div key={agent.id} className="palette-agent-card">
-                  <div className="agent-card-main">
-                    <div className="agent-card-header">
-                      <div className="agent-card-identity">
-                        <span className="agent-card-icon">{agent.icon}</span>
-                        <div>
-                          <div className="agent-title-row">
-                            <span className="agent-card-title">{agent.title}</span>
-                            <span className="agent-card-domain">{agent.domain}</span>
-                          </div>
-                          <p className="agent-card-desc">{agent.shortDescription}</p>
-                        </div>
-                      </div>
+            filteredWorkflows.map((wf, idx) => {
+              const isExpanded = expandedWorkflowId === wf.id;
+              const isHighlighted = idx === highlightedIndex;
 
-                      <div className="agent-card-actions">
-                        {agent.hints && agent.hints.length > 0 && (
-                          <button
-                            className={`toggle-hints-btn ${isExpanded ? "expanded" : ""}`}
-                            onClick={(e) => toggleExpand(e, agent.id)}
-                            title="View specific prompt hints"
-                          >
-                            {isExpanded ? "Hide Hints ▴" : `⚡ ${agent.hints.length} Hints ▾`}
-                          </button>
-                        )}
-                        <button
-                          className="use-prompt-btn"
-                          onClick={() => handleCardClick(agent.text, true)}
-                          disabled={isRunning}
-                          title="Send prompt directly"
-                        >
-                          Run ➤
-                        </button>
+              return (
+                <div 
+                  key={wf.id} 
+                  className={`palette-workflow-card ${isHighlighted ? "highlighted" : ""}`}
+                  onMouseEnter={() => setHighlightedIndex(idx)}
+                >
+                  <div className="workflow-card-main">
+                    <div className="workflow-card-identity">
+                      <span className="workflow-card-icon">{wf.icon}</span>
+                      <div className="workflow-card-info">
+                        <div className="workflow-title-row">
+                          <span className="workflow-card-title">{wf.title}</span>
+                          <span className="workflow-domain-badge">{wf.domain}</span>
+                        </div>
+                        <p className="workflow-card-desc">{wf.shortDescription}</p>
                       </div>
                     </div>
 
-                    <div className="primary-prompt-preview">
-                      <span className="prompt-label">Primary Prompt:</span>
-                      <span className="prompt-text">"{agent.text}"</span>
+                    <div className="workflow-card-actions">
+                      <button
+                        type="button"
+                        className="workflow-options-btn"
+                        onClick={(e) => toggleOptions(e, wf.id)}
+                        title="Scenario options & custom prompts"
+                      >
+                        {isExpanded ? "▾" : "⋯"}
+                      </button>
+                      <button
+                        type="button"
+                        className="workflow-run-btn"
+                        onClick={() => handleRunWorkflow(wf.text)}
+                        disabled={isRunning}
+                        title="Run workflow analysis"
+                      >
+                        Run →
+                      </button>
                     </div>
                   </div>
 
-                  {/* Sub-Hints Accordion */}
-                  {isExpanded && agent.hints && (
-                    <div className="agent-sub-hints">
-                      <div className="sub-hints-header">
-                        <span>Specific Scenarios & Fast Hints:</span>
+                  {/* Progressive Disclosure: Scenario Options */}
+                  {isExpanded && wf.hints && (
+                    <div className="workflow-scenarios-panel">
+                      <div className="scenarios-panel-header">
+                        <span>Targeted Scenarios & Prompts:</span>
                       </div>
-                      <div className="sub-hints-grid">
-                        {agent.hints.map((hint, idx) => (
-                          <div key={idx} className="sub-hint-item">
-                            <span className="sub-hint-bullet">💡</span>
-                            <span className="sub-hint-text">{hint}</span>
-                            <div className="sub-hint-actions">
+                      <div className="scenarios-list">
+                        {wf.hints.map((hint, hIdx) => (
+                          <div key={hIdx} className="scenario-item">
+                            <span className="scenario-bullet">💡</span>
+                            <span className="scenario-text">{hint}</span>
+                            <div className="scenario-actions">
                               <button
-                                className="sub-hint-edit-btn"
-                                onClick={() => handleCardClick(hint, false)}
-                                title="Insert into message box to edit"
+                                type="button"
+                                className="scenario-edit-btn"
+                                onClick={() => handleEditWorkflow(hint)}
+                                title="Insert into message composer"
                               >
                                 Edit ✏️
                               </button>
                               <button
-                                className="sub-hint-run-btn"
-                                onClick={() => handleCardClick(hint, true)}
+                                type="button"
+                                className="scenario-run-btn"
+                                onClick={() => handleRunWorkflow(hint)}
                                 disabled={isRunning}
                                 title="Send immediately"
                               >
-                                Send ➤
+                                Run →
                               </button>
                             </div>
                           </div>
@@ -209,8 +253,12 @@ function AgentPromptPalette({ isOpen, onClose, onSelectPrompt, onInsertPrompt, i
 
         {/* Footer */}
         <div className="palette-footer">
-          <span>💡 Tip: Click <strong>Run ➤</strong> to send immediately, or <strong>Edit ✏️</strong> to customize your prompt.</span>
-          <span className="palette-count">{filteredAgents.length} Agents Available</span>
+          <div className="palette-footer-shortcuts">
+            <span><kbd>↑</kbd> <kbd>↓</kbd> to navigate</span>
+            <span><kbd>↵</kbd> to run</span>
+            <span><kbd>Esc</kbd> to close</span>
+          </div>
+          <span className="palette-count">{filteredWorkflows.length} Workflows</span>
         </div>
       </div>
     </div>
@@ -218,3 +266,4 @@ function AgentPromptPalette({ isOpen, onClose, onSelectPrompt, onInsertPrompt, i
 }
 
 export default AgentPromptPalette;
+

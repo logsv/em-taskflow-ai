@@ -169,3 +169,20 @@ GET /api/admin/temporal/slack-post/status?workflowId=slack-post-hitl-17188920000
 ### 2. Situation-Behavior-Impact Feedback Specialist (`sbiAgent`)
 - Queries Slack discussions to extract verbatim communication context for constructive 1-on-1 coaching dossiers.
 - Cites Slack timestamps and channels in `Corroborating Workspace Artifacts`.
+
+---
+
+## 📋 Autonomous EM Audit & Action Hub Slack Dispatch
+
+In addition to micro-agent queries, the platform includes a **Multi-Channel Slack Dispatch Engine** wired to the **Autonomous EM Audit Engine** and **EM Action Hub UI** (`/actions`):
+
+### 1. Whole-Audit Executive Briefing
+- **Consolidated Executive Brief (`mode: 'consolidated'`)**: Dispatches a single rich scorecard with the Engineering Health Score (`🟢 92/100`), DORA tier, sprint pacing, overdue 1-on-1 count, and top 4 action items with deep links to the EM Action Hub.
+- **Threaded Breakdown (`mode: 'threaded_subsections'`)**: Dispatches the scorecard as a parent message, followed by 4 sub-thread replies breaking down *Delivery & DORA*, *People & 1-on-1s*, *Sprint & OKRs*, and *SOP & Governance*.
+
+### 2. Targeted Engineer Action Item Nudges
+- 1-click **"💬 Nudge"** on any action item card formats and sends a direct Slack reminder to the assigned engineer (`@alex-dev`, `@sarah-c`) with context, PR/Jira deep link, and recommended next action.
+
+### 3. Channel Resolution API
+- Exposes `GET /api/v1/actions/slack/channels` to dynamically list available channels for the EM dispatch modal dropdown.
+

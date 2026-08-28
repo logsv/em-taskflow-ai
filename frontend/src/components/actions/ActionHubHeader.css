@@ -1,0 +1,125 @@
+.ah-header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--ah-border-subtle);
+}
+
+.ah-header-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ah-back-to-chat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--ah-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: var(--ah-radius-sm);
+  transition: color var(--ah-transition-fast), background var(--ah-transition-fast);
+  cursor: pointer;
+  border: none;
+}
+
+.ah-back-to-chat-btn:hover {
+  color: var(--ah-text-primary);
+  background: var(--ah-bg-elevated);
+}
+
+.ah-back-arrow {
+  font-size: 14px;
+}
+
+.ah-header-admin-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  color: var(--ah-text-dim);
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: var(--ah-radius-sm);
+  transition: color var(--ah-transition-fast);
+  cursor: pointer;
+  border: none;
+}
+
+.ah-header-admin-link:hover {
+  color: var(--ah-text-secondary);
+}
+
+.ah-external-icon {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.ah-header-main-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ah-header-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ah-header-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--ah-text-primary);
+  letter-spacing: -0.4px;
+}
+
+.ah-header-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ah-text-muted);
+}
+
+.ah-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Compact Sync Badge */
+.ah-sync-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  border-radius: var(--ah-radius-full);
+  color: var(--ah-success-text);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.ah-sync-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--ah-radius-full);
+  background: var(--ah-success);
+  box-shadow: 0 0 6px var(--ah-success);
+  animation: ahPulse 2s infinite ease-in-out;
+}
+
+@keyframes ahPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}

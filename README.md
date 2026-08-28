@@ -9,7 +9,7 @@
 [![Ollama](https://img.shields.io/badge/LLM-100%25%20Local%20(Ollama)-orange.svg)](https://ollama.ai)
 [![Documentation](https://img.shields.io/badge/Docs-VitePress-brightgreen.svg)](https://logsv.github.io/em-taskflow-ai/)
 [![API Explorer](https://img.shields.io/badge/API%20Docs-Swagger%20OpenAPI%203.1-38bdf8.svg)](http://localhost:4000/api/docs)
-[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-300%20passed-success.svg)](backend)
+[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-319%20passed-success.svg)](backend)
 [![Python AI Tests](https://img.shields.io/badge/Python%20AI%20Tests-45%20passed-success.svg)](services/python-ai-service)
 [![Docker Compose](https://img.shields.io/badge/Deployment-Docker%20Compose-2496ED.svg)](docker-compose.yml)
 
@@ -39,7 +39,7 @@
   npm run docs:build   # Build static documentation bundle
   ```
 - **⚡ Interactive Swagger API Explorer**: Test Express REST endpoints interactively at [`http://localhost:4000/api/docs`](http://localhost:4000/api/docs) (OpenAPI 3.1 schema at `/api/docs/openapi.json`).
-- **🧰 Agent Skills Directory**: Full sitemap of 14 operational skills located in [`SKILLS.md`](SKILLS.md) and [`.agents/skills/`](.agents/skills).
+- **🧰 Agent Skills Directory**: Full sitemap of 15 operational skills located in [`SKILLS.md`](SKILLS.md) and [`.agents/skills/`](.agents/skills).
 
 ---
 
@@ -53,6 +53,7 @@ Modern enterprise productivity tools often require sending sensitive internal wo
 4. **🎯 Bounded Tool Scoping for High SLM Accuracy**: Small Language Models (3B-7B parameters) often degrade when presented with multiple tools simultaneously. EM TaskFlow AI enforces a **single-tool restriction per sub-agent**, boosting execution accuracy past **95%**.
 5. **⚡ Fast-Path Pre-Classification (<300ms)**: Conversational, coding, mathematical, and attachment queries bypass agent routing overhead entirely via an ultra-fast pre-classifier, delivering near-instant responses.
 6. **🔌 Multi-Source Model Context Protocol (MCP) Ecosystem**: Native integration with Jira OAuth 2.0 PKCE, Notion REST, GitHub PAT/OAuth, Slack Web API, and Google Calendar.
+7. **🎨 Low-Distraction EM Copilot UI**: Follows *"Workflows are the product; agents are the implementation"* with Quick Actions (`⌘K`), starter workflow grid, Decision Action Pills (`[📋 Action Hub]`), quiet sync telemetry, and dedicated Dev Settings Modal.
 
 ---
 
@@ -60,10 +61,11 @@ Modern enterprise productivity tools often require sending sensitive internal wo
 
 **EM TaskFlow AI** integrates multi-agent AI orchestration, local vector search, multi-format document ingestion (PDF, CSV, Images, Text), and developer workflow tools into a single cohesive cockpit.
 
-- **Frontend**: Responsive React UI built with Vite, `@assistant-ui/react`, glassmorphism space-dark styling, multi-session management with sidebar pagination and context menus, an Autonomous EM Action Hub (`/actions`), and a Standalone Admin Portal (`/admin`).
+- **Frontend**: Responsive React UI built with Vite, `@assistant-ui/react`, restrained enterprise dark design tokens (`index.css`), Quick Actions palette (`⌘K`), multi-session management with sidebar pagination and context menus, an Autonomous EM Action Hub (`/actions`), and a Standalone Admin Portal (`/admin`).
 - **Backend Services**: Node.js microservices platform powered by LangChain, `@langchain/langgraph-supervisor`, Redis semantic cache, Temporal 4-hour background cron engine, and Ollama (`hermes3:8b`).
 - **Python AI RAG Service**: Dedicated Python gRPC/REST service managing parent-child chunking, Cross-Encoder reranking, and `taskflow_ai` vector persistence.
 - **Multi-Agent Orchestrator**: LangGraph supervisor routing queries across specialized micro-agents with bounded execution scopes.
+
 
 ---
 
@@ -79,11 +81,13 @@ Access the dedicated EM Action Hub by clicking **📋 EM Action Hub** in the mai
 - **Whole-Audit Executive Briefing**: 1-click **"💬 Send to Slack"** modal allowing EMs to post to `#engineering-leadership`, `#dev-standup`, `#em-taskflow-alerts`, or custom channels in **Consolidated Scorecard** or **Threaded 4-Subsection** format with real-time message preview.
 - **Targeted Engineer Nudges**: 1-click **"💬 Nudge"** on any action item to dispatch an instant reminder to the assigned engineer on Slack with PR/Jira deep links and talking points.
 
-### 3. 🗂️ Multi-View Action Triage Modes
-- **Kanban Board**: 3 swimlanes (`Pending Triage`, `In Progress`, `Resolved / Completed`) with 1-click status advancement.
-- **Dense Table View**: High-density table with multi-select checkboxes for batch triage (**"✅ Mark Completed (N)"**, **"🚫 Dismiss (N)"**, **"💬 Share Selected to Slack"**).
-- **Rich Cards Grid**: Detailed cards with diagnostic descriptions, SLA timers, and linked tool references.
-- **Action Inspection Drawer**: Diagnostic context, root cause breakdowns, and EM resolution notes editor.
+### 3. 🗂️ EM Decision Cockpit Experience
+- **Executive Summary**: 4 decision metric cards (Needs Attention, Overdue SLAs, Engineering Health Score with weighted breakdown drawer, Automation status).
+- **Needs Attention Strip**: High-urgency morning triage strip highlighting top critical/warning risks with SLA countdowns and 1-click primary CTAs.
+- **Always-Visible Workspace Controls**: Instant search with clear button, compact Filter Popover (`⚡ Filter (N)`), active filter chips, and segmented view switcher.
+- **Scannable Kanban Board & Dense Table**: 3 swimlanes with ~35% more compact cards, keyboard accessibility (`Enter`/`Space` to inspect), and linear-style dense table.
+- **Floating Bulk Action Bar**: Bottom-center toolbar for batch mutations (**In Progress**, **Resolve**, **Share to Slack**, **Dismiss**).
+- **Action Details Drawer**: Slide-out drawer with engineering impact rationale (*Why this matters*), deterministic tool signals, policy rules, and in-place resolution notes logger (with zero fake AI metrics).
 - **Team Cadence Matrix**: Engineer 1-on-1 tracking table with promotion targets, tenure, and overdue sync alerts.
 
 ---

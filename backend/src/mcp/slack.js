@@ -176,7 +176,7 @@ export async function getSlackTools() {
             target_channel: targetChannel,
             draft_message: message,
             requires_approval: true,
-            approval_endpoint: '/api/admin/temporal/slack-post/approve',
+            approval_endpoint: '/api/v1/admin/temporal/slack-post/approve',
             message: 'Draft post held in Temporal Human-in-the-Loop (HITL) queue. Awaiting human confirmation before dispatching to Slack.',
           });
         } catch (hitlErr) {
@@ -520,7 +520,7 @@ export async function getAvailableSlackChannels() {
       headers: { Authorization: `Bearer ${token}` },
       timeout: 4000,
     });
-    if (res.data?.ok && Array.isArray(res.data.channels)) {
+    if (res.data?.ok && Array.isArray(res.data.channels) && res.data.channels.length > 0) {
       return res.data.channels.map((c) => ({
         id: c.id,
         name: c.name,
