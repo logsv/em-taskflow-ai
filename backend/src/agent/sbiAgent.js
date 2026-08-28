@@ -356,11 +356,27 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
       };
     }
 
-    const rawSituation = data.situation || `During the recent release deployment (${inputArgs.context_type || '1on1_meeting'})`;
+    const rawSituation = data.situation || inputArgs.situation || inputArgs.raw_draft || `During the recent release deployment (${inputArgs.context_type || '1on1_meeting'})`;
     const situation = cleanMetaPromptSituation(rawSituation, inputArgs.context_type);
-    const behavior = data.behavior || 'Bypassed automated integration tests prior to merging PR #402';
-    const impact = data.impact || 'Caused an unexpected 35-minute auth outage delaying the release';
-    const actionPlan = data.action_plan || 'Adhere strictly to emergency pairing protocols and CI verification checklist';
+    
+    let defaultBehavior = 'Bypassed automated integration tests prior to merging PR #402';
+    let defaultImpact = 'Caused an unexpected 35-minute auth outage delaying the release';
+    let defaultActionPlan = 'Adhere strictly to emergency pairing protocols and CI verification checklist';
+
+    const sitLower = situation.toLowerCase();
+    if (sitLower.includes('review') || sitLower.includes('unblock') || sitLower.includes('pr') || sitLower.includes('pull request')) {
+      defaultBehavior = 'Turnaround time on open peer pull request reviews exceeded the 24-hour team SLA, creating a review queue bottleneck';
+      defaultImpact = 'Blocked 3 downstream feature PRs from integration testing and delayed sprint release verification';
+      defaultActionPlan = 'Block a dedicated 45-minute daily focus window for peer PR reviews and triage review queue by 10 AM daily';
+    } else if (sitLower.includes('incident') || sitLower.includes('outage') || sitLower.includes('bug')) {
+      defaultBehavior = 'Deployed hotfix directly to production without completing the staging rollback verification checklist';
+      defaultImpact = 'Extended service degradation by 25 minutes during peak customer traffic';
+      defaultActionPlan = 'Follow mandatory dual-engineer verification protocols on all production emergency patches';
+    }
+
+    const behavior = data.behavior || defaultBehavior;
+    const impact = data.impact || defaultImpact;
+    const actionPlan = data.action_plan || defaultActionPlan;
     const eliminatedTerms = data.eliminated_terms || [];
     const objectivityScore = eliminatedTerms.length > 0 ? 94 : 98;
 

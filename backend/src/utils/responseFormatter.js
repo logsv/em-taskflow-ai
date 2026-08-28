@@ -18,16 +18,24 @@ export async function buildEmResponse(query, rawAnswer, evidenceBySource, decisi
     cleanAnswer.includes("DORA") ||
     cleanAnswer.includes("Executive Summary") ||
     cleanAnswer.includes("SBI") ||
+    cleanAnswer.includes("Promotion Readiness") ||
+    cleanAnswer.includes("Competency Radar") ||
     cleanAnswer.includes("Delivery Risk") ||
     cleanAnswer.includes("Roadmap") ||
     cleanAnswer.includes("OKR") ||
-    cleanAnswer.includes("SOP");
+    cleanAnswer.includes("SOP") ||
+    cleanAnswer.includes("Sprint Capacity") ||
+    cleanAnswer.includes("Retrospective");
 
   if (
     !cleanAnswer ||
     decision.needsClarification || 
     decision.selectedPath === "direct-llm-fastpath" || 
     decision.selectedPath === "contextual-synthesis" ||
+    decision.selectedPath === "direct-domain-executor" ||
+    decision.selectedPath === "parallel-multi-agent-orchestrator" ||
+    decision.selectedPath === "rag-zero-hit-guidance" ||
+    decision.selectedPath === "deterministic-domain-tool-recovery" ||
     decision.selectedPath === "rag+llm" || 
     decision.ragHit || 
     decision.routingPlan?.intent_type === "DIRECT_LLM" ||

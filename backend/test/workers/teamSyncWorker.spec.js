@@ -1,16 +1,26 @@
 import teamSyncWorker from '../../src/workers/teamSyncWorker.js';
+import databaseService from '../../src/db/postgres.js';
+import identityService from '../../src/services/identityService.js';
 
 describe('TeamSyncWorker (Node.js Background Parallel Worker)', () => {
+  let savedEnv;
+
   beforeEach(() => {
+    savedEnv = { ...process.env };
     teamSyncWorker.stop();
     teamSyncWorker.syncIntervalMs = 6 * 60 * 60 * 1000;
     teamSyncWorker.lastRunStatus = 'IDLE';
     teamSyncWorker.lastRunAt = null;
+    databaseService.inMemoryTeamMembers = [];
+    identityService.cachedMembers = [];
   });
 
   afterEach(() => {
     teamSyncWorker.stop();
     teamSyncWorker.syncIntervalMs = 6 * 60 * 60 * 1000;
+    databaseService.inMemoryTeamMembers = [];
+    identityService.cachedMembers = [];
+    process.env = savedEnv;
   });
 
   it('should initialize with correct default status and interval', () => {

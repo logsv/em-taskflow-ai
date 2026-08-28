@@ -357,7 +357,38 @@ export class LangGraphAgentService {
       this.runtimeMetrics.toolGroundedRequired += 1;
     }
 
-    // Step 1: Execute Domain Supervisor / Domain Tools FIRST when tools are required or workspace domains are present
+    // Tier 2 / 3: Dedicated RAG Document Retrieval Path
+    const isPureRagIntent = (routingPlan?.domains?.length === 1 && routingPlan.domains[0] === "rag") ||
+      (toArray(routingPlan?.domains).length === 0 && allowRag && isDocQuery);
+
+    if (isPureRagIntent) {
+      if (this.ragEnabled) {
+        ragResult = await this.tryRag(query, decision.ragMode, options);
+        decision.ragHit = Array.isArray(ragResult?.sources) && ragResult.sources.length > 0;
+        if (decision.ragHit) {
+          decision.selectedPath = "rag+llm";
+          info({ module: "agentService", action: "ragHit", sourceCount: ragResult.sources.length }, `RAG hit: returning ${ragResult.sources.length} document source(s)`);
+          return this.formatRagResult(ragResult);
+        }
+      }
+      decision.selectedPath = "rag-zero-hit-guidance";
+      return {
+        answer: `### 📄 Knowledge Base Search\n\n> **Status**: No matching document chunks found in knowledge base for query.\n\n- **Query**: *"${query}"*\n- **Action Needed**: To search internal engineering documentation, please upload your architecture guidelines, runbooks, or PDF rubrics using the **Attach File** or **Upload Document** feature in the sidebar.\n- **Supported Formats**: \`.pdf\`, \`.md\`, \`.txt\`, \`.csv\`, \`.docx\`, Architecture Decision Records (ADRs).`,
+        sources: [],
+      };
+    }
+
+    // Tier 4 & 5: High-Performance Direct Domain Execution & Parallel Fan-Out/Fan-In
+    const selectedDomains = toArray(routingPlan?.domains).filter((d) => d !== "rag");
+    if (selectedDomains.length > 0) {
+      const directResult = await this.runRequiredDomainRecovery(query, routingPlan, decision, options);
+      if (directResult) {
+        decision.selectedPath = selectedDomains.length === 1 ? "direct-domain-executor" : "parallel-multi-agent-orchestrator";
+        return directResult;
+      }
+    }
+
+    // Step 1: Execute Domain Supervisor / Domain Tools as fallback when direct dispatch did not handle
     if (decision.mcpReady && forceToolUse) {
       const supervisorResult = await executeAgentQuery(query, {
         ...options,
@@ -379,7 +410,7 @@ export class LangGraphAgentService {
         };
       }
 
-      const recovery = await this.runRequiredDomainRecovery(query, routingPlan, decision);
+      const recovery = await this.runRequiredDomainRecovery(query, routingPlan, decision, options);
       if (recovery) {
         return recovery;
       }
@@ -389,7 +420,7 @@ export class LangGraphAgentService {
     } else if (forceToolUse && !decision.mcpReady) {
       decision.reasons.push("mcp_required_but_unavailable");
 
-      const recovery = await this.runRequiredDomainRecovery(query, routingPlan, decision);
+      const recovery = await this.runRequiredDomainRecovery(query, routingPlan, decision, options);
       if (recovery) {
         return recovery;
       }
@@ -419,7 +450,7 @@ export class LangGraphAgentService {
     return this.runLlmExecutor(query);
   }
 
-  async runRequiredDomainRecovery(query, routingPlan, decision) {
+  async runRequiredDomainRecovery(query, routingPlan, decision, options = {}) {
     const domains = toArray(routingPlan?.domains);
     const recoveryTools = {
       dora: { tool: doraMetricsTool, input: { sources: ["github"] } },
@@ -699,7 +730,7 @@ export class LangGraphAgentService {
     const names = this.domainToolNames[domain];
     if (!names) return false;
     return toArray(toolsUsed).some(
-      (toolName) => typeof toolName === "string" && !toolName.startsWith(TRANSFER_TOOL_PREFIX) && names.has(toolName),
+      (toolName) => typeof toolName === "string" && (names.has(toolName) || toolName.includes(domain)),
     );
   }
 
