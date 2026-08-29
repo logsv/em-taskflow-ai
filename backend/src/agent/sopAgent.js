@@ -1,10 +1,10 @@
-import { createAgent } from 'langchain';
 import { z } from 'zod';
-import { getChatModel } from '../llm/index.js';
 import { sopAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import settingsService from '../services/settingsService.js';
+import { info, warn, error } from '../utils/logger.js';
+import { createMicroAgent, safeExecuteMCPTool } from './baseAgent.js';
 
 export const sopComplianceTool = createDeterministicToolHarness({
   name: 'query_sop_compliance',
@@ -43,23 +43,18 @@ export const sopComplianceTool = createDeterministicToolHarness({
             synced_at: new Date().toISOString(),
           };
         }
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'sopHarness', action: 'ragExecutor', err: err.message }, 'RAG executor notice');
+      }
       return null;
     },
     notion: async (_inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
         const configuredPageId = settingsService.getCachedSettings()?.mcp?.notion?.sopPageId || process.env.NOTION_SOP_PAGE_ID;
-        const res = await Promise.race([
-          executeMCPTool('notion_search', { query: configuredPageId || 'Engineering Handbook SOP ADR Governance' }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Notion search timed out')), 2500)),
-        ]).catch(() => null);
+        const res = await safeExecuteMCPTool('notion_search', { query: configuredPageId || 'Engineering Handbook SOP ADR Governance' });
 
         if (res) {
-          let pages = [];
-          if (Array.isArray(res)) pages = res;
-          else if (res.results && Array.isArray(res.results)) pages = res.results;
-
+          const pages = Array.isArray(res) ? res : (Array.isArray(res.results) ? res.results : []);
           if (pages.length > 0) {
             return {
               policy_hub_found: true,
@@ -70,7 +65,9 @@ export const sopComplianceTool = createDeterministicToolHarness({
             };
           }
         }
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'sopHarness', action: 'notionExecutor', err: err.message }, 'Notion executor notice');
+      }
       return null;
     },
     default: async (inputArgs) => {
@@ -342,21 +339,11 @@ ${citationsList.map((c) => `- ${c}`).join('\n')}
 });
 
 export function createSopAgent(customTools = null, options = {}) {
-  let llm = options.llm;
-  if (!llm) {
-    try {
-      llm = getChatModel({ temperature: 0.1 });
-    } catch (e) {
-      llm = { invoke: async () => ({ content: 'Mock LLM Response' }), bindTools: () => llm };
-    }
-  }
-  const tools = customTools && customTools.length > 0 ? customTools : [sopComplianceTool];
-
-  const agent = createAgent({
-    model: llm,
-    tools,
+  return createMicroAgent({
     name: 'sop_agent',
-    prompt: sopAgentPromptTemplate,
+    defaultTool: sopComplianceTool,
+    promptTemplate: sopAgentPromptTemplate,
+    customTools,
+    options,
   });
-  return agent.graph;
 }

@@ -1,108 +1,34 @@
-import axios from 'axios';
+/**
+ * Slack MCP Tool Suite (GoF Adapter / Facade Pattern)
+ * Declarative DynamicStructuredTools and audit dispatch helpers wrapping the unified SlackClient.
+ */
+
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { info, warn, error } from '../utils/logger.js';
-import settingsService, { isMasked } from '../services/settingsService.js';
-
-let cachedSlackClient = null;
-
-function getSlackConfig() {
-  const settings = settingsService.getCachedSettings();
-  const mcpSlack = settings?.mcp?.slack || {};
-  const token = typeof process.env.SLACK_BOT_TOKEN === 'string'
-    ? process.env.SLACK_BOT_TOKEN
-    : (mcpSlack.botToken || '');
-  return {
-    botToken: token,
-    signingSecret: process.env.SLACK_SIGNING_SECRET || mcpSlack.signingSecret || '',
-    appToken: process.env.SLACK_APP_TOKEN || mcpSlack.appToken || '',
-    defaultChannel: process.env.SLACK_DEFAULT_CHANNEL || mcpSlack.defaultChannel || '#engineering-retro',
-    teamId: process.env.SLACK_TEAM_ID || mcpSlack.teamId || '',
-    enabled: mcpSlack.enabled ?? true,
-  };
-}
+import slackClient from '../integrations/clients/SlackClient.js';
+import { info, warn, debug } from '../utils/logger.js';
+import settingsService from '../services/settingsService.js';
 
 export async function testSlackConnection(credentials = {}) {
-  const config = getSlackConfig();
-  const rawToken = credentials.botToken !== undefined ? credentials.botToken : config.botToken;
-  const token = isMasked(rawToken) ? config.botToken : rawToken;
-  const startTime = Date.now();
-
-  if (!token) {
-    return {
-      success: false,
-      latencyMs: 0,
-      message: 'No Slack Bot Token (xoxb-...) provided. Configure SLACK_BOT_TOKEN in Settings or .env',
-    };
-  }
-
-  try {
-    const authRes = await axios.post(
-      'https://slack.com/api/auth.test',
-      {},
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 4500,
-      }
-    );
-
-    if (!authRes.data?.ok) {
-      return {
-        success: false,
-        latencyMs: Date.now() - startTime,
-        message: `Slack Authentication Error: ${authRes.data?.error || 'Invalid Token'}`,
-      };
-    }
-
-    // List channels to verify permissions
-    let channelsCount = 0;
-    try {
-      const convRes = await axios.get('https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=20', {
-        headers: { Authorization: `Bearer ${token}` },
-        timeout: 3000,
-      });
-      if (convRes.data?.ok && Array.isArray(convRes.data.channels)) {
-        channelsCount = convRes.data.channels.length;
-      }
-    } catch (_convErr) {}
-
-    return {
-      success: true,
-      latencyMs: Date.now() - startTime,
-      message: `Connected to Slack Workspace '${authRes.data.team}' as @${authRes.data.user} (${channelsCount} channels accessible)`,
-      team: authRes.data.team,
-      user: authRes.data.user,
-      bot_id: authRes.data.bot_id,
-      channels_count: channelsCount,
-    };
-  } catch (err) {
-    return {
-      success: false,
-      latencyMs: Date.now() - startTime,
-      message: `Failed to connect to Slack API: ${err.message}`,
-    };
-  }
+  return slackClient.testConnection(credentials);
 }
 
 export async function getSlackTools() {
-  const config = getSlackConfig();
-  if (!config.enabled) return [];
+  const raw = settingsService.getCachedSettings() || settingsService.cachedRawSettings || {};
+  const mcpSlack = raw?.mcp?.slack || {};
+  if (mcpSlack.enabled === false) return [];
 
   const searchTool = new DynamicStructuredTool({
     name: 'slack_search_messages',
     description: 'Searches Slack workspace messages, retro feedback threads, standup notes, and engineering discussion channels.',
     schema: z.object({
       query: z.string().describe('Search query string, keywords, or channel topic (e.g. "retro", "incident", "standup")'),
-      channel: z.string().optional().describe('Channel name or ID to filter search within (default: configured defaultChannel)'),
+      channel: z.string().optional().describe('Channel name or ID to filter search within'),
       limit: z.number().default(10).describe('Max number of messages to return'),
     }),
-    func: async ({ query, channel, limit }) => {
-      const currentConfig = getSlackConfig();
-      const token = currentConfig.botToken;
-      const targetChannel = channel || currentConfig.defaultChannel;
+    func: async ({ query, channel, limit = 10 }) => {
+      const { token, defaultChannel } = slackClient.getCredentials();
+      const targetChannel = channel || defaultChannel;
 
       if (!token || token.includes('dummy') || token.includes('placeholder')) {
         return JSON.stringify({
@@ -111,11 +37,12 @@ export async function getSlackTools() {
           reason: 'SLACK_BOT_TOKEN_NOT_CONFIGURED',
           message: 'Slack Bot Token (xoxb-...) is not configured. Configure SLACK_BOT_TOKEN in Admin Settings to enable Slack integration.',
           messages: [],
-        });
+        }, null, 2);
       }
 
       try {
-        const res = await axios.get(`https://slack.com/api/conversations.history?channel=${encodeURIComponent(targetChannel)}&limit=${limit}`, {
+        debug({ module: 'slackMCP', action: 'slack_search_messages', query, channel: targetChannel }, `Executing slack_search_messages`);
+        const res = await slackClient.get(`https://slack.com/api/conversations.history?channel=${encodeURIComponent(targetChannel)}&limit=${limit}`, {
           headers: { Authorization: `Bearer ${token}` },
           timeout: 4500,
         });
@@ -128,9 +55,11 @@ export async function getSlackTools() {
               text: m.text,
               ts: m.ts,
             }));
-          return JSON.stringify({ status: 'SUCCESS', channel: targetChannel, total: filtered.length, messages: filtered });
+          return JSON.stringify({ status: 'SUCCESS', channel: targetChannel, total: filtered.length, messages: filtered }, null, 2);
         }
-      } catch (_err) {}
+      } catch (err) {
+        warn({ module: 'slackMCP', action: 'slack_search_messages_error', err: err.message }, 'Slack search failed');
+      }
 
       return JSON.stringify({
         status: 'UNAVAILABLE',
@@ -140,7 +69,7 @@ export async function getSlackTools() {
         reason: 'SLACK_API_ERROR',
         message: 'Slack API request failed. Verify Slack Bot Token permissions and channel access.',
         messages: [],
-      });
+      }, null, 2);
     },
   });
 
@@ -149,15 +78,14 @@ export async function getSlackTools() {
     description: 'Posts an executive summary, retrospective action plan, or notification to a Slack channel with Temporal Human-in-the-Loop (HITL) approval governance.',
     schema: z.object({
       message: z.string().describe('Markdown formatted message or executive summary to post'),
-      channel: z.string().optional().describe('Target channel name or ID (default: configured defaultChannel)'),
+      channel: z.string().optional().describe('Target channel name or ID'),
       approved_by_human: z.boolean().default(false).describe('Set to true ONLY if this post has received explicit human manager confirmation'),
       approver: z.string().optional().describe('Identity of human approver confirming the post'),
       sprint_name: z.string().optional().describe('Sprint or context name for retrospective posting'),
     }),
     func: async ({ message, channel, approved_by_human, approver, sprint_name }) => {
-      const currentConfig = getSlackConfig();
-      const token = currentConfig.botToken;
-      const targetChannel = channel || currentConfig.defaultChannel;
+      const { token, defaultChannel } = slackClient.getCredentials();
+      const targetChannel = channel || defaultChannel;
 
       // 1. Human-in-the-Loop (HITL) Gate via Temporal
       if (!approved_by_human) {
@@ -180,7 +108,7 @@ export async function getSlackTools() {
             message: 'Draft post held in Temporal Human-in-the-Loop (HITL) queue. Awaiting human confirmation before dispatching to Slack.',
           });
         } catch (hitlErr) {
-          info({ module: 'slackMcp', action: 'hitlDispatchFallback', err: hitlErr }, 'HITL dispatch fallback');
+          info({ module: 'slackMCP', action: 'hitlDispatchFallback', err: hitlErr.message }, 'HITL dispatch notice');
         }
       }
 
@@ -195,7 +123,8 @@ export async function getSlackTools() {
       }
 
       try {
-        const res = await axios.post(
+        debug({ module: 'slackMCP', action: 'slack_post_message', targetChannel }, `Executing confirmed slack_post_message: to ${targetChannel}`);
+        const res = await slackClient.post(
           'https://slack.com/api/chat.postMessage',
           {
             channel: targetChannel,
@@ -224,6 +153,7 @@ export async function getSlackTools() {
           error: res.data?.error || 'Failed to post message',
         });
       } catch (err) {
+        warn({ module: 'slackMCP', action: 'slack_post_message_error', targetChannel, err: err.message }, 'Slack message post failed');
         return JSON.stringify({
           status: 'ERROR',
           error: err.message,
@@ -238,9 +168,8 @@ export async function getSlackTools() {
     schema: z.object({
       limit: z.number().default(20),
     }),
-    func: async ({ limit }) => {
-      const currentConfig = getSlackConfig();
-      const token = currentConfig.botToken;
+    func: async ({ limit = 20 }) => {
+      const { token } = slackClient.getCredentials();
 
       if (!token || token.includes('dummy') || token.includes('placeholder')) {
         return JSON.stringify({
@@ -253,7 +182,8 @@ export async function getSlackTools() {
       }
 
       try {
-        const res = await axios.get(`https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=${limit}`, {
+        debug({ module: 'slackMCP', action: 'slack_list_channels', limit }, `Executing slack_list_channels`);
+        const res = await slackClient.get(`https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=${limit}`, {
           headers: { Authorization: `Bearer ${token}` },
           timeout: 4500,
         });
@@ -267,7 +197,9 @@ export async function getSlackTools() {
           }));
           return JSON.stringify({ status: 'SUCCESS', total: channels.length, channels });
         }
-      } catch (_err) {}
+      } catch (err) {
+        warn({ module: 'slackMCP', action: 'slack_list_channels_error', err: err.message }, 'Slack list channels failed');
+      }
 
       return JSON.stringify({ status: 'ERROR', message: 'Unable to list Slack channels' });
     },
@@ -282,9 +214,8 @@ export async function sendAuditOverviewMessage({
   actionHubUrl = 'http://localhost:3000/actions',
   channel = null,
 } = {}) {
-  const currentConfig = getSlackConfig();
-  const token = currentConfig.botToken;
-  const targetChannel = channel || currentConfig.defaultChannel;
+  const { defaultChannel, token } = slackClient.getCredentials();
+  const targetChannel = channel || defaultChannel;
 
   const healthScore = auditRun.healthScore ?? 100;
   const healthEmoji = healthScore >= 85 ? '🟢' : healthScore >= 65 ? '🟡' : '🔴';
@@ -322,7 +253,7 @@ export async function sendAuditOverviewMessage({
   }
 
   try {
-    const res = await axios.post(
+    const res = await slackClient.post(
       'https://slack.com/api/chat.postMessage',
       {
         channel: targetChannel,
@@ -366,9 +297,8 @@ export async function sendAuditSubsectionThread({
   auditRun = {},
   channel = null,
 } = {}) {
-  const currentConfig = getSlackConfig();
-  const token = currentConfig.botToken;
-  const targetChannel = channel || currentConfig.defaultChannel;
+  const { defaultChannel, token } = slackClient.getCredentials();
+  const targetChannel = channel || defaultChannel;
 
   const delivery = auditRun.deliverySummary || {};
   const people = auditRun.peopleSummary || {};
@@ -404,7 +334,7 @@ export async function sendAuditSubsectionThread({
     }
 
     try {
-      const res = await axios.post(
+      const res = await slackClient.post(
         'https://slack.com/api/chat.postMessage',
         {
           channel: targetChannel,
@@ -428,18 +358,14 @@ export async function sendAuditSubsectionThread({
   return results;
 }
 
-/**
- * Send an individual action item reminder/nudge to an engineer or channel
- */
 export async function sendActionItemNudge({
   actionItem,
   customNote = null,
   channel = null,
   sender = 'Engineering Manager',
 } = {}) {
-  const currentConfig = getSlackConfig();
-  const token = currentConfig.botToken;
-  const targetChannel = channel || currentConfig.defaultChannel;
+  const { defaultChannel, token } = slackClient.getCredentials();
+  const targetChannel = channel || defaultChannel;
 
   const sevEmoji = actionItem.severity === 'CRITICAL' ? '🚨' : actionItem.severity === 'WARNING' ? '⚠️' : 'ℹ️';
   const assignee = actionItem.assigneeName ? `@${actionItem.assigneeName}` : 'Team';
@@ -466,7 +392,7 @@ export async function sendActionItemNudge({
   }
 
   try {
-    const res = await axios.post(
+    const res = await slackClient.post(
       'https://slack.com/api/chat.postMessage',
       {
         channel: targetChannel,
@@ -498,12 +424,7 @@ export async function sendActionItemNudge({
   }
 }
 
-/**
- * Get accessible Slack channels for EM Action Hub dropdown
- */
 export async function getAvailableSlackChannels() {
-  const currentConfig = getSlackConfig();
-  const token = currentConfig.botToken;
   const defaultList = [
     { id: 'C_LEADERSHIP', name: 'engineering-leadership', is_default: true },
     { id: 'C_DEV_STANDUP', name: 'dev-standup', is_default: false },
@@ -511,20 +432,14 @@ export async function getAvailableSlackChannels() {
     { id: 'C_RETRO', name: 'engineering-retro', is_default: false },
   ];
 
-  if (!token || token.includes('dummy') || token.includes('placeholder')) {
-    return defaultList;
-  }
-
   try {
-    const res = await axios.get('https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=50', {
-      headers: { Authorization: `Bearer ${token}` },
-      timeout: 4000,
-    });
-    if (res.data?.ok && Array.isArray(res.data.channels) && res.data.channels.length > 0) {
-      return res.data.channels.map((c) => ({
+    const channels = await slackClient.listChannels({ limit: 50 });
+    const { defaultChannel } = slackClient.getCredentials();
+    if (channels && channels.length > 0) {
+      return channels.map((c) => ({
         id: c.id,
         name: c.name,
-        is_default: `#${c.name}` === currentConfig.defaultChannel,
+        is_default: `#${c.name}` === defaultChannel,
       }));
     }
     return defaultList;
@@ -533,7 +448,6 @@ export async function getAvailableSlackChannels() {
   }
 }
 
-export async function closeSlackMcp() {
-  cachedSlackClient = null;
-}
+export async function closeSlackMcp() {}
 
+export default getSlackTools;

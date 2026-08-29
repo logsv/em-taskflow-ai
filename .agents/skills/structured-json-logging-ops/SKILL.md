@@ -34,6 +34,14 @@ EM TaskFlow AI enforces **100% Structured JSON Logging** across both Node.js and
    - Always import and use the centralized logger modules.
 3. **Rule of Structured Context Attributes**:
    - Always include contextual metadata (`module`, `action`, `durationMs`, identifiers) as structured JSON attributes rather than string-interpolating large blobs into log messages.
+4. **Rule of Zero Silent Failures (Strict Enforcement)**:
+   - Empty catch blocks (`catch (_e) {}` or `catch (err) {}`) that silently swallow exceptions are **strictly prohibited**.
+   - If an error is expected or non-fatal (such as a timeout or fallback trigger), it must be logged at `warn` or `debug` level with structured context:
+     ```javascript
+     } catch (err) {
+       warn({ module: 'jiraHarness', action: 'jiraExecutor', err: err.message }, 'Jira executor notice');
+     }
+     ```
 
 ---
 

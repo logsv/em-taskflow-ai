@@ -735,253 +735,73 @@ class SettingsService {
       }
 
       if (type === 'jira') {
-        if (credentials.url && !credentials.url.startsWith('http://') && !credentials.url.startsWith('https://')) {
-          return {
-            success: false,
-            latencyMs: 0,
-            message: 'Invalid Jira URL: must start with https:// or http://',
-          };
-        }
-        if (credentials.url === '' || credentials.email === '') {
-          return {
-            success: false,
-            latencyMs: 0,
-            message: 'Jira Base URL or User Email cannot be empty',
-          };
-        }
-        const url = (credentials.url || raw.mcp.jira?.url || process.env.JIRA_BASE_URL || process.env.JIRA_URL || '').replace(/\/$/, '');
-        const mcpUrl = credentials.mcpUrl || raw.mcp.jira?.mcpUrl || process.env.JIRA_MCP_URL || 'https://mcp.atlassian.com/v1/mcp';
-        const email = credentials.email || raw.mcp.jira?.email || process.env.JIRA_USER_EMAIL || '';
-        const token = (isMasked(credentials.apiToken) || !credentials.apiToken)
+        const { jiraClient } = await import('../integrations/clients/JiraClient.js');
+        const token = isMasked(credentials.apiToken)
           ? (raw.mcp.jira?.apiToken || process.env.JIRA_API_TOKEN)
           : credentials.apiToken;
-
-        if (!url) {
-          return {
-            success: false,
-            latencyMs: 0,
-            message: 'No Jira Base URL configured',
-          };
-        }
-        if (!email) {
-          return {
-            success: false,
-            latencyMs: 0,
-            message: 'No Jira User Email configured',
-          };
-        }
-
-        // If user explicitly testing Atlassian Remote MCP Cloud (OAuth 2.1)
-        if (credentials.mode === 'mcp' || (url.includes('mcp.atlassian.com') && token)) {
-          const mcpTarget = url.includes('mcp.atlassian.com') ? url : mcpUrl;
-          try {
-            const mcpRes = await axios.post(
-              mcpTarget,
-              {
-                jsonrpc: '2.0',
-                method: 'initialize',
-                params: {
-                  protocolVersion: '2024-11-05',
-                  capabilities: {},
-                  clientInfo: { name: 'EM-TaskFlow-AI', version: '1.0.0' },
-                },
-                id: 1,
-              },
-              {
-                headers: {
-                  Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}`,
-                  'Content-Type': 'application/json',
-                },
-                timeout: 4500,
-              }
-            );
-            return {
-              success: true,
-              latencyMs: Date.now() - startTime,
-              message: `Connected to Official Atlassian Remote MCP (${mcpTarget})`,
-            };
-          } catch (mcpErr) {
-            return {
-              success: false,
-              latencyMs: Date.now() - startTime,
-              message: `Remote Atlassian MCP notice: ${mcpErr.response?.data?.error || mcpErr.message}`,
-            };
-          }
-        }
-
-        const authHeader = email && token && !token.startsWith('Basic ')
-          ? `Basic ${Buffer.from(`${email}:${token}`).toString('base64')}`
-          : (token.startsWith('Basic ') || token.startsWith('Bearer ') ? token : `Bearer ${token}`);
-
-        try {
-          const res = await axios.get(`${url}/rest/api/3/myself`, {
-            headers: { Authorization: authHeader, Accept: 'application/json' },
-            timeout: 4500,
-          });
-          return {
-            success: true,
-            latencyMs: Date.now() - startTime,
-            message: `Connected as ${res.data?.displayName || res.data?.name || email} (${res.data?.emailAddress || email})`,
-          };
-        } catch (jErr) {
-          return {
-            success: false,
-            latencyMs: Date.now() - startTime,
-            message: `Jira verification error (${jErr.response?.status || 'network'}): ${jErr.response?.data?.errorMessages?.[0] || jErr.response?.data?.message || jErr.message}`,
-          };
-        }
+        const res = await jiraClient.testConnection({ ...credentials, apiToken: token });
+        return {
+          success: res.success,
+          latencyMs: Date.now() - startTime,
+          message: res.message,
+          ...res,
+        };
       }
 
       if (type === 'github') {
-        if (credentials.token === '') {
-          return {
-            success: false,
-            latencyMs: 0,
-            message: 'No GitHub Personal Access Token configured',
-          };
-        }
-        const token = (isMasked(credentials.token) || !credentials.token)
+        const { githubClient } = await import('../integrations/clients/GitHubClient.js');
+        const token = isMasked(credentials.token)
           ? (raw.mcp.github?.token || process.env.GITHUB_TOKEN)
           : credentials.token;
-        const owner = credentials.owner || raw.mcp.github?.owner || process.env.GITHUB_OWNER || '';
-        const repo = credentials.repo || raw.mcp.github?.repo || process.env.GITHUB_REPO || '';
-
-        if (!token) {
-          return {
-            success: true,
-            latencyMs: Date.now() - startTime,
-            message: `GitHub repository configured (${owner}/${repo}). Add PAT token for live repo sync.`,
-          };
-        }
-
-        const cleanToken = token.trim();
-        const authHeader = cleanToken.startsWith('Bearer ') || cleanToken.startsWith('token ') ? cleanToken : `Bearer ${cleanToken}`;
-
-        try {
-          const res = await axios.get('https://api.github.com/user', {
-            headers: { Authorization: authHeader, Accept: 'application/vnd.github.v3+json', 'User-Agent': 'EM-TaskFlow-AI' },
-            timeout: 4500,
-          });
-
-          return {
-            success: true,
-            latencyMs: Date.now() - startTime,
-            message: `Connected as @${res.data?.login || owner} (${res.data?.name || res.data?.login || owner}) — Repo: ${owner}/${repo}`,
-          };
-        } catch (ghErr) {
-          const status = ghErr.response?.status;
-          const msg = ghErr.response?.data?.message || ghErr.message;
-          return {
-            success: false,
-            latencyMs: Date.now() - startTime,
-            message: `GitHub verification failed (${status || 'error'}): ${msg}`,
-          };
-        }
+        const res = await githubClient.testConnection({ ...credentials, token });
+        return {
+          success: res.success,
+          latencyMs: Date.now() - startTime,
+          message: res.message,
+          ...res,
+        };
       }
 
       if (type === 'notion') {
-        if (credentials.apiKey === '') {
-          return {
-            success: false,
-            latencyMs: 0,
-            message: 'No Notion API Key configured',
-          };
-        }
-        const apiKey = (isMasked(credentials.apiKey) || !credentials.apiKey)
+        const { notionClient } = await import('../integrations/clients/NotionClient.js');
+        const apiKey = isMasked(credentials.apiKey)
           ? (raw.mcp.notion?.apiKey || process.env.NOTION_API_KEY)
           : credentials.apiKey;
-
-        if (!apiKey) {
-          return {
-            success: true,
-            latencyMs: Date.now() - startTime,
-            message: 'Notion connector initialized. Add Notion Integration Token to query roadmaps & OKRs.',
-          };
-        }
-
-        try {
-          const res = await axios.post(
-            'https://api.notion.com/v1/search',
-            { page_size: 3 },
-            {
-              headers: {
-                Authorization: `Bearer ${apiKey.trim()}`,
-                'Notion-Version': '2022-06-28',
-                'Content-Type': 'application/json',
-              },
-              timeout: 4500,
-            }
-          );
-
-          return {
-            success: true,
-            latencyMs: Date.now() - startTime,
-            message: `Connected to Notion (${res.data?.results?.length || 0} accessible page(s) found)`,
-          };
-        } catch (notionErr) {
-          return {
-            success: false,
-            latencyMs: Date.now() - startTime,
-            message: `Notion API notice: ${notionErr.response?.data?.message || notionErr.message}`,
-          };
-        }
+        const res = await notionClient.testConnection({ ...credentials, apiKey });
+        return {
+          success: res.success,
+          latencyMs: Date.now() - startTime,
+          message: res.message,
+          ...res,
+        };
       }
 
       if (type === 'googleCalendar' || type === 'google_calendar') {
-        if (credentials.apiKey === '') {
-          return {
-            success: false,
-            latencyMs: 0,
-            message: 'No Google Calendar API Key configured',
-          };
-        }
-        const calendarId = credentials.calendarId || raw.mcp.googleCalendar?.calendarId || process.env.GOOGLE_CALENDAR_ID || 'primary';
-        const apiKey = (isMasked(credentials.apiKey) || !credentials.apiKey)
+        const { googleCalendarClient } = await import('../integrations/clients/GoogleCalendarClient.js');
+        const apiKey = isMasked(credentials.apiKey)
           ? (raw.mcp.googleCalendar?.apiKey || process.env.GOOGLE_CALENDAR_API_KEY || process.env.GOOGLE_API_KEY)
           : credentials.apiKey;
-
-        if (!apiKey) {
-          return {
-            success: true,
-            latencyMs: Date.now() - startTime,
-            message: `Google Calendar target linked (${calendarId}). Ready for schedule inspection & 1-on-1 cadence tracking.`,
-          };
-        }
-
-        const isOAuth = apiKey.startsWith('ya29.') || apiKey.startsWith('Bearer ') || apiKey.length > 80;
-        const requestConfig = {
-          timeout: 4500,
+        const res = await googleCalendarClient.testConnection({ ...credentials, apiKey });
+        return {
+          success: res.success,
+          latencyMs: Date.now() - startTime,
+          message: res.message,
+          ...res,
         };
-        let url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?maxResults=5&timeMin=${new Date().toISOString()}`;
-        if (isOAuth) {
-          requestConfig.headers = {
-            Authorization: apiKey.startsWith('Bearer ') ? apiKey : `Bearer ${apiKey}`,
-          };
-        } else {
-          url += `&key=${encodeURIComponent(apiKey)}`;
-        }
-
-        try {
-          const res = await axios.get(url, requestConfig);
-          const items = res.data?.items || [];
-          return {
-            success: true,
-            latencyMs: Date.now() - startTime,
-            message: `Connected to Google Calendar (${items.length} upcoming event(s) found for ${calendarId})`,
-            events: items.map((ev) => ({ summary: ev.summary, start: ev.start?.dateTime || ev.start?.date })),
-          };
-        } catch (gcalErr) {
-          return {
-            success: false,
-            latencyMs: Date.now() - startTime,
-            message: `Google Calendar notice: ${gcalErr.response?.data?.error?.message || gcalErr.message}`,
-          };
-        }
       }
 
       if (type === 'slack') {
-        const { testSlackConnection } = await import('../mcp/slack.js');
-        return testSlackConnection(credentials);
+        const { slackClient } = await import('../integrations/clients/SlackClient.js');
+        const botToken = isMasked(credentials.botToken)
+          ? (raw.mcp.slack?.botToken || process.env.SLACK_BOT_TOKEN)
+          : credentials.botToken;
+        const res = await slackClient.testConnection({ ...credentials, botToken });
+        return {
+          success: res.success,
+          latencyMs: Date.now() - startTime,
+          message: res.message,
+          ...res,
+        };
       }
 
       return { success: false, latencyMs: 0, message: `Unknown connection test type: ${type}` };

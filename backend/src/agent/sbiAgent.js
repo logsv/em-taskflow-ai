@@ -1,11 +1,10 @@
-import { createAgent } from 'langchain';
 import { z } from 'zod';
-import { getChatModel } from '../llm/index.js';
 import { sbiAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
-import identityService from '../services/identityService.js';
 import settingsService from '../services/settingsService.js';
+import { info, warn, error } from '../utils/logger.js';
+import { createMicroAgent, safeExecuteMCPTool, resolveMemberTarget } from './baseAgent.js';
 
 // Dictionary of subjective/emotional terms mapped to objective behavioral anchors
 const DE_BIASING_RULES = [
@@ -104,19 +103,8 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
   mcpExecutors: {
     slack: async (inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
-        const member = (await identityService.resolveMember(inputArgs?.engineer_id)) || (await identityService.resolveMemberFromText(inputArgs?.raw_draft || inputArgs?.engineer_id || ''));
-        const targetQuery = member?.displayName || inputArgs?.engineer_id || 'feedback';
-
-        const res = await Promise.race([
-          executeMCPTool('slack_search_messages', { query: targetQuery }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Slack search timed out')), 2500)),
-        ]).catch(() => null);
-
-        let parsed = res;
-        if (typeof res === 'string') {
-          try { parsed = JSON.parse(res); } catch (_) {}
-        }
+        const { displayName } = await resolveMemberTarget(inputArgs?.engineer_id || inputArgs?.raw_draft);
+        const parsed = await safeExecuteMCPTool('slack_search_messages', { query: displayName });
 
         if (parsed && Array.isArray(parsed.messages) && parsed.messages.length > 0) {
           return {
@@ -130,24 +118,18 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
             synced_at: new Date().toISOString(),
           };
         }
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'sbiHarness', action: 'slackExecutor', err: err.message }, 'Slack executor notice');
+      }
       return null;
     },
     github: async (inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
-        const member = (await identityService.resolveMember(inputArgs?.engineer_id)) || (await identityService.resolveMemberFromText(inputArgs?.raw_draft || inputArgs?.engineer_id || ''));
-        const ghUser = member?.githubUsername || (await identityService.getToolUsernameForMember(inputArgs?.engineer_id, 'github'));
-        const q = ghUser ? `author:${ghUser} type:pr` : 'type:pr is:merged';
+        const { toolUsername } = await resolveMemberTarget(inputArgs?.engineer_id || inputArgs?.raw_draft, 'github');
+        const q = toolUsername && toolUsername !== 'unassigned' ? `author:${toolUsername} type:pr` : 'type:pr is:merged';
 
-        const res = await Promise.race([
-          executeMCPTool('search_issues', { query: q }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP GitHub search timed out')), 2500)),
-        ]).catch(() => null);
-
-        let prs = [];
-        if (Array.isArray(res)) prs = res;
-        else if (res && Array.isArray(res.items)) prs = res.items;
+        const res = await safeExecuteMCPTool('search_issues', { query: q });
+        const prs = Array.isArray(res) ? res : (Array.isArray(res?.items) ? res.items : []);
 
         if (prs.length > 0) {
           const cached = settingsService.getCachedSettings();
@@ -165,24 +147,22 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
             synced_at: new Date().toISOString(),
           };
         }
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'sbiHarness', action: 'githubExecutor', err: err.message }, 'GitHub executor notice');
+      }
       return null;
     },
     jira: async (inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
-        const jiraUser = await identityService.getToolUsernameForMember(inputArgs?.engineer_id, 'jira');
-        const jql = jiraUser
-          ? `assignee = "${jiraUser}" AND (status in (Blocked, Closed, Done) OR issuetype in (Bug, Incident))`
+        const { toolUsername } = await resolveMemberTarget(inputArgs?.engineer_id, 'jira');
+        const jql = toolUsername && toolUsername !== 'unassigned'
+          ? `assignee = "${toolUsername}" AND (status in (Blocked, Closed, Done) OR issuetype in (Bug, Incident))`
           : `issuetype in (Bug, Incident)`;
 
-        const res = await Promise.race([
-          executeMCPTool('jira_search', { jql }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Jira search timed out')), 2500)),
-        ]).catch(() => null);
+        const res = await safeExecuteMCPTool('jira_search', { jql });
+        const issues = Array.isArray(res) ? res : (Array.isArray(res?.issues) ? res.issues : []);
 
-        if (res && (Array.isArray(res) || res.issues)) {
-          const issues = Array.isArray(res) ? res : res.issues || [];
+        if (issues.length > 0) {
           return {
             related_tickets_count: issues.length,
             recent_tickets: issues.slice(0, 3).map((iss) => ({
@@ -193,24 +173,18 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
             synced_at: new Date().toISOString(),
           };
         }
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'sbiHarness', action: 'jiraExecutor', err: err.message }, 'Jira executor notice');
+      }
       return null;
     },
     notion: async (inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
-        const member = (await identityService.resolveMember(inputArgs?.engineer_id)) || (await identityService.resolveMemberFromText(inputArgs?.raw_draft || inputArgs?.engineer_id || ''));
-        const notionName = member?.notionName || member?.displayName || inputArgs?.engineer_id || 'feedback';
-
-        const res = await Promise.race([
-          executeMCPTool('notion_search', { query: `1-on-1 feedback ${notionName}` }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Notion search timed out')), 2500)),
-        ]).catch(() => null);
+        const { displayName } = await resolveMemberTarget(inputArgs?.engineer_id || inputArgs?.raw_draft);
+        const res = await safeExecuteMCPTool('notion_search', { query: `1-on-1 feedback ${displayName}` });
 
         if (res) {
-          let pages = [];
-          if (Array.isArray(res)) pages = res;
-          else if (res.results && Array.isArray(res.results)) pages = res.results;
+          const pages = Array.isArray(res) ? res : (Array.isArray(res.results) ? res.results : []);
           if (pages.length > 0) {
             return {
               feedback_notes_count: pages.length,
@@ -223,7 +197,9 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
             };
           }
         }
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'sbiHarness', action: 'notionExecutor', err: err.message }, 'Notion executor notice');
+      }
       return null;
     },
     default: async (inputArgs) => {
@@ -505,21 +481,11 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
 });
 
 export function createSbiAgent(customTools = null, options = {}) {
-  let llm = options.llm;
-  if (!llm) {
-    try {
-      llm = getChatModel();
-    } catch (e) {
-      llm = { invoke: async () => ({ content: 'Mock LLM Response' }), bindTools: () => llm };
-    }
-  }
-  const tools = customTools && customTools.length > 0 ? customTools : [sbiFeedbackTool];
-
-  const agent = createAgent({
-    model: llm,
-    tools,
+  return createMicroAgent({
     name: 'sbi_agent',
-    prompt: sbiAgentPromptTemplate,
+    defaultTool: sbiFeedbackTool,
+    promptTemplate: sbiAgentPromptTemplate,
+    customTools,
+    options,
   });
-  return agent.graph;
 }

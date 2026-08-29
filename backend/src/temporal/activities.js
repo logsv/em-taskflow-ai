@@ -115,8 +115,17 @@ export async function fetchJiraTeamActivity(params = {}) {
   };
 
   try {
-    const url = baseUrl.endsWith('/rest/api/3') ? `${baseUrl}/users/search` : `${baseUrl.replace(/\/$/, '')}/rest/api/3/users/search`;
-    const res = await axios.get(url, { headers, timeout: 5000, params: { maxResults: 50 } });
+    const cleanBase = baseUrl.replace(/\/rest\/api\/[23]\/?$/, '').replace(/\/$/, '');
+    let res;
+    try {
+      res = await axios.get(`${cleanBase}/rest/api/3/user/search`, { headers, timeout: 5000, params: { query: '', maxResults: 50 } });
+    } catch (uErr) {
+      if (uErr.response?.status && [404, 410].includes(uErr.response.status)) {
+        res = await axios.get(`${cleanBase}/rest/api/3/users/search`, { headers, timeout: 5000, params: { maxResults: 50 } });
+      } else {
+        throw uErr;
+      }
+    }
     if (Array.isArray(res.data)) {
       for (const u of res.data) {
         if (u.accountType === 'atlassian' && u.active) {

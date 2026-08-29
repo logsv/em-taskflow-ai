@@ -1,12 +1,11 @@
-import { createAgent } from 'langchain';
 import { z } from 'zod';
-import axios from 'axios';
-import { getChatModel } from '../llm/index.js';
 import { peopleAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import settingsService from '../services/settingsService.js';
 import identityService from '../services/identityService.js';
+import { createMicroAgent, safeExecuteMCPTool, resolveMemberTarget } from './baseAgent.js';
+import { warn } from '../utils/logger.js';
 
 // Standard 12 Competency Dimensions
 export const COMPETENCY_DIMENSIONS = [
@@ -98,7 +97,7 @@ export const peopleGrowthTool = createDeterministicToolHarness({
         }
 
         // Direct REST API Fallback
-        const rawSettings = await settingsService.getRawSettings().catch(() => null);
+        const rawSettings = settingsService.getCachedRawSettings ? settingsService.getCachedRawSettings() : (settingsService.getCachedSettings ? settingsService.getCachedSettings() : null);
         const gcal = rawSettings?.mcp?.googleCalendar;
         if (gcal?.apiKey) {
           const calendarId = encodeURIComponent(gcal.calendarId || 'primary');
@@ -120,25 +119,22 @@ export const peopleGrowthTool = createDeterministicToolHarness({
             };
           }
         }
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'peopleHarness', action: 'calendarExecutor', err: err.message }, 'Calendar executor notice');
+      }
       return null;
     },
     notion: async (inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
-        const member = (await identityService.resolveMember(inputArgs?.engineer_id)) || (await identityService.resolveMemberFromText(inputArgs?.engineer_id || ''));
-        const notionName = member?.notionName || member?.displayName || inputArgs?.engineer_id || '1-on-1';
+        const { displayName } = await resolveMemberTarget(inputArgs?.engineer_id);
         const configuredPageId = settingsService.getCachedSettings()?.mcp?.notion?.careerPageId || process.env.NOTION_CAREER_PAGE_ID;
         
-        const res = await Promise.race([
-          executeMCPTool('notion_search', { query: configuredPageId || `1-on-1 ${notionName} career progression` }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Notion search timed out')), 2500)),
-        ]).catch(() => null);
+        const res = await safeExecuteMCPTool('notion_search', {
+          query: configuredPageId || `1-on-1 ${displayName} career progression`,
+        });
 
         if (res) {
-          let pages = [];
-          if (Array.isArray(res)) pages = res;
-          else if (res.results && Array.isArray(res.results)) pages = res.results;
+          const pages = Array.isArray(res) ? res : (Array.isArray(res.results) ? res.results : []);
           if (pages.length > 0) {
             return {
               career_notes_count: pages.length,
@@ -152,24 +148,22 @@ export const peopleGrowthTool = createDeterministicToolHarness({
             };
           }
         }
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'peopleHarness', action: 'notionExecutor', err: err.message }, 'Notion executor notice');
+      }
       return null;
     },
     jira: async (inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
-        const jiraUser = await identityService.getToolUsernameForMember(inputArgs?.engineer_id, 'jira');
-        const jql = jiraUser
-          ? `assignee = "${jiraUser}" AND issuetype in (Epic, Initiative, "Technical Story")`
+        const { toolUsername } = await resolveMemberTarget(inputArgs?.engineer_id, 'jira');
+        const jql = toolUsername && toolUsername !== 'unassigned'
+          ? `assignee = "${toolUsername}" AND issuetype in (Epic, Initiative, "Technical Story")`
           : `issuetype in (Epic, Initiative, "Technical Story")`;
         
-        const res = await Promise.race([
-          executeMCPTool('jira_search', { jql }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Jira search timed out')), 2500)),
-        ]).catch(() => null);
+        const res = await safeExecuteMCPTool('jira_search', { jql });
 
-        if (res && (Array.isArray(res) || res.issues)) {
-          const issues = Array.isArray(res) ? res : res.issues || [];
+        if (res) {
+          const issues = Array.isArray(res) ? res : (Array.isArray(res.issues) ? res.issues : []);
           return {
             leadership_epics_count: issues.length,
             leadership_epics: issues.slice(0, 3),
@@ -177,7 +171,9 @@ export const peopleGrowthTool = createDeterministicToolHarness({
             synced_at: new Date().toISOString(),
           };
         }
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'peopleHarness', action: 'jiraExecutor', err: err.message }, 'Jira executor notice');
+      }
       return null;
     },
     default: async (inputArgs) => {
@@ -512,21 +508,11 @@ ${events.map((ev) => `  * 📅 **${ev.start_time}**: ${ev.summary} (${ev.attende
 });
 
 export function createPeopleAgent(customTools = null, options = {}) {
-  let llm = options.llm;
-  if (!llm) {
-    try {
-      llm = getChatModel();
-    } catch (e) {
-      llm = { invoke: async () => ({ content: 'Mock LLM Response' }), bindTools: () => llm };
-    }
-  }
-  const tools = customTools && customTools.length > 0 ? customTools : [peopleGrowthTool];
-
-  const agent = createAgent({
-    model: llm,
-    tools,
+  return createMicroAgent({
     name: options.name || 'people_agent',
-    prompt: peopleAgentPromptTemplate,
+    defaultTool: peopleGrowthTool,
+    promptTemplate: peopleAgentPromptTemplate,
+    customTools,
+    options,
   });
-  return agent.graph;
 }

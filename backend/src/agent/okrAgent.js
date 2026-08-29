@@ -1,10 +1,10 @@
-import { createAgent } from 'langchain';
 import { z } from 'zod';
-import { getChatModel } from '../llm/index.js';
 import { okrAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import settingsService from '../services/settingsService.js';
+import { info, warn, error } from '../utils/logger.js';
+import { createMicroAgent, safeExecuteMCPTool } from './baseAgent.js';
 
 export const okrProgressTool = createDeterministicToolHarness({
   name: 'evaluate_okr_progress',
@@ -22,18 +22,11 @@ export const okrProgressTool = createDeterministicToolHarness({
   mcpExecutors: {
     notion: async (_inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
         const configuredPageId = settingsService.getCachedSettings()?.mcp?.notion?.okrPageId || process.env.NOTION_OKR_PAGE_ID;
-        const res = await Promise.race([
-          executeMCPTool('notion_search', { query: configuredPageId || 'Engineering OKRs Quarterly Review' }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Notion search timed out')), 2500)),
-        ]).catch(() => null);
+        const res = await safeExecuteMCPTool('notion_search', { query: configuredPageId || 'Engineering OKRs Quarterly Review' });
 
         if (res) {
-          let pages = [];
-          if (Array.isArray(res)) pages = res;
-          else if (res.results && Array.isArray(res.results)) pages = res.results;
-
+          const pages = Array.isArray(res) ? res : (Array.isArray(res.results) ? res.results : []);
           if (pages.length > 0) {
             return {
               okr_hub_found: true,
@@ -44,28 +37,25 @@ export const okrProgressTool = createDeterministicToolHarness({
             };
           }
         }
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'okrHarness', action: 'notionExecutor', err: err.message }, 'Notion executor notice');
+      }
       return null;
     },
     jira: async (_inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
         const jql = 'issuetype in (Bug, Incident) AND status in (Closed, Resolved) AND resolved >= -90d';
-        const res = await Promise.race([
-          executeMCPTool('jira_search', { jql }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Jira search timed out')), 2500)),
-        ]).catch(() => null);
-
-        let issues = [];
-        if (Array.isArray(res)) issues = res;
-        else if (res && Array.isArray(res.issues)) issues = res.issues;
+        const res = await safeExecuteMCPTool('jira_search', { jql });
+        const issues = Array.isArray(res) ? res : (Array.isArray(res?.issues) ? res.issues : []);
 
         return {
           total_resolved_bugs: issues.length || 14,
           source: 'mcp_jira',
           synced_at: new Date().toISOString(),
         };
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'okrHarness', action: 'jiraExecutor', err: err.message }, 'Jira executor notice');
+      }
       return null;
     },
     default: async (inputArgs) => {
@@ -434,21 +424,11 @@ ${laggingKrs.length > 0 ? laggingKrs.map((l) => `- 🟡 **${l.kr}** (${l.progres
 });
 
 export function createOkrAgent(customTools = null, options = {}) {
-  let llm = options.llm;
-  if (!llm) {
-    try {
-      llm = getChatModel({ temperature: 0.1 });
-    } catch (e) {
-      llm = { invoke: async () => ({ content: 'Mock LLM Response' }), bindTools: () => llm };
-    }
-  }
-  const tools = customTools && customTools.length > 0 ? customTools : [okrProgressTool];
-
-  const agent = createAgent({
-    model: llm,
-    tools,
+  return createMicroAgent({
     name: options.name || 'okr_agent',
-    prompt: okrAgentPromptTemplate,
+    defaultTool: okrProgressTool,
+    promptTemplate: okrAgentPromptTemplate,
+    customTools,
+    options,
   });
-  return agent.graph;
 }
