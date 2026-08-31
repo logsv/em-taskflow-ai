@@ -33,3 +33,19 @@ Each micro-agent in EM TaskFlow AI is architected as a specialized ReAct agent b
 
 ## 🛡️ Guardrails & Loop Prevention
 The supervisor maintains state transition history. If an agent executes or transitions more than twice in a single turn without producing new information, the supervisor intercepts the cycle and forces final response synthesis.
+
+---
+
+## ⚡ 5-Tier Dispatch & Parallel Multi-Agent Execution
+
+To optimize latency and precision across local SLM inference:
+
+1. **Tier 1: Fast-Path Classifier (<300ms)**
+   - Pre-router classifier identifies pure coding, math, greeting, or attachment questions, answering directly with zero tool overhead.
+2. **Tier 2 / 3: Dedicated RAG Engine (1.5s–1.8s)**
+   - Single-pass HyDE + Reciprocal Rank Fusion against `taskflow_ai` vector database, with structured onboarding guidance on zero hits.
+3. **Tier 4: Direct Single-Domain Dispatch (1.5s–2.5s)**
+   - When the query matches 1 specialized domain (`sbi`, `people`, `dora`, etc.), dispatches directly to the domain micro-agent tool harness with recent chat history context.
+4. **Tier 5: Parallel Multi-Domain Fan-Out / Fan-In (3.0s–4.5s)**
+   - For composite queries requiring multiple domains (`["dora", "delivery", "sbi"]`), executes all domain tool harnesses concurrently in parallel (`Promise.all()`), aggregating all results into a unified executive scorecard.
+

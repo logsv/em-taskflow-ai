@@ -2,9 +2,18 @@ import identityService from '../../src/services/identityService.js';
 import databaseService from '../../src/db/postgres.js';
 
 describe('Admin Team Members Service & Identity Management', () => {
+  let savedEnv;
+
   beforeEach(async () => {
+    savedEnv = { ...process.env };
     databaseService.inMemoryTeamMembers = [];
     identityService.cachedMembers = [];
+  });
+
+  afterEach(async () => {
+    databaseService.inMemoryTeamMembers = [];
+    identityService.cachedMembers = [];
+    process.env = savedEnv;
   });
 
   it('should auto-populate baseline when team roster is empty', async () => {

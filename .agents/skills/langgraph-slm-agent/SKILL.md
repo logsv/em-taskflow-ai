@@ -18,8 +18,11 @@ Use this skill when developing, testing, or debugging LangGraph supervisor agent
    - `getRouterChain().invoke({ query })` uses local Ollama (`hermes3:8b`) to classify domains (`dora`, `delivery`, `sbi`, `people`, `sprint`, `retro`, `roadmap`, `okr`, `sop`, `critic`, `rag`).
    - Resilient parser (`parseStructuredDecision`) handles malformed or commentary-wrapped JSON.
 
-3. **LangGraph Supervisor**:
-   - `graph.js` builds state graph with top-level supervisor.
+3. **5-Tier Dispatch & Parallel Fan-Out/Fan-In Engine**:
+   - **Tier 1**: Fast-path direct execution (<300ms)
+   - **Tier 2 / 3**: Dedicated hybrid RAG search with structured zero-hit onboarding guides
+   - **Tier 4**: Direct single-domain execution (≈1.5s)
+   - **Tier 5**: Parallel multi-agent fan-out/fan-in (≈3.5s) via `Promise.all`
    - Enforces **Tool Bounding Rule**: Specialized worker agents receive **max 1 tool per invocation** to maintain 95%+ execution accuracy on local `hermes3:8b` SLM.
 
 ---
@@ -28,10 +31,11 @@ Use this skill when developing, testing, or debugging LangGraph supervisor agent
 
 ### Test Fast-Path & Router Classification
 ```bash
+cd backend
 node -e "import('./src/agent/llmRouter.js').then(async (m) => { console.log('Fast-Path:', m.classifyFastPath('hello')); console.log('Router:', await m.getRouterChain().invoke({ query: 'my PRs' })); });"
 ```
 
-### Run Full Test Suite (240 Specs)
+### Run Full Test Suite (342 Specs)
 ```bash
 cd backend
 npm test

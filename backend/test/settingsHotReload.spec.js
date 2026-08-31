@@ -5,9 +5,14 @@ import databaseService from '../src/db/postgres.js';
 
 describe('SettingsService & LLM Model Hot-Reload Contract', () => {
   let initialModel;
+  let savedEnv;
 
   beforeAll(async () => {
     initialModel = config.llm.defaultModel || 'hermes3:8b';
+  });
+
+  beforeEach(() => {
+    savedEnv = { ...process.env };
   });
 
   afterEach(async () => {
@@ -17,6 +22,7 @@ describe('SettingsService & LLM Model Hot-Reload Contract', () => {
     databaseService.inMemoryAppSettings = {};
     settingsService.cachedRawSettings = null;
     settingsService.initialized = false;
+    process.env = savedEnv;
   });
 
   it('should dynamically hot-reload model into getChatModel when settings are updated', async () => {

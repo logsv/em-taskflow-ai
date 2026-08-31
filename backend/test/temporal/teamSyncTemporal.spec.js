@@ -7,6 +7,16 @@ import {
 } from '../../src/temporal/activities.js';
 
 describe('Node.js Temporal Team Sync Activities & Workflows', () => {
+  let savedEnv;
+
+  beforeEach(() => {
+    savedEnv = { ...process.env };
+  });
+
+  afterEach(() => {
+    process.env = savedEnv;
+  });
+
   it('should run fetchGitHubTeamActivity with fallback when token is missing', async () => {
     const res = await fetchGitHubTeamActivity({});
     expect(res.source).toBe('github');

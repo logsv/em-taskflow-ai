@@ -180,8 +180,16 @@ class IdentityService {
         lower.includes('placeholder') ||
         lower.includes('testcompany.com') ||
         lower.includes('example.com') ||
+        lower.includes('myenterprise') ||
+        lower.includes('acme') ||
+        lower.includes('dummy') ||
+        lower === 'primary' ||
         lower === 'lead@testcompany.com' ||
         lower === 'alex@company.com' ||
+        lower === 'admin@acme.corp' ||
+        lower === 'admin.lead@myenterprise.internal' ||
+        lower.endsWith('.internal') ||
+        lower.endsWith('.corp') ||
         lower.endsWith('@company.internal')
       );
     };
@@ -189,7 +197,17 @@ class IdentityService {
     const isDummyOwner = (owner) => {
       if (!owner || typeof owner !== 'string') return true;
       const lower = owner.toLowerCase().trim();
-      return lower.includes('placeholder') || lower === 'owner' || lower === 'mock' || lower === 'org' || lower === 'myorg';
+      return (
+        lower.includes('placeholder') ||
+        lower.includes('dummy') ||
+        lower === 'owner' ||
+        lower === 'mock' ||
+        lower === 'org' ||
+        lower === 'myorg' ||
+        lower === 'myorg-updated' ||
+        lower === 'acme-corp' ||
+        lower === 'acme'
+      );
     };
 
     const rawGcal = rawSettings.mcp?.googleCalendar?.calendarId || process.env.GOOGLE_CALENDAR_ID;

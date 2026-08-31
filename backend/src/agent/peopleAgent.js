@@ -267,7 +267,11 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     const mode = inputArgs.mode || 'ANALYZE';
 
     const member = (await identityService.resolveMember(inputArgs.engineer_id)) || (await identityService.resolveMemberFromText(inputArgs.engineer_id));
-    const resolvedName = member?.displayName || inputArgs.engineer_id || 'eng_alex';
+    let rawId = String(inputArgs.engineer_id || 'eng_alex').trim();
+    if (rawId.length > 30 || /\b(review|progression|readiness|career|growth|notes|developer|engineer|1-on-1|our)\b/i.test(rawId)) {
+      rawId = member?.displayName || 'Alex Williams';
+    }
+    const resolvedName = member?.displayName || rawId;
 
     const events = googleData.today_events || defaultData.today_events || [
       { summary: '1-on-1: Performance & Growth Review', start_time: '10:00 AM', attendee: resolvedName },

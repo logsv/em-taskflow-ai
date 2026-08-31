@@ -2,7 +2,10 @@ import settingsService, { maskSecret, isMasked } from '../../src/services/settin
 import databaseService from '../../src/db/postgres.js';
 
 describe('SettingsService & Admin Settings Management', () => {
+  let savedEnv;
+
   beforeEach(async () => {
+    savedEnv = { ...process.env };
     // Reset in-memory settings for clean test state
     databaseService.inMemoryAppSettings = {};
     settingsService.cachedRawSettings = null;
@@ -33,6 +36,7 @@ describe('SettingsService & Admin Settings Management', () => {
     databaseService.inMemoryAppSettings = {};
     settingsService.cachedRawSettings = null;
     settingsService.initialized = false;
+    process.env = savedEnv;
   });
 
   describe('Secret Masking & Detection Utilities', () => {

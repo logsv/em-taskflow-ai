@@ -3,7 +3,17 @@ import settingsService from '../../src/services/settingsService.js';
 import databaseService from '../../src/db/postgres.js';
 
 describe('IdentityService & Cross-Platform Team Auto-Discovery', () => {
+  let savedEnv;
+
   beforeEach(async () => {
+    savedEnv = { ...process.env };
+    delete process.env.PRIMARY_ADMIN_NAME;
+    delete process.env.PRIMARY_ADMIN_EMAIL;
+    delete process.env.EM_LEAD_NAME;
+    delete process.env.JIRA_USER_EMAIL;
+    delete process.env.GOOGLE_CALENDAR_ID;
+    delete process.env.GITHUB_OWNER;
+
     databaseService.inMemoryTeamMembers = [];
     settingsService.cachedRawSettings = null;
     settingsService.initialized = false;
@@ -14,6 +24,7 @@ describe('IdentityService & Cross-Platform Team Auto-Discovery', () => {
     databaseService.inMemoryTeamMembers = [];
     settingsService.cachedRawSettings = null;
     settingsService.initialized = false;
+    process.env = savedEnv;
   });
 
   it('should auto-discover and seed initial team members when external APIs return baseline', async () => {
