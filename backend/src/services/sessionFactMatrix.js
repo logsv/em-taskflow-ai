@@ -141,15 +141,16 @@ export class SessionFactMatrixService {
     const leadTimeMatch = a.match(/(?:Lead Time for Changes\*\*?\s*\|\s*\*\*?)([0-9.]+\s*hours)/i);
     const cfrMatch = a.match(/(?:Change Failure Rate\*\*?\s*\|\s*\*\*?)([0-9.]+\s*%)/i);
     const mttrMatch = a.match(/(?:Time to Restore \(MTTR\)\*\*?|MTTR\*\*?)\s*\|\s*\*\*?([0-9.]+\s*hours)/i);
-    const tierMatch = a.match(/(?:Overall operational flow is rated at|Industry Benchmark Tier\s*\|\s*)([A-Z]+)\s*Tier/i);
+    const tierMatch = a.match(/\b(ELITE|HIGH|MEDIUM|LOW)\s+Tier\b/i) ||
+      a.match(/(?:Overall operational flow is rated at\s*\*+|rated at\s*\*+)([A-Za-z]+)\s*Tier/i);
 
-    if (deployMatch || leadTimeMatch || cfrMatch || mttrMatch) {
+    if (deployMatch || leadTimeMatch || cfrMatch || mttrMatch || tierMatch) {
       delta.dora = {
         ...(deployMatch ? { deploymentFrequency: deployMatch[1] } : {}),
         ...(leadTimeMatch ? { leadTimeHours: leadTimeMatch[1] } : {}),
         ...(cfrMatch ? { changeFailureRate: cfrMatch[1] } : {}),
         ...(mttrMatch ? { mttrHours: mttrMatch[1] } : {}),
-        ...(tierMatch ? { tier: tierMatch[1] } : {}),
+        ...(tierMatch ? { tier: (tierMatch[1] || tierMatch[0]).replace(/\s*Tier/i, '').replace(/[*_`]/g, '').trim().toUpperCase() } : {}),
       };
     }
 
@@ -210,7 +211,7 @@ export class SessionFactMatrixService {
 
     // 6. Sprint & OKR extraction
     const sprintMatch = a.match(/Sprint\s*(\d{1,4})/i) || q.match(/Sprint\s*(\d{1,4})/i);
-    const capacityMatch = a.match(/(?:capacity|velocity)\s*(?:is|at|of)\s*(\d{1,4})\s*(?:story points|pts|points)/i);
+    const capacityMatch = a.match(/(?:capacity|velocity)\s*(?:is\s*at|is|at|of|reached)?\s*(\d{1,4})\s*(?:story points|pts|points)/i);
     if (sprintMatch || capacityMatch) {
       delta.sprint = {
         ...(sprintMatch ? { sprintName: `Sprint ${sprintMatch[1]}` } : {}),
