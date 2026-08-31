@@ -12,6 +12,7 @@ import {
 
 import preRouterRewriter from '../../services/preRouterRewriter.js';
 import episodicMemoryService from '../../services/episodicMemory.js';
+import sessionFactMatrixService from '../../services/sessionFactMatrix.js';
 
 export class ChatApplicationService {
   constructor({
@@ -63,7 +64,10 @@ export class ChatApplicationService {
     const existingMessages = ensuredThread?.id
       ? await Promise.resolve(this.messageRepo.getThreadMessages(ensuredThread.id, 50)).catch(() => [])
       : [];
-    const historyContext = optimizeChatHistory(existingMessages, 8);
+    const contextMatrix = ensuredThread?.id
+      ? await sessionFactMatrixService.getThreadFactMatrix(ensuredThread.id).catch(() => ({}))
+      : {};
+    const historyContext = optimizeChatHistory(existingMessages, 8, 2500, contextMatrix);
 
     // Tier 1: Non-invasive Coreference & Follow-Up Context Resolution
     const { rewrittenQuery, wasRewritten, entities: extractedEntities } = preRouterRewriter.resolveQuery(query, existingMessages);
@@ -79,6 +83,7 @@ export class ChatApplicationService {
       ragMode,
       attachments: normalizedAttachments,
       history: historyContext,
+      contextMatrix,
       entities: extractedEntities,
       episodicContext: episodicPastContext,
     });
@@ -154,6 +159,19 @@ export class ChatApplicationService {
       traceId: result.meta?.traceId || null,
       domain: routedDomains[0] || 'general',
     });
+
+    // Asynchronously extract and sync distributed session Fact-Matrix (non-blocking)
+    if (ensuredThread?.id && result?.answer) {
+      Promise.resolve().then(async () => {
+        try {
+          const delta = sessionFactMatrixService.extractFactDelta(query, result.answer, decision.routingPlan || {});
+          if (Object.keys(delta).length > 0) {
+            const updated = sessionFactMatrixService.mergeFactMatrix(contextMatrix, delta);
+            await sessionFactMatrixService.saveThreadFactMatrix(ensuredThread.id, updated);
+          }
+        } catch (_syncErr) {}
+      }).catch(() => {});
+    }
 
     return {
       messageId: assistantMessageRecord.id,
@@ -374,7 +392,7 @@ export function condenseAssistantContent(content, recencyIndex, totalMessages) {
  * Sliding Window + State Anchoring for Chat History with Progressive Disclosure Condensation
  * Keeps the latest N turns active, compressing older turns and collapsing <details> accordions.
  */
-export function optimizeChatHistory(messages = [], maxActiveTurns = 8, maxBudgetChars = 2500) {
+export function optimizeChatHistory(messages = [], maxActiveTurns = 8, maxBudgetChars = 2500, contextMatrix = {}) {
   if (!Array.isArray(messages) || messages.length === 0) {
     return [];
   }
@@ -392,7 +410,16 @@ export function optimizeChatHistory(messages = [], maxActiveTurns = 8, maxBudget
     return m;
   });
 
+  const matrixPrompt = sessionFactMatrixService.formatMatrixAsSystemPrompt(contextMatrix);
+
   if (processedMessages.length <= maxActiveTurns) {
+    if (matrixPrompt) {
+      const matrixAnchor = {
+        role: 'system',
+        content: matrixPrompt,
+      };
+      return [matrixAnchor, ...processedMessages];
+    }
     return processedMessages;
   }
 
@@ -407,9 +434,15 @@ export function optimizeChatHistory(messages = [], maxActiveTurns = 8, maxBudget
     .filter(Boolean)
     .slice(-4);
 
+  const anchorSections = [];
+  if (matrixPrompt) {
+    anchorSections.push(matrixPrompt);
+  }
+  anchorSections.push(`[System Memory: Conversation Summary Anchor]\nPrior topics discussed in this session: ${keyTopics.join(' | ')}. (${olderMessages.length} earlier turns archived)`);
+
   const summaryAnchor = {
     role: 'system',
-    content: `[System Memory: Conversation Summary Anchor]\nPrior topics discussed in this session: ${keyTopics.join(' | ')}. (${olderMessages.length} earlier turns archived)`,
+    content: anchorSections.join('\n\n'),
   };
 
   const result = [summaryAnchor, ...activeMessages];
