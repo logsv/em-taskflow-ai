@@ -23,6 +23,10 @@ import settingsService from '../services/settingsService.js';
 import identityService from '../services/identityService.js';
 import teamSyncWorker from '../workers/teamSyncWorker.js';
 import { info, warn, error, debug } from '../utils/logger.js';
+import { l1ExactCache } from '../cache/l1ExactCache.js';
+import { getSemanticCacheStats } from '../cache/semanticCache.js';
+import { toolCache } from '../cache/toolCache.js';
+import { cacheInvalidator } from '../cache/cacheInvalidator.js';
 
 const router = express.Router();
 
@@ -1225,6 +1229,75 @@ router.post('/system/reset-data', async (req, res) => {
   } catch (err) {
     res.status(500).json({
       error: 'Failed to reset database tables',
+      details: err.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+// GET /api/admin/cache/stats - Multi-tier cache statistics
+router.get('/cache/stats', async (req, res) => {
+  try {
+    const l1Stats = l1ExactCache.getStats();
+    const l2Stats = getSemanticCacheStats();
+    const toolStats = toolCache.getStats();
+
+    res.json({
+      success: true,
+      tiers: {
+        l1_exact_in_memory: l1Stats,
+        l2_semantic_redis: l2Stats,
+        tier2_mcp_tool_cache: toolStats,
+      },
+      timestamp: new Date().toISOString(),
+      requestId: req.requestId,
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to fetch cache statistics',
+      details: err.message,
+      requestId: req.requestId,
+    });
+  }
+});
+
+// POST /api/admin/cache/flush - Targeted or full cache flush
+router.post('/cache/flush', async (req, res) => {
+  try {
+    const { domain, documentFilename, all = false } = req.body || {};
+
+    if (all || (!domain && !documentFilename)) {
+      await cacheInvalidator.invalidateAll();
+      return res.json({
+        success: true,
+        message: '✅ Flushed all cache tiers (L1 exact, L2 semantic, Tier 2 MCP tool cache)',
+        flushed: 'all',
+        requestId: req.requestId,
+      });
+    }
+
+    if (documentFilename) {
+      const docResult = await cacheInvalidator.invalidateDocument(documentFilename);
+      return res.json({
+        success: true,
+        message: `✅ Flushed document cache entries for: ${documentFilename}`,
+        result: docResult,
+        requestId: req.requestId,
+      });
+    }
+
+    if (domain) {
+      const domainResult = await cacheInvalidator.invalidateDomain(domain);
+      return res.json({
+        success: true,
+        message: `✅ Flushed domain cache entries for: ${domain}`,
+        result: domainResult,
+        requestId: req.requestId,
+      });
+    }
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to flush cache',
       details: err.message,
       requestId: req.requestId,
     });

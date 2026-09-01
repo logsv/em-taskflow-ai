@@ -11,6 +11,7 @@ import { closeGithubMcp } from '../mcp/github.js';
 import { closeSlackMcp } from '../mcp/slack.js';
 import { closeGoogleMcp } from '../mcp/google.js';
 import { resetChatModel } from '../llm/index.js';
+import { cacheInvalidator } from '../cache/cacheInvalidator.js';
 
 export function maskSecret(secret) {
   if (!secret || typeof secret !== 'string') return '';
@@ -634,6 +635,9 @@ class SettingsService {
     await closeSlackMcp().catch(() => {});
     await closeGoogleMcp().catch(() => {});
 
+    // Invalidate multi-tier caches on credential rotation
+    cacheInvalidator.invalidateAll().catch(() => {});
+
     info('✅ Settings saved to database and hot-reloaded into active runtime');
     return this.getMaskedSettings();
   }
@@ -644,6 +648,7 @@ class SettingsService {
     await databaseService.setAppSetting('mcp', this.cachedRawSettings.mcp, 'env_default');
     this.applyToRuntimeConfig(this.cachedRawSettings);
     resetChatModel();
+    cacheInvalidator.invalidateAll().catch(() => {});
     info('🔄 Restored settings to .env defaults');
     return this.getMaskedSettings();
   }
