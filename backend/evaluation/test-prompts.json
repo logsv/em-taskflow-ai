@@ -1,42 +1,143 @@
 [
   {
-    "prompt": "What are the current blockers for the 'phoenix' project in Jira?",
-    "expected_domains": ["jira"],
+    "prompt": "Calculate our team DORA deployment frequency and change failure rate for the last 30 days.",
+    "expected_domains": [
+      "dora"
+    ],
     "is_rag_appropriate": false
   },
   {
     "prompt": "Review the latest PRs for the backend repository, are there any that have been open for more than 3 days?",
-    "expected_domains": ["github"],
+    "expected_domains": [
+      "delivery"
+    ],
     "is_rag_appropriate": false
   },
   {
-    "prompt": "Summarize the project plan in the 'Project Phoenix' document.",
-    "expected_domains": ["rag"],
+    "prompt": "Format a Situation-Behavior-Impact (SBI) feedback report for senior dev code review turnaround delays.",
+    "expected_domains": [
+      "sbi"
+    ],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Review 1-on-1 career progression notes and promotion readiness for our frontend senior developer.",
+    "expected_domains": [
+      "people"
+    ],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Calculate our team sprint capacity and story point velocity for Sprint 45 planning.",
+    "expected_domains": [
+      "sprint"
+    ],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Generate a retrospective report summarizing what went well and action items from our last sprint.",
+    "expected_domains": [
+      "retro"
+    ],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Show our Q4 product roadmap milestone timelines and initiative dependencies.",
+    "expected_domains": [
+      "roadmap"
+    ],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Evaluate our Q3 OKR progress on reducing API p99 latency to under 200ms.",
+    "expected_domains": [
+      "okr"
+    ],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "What is our company standard operating procedure for handling production security incidents?",
+    "expected_domains": [
+      "sop"
+    ],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Audit and critique my draft engineering promotion proposal for Alex for tone empathy and math accuracy.",
+    "expected_domains": [
+      "critic"
+    ],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Summarize the architecture specifications and database schema in the uploaded Project Phoenix PDF.",
+    "expected_domains": [
+      "rag"
+    ],
     "is_rag_appropriate": true
   },
   {
-    "prompt": "What are the key risks for the current release, considering both Jira tickets and recent PRs?",
-    "expected_domains": ["jira", "github"],
-    "is_rag_appropriate": false
-  },
-  {
-    "prompt": "What's on my calendar for today?",
-    "expected_domains": ["calendar"],
-    "is_rag_appropriate": false
-  },
-  {
-    "prompt": "Find the project status update for 'Project Apollo' in Notion.",
-    "expected_domains": ["notion"],
-    "is_rag_appropriate": false
-  },
-  {
-    "prompt": "Can you give me a summary of the latest engineering all-hands meeting? The notes should be in the shared drive.",
-    "expected_domains": ["rag"],
+    "prompt": "What are the performance rubric guidelines for Senior Engineer level in our uploaded career ladder handbook?",
+    "expected_domains": [
+      "rag"
+    ],
     "is_rag_appropriate": true
   },
   {
-    "prompt": "Who is working on the UI redesign? Check Jira.",
-    "expected_domains": ["jira"],
+    "prompt": "Write a python function to compute Fibonacci numbers.",
+    "expected_domains": [],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Hello! How can you assist me as an engineering manager today?",
+    "expected_domains": [],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Evaluate overall engineering health: calculate team DORA metrics, check active delivery bottlenecks, and draft an SBI coaching feedback.",
+    "expected_domains": [
+      "dora",
+      "delivery",
+      "sbi"
+    ],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "What are the current blockers and WIP limit violations for the phoenix project in Jira?",
+    "expected_domains": [
+      "delivery"
+    ],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Plan Sprint 43 capacity for our 4-person team considering 2 days of PTO and allocating 20% to tech debt.",
+    "expected_domains": [
+      "sprint"
+    ],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Detect roadmap drift between Jira Epic deliverables and our published Notion quarterly roadmap.",
+    "expected_domains": [
+      "roadmap"
+    ],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Check ADR architecture decision record compliance for our new vector database service migration.",
+    "expected_domains": [
+      "sop"
+    ],
+    "is_rag_appropriate": false
+  },
+  {
+    "prompt": "Run autonomous engineering health audit across DORA, Delivery bottlenecks, Sprint pacing, and SOP governance.",
+    "expected_domains": [
+      "dora",
+      "delivery",
+      "sprint",
+      "sop"
+    ],
     "is_rag_appropriate": false
   }
 ]

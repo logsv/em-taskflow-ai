@@ -42,20 +42,30 @@ The Enterprise Evaluation Framework provides deterministic, automated SLA testin
 
 ## 🛠️ Key Components & File Locations
 
-1. **Golden Dataset Repository**:
+1. **Golden Dataset Repository (140 Items)**:
    - Schema: [`backend/evaluation/golden-dataset-schema.json`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/evaluation/golden-dataset-schema.json)
    - Dataset: [`backend/evaluation/golden-dataset.json`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/evaluation/golden-dataset.json)
+   - Domain Breakdown:
+     - 10 EM Domain Micro-Agents (8–10 items each): `dora`, `delivery`, `sbi`, `people`, `sprint`, `retro`, `roadmap`, `okr`, `sop`, `critic`.
+     - Multi-Turn Session Fact-Matrix & Memory (16 items): `EVAL-CONTEXT-001` to `016`.
+     - Autonomous Health Audit & Slack Dispatch (6 items): `EVAL-AUDIT-001` to `006`.
+     - RAG Document & SOP Synthesis (12 items): `EVAL-RAG-001` to `012`.
+     - Fast-Path Zero-Tool BFCL Gates (12 items): `EVAL-BFCL-001` to `012`.
+     - Guardrails & Provenance (6 items): `EVAL-GUARD-001` to `006`.
+     - Complex Cross-Domain Workflows (8 items): `EVAL-COMP-001` to `008`.
 2. **Node.js Composite Strategy Evaluator**:
    - Strategy Runner: [`backend/evaluation/run-evaluation.js`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/evaluation/run-evaluation.js)
    - Evaluator Strategies: [`backend/evaluation/evaluators/`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/evaluation/evaluators/)
-     - `multi-agent-eval.js` (MultiAgentTrajectoryStrategy)
-     - `rag-eval.js` (RAGPipelineStrategy)
-     - `pre-llm-eval.js` (PreLLMProcessorChain)
-3. **Python AI RAG Evaluator & LLM Judges**:
+     - `multi-agent-eval.js` (MultiAgentTrajectoryStrategy: precision, recall, 1-tool constraint)
+     - `rag-eval.js` (RAGPipelineStrategy: single-pass markdown structure & citations)
+     - `pre-llm-eval.js` (PreLLMProcessorChain: fast-path <300ms SLA & summary compression)
+     - `context-eval.js` (ContextualResolutionStrategy: coreference & session Fact-Matrix recall)
+3. **Python AI RAG Evaluator, LLM Judges & Tau-Bench**:
    - Python Evaluator: [`services/python-ai-service/evaluation/rag_evaluator.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/evaluation/rag_evaluator.py)
    - LLM Judge Factory: [`services/python-ai-service/evaluation/llm_judge.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/evaluation/llm_judge.py)
+   - EM Tau-Bench Personas: [`services/python-ai-service/evaluation/em_tau_bench/user_simulator.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/evaluation/em_tau_bench/user_simulator.py) (`RELEASE_MANAGER`, `ENGINEERING_DIRECTOR`, `GOVERNANCE_AUDITOR`, `TECH_LEAD_COACH`, `AUTONOMOUS_AUDIT_OPERATOR`)
    - Shadow Telemetry Worker: [`services/python-ai-service/app/telemetry/shadow_evaluator.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/app/telemetry/shadow_evaluator.py)
-   - DeepEval Trajectory Runner: [`services/python-ai-service/evaluation/deepeval_hermes.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/evaluation/deepeval_hermes.py)
+   - DeepEval Trajectory Runner: [`services/python-ai-service/tests/test_deepeval_agent_trajectories.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/tests/test_deepeval_agent_trajectories.py)
    - Ragas Evaluator: [`services/python-ai-service/evaluation/ragas_runner.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/evaluation/ragas_runner.py)
    - TruLens RAG Triad: [`services/python-ai-service/evaluation/trulens_rag_triad.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/evaluation/trulens_rag_triad.py)
 4. **Git Pre-Push Hook & CI Workflows**:

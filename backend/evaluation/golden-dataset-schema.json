@@ -25,7 +25,7 @@
       },
       "domain_category": {
         "type": "string",
-        "enum": ["multi_agent", "rag_sop", "fast_path_edge", "multi_turn_context", "guardrails_provenance"],
+        "enum": ["multi_agent", "rag_sop", "fast_path_edge", "multi_turn_context", "guardrails_provenance", "autonomous_audit"],
         "description": "Primary evaluation classification category"
       },
       "conversation_history": {
@@ -48,6 +48,20 @@
         "type": "object",
         "description": "Expected structured entities in contextEntities blackboard"
       },
+      "expected_fact_matrix": {
+        "type": "object",
+        "description": "Expected state attributes in the session Fact-Matrix scratchpad"
+      },
+      "expected_action_items": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Expected formulated action items derived from analysis or audit"
+      },
+      "expected_slack_dispatch_mode": {
+        "type": "string",
+        "enum": ["consolidated", "threaded_breakdown", "action_nudge"],
+        "description": "Expected multi-channel Slack notification dispatch strategy"
+      },
       "file_attachments": {
         "type": "array",
         "items": { "type": "string" },
@@ -56,8 +70,8 @@
       "expected_domains": {
         "type": "array",
         "items": { "type": "string" },
-        "minItems": 1,
-        "description": "Expected micro-agent domain routing labels"
+        "minItems": 0,
+        "description": "Expected micro-agent domain routing labels (empty for fast_path/zero-tool queries)"
       },
       "expected_tool_calls": {
         "type": "array",

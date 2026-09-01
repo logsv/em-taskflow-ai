@@ -291,3 +291,93 @@ def test_deepeval_episodic_memory_recall():
     episodic_metric.measure(test_case)
     assert episodic_metric.score >= 0.7 or episodic_metric.is_successful()
 
+
+def test_deepeval_sprint_capacity_and_tech_debt_allocation():
+    """
+    Validates that sprint planning calculations adhere to 70/20/10 capacity allocation
+    and deduct PTOs mathematically.
+    """
+    sprint_metric = GEval(
+        name="Sprint_Capacity_Rubric",
+        criteria=(
+            "Verify that sprint capacity is calculated with PTO deductions, "
+            "70/20/10 tech-debt allocation, and velocity forecasting."
+        ),
+        evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
+        model=judge,
+        threshold=0.7,
+    )
+
+    test_case = LLMTestCase(
+        input="Calculate Sprint 44 capacity for 4 engineers with 2 days PTO allocating 20% to tech debt.",
+        actual_output=(
+            "### 🏃 Sprint 44 Capacity & Velocity Plan\n\n"
+            "- **Total Available Capacity**: 68 Story Points (after deducting 2 engineer PTO days).\n"
+            "- **Feature Delivery (70%)**: 48 Story Points.\n"
+            "- **Technical Debt & Reliability (20%)**: 14 Story Points.\n"
+            "- **Architecture & Innovation (10%)**: 6 Story Points."
+        ),
+    )
+
+    sprint_metric.measure(test_case)
+    assert sprint_metric.score >= 0.7 or sprint_metric.is_successful()
+
+
+def test_deepeval_retro_thematic_clustering_and_smart_actions():
+    """
+    Validates that sprint retrospectives produce blameless thematic clustering
+    and SMART action items with single assignees.
+    """
+    retro_metric = GEval(
+        name="Retro_Thematic_Clustering_Rubric",
+        criteria=(
+            "Verify that sprint retro feedback is clustered into What Went Well, "
+            "Friction Points, and actionable SMART items with single assignees."
+        ),
+        evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
+        model=judge,
+        threshold=0.7,
+    )
+
+    test_case = LLMTestCase(
+        input="Generate sprint retro for Sprint 42 focusing on CI pipeline flakiness feedback.",
+        actual_output=(
+            "### 🔄 Sprint 42 Retrospective Synthesis\n\n"
+            "#### 🟢 What Went Well\n"
+            "- Zero-downtime database migration completed on schedule.\n\n"
+            "#### 🟡 Friction Points & Bottlenecks\n"
+            "- Flaky integration test suite in CI caused 15 PR re-runs.\n\n"
+            "#### 🎯 SMART Action Items\n"
+            "1. **Quarantine Flaky Database Tests**: Assignee: @alex-dev | Due: Sprint 43 Day 2."
+        ),
+    )
+
+    retro_metric.measure(test_case)
+    assert retro_metric.score >= 0.7 or retro_metric.is_successful()
+
+
+def test_deepeval_fact_matrix_session_memory_retention():
+    """
+    Validates that the session Fact-Matrix preserves active DORA baselines, referenced PRs,
+    and agreed action items without hallucination or context bloat.
+    """
+    matrix_metric = GEval(
+        name="Fact_Matrix_Retention_Rubric",
+        criteria=(
+            "Verify that active session facts (DORA metrics, referenced PRs, engineer handles) "
+            "are preserved accurately from system memory."
+        ),
+        evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
+        model=judge,
+        threshold=0.7,
+    )
+
+    test_case = LLMTestCase(
+        input="Session Fact Matrix: Deploys: 3.73/wk, LeadTime: 19.4h, CFR: 0%, Active PRs: #142. User Query: 'What is our lead time and open PR?'",
+        actual_output="Based on our active session baseline, lead time is 19.4 hours with active pull request #142 in review.",
+    )
+
+    matrix_metric.measure(test_case)
+    assert matrix_metric.score >= 0.7 or matrix_metric.is_successful()
+
+

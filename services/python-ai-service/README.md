@@ -172,7 +172,8 @@ services/python-ai-service/
 │   │   └── rag_processor/          # Chunker, Reranker, & DB Service (SQL CTE RRF)
 │   ├── temporal/                   # Temporal durable activities & worker setup
 │   └── telemetry/                  # OpenTelemetry & JSON logging formatters
-├── tests/                          # Pytest integration & unit test suite (39 specs)
+├── evaluation/                     # EM Tau-Bench user simulator, DeepEval Hermes judge, Ragas, TruLens
+├── tests/                          # Pytest integration & unit test suite (48 specs)
 ├── pyproject.toml                  # Python dependencies (uv / pip)
 ├── pytest.ini                      # Pytest configuration
 ├── Dockerfile                      # Production Docker build container
@@ -183,8 +184,18 @@ services/python-ai-service/
 
 ## 🧪 Testing & Verification
 
-Run the full **39 pytest specs**:
+Run the full **48 pytest specs**:
 ```bash
 cd services/python-ai-service
 uv run pytest
 ```
+
+Run specialized evaluation sub-suites:
+```bash
+# DeepEval agent trajectory benchmarks (12 GEval specs)
+uv run pytest tests/test_deepeval_agent_trajectories.py
+
+# EM Tau-Bench multi-turn user simulation (5 personas)
+uv run pytest tests/test_em_tau_bench.py
+```
+

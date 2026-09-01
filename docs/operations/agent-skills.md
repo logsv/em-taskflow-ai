@@ -98,4 +98,4 @@ All skills are maintained as standard Markdown operational playbooks under [`.ag
 
 1. **Autonomous Discovery**: Agents inspect `SKILLS.md` and match user requests to the appropriate operational skill.
 2. **Context Ingestion**: The agent loads the designated `SKILL.md` into context using file viewing tools before making source code edits.
-3. **Deterministic Verification**: Every skill defines exact CLI test commands that must be executed upon completing code changes, ensuring all **300 backend unit test specs** and **45 Python AI test specs** pass with 0 failures.
+3. **Deterministic Verification**: Every skill defines exact CLI test commands that must be executed upon completing code changes, ensuring all **349 backend unit test specs** and **48 Python AI test specs** pass with 0 failures.

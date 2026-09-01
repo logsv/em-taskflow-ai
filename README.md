@@ -305,19 +305,19 @@ curl -X POST http://localhost:4000/api/chat \
   -d '{"message":"Summarize the uploaded document","mode":"baseline"}'
 ```
 
-### 5. Automated Backend Unit Tests (269 Specs)
+### 5. Automated Backend Unit Tests (349 Specs)
 Run Jasmine unit tests and evaluation suite (`hermes3:8b`):
 ```bash
 cd backend
-npm test            # 269 unit tests, 0 failures
-npm run evaluate    # Enterprise evaluation suite
+npm test            # 349 unit tests, 0 failures
+npm run evaluate    # Enterprise evaluation suite (140 Golden Dataset items)
 ```
 
-### 6. Automated Python AI Service Tests (45 Specs)
+### 6. Automated Python AI Service Tests (48 Specs)
 Run the Pytest suite:
 ```bash
 cd services/python-ai-service
-uv run pytest       # 45 specs, 0 failures
+uv run pytest       # 48 specs, 0 failures
 ```
 
 ---

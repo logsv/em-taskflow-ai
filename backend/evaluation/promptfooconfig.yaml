@@ -186,4 +186,82 @@ tests:
       - type: icontains
         value: "fast_path"
 
+  - description: "DORA recovery and incident hotfix trends"
+    vars:
+      query: "Analyze recovery duration and change failure rate after the auth outage."
+    assert:
+      - type: icontains
+        value: "dora"
+
+  - description: "Delivery PR size batch guardrail"
+    vars:
+      query: "Which pull requests exceed our 400-line batch size guardrail and suffer from review latency?"
+    assert:
+      - type: icontains
+        value: "delivery"
+
+  - description: "SBI feedback on CI test bypass"
+    vars:
+      query: "Formulate SBI performance coaching for a developer who bypassed CI test verification."
+    assert:
+      - type: icontains
+        value: "sbi"
+
+  - description: "People 1-on-1 cadence and burnout risk"
+    vars:
+      query: "Track engineering career ladder progression and overdue 1-on-1 check-ins for the platform squad."
+    assert:
+      - type: icontains
+        value: "people"
+
+  - description: "Sprint velocity forecast and spillover risk"
+    vars:
+      query: "Estimate rollover spillover risk for uncompleted tickets currently in progress near sprint cutoff."
+    assert:
+      - type: icontains
+        value: "sprint"
+
+  - description: "Retrospective blameless post-mortem analysis"
+    vars:
+      query: "Formulate blameless post-mortem analysis for the cache invalidation bug during Sprint 41 deployment."
+    assert:
+      - type: icontains
+        value: "retro"
+
+  - description: "Roadmap initiative drift and cross-team dependencies"
+    vars:
+      query: "Identify cross-team blocking dependencies between the Billing Epic and Core Platform migration."
+    assert:
+      - type: icontains
+        value: "roadmap"
+
+  - description: "OKR confidence scoring and composite pacing"
+    vars:
+      query: "Calculate the composite pacing score for our reliability and scalability OKRs in Q3."
+    assert:
+      - type: icontains
+        value: "okr"
+
+  - description: "SOP database migration and rollback policy"
+    vars:
+      query: "Verify SOP compliance for database schema migrations, rollback scripts, and peer reviews."
+    assert:
+      - type: icontains
+        value: "sop"
+
+  - description: "Critic post-mortem draft audit"
+    vars:
+      query: "Critique our engineering incident post-mortem draft to remove any personal blame and focus on systemic fixes."
+    assert:
+      - type: icontains
+        value: "critic"
+
+  - description: "RAG career rubric level lookup"
+    vars:
+      query: "What are the performance rubric guidelines for Senior Engineer level in our uploaded career ladder handbook?"
+    assert:
+      - type: icontains
+        value: "rag"
+
+
 
