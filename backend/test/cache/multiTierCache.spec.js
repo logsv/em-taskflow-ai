@@ -13,7 +13,7 @@ import {
 } from '../../src/cache/semanticCache.js';
 import { toolCache } from '../../src/cache/toolCache.js';
 import { cacheInvalidator } from '../../src/cache/cacheInvalidator.js';
-import * as llmIndex from '../../src/llm/index.js';
+import { bgeEmbeddingsClient } from '../../src/llm/bgeEmbeddingsClient.js';
 
 describe('Multi-Tier Production Caching Architecture', () => {
   let sandbox;
@@ -156,9 +156,7 @@ describe('Multi-Tier Production Caching Architecture', () => {
     it('should store and retrieve semantic cache matches when embeddings and entities align', async () => {
       // Mock embedding client to return predictable vector
       const mockVector = new Array(768).fill(0.05);
-      sandbox.stub(llmIndex, 'getBgeEmbeddings').returns({
-        embed: sinon.stub().resolves({ embeddings: [mockVector] }),
-      });
+      sandbox.stub(bgeEmbeddingsClient, 'embed').resolves({ embeddings: [mockVector] });
 
       const query = 'Summarize sprint guidelines in handbook.pdf';
       const answer = 'Sprint guidelines require 2-week iterations.';
@@ -219,9 +217,7 @@ describe('Multi-Tier Production Caching Architecture', () => {
   describe('Event-Driven Cache Invalidator Bus', () => {
     it('should invalidate L1 and L2 when a document is mutated/deleted', async () => {
       const mockVector = new Array(768).fill(0.05);
-      sandbox.stub(llmIndex, 'getBgeEmbeddings').returns({
-        embed: sinon.stub().resolves({ embeddings: [mockVector] }),
-      });
+      sandbox.stub(bgeEmbeddingsClient, 'embed').resolves({ embeddings: [mockVector] });
 
       // Populate L1 and L2 with document query
       const query = 'What are the review requirements in code_review_policy.pdf?';
@@ -247,6 +243,72 @@ describe('Multi-Tier Production Caching Architecture', () => {
 
       expect(l1ExactCache.get('q1')).toBeNull();
       expect(toolCache.get('jira_get_issue', { id: 'ENG-1' })).toBeNull();
+    });
+
+    it('should execute invalidateCacheActivity and clear caches durably', async () => {
+      const { invalidateCacheActivity } = await import('../../src/temporal/activities.js');
+      
+      l1ExactCache.set('temp_q', 'temp_ans', [], { domain: 'dora' });
+      expect(l1ExactCache.get('temp_q', { domain: 'dora' })).not.toBeNull();
+
+      const res = await invalidateCacheActivity({ type: 'domain', domain: 'dora' });
+      expect(res.status).toBe('SUCCESS');
+      expect(l1ExactCache.get('temp_q', { domain: 'dora' })).toBeNull();
+    });
+
+    it('should trigger Temporal cache invalidation workflow via client without throwing', async () => {
+      const { startCacheInvalidationWorkflow } = await import('../../src/temporal/client.js');
+      
+      l1ExactCache.set('wf_q', 'wf_ans', [], { domain: 'rag' });
+      const wfRes = await startCacheInvalidationWorkflow({ type: 'domain', domain: 'rag' });
+      
+      expect(wfRes).not.toBeNull();
+      expect(wfRes.workflowId).toBeDefined();
+      expect(l1ExactCache.get('wf_q', { domain: 'rag' })).toBeNull();
+    });
+
+    it('should emit events on domain and document invalidation', async () => {
+      const domainSpy = sinon.spy();
+      const docSpy = sinon.spy();
+
+      cacheInvalidator.on('domainInvalidated', domainSpy);
+      cacheInvalidator.on('documentInvalidated', docSpy);
+
+      await cacheInvalidator.invalidateDomain('people');
+      await cacheInvalidator.invalidateDocument('onboarding.pdf');
+
+      expect(domainSpy.calledOnce).toBe(true);
+      expect(docSpy.calledOnce).toBe(true);
+
+      cacheInvalidator.removeListener('domainInvalidated', domainSpy);
+      cacheInvalidator.removeListener('documentInvalidated', docSpy);
+    });
+
+    it('should handle concurrent read/write operations without state corruption', async () => {
+      const operations = [];
+      for (let i = 0; i < 50; i++) {
+        operations.push(
+          Promise.resolve().then(() => {
+            l1ExactCache.set(`concurrent_key_${i % 10}`, `val_${i}`, [], { domain: 'dora' });
+            return l1ExactCache.get(`concurrent_key_${i % 10}`, { domain: 'dora' });
+          })
+        );
+      }
+
+      const results = await Promise.all(operations);
+      expect(results.length).toBe(50);
+      expect(results.every(r => r !== null)).toBe(true);
+    });
+
+    it('should correctly extract compound entities across sprint, jira, user, and quarter', () => {
+      const compoundQuery = 'In Sprint 46, assign ticket ENG-999 to @sarah for Q4 2026 delivery regarding PR #42';
+      const entities = extractQueryEntities(compoundQuery);
+
+      expect(entities.sprints).toEqual(['46']);
+      expect(entities.jiraKeys).toEqual(['ENG-999']);
+      expect(entities.users).toEqual(['sarah']);
+      expect(entities.quarters).toEqual(['Q4_2026']);
+      expect(entities.prNumbers).toEqual(['42']);
     });
   });
 });

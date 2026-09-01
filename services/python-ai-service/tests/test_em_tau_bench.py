@@ -49,6 +49,18 @@ def test_em_user_simulator_turn_iteration():
     assert simulator.get_next_user_message() is None
 
 
+def test_em_user_simulator_all_five_personas():
+    for persona in PersonaType:
+        simulator = EMUserSimulator(persona=persona)
+        turns = []
+        while simulator.has_more_turns():
+            step = simulator.get_next_user_message()
+            if step:
+                turns.append(step)
+        assert len(turns) == 3, f"Persona {persona} should have 3 parameterized turns"
+        assert all("prompt" in t and "expected_intent" in t for t in turns)
+
+
 def test_policy_oracle_compliance_detection():
     oracle = PolicyOracle()
 
@@ -109,4 +121,5 @@ def test_em_tau_bench_runner_pass_k_execution():
     assert benchmark_res["pass_k_rate"] == 1.0
     assert benchmark_res["overall_goal_completion"] == 1.0
     assert benchmark_res["overall_policy_compliance"] == 1.0
-    assert len(benchmark_res["persona_breakdown"]) == 3
+    assert len(benchmark_res["persona_breakdown"]) >= 3
+

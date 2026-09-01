@@ -13,7 +13,7 @@ class RAGChunker:
         self.chunk_size = default_chunk_size
         self.chunk_overlap = default_chunk_overlap
 
-    def chunk_text(self, text: str, filename: str, chunk_size: int = None, chunk_overlap: int = None) -> list:
+    def chunk_text(self, text: str, filename: str, chunk_size: int = None, chunk_overlap: int = None, metadata: dict = None) -> list:
         """
         Chunk text into token-aware window segments with windowed parent context.
         Approximates ~4 characters per token.
@@ -63,11 +63,15 @@ class RAGChunker:
             parent_parts = [p for p in [prev_text, child_text, next_text] if p]
             parent_text = "\n---\n".join(parent_parts)
 
-            chunks.append({
+            chunk_dict = {
                 "chunk_index": idx,
                 "content": f"{header}{child_text}",
                 "parent_content": f"{header}{parent_text}",
                 "token_count": math.ceil(len(child_text) / 4),
-            })
+            }
+            if metadata is not None:
+                chunk_dict["metadata"] = dict(metadata)
+
+            chunks.append(chunk_dict)
 
         return chunks

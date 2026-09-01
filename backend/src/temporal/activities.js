@@ -879,3 +879,29 @@ export async function dispatchSlackAuditNotificationActivity(params = {}) {
   }
 }
 
+/**
+ * Activity: Invalidate multi-tier caches (L1 exact, L2 semantic, Tier 2 MCP tool cache)
+ */
+export async function invalidateCacheActivity(params = {}) {
+  const { type = 'all', domain, filename } = params;
+  try {
+    const { cacheInvalidator } = await import('../cache/cacheInvalidator.js');
+    if (type === 'document' && filename) {
+      const res = await cacheInvalidator.invalidateDocument(filename);
+      return { status: 'SUCCESS', type: 'document', filename, result: res };
+    } else if (type === 'domain' && domain) {
+      const res = await cacheInvalidator.invalidateDomain(domain);
+      return { status: 'SUCCESS', type: 'domain', domain, result: res };
+    } else {
+      await cacheInvalidator.invalidateAll();
+      return { status: 'SUCCESS', type: 'all' };
+    }
+  } catch (err) {
+    warn({ module: 'temporalActivities', action: 'invalidateCacheActivity', err }, 'Cache invalidation activity error');
+    return {
+      status: 'ERROR',
+      error: err.message,
+    };
+  }
+}
+

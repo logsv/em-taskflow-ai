@@ -63,10 +63,11 @@ export function extractQueryEntities(text = '') {
     entities.quarters.push(qStr);
   }
 
-  // PR numbers (e.g. "PR #102", "pr 45")
-  const prMatches = q.matchAll(/\b(?:pr|pull request|#)\s*(\d+)\b/gi);
+  // PR numbers (e.g. "PR #102", "pr 45", "PR #89", "#89")
+  const prMatches = q.matchAll(/(?:pr|pull\s*request)\s*(?:#)?\s*(\d+)|#(\d+)\b/gi);
   for (const m of prMatches) {
-    if (m[1]) entities.prNumbers.push(m[1]);
+    const num = m[1] || m[2];
+    if (num) entities.prNumbers.push(num);
   }
 
   return entities;

@@ -13,7 +13,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -30,7 +30,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -47,7 +47,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -64,7 +64,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -81,7 +81,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -98,7 +98,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -115,7 +115,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -132,7 +132,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -149,7 +149,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -166,7 +166,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -183,7 +183,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -200,7 +200,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -217,7 +217,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -234,7 +234,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -251,7 +251,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -268,7 +268,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -285,7 +285,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -302,7 +302,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -319,7 +319,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -336,7 +336,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -353,7 +353,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -370,7 +370,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -387,7 +387,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -404,7 +404,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -421,7 +421,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -438,7 +438,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -455,7 +455,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -472,7 +472,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -489,7 +489,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -506,7 +506,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -523,7 +523,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -540,7 +540,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -557,7 +557,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -574,7 +574,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -591,7 +591,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -608,7 +608,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -625,7 +625,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -642,7 +642,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -659,7 +659,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -676,7 +676,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -693,7 +693,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -710,7 +710,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -727,7 +727,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -744,7 +744,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -761,7 +761,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -778,7 +778,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -795,7 +795,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -812,7 +812,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -829,7 +829,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -846,7 +846,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -863,7 +863,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -880,7 +880,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -897,7 +897,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -914,7 +914,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -931,7 +931,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -948,7 +948,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -965,7 +965,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -982,7 +982,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -999,7 +999,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1016,7 +1016,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1033,7 +1033,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1050,7 +1050,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1067,7 +1067,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1084,7 +1084,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1101,7 +1101,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1118,7 +1118,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1135,7 +1135,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1152,7 +1152,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1169,7 +1169,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1186,7 +1186,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1203,7 +1203,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1220,7 +1220,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1237,7 +1237,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1254,7 +1254,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1271,7 +1271,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1288,7 +1288,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1305,7 +1305,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1322,7 +1322,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1339,7 +1339,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1356,7 +1356,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1388,7 +1388,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1419,7 +1419,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1450,7 +1450,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1460,7 +1460,7 @@
     "conversation_history": [
       {
         "role": "assistant",
-        "content": "### \ud83d\udcca DORA Scorecard\nDeployment Frequency: 3.73/wk | MTTR: 0.8 hours (HIGH Tier)"
+        "content": "### 📊 DORA Scorecard\nDeployment Frequency: 3.73/wk | MTTR: 0.8 hours (HIGH Tier)"
       },
       {
         "role": "user",
@@ -1500,7 +1500,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1523,7 +1523,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1546,7 +1546,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1577,7 +1577,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1608,7 +1608,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1639,7 +1639,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1666,7 +1666,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1693,7 +1693,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1724,7 +1724,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1755,7 +1755,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1778,7 +1778,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1796,7 +1796,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1814,7 +1814,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1829,7 +1829,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1842,7 +1842,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1856,7 +1856,7 @@
     "expected_slack_dispatch_mode": "consolidated",
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1872,7 +1872,7 @@
     "expected_slack_dispatch_mode": "threaded_breakdown",
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1885,7 +1885,7 @@
     "expected_slack_dispatch_mode": "action_nudge",
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1898,7 +1898,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -1910,7 +1910,7 @@
     ],
     "is_rag_appropriate": true,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0,
+      "min_domain_precision": 1,
       "min_faithfulness": 0.85
     }
   },
@@ -1923,7 +1923,7 @@
     ],
     "is_rag_appropriate": true,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0,
+      "min_domain_precision": 1,
       "min_faithfulness": 0.85
     }
   },
@@ -1936,7 +1936,7 @@
     ],
     "is_rag_appropriate": true,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0,
+      "min_domain_precision": 1,
       "min_faithfulness": 0.85
     }
   },
@@ -1949,7 +1949,7 @@
     ],
     "is_rag_appropriate": true,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0,
+      "min_domain_precision": 1,
       "min_faithfulness": 0.85
     }
   },
@@ -1962,7 +1962,7 @@
     ],
     "is_rag_appropriate": true,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0,
+      "min_domain_precision": 1,
       "min_faithfulness": 0.85
     }
   },
@@ -1975,7 +1975,7 @@
     ],
     "is_rag_appropriate": true,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0,
+      "min_domain_precision": 1,
       "min_faithfulness": 0.85
     }
   },
@@ -1988,7 +1988,7 @@
     ],
     "is_rag_appropriate": true,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0,
+      "min_domain_precision": 1,
       "min_faithfulness": 0.85
     }
   },
@@ -2001,7 +2001,7 @@
     ],
     "is_rag_appropriate": true,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0,
+      "min_domain_precision": 1,
       "min_faithfulness": 0.85
     }
   },
@@ -2014,7 +2014,7 @@
     ],
     "is_rag_appropriate": true,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0,
+      "min_domain_precision": 1,
       "min_faithfulness": 0.85
     }
   },
@@ -2027,7 +2027,7 @@
     ],
     "is_rag_appropriate": true,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0,
+      "min_domain_precision": 1,
       "min_faithfulness": 0.85
     }
   },
@@ -2040,7 +2040,7 @@
     ],
     "is_rag_appropriate": true,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0,
+      "min_domain_precision": 1,
       "min_faithfulness": 0.85
     }
   },
@@ -2053,7 +2053,7 @@
     ],
     "is_rag_appropriate": true,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0,
+      "min_domain_precision": 1,
       "min_faithfulness": 0.85
     }
   },
@@ -2203,7 +2203,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -2220,7 +2220,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -2232,7 +2232,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -2249,7 +2249,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -2266,7 +2266,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -2283,7 +2283,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -2308,7 +2308,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -2333,7 +2333,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -2354,7 +2354,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -2375,7 +2375,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -2396,7 +2396,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -2417,7 +2417,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -2438,7 +2438,7 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
     }
   },
   {
@@ -2459,7 +2459,548 @@
     ],
     "is_rag_appropriate": false,
     "success_criteria_gates": {
-      "min_domain_precision": 1.0
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-COMP-009",
+    "user_query": "Check team member Alex's 1-on-1 cadence in Google Calendar and format an SBI feedback coaching note regarding recent PR review turnaround delays.",
+    "domain_category": "multi_agent",
+    "expected_domains": [
+      "people",
+      "sbi"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool_name": "analyze_personnel_growth"
+      },
+      {
+        "tool_name": "format_sbi_feedback"
+      }
+    ],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-COMP-010",
+    "user_query": "Calculate DORA MTTR across recent payment incidents and analyze PR turnaround bottlenecks causing delivery delays.",
+    "domain_category": "multi_agent",
+    "expected_domains": [
+      "dora",
+      "delivery"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool_name": "calculate_dora_metrics"
+      },
+      {
+        "tool_name": "analyze_delivery_bottlenecks"
+      }
+    ],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-COMP-011",
+    "user_query": "Generate a sprint retrospective summary from our Notion board and formulate blameless post-mortem action items for Jira tracking.",
+    "domain_category": "multi_agent",
+    "expected_domains": [
+      "retro"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool_name": "generate_sprint_retro"
+      }
+    ],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-COMP-012",
+    "user_query": "Review Q3 OKR pacing for our latency reduction milestone and identify roadmap drift across Jira epics.",
+    "domain_category": "multi_agent",
+    "expected_domains": [
+      "okr",
+      "roadmap"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool_name": "evaluate_okr_progress"
+      },
+      {
+        "tool_name": "get_roadmap_alignment"
+      }
+    ],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-COMP-013",
+    "user_query": "Check Architecture Decision Record (ADR) repository for ADR-009 versioning compliance and audit our sprint retro against engineering SOP standards.",
+    "domain_category": "multi_agent",
+    "expected_domains": [
+      "sop",
+      "critic"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool_name": "query_sop_compliance"
+      },
+      {
+        "tool_name": "audit_em_report"
+      }
+    ],
+    "is_rag_appropriate": true,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-COMP-014",
+    "user_query": "Estimate Sprint 46 velocity based on 3-sprint rolling velocity and Google Calendar developer PTO schedules.",
+    "domain_category": "multi_agent",
+    "expected_domains": [
+      "sprint"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool_name": "calculate_sprint_plan"
+      }
+    ],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-COMP-015",
+    "user_query": "Audit draft promotion dossier for Staff Engineer nomination and critique evidence against engineering career rubric standards.",
+    "domain_category": "multi_agent",
+    "expected_domains": [
+      "critic"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool_name": "audit_em_report"
+      }
+    ],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-COMP-016",
+    "user_query": "Analyze PR review turnaround times for developer Sarah Chen and calculate deployment frequency across her merged branches.",
+    "domain_category": "multi_agent",
+    "expected_domains": [
+      "delivery",
+      "dora"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool_name": "analyze_delivery_bottlenecks"
+      },
+      {
+        "tool_name": "calculate_dora_metrics"
+      }
+    ],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-AUDIT-007",
+    "user_query": "Trigger on-demand EM autonomous health audit across all 10 domains and synthesize prioritized action items.",
+    "domain_category": "autonomous_audit",
+    "expected_domains": [
+      "dora",
+      "delivery",
+      "people",
+      "sprint",
+      "sop"
+    ],
+    "expected_action_items": [
+      "Follow up with @dev on overdue PR review (>48h)",
+      "Schedule overdue bi-weekly 1-on-1 sync",
+      "Re-allocate blocked tickets in active sprint"
+    ],
+    "expected_slack_dispatch_mode": "consolidated",
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-AUDIT-008",
+    "user_query": "Dispatch threaded breakdown audit summary to #engineering-leadership with dedicated sections for Delivery, People, Sprint, and SOP.",
+    "domain_category": "autonomous_audit",
+    "expected_domains": [
+      "dora",
+      "delivery",
+      "people",
+      "sprint",
+      "sop"
+    ],
+    "expected_slack_dispatch_mode": "threaded_breakdown",
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-AUDIT-009",
+    "user_query": "Send direct Slack nudge reminder to assigned engineer for PR #104 code review turnaround delay.",
+    "domain_category": "autonomous_audit",
+    "expected_domains": [
+      "delivery"
+    ],
+    "expected_action_items": [
+      "Ping @sarah_c regarding PR #104 review SLA expiration"
+    ],
+    "expected_slack_dispatch_mode": "action_nudge",
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-AUDIT-010",
+    "user_query": "Evaluate overall team health score and calculate domain deductions across delivery blockers, overdue 1-on-1s, and sprint rollover points.",
+    "domain_category": "autonomous_audit",
+    "expected_domains": [
+      "dora",
+      "delivery",
+      "people",
+      "sprint"
+    ],
+    "expected_fact_matrix": {
+      "healthScoreRange": "20-100",
+      "requiresActionHubSync": true
+    },
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-RAG-013",
+    "user_query": "Summarize the database sharding and migration guidelines documented in our backend Architecture Decision Records (ADRs).",
+    "domain_category": "rag_sop",
+    "expected_domains": [
+      "rag"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool_name": "rag_db_query_retriever"
+      }
+    ],
+    "is_rag_appropriate": true,
+    "ground_truth_context": [
+      "ADR-008 specifies per-service database isolation and zero cross-service table joins."
+    ],
+    "success_criteria_gates": {
+      "min_domain_precision": 1,
+      "min_faithfulness": 0.9
+    }
+  },
+  {
+    "eval_id": "EVAL-RAG-014",
+    "user_query": "What is our standard protocol for production incident post-mortems and action item review SLAs in our engineering handbook?",
+    "domain_category": "rag_sop",
+    "expected_domains": [
+      "rag"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool_name": "rag_db_query_retriever"
+      }
+    ],
+    "is_rag_appropriate": true,
+    "ground_truth_context": [
+      "Post-mortems must be drafted within 48 hours and blameless retrospective meetings held within 5 business days."
+    ],
+    "success_criteria_gates": {
+      "min_domain_precision": 1,
+      "min_faithfulness": 0.9
+    }
+  },
+  {
+    "eval_id": "EVAL-RAG-015",
+    "user_query": "Retrieve the career ladder criteria and competency rubric for promotion to Senior Staff Software Engineer.",
+    "domain_category": "rag_sop",
+    "expected_domains": [
+      "rag"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool_name": "rag_db_query_retriever"
+      }
+    ],
+    "is_rag_appropriate": true,
+    "ground_truth_context": [
+      "Senior Staff requires multi-team technical leadership, strategic architecture governance, and org-wide mentorship."
+    ],
+    "success_criteria_gates": {
+      "min_domain_precision": 1,
+      "min_faithfulness": 0.9
+    }
+  },
+  {
+    "eval_id": "EVAL-RAG-016",
+    "user_query": "Find the security onboarding checklist and mandatory API key rotation schedule in our developer wiki.",
+    "domain_category": "rag_sop",
+    "expected_domains": [
+      "rag"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool_name": "rag_db_query_retriever"
+      }
+    ],
+    "is_rag_appropriate": true,
+    "ground_truth_context": [
+      "API keys must be rotated every 90 days and masked secrets preserved across all runtime configs."
+    ],
+    "success_criteria_gates": {
+      "min_domain_precision": 1,
+      "min_faithfulness": 0.9
+    }
+  },
+  {
+    "eval_id": "EVAL-CONTEXT-017",
+    "user_query": "What is her current code review turnaround time?",
+    "domain_category": "multi_turn_context",
+    "conversation_history": [
+      {
+        "role": "user",
+        "content": "Show me recent PR activity for Sarah Chen."
+      },
+      {
+        "role": "assistant",
+        "content": "Sarah Chen has 4 open pull requests in em-taskflow-ai."
+      }
+    ],
+    "expected_resolved_query": "What is Sarah Chen's current code review turnaround time?",
+    "expected_entities": {
+      "engineer": "Sarah Chen"
+    },
+    "expected_domains": [
+      "delivery"
+    ],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-CONTEXT-018",
+    "user_query": "Schedule a 1-on-1 sync with him next Tuesday to discuss the blockers.",
+    "domain_category": "multi_turn_context",
+    "conversation_history": [
+      {
+        "role": "user",
+        "content": "Who has the highest number of blocker tickets in Sprint 44?"
+      },
+      {
+        "role": "assistant",
+        "content": "Alex Kumar currently owns 3 blocker issues in Sprint 44."
+      }
+    ],
+    "expected_resolved_query": "Schedule a 1-on-1 sync with Alex Kumar next Tuesday to discuss the blockers in Sprint 44.",
+    "expected_entities": {
+      "engineer": "Alex Kumar",
+      "sprint": "Sprint 44"
+    },
+    "expected_domains": [
+      "people"
+    ],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-CONTEXT-019",
+    "user_query": "Compare those metrics against last quarter's DORA performance.",
+    "domain_category": "multi_turn_context",
+    "conversation_history": [
+      {
+        "role": "user",
+        "content": "Calculate our current DORA deployment frequency and change failure rate."
+      },
+      {
+        "role": "assistant",
+        "content": "Current deployment frequency is 4.2 deploys/week with CFR of 8.5% (High Tier)."
+      }
+    ],
+    "expected_resolved_query": "Compare current DORA deployment frequency and change failure rate against last quarter's DORA performance.",
+    "expected_entities": {
+      "metric": "DORA"
+    },
+    "expected_domains": [
+      "dora"
+    ],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-CONTEXT-020",
+    "user_query": "Format an SBI feedback note for that specific incident.",
+    "domain_category": "multi_turn_context",
+    "conversation_history": [
+      {
+        "role": "user",
+        "content": "Why did the payment outage occur on Friday?"
+      },
+      {
+        "role": "assistant",
+        "content": "The payment gateway deployment failed due to unverified schema migrations merged without code review."
+      }
+    ],
+    "expected_resolved_query": "Format an SBI feedback note for the payment gateway outage unverified schema migration incident.",
+    "expected_entities": {
+      "incident": "payment gateway outage"
+    },
+    "expected_domains": [
+      "sbi"
+    ],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-GUARD-007",
+    "user_query": "Show blockers for Sprint 45 in payment-service repository.",
+    "domain_category": "guardrails_provenance",
+    "expected_domains": [
+      "delivery"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool_name": "analyze_delivery_bottlenecks"
+      }
+    ],
+    "expected_fact_matrix": {
+      "sprint": "Sprint 45",
+      "repository": "payment-service"
+    },
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-GUARD-008",
+    "user_query": "Display cached DORA telemetry when live GitHub MCP server is unreachable or timed out.",
+    "domain_category": "guardrails_provenance",
+    "expected_domains": [
+      "dora"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool_name": "calculate_dora_metrics"
+      }
+    ],
+    "ground_truth_answer": "> ⚠️ **Notice**: Displaying cached operational telemetry from PostgreSQL database as of `2026-09-01T12:00:00Z`.",
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-GUARD-009",
+    "user_query": "Audit user permissions and verify masked secrets are preserved without exposure in application logs.",
+    "domain_category": "guardrails_provenance",
+    "expected_domains": [
+      "critic",
+      "sop"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool_name": "audit_em_report"
+      },
+      {
+        "tool_name": "query_sop_compliance"
+      }
+    ],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-GUARD-010",
+    "user_query": "Verify that multi-tier semantic cache hit returns cached response under 30ms without invoking LLM generation.",
+    "domain_category": "guardrails_provenance",
+    "expected_domains": [
+      "rag"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool_name": "rag_db_query_retriever"
+      }
+    ],
+    "is_rag_appropriate": true,
+    "success_criteria_gates": {
+      "min_domain_precision": 1,
+      "max_latency_ms": 50
+    }
+  },
+  {
+    "eval_id": "EVAL-BFCL-013",
+    "user_query": "Write a TypeScript interface for Engineering Health Score breakdown cards with status badges.",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "expected_tool_calls": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-BFCL-014",
+    "user_query": "Calculate the compound percentage improvement from 3.2 deploys/week to 7.8 deploys/week.",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "expected_tool_calls": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-BFCL-015",
+    "user_query": "What is the architectural difference between optimistic concurrency control and pessimistic locking in PostgreSQL?",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "expected_tool_calls": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
+    }
+  },
+  {
+    "eval_id": "EVAL-BFCL-016",
+    "user_query": "Create a bash script to monitor Redis memory usage and trigger a notification when memory exceeds 85%.",
+    "domain_category": "fast_path_edge",
+    "expected_domains": [],
+    "expected_tool_calls": [],
+    "is_rag_appropriate": false,
+    "success_criteria_gates": {
+      "min_domain_precision": 1
     }
   }
 ]

@@ -163,5 +163,81 @@ describe('Distributed Session Fact-Matrix Scratchpad Service', () => {
       expect(retrieved).toEqual(matrix);
       expect(mockDb.store.get(threadId)).toEqual(matrix);
     });
+
+    it('should fall back gracefully to in-memory store when DB throws error', async () => {
+      const failingDb = {
+        async getThreadContextMatrix() {
+          throw new Error('Postgres connection failed');
+        },
+        async updateThreadContextMatrix() {
+          throw new Error('Postgres connection failed');
+        },
+      };
+      const fallbackService = new SessionFactMatrixService({ db: failingDb });
+      const threadId = 'th_fallback_999';
+      const matrix = { repository: 'fallback/repo', engineers: ['@eng-fallback'] };
+
+      await fallbackService.saveThreadFactMatrix(threadId, matrix);
+      const retrieved = await fallbackService.getThreadFactMatrix(threadId);
+
+      expect(retrieved).toEqual(matrix);
+    });
+  });
+
+  describe('Edge Cases & Bounded Token Budgeting', () => {
+    it('should deduplicate engineer handles and PR numbers during delta merge', () => {
+      const existing = {
+        engineers: ['@alex-dev', '@sarah-c'],
+        prs: ['#101', '#102'],
+        actionItems: ['Fix CI flakiness'],
+      };
+
+      const delta = {
+        engineers: ['@alex-dev', '@mike-ops'],
+        prs: ['#102', '#103'],
+        actionItems: ['Fix CI flakiness', 'Review PR size'],
+      };
+
+      const merged = service.mergeFactMatrix(existing, delta);
+
+      expect(merged.engineers).toEqual(['@alex-dev', '@sarah-c', '@mike-ops']);
+      expect(merged.prs).toEqual(['#101', '#102', '#103']);
+      expect(merged.actionItems).toEqual(['Fix CI flakiness', 'Review PR size']);
+    });
+
+    it('should cap max list items to prevent prompt bloat', () => {
+      const existing = {
+        actionItems: Array.from({ length: 10 }, (_, i) => `Action item ${i}`),
+        prs: Array.from({ length: 15 }, (_, i) => `#${i + 100}`),
+      };
+
+      const delta = {
+        actionItems: ['New critical action item'],
+        prs: ['#999'],
+      };
+
+      const merged = service.mergeFactMatrix(existing, delta);
+
+      expect(merged.actionItems.length).toBeLessThanOrEqual(8);
+      expect(merged.prs.length).toBeLessThanOrEqual(10);
+    });
+
+    it('should parse Elite, Medium, and Low DORA benchmark tiers accurately', () => {
+      const eliteResponse = 'DORA Performance: ELITE Tier with 15 deploys/week and MTTR 0.5 hours.';
+      const eliteDelta = service.extractFactDelta('DORA audit', eliteResponse);
+      expect(eliteDelta.dora.tier).toBe('ELITE');
+
+      const medResponse = 'DORA Performance: MEDIUM Tier with 0.8 deploys/week and CFR 15%.';
+      const medDelta = service.extractFactDelta('DORA audit', medResponse);
+      expect(medDelta.dora.tier).toBe('MEDIUM');
+    });
+
+    it('should handle null or undefined query and response strings without throwing', () => {
+      expect(() => service.extractFactDelta(null, null)).not.toThrow();
+      expect(() => service.extractFactDelta('', '')).not.toThrow();
+      const emptyDelta = service.extractFactDelta(undefined, undefined);
+      expect(emptyDelta.engineers).toBeUndefined();
+      expect(emptyDelta.prs).toBeUndefined();
+    });
   });
 });

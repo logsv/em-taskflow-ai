@@ -16,7 +16,11 @@ The backend agent uses an **8-stage hybrid architecture** optimized for **Local 
       │     ├── RAG Candidates   ──► HyDE + Cross-Encoder Reranker + MMR Deduplication
       │     └── Chat History     ──► Recency Sliding Window + State Anchoring (>10 turns)
       │
-      ├── 2. Redis Semantic Cache Check ──► Cache Hit (Cosine Sim >= 0.95) ──► Direct Cached Response (<50ms)
+      ├── 2. 5-Tier Production Caching Suite
+      │     ├── Tier 0: L1 In-Memory Exact LRU Cache (<2ms)
+      │     ├── Tier 1: L2 Redis Semantic Cache (Cosine Sim >= 0.95 + Gate 2 Entity Verification) (<30ms)
+      │     └── Tier 2: MCP Tool Execution Hash Cache (30s-120s TTL)
+      │     └── Temporal Event-Driven Invalidation (cacheInvalidationWorkflow)
       │
       ├── 3. Fast-Path Classifier (<300ms) ──► Direct LLM Output (0 tools, code gen, math, chat, attachments)
       │
@@ -48,9 +52,15 @@ The backend agent uses an **8-stage hybrid architecture** optimized for **Local 
   - **RAG MMR Deduplication**: Reranks and prunes near-duplicate text chunks via Cross-Encoder + MMR.
   - **Chat History Windowing**: Retains active 8 turns verbatim and state-anchors earlier turns into a 2-line summary block.
 
-### 2. Redis Semantic Cache (`semanticCache.js`)
-- High-speed vector similarity caching module powered by Redis (`redis:7-alpine`).
-- Intercepts incoming queries; if cosine similarity >= **0.95**, returns pre-computed responses instantly with a **1-hour TTL**, bypassing LLM generation.
+### 2. 5-Tier Production Caching Suite (`l1ExactCache.js`, `semanticCache.js`, `toolCache.js`, `cacheInvalidator.js`)
+- **Tier 0 (L1 Exact In-Memory LRU Cache)**: Sub-millisecond ($<2\text{ms}$) turnaround for normalized identical queries scoped by domain, user, and repo.
+- **Tier 1 (L2 Redis Semantic Cache with Dual-Gate Verification)**:
+  - **Gate 1**: Cosine vector similarity $\ge 0.95$.
+  - **Gate 2 (Anti-Hallucination Entity Filter)**: Enforces exact match on Sprint IDs, Jira keys (`ENG-1024`), user handles, and quarters. Rejects cache hits if entities diverge to prevent hallucinations.
+  - **Domain-Adaptive TTLs**: 7 days for `rag`/`sop`, 4 hours for `okr`/`roadmap`, 30 minutes for `dora`/`people`, 2 minutes for `sprint`/`delivery`.
+- **Tier 2 (MCP Tool Execution Cache)**: Caches read-only payloads for Jira JQL, GitHub PR listings, and Notion queries with parameter hashing.
+- **Temporal Event-Driven Invalidation**: Triggers durable `cacheInvalidationWorkflow` and `invalidateCacheActivity` upon document mutations or credential updates.
+
 
 ### 3. Fast-Path Pre-Classifier (`classifyFastPath`)
 - Zero-latency pre-classifier that intercepts pure conversational, math, code-generation, or pre-extracted file attachment queries.

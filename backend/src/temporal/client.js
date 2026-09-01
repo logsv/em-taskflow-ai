@@ -439,6 +439,46 @@ export async function ensureAuditCronSchedule(cronExpression = '0 */4 * * *') {
   }
 }
 
+/**
+ * Trigger durable Cache Invalidation Workflow via Temporal
+ */
+export async function startCacheInvalidationWorkflow(params = {}) {
+  const client = await getTemporalClient();
+  if (!client) {
+    // Direct in-process fallback when Temporal is offline
+    try {
+      const { invalidateCacheActivity } = await import('./activities.js');
+      const directResult = await invalidateCacheActivity(params);
+      return {
+        workflowId: `simulated-cache-invalidation-${Date.now()}`,
+        status: 'COMPLETED_DIRECT',
+        result: directResult,
+      };
+    } catch (err) {
+      warn({ module: 'temporalClient', action: 'directCacheInvalidationFallbackError', err }, 'Direct cache invalidation error');
+      return null;
+    }
+  }
+
+  const workflowId = `cache-invalidation-${params.type || 'all'}-${Date.now()}`;
+  try {
+    const handle = await client.workflow.start('cacheInvalidationWorkflow', {
+      taskQueue: 'team-sync-queue',
+      args: [params],
+      workflowId,
+    });
+    info({ module: 'temporalClient', action: 'startCacheInvalidationWorkflow', workflowId: handle.workflowId }, 'Started Temporal Cache Invalidation Workflow');
+    return {
+      workflowId: handle.workflowId,
+      runId: handle.firstExecutionRunId,
+      status: 'RUNNING',
+    };
+  } catch (err) {
+    warn({ module: 'temporalClient', action: 'startCacheInvalidationWorkflowFallback', err }, 'Failed to start Temporal Cache Invalidation Workflow');
+    return null;
+  }
+}
+
 
 
 

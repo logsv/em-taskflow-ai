@@ -93,6 +93,19 @@ class CacheInvalidator extends EventEmitter {
 
     this.emit('allInvalidated', { timestamp: Date.now() });
   }
+
+  /**
+   * Dispatch durable event-driven cache invalidation via Temporal workflow
+   */
+  async triggerTemporalInvalidation(params = {}) {
+    try {
+      const { startCacheInvalidationWorkflow } = await import('../temporal/client.js');
+      return await startCacheInvalidationWorkflow(params);
+    } catch (err) {
+      warn(`Temporal cache invalidation dispatch failed: ${err.message}`);
+      return null;
+    }
+  }
 }
 
 export const cacheInvalidator = new CacheInvalidator();
