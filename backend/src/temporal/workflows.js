@@ -180,3 +180,16 @@ export async function emAutonomousAuditWorkflow(params = {}) {
   };
 }
 
+/**
+ * Durable Cache Invalidation Workflow.
+ * Executes cross-tier cache invalidation activity across L1 exact, L2 semantic, and Tier 2 tool caches.
+ */
+export async function cacheInvalidationWorkflow(params = {}) {
+  const result = await activities.invalidateCacheActivity(params);
+  return {
+    status: 'COMPLETED',
+    params,
+    result,
+  };
+}
+

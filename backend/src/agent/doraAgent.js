@@ -1,12 +1,11 @@
-import { createAgent } from 'langchain';
 import { z } from 'zod';
-import { getChatModel } from '../llm/index.js';
 import { doraAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
-import identityService from '../services/identityService.js';
 import settingsService from '../services/settingsService.js';
 import { evaluateDoraTier, identifyDoraBottlenecks } from '../utils/doraMetrics.js';
+import { createMicroAgent, safeExecuteMCPTool, resolveGithubTarget, createProvenanceNotice } from './baseAgent.js';
+import { warn } from '../utils/logger.js';
 
 export const doraMetricsTool = createDeterministicToolHarness({
   name: 'calculate_dora_metrics',
@@ -30,39 +29,16 @@ export const doraMetricsTool = createDeterministicToolHarness({
         return null; // Force DB snapshot retrieval
       }
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
-        const cachedGithub = settingsService.getCachedSettings()?.mcp?.github || {};
-        const defaultOwner = cachedGithub.owner || process.env.GITHUB_OWNER || process.env.GITHUB_USERNAME || '';
-        const defaultRepo = cachedGithub.repo || process.env.GITHUB_REPO || '';
-        const fallbackRepoStr = defaultOwner && defaultRepo ? `${defaultOwner}/${defaultRepo}` : defaultRepo || '';
-        const repoStr = inputArgs.repo_id || fallbackRepoStr;
-        const parts = repoStr.includes('/') ? repoStr.split('/') : [defaultOwner || 'main', repoStr || 'repo'];
-        const owner = parts[0] || defaultOwner || 'main';
-        const repo = parts[1] || defaultRepo || 'repo';
-
-        const res = await Promise.race([
-          executeMCPTool('get_dora_events', {
-            owner,
-            repo,
-            time_window: inputArgs.time_window || '30d',
-          }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP GitHub get_dora_events timed out')), 2500)),
-        ]).catch(() => null);
-
-        let parsed = null;
-        if (typeof res === 'string' && res.trim().length > 0) {
-          try {
-            parsed = JSON.parse(res);
-          } catch (e) {
-            parsed = null;
-          }
-        } else if (res && typeof res === 'object') {
-          parsed = res;
-        }
+        const { owner, repo, repoId } = resolveGithubTarget(inputArgs);
+        const parsed = await safeExecuteMCPTool('get_dora_events', {
+          owner,
+          repo,
+          time_window: inputArgs.time_window || '30d',
+        });
 
         if (parsed && !parsed.error && parsed.data_source === 'github_live_mcp') {
           return {
-            repo_id: `${owner}/${repo}`,
+            repo_id: repoId,
             team_id: inputArgs.team_id || null,
             time_window: inputArgs.time_window || '30d',
             deployment_frequency_per_week: Number(parsed.deployment_frequency_per_week) || 0,
@@ -79,7 +55,7 @@ export const doraMetricsTool = createDeterministicToolHarness({
           };
         }
       } catch (err) {
-        // Live GitHub MCP call failed or timed out; fall back to PostgreSQL DB cache
+        warn({ module: 'doraHarness', action: 'githubExecutor', err: err.message }, 'GitHub DORA executor notice');
       }
       return null;
     },
@@ -255,9 +231,7 @@ export const doraMetricsTool = createDeterministicToolHarness({
       };
     }
 
-    const provenanceNotice = ghData.is_cached
-      ? `> ⚠️ **Notice**: Displaying cached operational telemetry from PostgreSQL database as of \`${syncedAt}\`.`
-      : `> ✅ **Notice**: Fresh operational telemetry retrieved via Live GitHub MCP integration at \`${syncedAt}\`.`;
+    const provenanceNotice = createProvenanceNotice(Boolean(ghData.is_cached), syncedAt, 'Live GitHub MCP integration');
 
     const summaryText = `### 📊 DORA Performance Scorecard: ${targetLabel} (${inputArgs.time_window || '30d'})
 
@@ -318,21 +292,11 @@ ${bottlenecks.map((b) => `- ${b}`).join('\n')}
 });
 
 export function createDoraAgent(customTools = null, options = {}) {
-  let llm = options.llm;
-  if (!llm) {
-    try {
-      llm = getChatModel();
-    } catch (e) {
-      llm = { invoke: async () => ({ content: 'Mock LLM Response' }), bindTools: () => llm };
-    }
-  }
-  const tools = customTools && customTools.length > 0 ? customTools : [doraMetricsTool];
-
-  const agent = createAgent({
-    model: llm,
-    tools,
+  return createMicroAgent({
     name: 'dora_agent',
-    prompt: doraAgentPromptTemplate,
+    defaultTool: doraMetricsTool,
+    promptTemplate: doraAgentPromptTemplate,
+    customTools,
+    options,
   });
-  return agent.graph;
 }

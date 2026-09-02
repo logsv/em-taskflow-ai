@@ -60,9 +60,14 @@ All skills are maintained as standard Markdown operational playbooks under [`.ag
 - **Location**: `.agents/skills/rag-pdf-ingestion/SKILL.md`
 - **Purpose**: Testing multi-format document ingestion (PDF, CSV, Images OCR, Text), HyDE query transformation, CTE-based RRF hybrid search, Redis semantic caching, and single-pass RAG synthesis.
 
+#### `multi-tier-caching-ops`
+- **Location**: `.agents/skills/multi-tier-caching-ops/SKILL.md`
+- **Purpose**: Managing and testing the 5-Tier Production Caching Architecture, L1 In-Memory exact cache, L2 Redis vector semantic cache with Dual-Gate anti-hallucination verification, Tier 2 MCP tool cache, and Temporal durable event-driven invalidation workflows.
+
 #### `session-thread-management-ops`
 - **Location**: `.agents/skills/session-thread-management-ops/SKILL.md`
 - **Purpose**: Managing PostgreSQL multi-session persistence, chat threads, pagination, context menus, thread renaming, and dynamic title derivation.
+
 
 ---
 
@@ -98,4 +103,4 @@ All skills are maintained as standard Markdown operational playbooks under [`.ag
 
 1. **Autonomous Discovery**: Agents inspect `SKILLS.md` and match user requests to the appropriate operational skill.
 2. **Context Ingestion**: The agent loads the designated `SKILL.md` into context using file viewing tools before making source code edits.
-3. **Deterministic Verification**: Every skill defines exact CLI test commands that must be executed upon completing code changes, ensuring all **300 backend unit test specs** and **45 Python AI test specs** pass with 0 failures.
+3. **Deterministic Verification**: Every skill defines exact CLI test commands that must be executed upon completing code changes, ensuring all **385 backend unit test specs** and **52 Python AI test specs** pass with 0 failures.

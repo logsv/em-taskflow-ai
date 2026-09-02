@@ -9,8 +9,8 @@
 [![Ollama](https://img.shields.io/badge/LLM-100%25%20Local%20(Ollama)-orange.svg)](https://ollama.ai)
 [![Documentation](https://img.shields.io/badge/Docs-VitePress-brightgreen.svg)](https://logsv.github.io/em-taskflow-ai/)
 [![API Explorer](https://img.shields.io/badge/API%20Docs-Swagger%20OpenAPI%203.1-38bdf8.svg)](http://localhost:4000/api/docs)
-[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-342%20passed-success.svg)](backend)
-[![Python AI Tests](https://img.shields.io/badge/Python%20AI%20Tests-45%20passed-success.svg)](services/python-ai-service)
+[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-394%20passed-success.svg)](backend)
+[![Python AI Tests](https://img.shields.io/badge/Python%20AI%20Tests-57%20passed-success.svg)](services/python-ai-service)
 [![Docker Compose](https://img.shields.io/badge/Deployment-Docker%20Compose-2496ED.svg)](docker-compose.yml)
 
 ---
@@ -19,7 +19,7 @@
 - [📖 Documentation Portal & Swagger Explorer](#-documentation-portal--swagger-explorer)
 - [💡 Why EM TaskFlow AI?](#-why-em-taskflow-ai)
 - [🎯 What is EM TaskFlow AI?](#-what-is-em-taskflow-ai)
-- [⚡ 5-Tier Dispatch & Multi-Agent Architecture](#-5-tier-dispatch--multi-agent-architecture)
+- [⚡ 5-Tier Production Caching & Multi-Agent Architecture](#-5-tier-production-caching--multi-agent-architecture)
 - [📋 Autonomous EM Action Hub & Audit Cockpit](#-autonomous-em-action-hub--audit-cockpit)
 - [⚙️ Standalone Admin Portal & Service Hub](#️-standalone-admin-portal--service-hub)
 - [🏗️ High-Level System Architecture (HLD)](#️-high-level-system-architecture-hld)
@@ -40,7 +40,7 @@
   npm run docs:build   # Build static documentation bundle
   ```
 - **⚡ Interactive Swagger API Explorer**: Test Express REST endpoints interactively at [`http://localhost:4000/api/docs`](http://localhost:4000/api/docs) (OpenAPI 3.1 schema at `/api/docs/openapi.json`).
-- **🧰 Agent Skills Directory**: Full sitemap of 15 operational skills located in [`SKILLS.md`](SKILLS.md) and [`.agents/skills/`](.agents/skills).
+- **🧰 Agent Skills Directory**: Full sitemap of 17 operational skills located in [`SKILLS.md`](SKILLS.md) and [`.agents/skills/`](.agents/skills).
 
 ---
 
@@ -50,15 +50,20 @@ Modern enterprise productivity tools often require sending sensitive internal wo
 
 1. **🔒 100% Privacy & Zero Cloud Dependency**: Operates entirely locally via Ollama (`hermes3:8b`, `mistral`, `nomic-embed-text`). No external cloud API keys required, ensuring zero data leaves your local network.
 2. **🗄️ Database Per-Service Isolation**: Strict schema separation into dedicated databases (`taskflow_backend`, `taskflow_ai`, `temporal`, `langfuse_db`) ensuring zero noise, strict domain boundaries, and high security.
-3. **🔍 Production RAG Engine (HyDE + RRF + Redis Cache)**: Features Dense Cosine Vector Search (HNSW) + Sparse BM25 Keyword Search (`pg_trgm`) merged via Reciprocal Rank Fusion (RRF), enriched by HyDE query expansion and Redis semantic caching (0.95 similarity threshold).
-4. **🎯 5-Tier Dispatch Model & Single-Tool Bounding**:
+3. **⚡ 5-Tier Production Caching Architecture**:
+   - **Tier 0 (L1 Exact LRU Cache <2ms)**: Sub-millisecond in-process turnaround for normalized queries.
+   - **Tier 1 (L2 Redis Semantic Cache with Dual-Gate Verification <30ms)**: Cosine similarity $\ge 0.95$ + strict entity alignment checking (Sprint IDs, Jira keys, quarters, users) to eliminate hallucinations. Domain-adaptive TTLs (7d for docs, 4h for OKRs, 30m for DORA, 2m for Sprints).
+   - **Tier 2 (MCP Tool Execution Cache)**: Parameter-hashed cache for read-only Jira JQL, GitHub PRs, and Notion queries.
+   - **Temporal Event-Driven Invalidation**: Durable Temporal workflows (`cacheInvalidationWorkflow`) orchestrate cache clears on document uploads or credential rotations without external queue overhead.
+4. **🔍 Production RAG Engine (HyDE + RRF + HNSW Vector)**: Features Dense Cosine Vector Search (HNSW) + Sparse BM25 Keyword Search (`pg_trgm`) merged via Reciprocal Rank Fusion (RRF), enriched by HyDE query expansion.
+5. **🎯 5-Tier Dispatch Model & Single-Tool Bounding**:
    - **Tier 1 (Fast-Path <300ms)**: Conversational, coding, and math queries bypass routing entirely.
    - **Tier 2 / 3 (Dedicated RAG)**: Direct vector retrieval with structured zero-hit onboarding guides.
    - **Tier 4 (Direct Single-Domain Dispatch ≈1.5s)**: Direct execution of specialized domain tools (`sbi`, `people`, `dora`, `sprint`, `okr`, `sop`, etc.) avoiding supervisor handoff latency.
    - **Tier 5 (Parallel Multi-Domain Fan-Out ≈3.5s)**: Concurrent multi-agent execution (`Promise.all`) aggregating DORA, Delivery, SBI, and OKRs into a unified executive scorecard.
    - **Single-Tool Scoping**: Limits sub-agents to 1 tool definition at a time, boosting SLM accuracy past **95%**.
-5. **🔌 Multi-Source Model Context Protocol (MCP) Ecosystem**: Native integration with Jira OAuth 2.0 PKCE, Notion REST, GitHub PAT/OAuth, Slack Web API, and Google Calendar.
-6. **🎨 Low-Distraction EM Copilot UI**: Follows *"Workflows are the product; agents are the implementation"* with Quick Actions (`⌘K`), Multi-Agent workflow cards, Decision Action Pills (`[📋 Action Hub]`), and quiet sync telemetry.
+6. **🔌 Multi-Source Model Context Protocol (MCP) Ecosystem**: Native integration with Jira OAuth 2.0 PKCE, Notion REST, GitHub PAT/OAuth, Slack Web API, and Google Calendar.
+7. **🎨 Low-Distraction EM Copilot UI**: Follows *"Workflows are the product; agents are the implementation"* with Quick Actions (`⌘K`), Multi-Agent workflow cards, Decision Action Pills (`[📋 Action Hub]`), and quiet sync telemetry.
 
 ---
 
@@ -305,19 +310,19 @@ curl -X POST http://localhost:4000/api/chat \
   -d '{"message":"Summarize the uploaded document","mode":"baseline"}'
 ```
 
-### 5. Automated Backend Unit Tests (269 Specs)
+### 5. Automated Backend Unit Tests (385 Specs)
 Run Jasmine unit tests and evaluation suite (`hermes3:8b`):
 ```bash
 cd backend
-npm test            # 269 unit tests, 0 failures
-npm run evaluate    # Enterprise evaluation suite
+npm test            # 385 unit tests, 0 failures
+npm run evaluate    # Enterprise evaluation suite (140 Golden Dataset items)
 ```
 
-### 6. Automated Python AI Service Tests (45 Specs)
+### 6. Automated Python AI Service Tests (52 Specs)
 Run the Pytest suite:
 ```bash
 cd services/python-ai-service
-uv run pytest       # 45 specs, 0 failures
+uv run pytest       # 52 specs, 0 failures
 ```
 
 ---

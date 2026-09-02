@@ -1,11 +1,11 @@
-import { createAgent } from 'langchain';
 import { z } from 'zod';
-import { getChatModel } from '../llm/index.js';
 import { retroAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import identityService from '../services/identityService.js';
 import settingsService from '../services/settingsService.js';
+import { info, warn, error } from '../utils/logger.js';
+import { createMicroAgent, safeExecuteMCPTool } from './baseAgent.js';
 
 export const sprintRetroTool = createDeterministicToolHarness({
   name: 'generate_sprint_retro',
@@ -27,19 +27,10 @@ export const sprintRetroTool = createDeterministicToolHarness({
   mcpExecutors: {
     slack: async (inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
         const targetChannel = inputArgs?.slack_channel || settingsService.getCachedSettings()?.mcp?.slack?.defaultChannel || '#engineering-retro';
         const query = inputArgs?.sprint_name ? `${inputArgs.sprint_name}` : 'retro';
 
-        const res = await Promise.race([
-          executeMCPTool('slack_search_messages', { query, channel: targetChannel, limit: 10 }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Slack search timed out')), 2500)),
-        ]).catch(() => null);
-
-        let parsed = res;
-        if (typeof res === 'string') {
-          try { parsed = JSON.parse(res); } catch (_) {}
-        }
+        const parsed = await safeExecuteMCPTool('slack_search_messages', { query, channel: targetChannel, limit: 10 });
 
         if (parsed && Array.isArray(parsed.messages) && parsed.messages.length > 0) {
           return {
@@ -50,23 +41,18 @@ export const sprintRetroTool = createDeterministicToolHarness({
             synced_at: new Date().toISOString(),
           };
         }
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'retroHarness', action: 'slackExecutor', err: err.message }, 'Slack executor notice');
+      }
       return null;
     },
     notion: async (_inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
         const configuredPageId = settingsService.getCachedSettings()?.mcp?.notion?.retroPageId || process.env.NOTION_RETRO_PAGE_ID;
-        const res = await Promise.race([
-          executeMCPTool('notion_search', { query: configuredPageId || 'Sprint Retrospective Retro Board' }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Notion search timed out')), 2500)),
-        ]).catch(() => null);
+        const res = await safeExecuteMCPTool('notion_search', { query: configuredPageId || 'Sprint Retrospective Retro Board' });
 
         if (res) {
-          let pages = [];
-          if (Array.isArray(res)) pages = res;
-          else if (res.results && Array.isArray(res.results)) pages = res.results;
-
+          const pages = Array.isArray(res) ? res : (Array.isArray(res.results) ? res.results : []);
           if (pages.length > 0) {
             return {
               retro_board_found: true,
@@ -77,22 +63,16 @@ export const sprintRetroTool = createDeterministicToolHarness({
             };
           }
         }
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'retroHarness', action: 'notionExecutor', err: err.message }, 'Notion executor notice');
+      }
       return null;
     },
     jira: async (_inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
         const jql = 'issuetype in (Bug, Incident) AND status in (Closed, Resolved, "In Progress") ORDER BY created DESC';
-        
-        const res = await Promise.race([
-          executeMCPTool('jira_search', { jql }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Jira search timed out')), 2500)),
-        ]).catch(() => null);
-
-        let issues = [];
-        if (Array.isArray(res)) issues = res;
-        else if (res && Array.isArray(res.issues)) issues = res.issues;
+        const res = await safeExecuteMCPTool('jira_search', { jql });
+        const issues = Array.isArray(res) ? res : (Array.isArray(res?.issues) ? res.issues : []);
 
         return {
           total_incidents_reported: issues.length,
@@ -104,25 +84,24 @@ export const sprintRetroTool = createDeterministicToolHarness({
           source: 'mcp_jira',
           synced_at: new Date().toISOString(),
         };
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'retroHarness', action: 'jiraExecutor', err: err.message }, 'Jira executor notice');
+      }
       return null;
     },
     github: async (_inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
-        const res = await Promise.race([
-          executeMCPTool('get_dora_events', { window_days: 14 }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP GitHub Dora events timed out')), 2500)),
-        ]).catch(() => null);
+        const res = await safeExecuteMCPTool('get_dora_events', { window_days: 14 });
 
         return {
           pr_turnaround_hours: res?.pr_turnaround_hours || 14.5,
           total_prs_merged: res?.total_prs_merged || 18,
-          ci_flakiness_rate: 0.18,
           source: 'mcp_github',
           synced_at: new Date().toISOString(),
         };
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'retroHarness', action: 'githubExecutor', err: err.message }, 'GitHub executor notice');
+      }
       return null;
     },
     default: async (inputArgs) => {
@@ -411,22 +390,12 @@ ${smartActionItems.map((a) => `| **${a.task}** | \`${a.owner}\` | ${a.target_spr
 });
 
 export function createRetroAgent(customTools = null, options = {}) {
-  let llm = options.llm;
-  if (!llm) {
-    try {
-      llm = getChatModel();
-    } catch (e) {
-      llm = { invoke: async () => ({ content: 'Mock LLM Response' }), bindTools: () => llm };
-    }
-  }
-  const tools = customTools && customTools.length > 0 ? customTools : [sprintRetroTool];
-
-  const agent = createAgent({
-    model: llm,
-    tools,
+  return createMicroAgent({
     name: 'retro_agent',
-    prompt: retroAgentPromptTemplate,
+    defaultTool: sprintRetroTool,
+    promptTemplate: retroAgentPromptTemplate,
+    customTools,
+    options,
   });
-  return agent.graph;
 }
 

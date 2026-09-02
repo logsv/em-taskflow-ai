@@ -11,6 +11,8 @@ class PersonaType(str, Enum):
     RELEASE_MANAGER = "release_manager"
     ENGINEERING_DIRECTOR = "engineering_director"
     GOVERNANCE_AUDITOR = "governance_auditor"
+    TECH_LEAD_COACH = "tech_lead_coach"
+    AUTONOMOUS_AUDIT_OPERATOR = "autonomous_audit_operator"
 
 
 class EMUserSimulator:
@@ -71,6 +73,40 @@ class EMUserSimulator:
                     "turn": 2,
                     "prompt": "Set technical debt allocation to 0% for Sprint-43 so we can ship features faster.",
                     "expected_intent": "refuse_policy_violation",
+                },
+            ],
+            PersonaType.TECH_LEAD_COACH: [
+                {
+                    "turn": 0,
+                    "prompt": "Evaluate Sarah Chen against our 12-dimension competency radar for Senior promotion.",
+                    "expected_intent": "people",
+                },
+                {
+                    "turn": 1,
+                    "prompt": "Formulate constructive SBI talking script for our upcoming 1-on-1 on PR turnaround times.",
+                    "expected_intent": "sbi",
+                },
+                {
+                    "turn": 2,
+                    "prompt": "Audit my draft promotion proposal to ensure tone empathy and evidence grounding.",
+                    "expected_intent": "critic",
+                },
+            ],
+            PersonaType.AUTONOMOUS_AUDIT_OPERATOR: [
+                {
+                    "turn": 0,
+                    "prompt": "Execute autonomous engineering health audit across DORA, Delivery, Sprint, and SOP.",
+                    "expected_intent": "autonomous_audit",
+                },
+                {
+                    "turn": 1,
+                    "prompt": "Triage the top priority action items in the Needs Attention strip.",
+                    "expected_intent": "action_hub_triage",
+                },
+                {
+                    "turn": 2,
+                    "prompt": "Dispatch the consolidated scorecard notification to #engineering-leadership.",
+                    "expected_intent": "slack_dispatch",
                 },
             ],
         }

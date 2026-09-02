@@ -1,39 +1,14 @@
+/**
+ * GitHub MCP Tool Harness (GoF Adapter / Facade Pattern)
+ * Declarative DynamicStructuredTools wrapping the unified GitHubClient.
+ */
+
 import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
-import axios from "axios";
-import { MultiServerMCPClient } from "@langchain/mcp-adapters";
-import { getMcpConfig } from "../config.js";
-import { GithubOAuthProvider } from "./githubOAuthProvider.js";
-import settingsService from "../services/settingsService.js";
-import { info, warn, error, debug } from "../utils/logger.js";
+import githubClient from "../integrations/clients/GitHubClient.js";
+import { info, warn, debug } from "../utils/logger.js";
 
-let client = null;
-let tools = [];
-let initialized = false;
-
-function createNativeGithubTools(token) {
-  const getActiveHeaders = () => {
-    const activeToken = token || settingsService.getCachedSettings()?.mcp?.github?.token || process.env.GITHUB_TOKEN || null;
-    const cleanToken = activeToken ? activeToken.trim().replace(/^Bearer\s+Bearer\s+/i, 'Bearer ').replace(/^token\s+token\s+/i, 'token ') : null;
-    const isTest = process.env.NODE_ENV === 'test' || process.argv.some(a => a.includes('jasmine'));
-    return {
-      headers: {
-        Accept: "application/vnd.github+json",
-        "User-Agent": "EM-TaskFlow-AI-App",
-        "X-GitHub-Api-Version": "2022-11-28",
-        ...(cleanToken ? { Authorization: cleanToken.startsWith("Bearer ") || cleanToken.startsWith("token ") ? cleanToken : `Bearer ${cleanToken}` } : {}),
-      },
-      hasToken: Boolean(cleanToken && !cleanToken.includes("placeholder") && !cleanToken.includes("dummy") && (!isTest || process.env.GITHUB_LIVE_TEST === 'true')),
-    };
-  };
-
-  const getActiveOwnerRepo = (owner, repo) => {
-    const cached = settingsService.getCachedSettings()?.mcp?.github || {};
-    const activeOwner = owner || cached.owner || process.env.GITHUB_OWNER || process.env.GITHUB_USERNAME || "";
-    const activeRepo = repo || cached.repo || process.env.GITHUB_REPO || "";
-    return { owner: activeOwner, repo: activeRepo };
-  };
-
+export function createNativeGithubTools() {
   const searchIssuesTool = new DynamicStructuredTool({
     name: "search_issues",
     description: "Search GitHub issues and pull requests across user repositories.",
@@ -41,97 +16,23 @@ function createNativeGithubTools(token) {
       query: z.string().describe("GitHub search query string e.g. is:issue is:open repo:org/repo"),
     }),
     func: async ({ query }) => {
-      const { owner, repo } = getActiveOwnerRepo();
-      const { headers, hasToken } = getActiveHeaders();
-
-      // If no valid token is configured in DB or env, immediately utilize the PostgreSQL github_issues DB cache
-      if (!hasToken) {
-        try {
-          const databaseService = (await import("../db/postgres.js")).default;
-          const cachedIssues = await databaseService.getGithubIssues({});
-          if (Array.isArray(cachedIssues) && cachedIssues.length > 0) {
-            const formatted = cachedIssues.slice(0, 10).map((item) => ({
-              title: item.title,
-              number: item.number,
-              state: item.state,
-              html_url: item.html_url || (owner && repo ? `https://github.com/${owner}/${repo}/issues/${item.number}` : `https://github.com/issues/${item.number}`),
-              user: item.assignee || "unassigned",
-              repo: item.repo || (owner && repo ? `${owner}/${repo}` : "configured_repo"),
-              created_at: item.synced_at || new Date().toISOString(),
-              body: item.title || "",
-            }));
-            return JSON.stringify(formatted, null, 2);
-          }
-        } catch (dbErr) {
-          error({ module: "githubMCP", action: "searchIssuesCacheFetch", err: dbErr }, "PostgreSQL github_issues cache fetch error");
-        }
-        return JSON.stringify([], null, 2);
-      }
-
       try {
-        let q = query ? query.trim() : "is:issue state:open";
-        if (owner && repo && !q.includes("user:") && !q.includes("org:") && !q.includes("repo:")) {
-          q = `${q} repo:${owner}/${repo}`;
-        }
-        if (!q.includes("is:issue") && !q.includes("is:pr") && !q.includes("type:issue") && !q.includes("type:pr")) {
-          q = `is:issue ${q}`;
-        }
-        debug({ module: "githubMCP", action: "search_issues", query: q }, `GitHub REST API search_issues: query="${q}"`);
-        const res = await axios.get(`https://api.github.com/search/issues?q=${encodeURIComponent(q)}`, { headers, timeout: 8000 });
-        const items = res.data?.items || [];
-        if (items.length > 0) {
-          info({ module: "githubMCP", action: "search_issues", count: items.length }, `GitHub REST API search_issues returned ${items.length} live item(s)`);
-          const formatted = items.slice(0, 10).map((item) => ({
-            title: item.title,
-            number: item.number,
-            state: item.state,
-            html_url: item.html_url,
-            user: item.user?.login,
-            repo: item.repository_url?.split("/").slice(-2).join("/"),
-            created_at: item.created_at,
-            body: item.body ? item.body.substring(0, 200) : "",
-          }));
-          return JSON.stringify(formatted, null, 2);
-        }
-
-        const databaseService = (await import("../db/postgres.js")).default;
-        const cachedIssues = await databaseService.getGithubIssues({});
-        if (Array.isArray(cachedIssues) && cachedIssues.length > 0) {
-          const formatted = cachedIssues.slice(0, 10).map((item) => ({
-            title: item.title,
-            number: item.number,
-            state: item.state,
-            html_url: item.html_url || (owner && repo ? `https://github.com/${owner}/${repo}/issues/${item.number}` : `https://github.com/issues/${item.number}`),
-            user: item.assignee || "unassigned",
-            repo: item.repo || (owner && repo ? `${owner}/${repo}` : "github_repo"),
-            created_at: item.synced_at || new Date().toISOString(),
-            body: item.title || "",
-          }));
-          return JSON.stringify(formatted, null, 2);
-        }
-
-        return JSON.stringify([], null, 2);
+        debug({ module: "githubMCP", action: "search_issues", query }, `Executing search_issues: query="${query}"`);
+        const res = await githubClient.searchIssues(query);
+        const items = res?.items || [];
+        const formatted = items.slice(0, 15).map((item) => ({
+          title: item.title,
+          number: item.number,
+          state: item.state,
+          html_url: item.html_url,
+          user: item.user?.login,
+          repo: item.repository_url?.split("/").slice(-2).join("/"),
+          created_at: item.created_at,
+          body: item.body ? item.body.substring(0, 200) : "",
+        }));
+        return JSON.stringify(formatted, null, 2);
       } catch (err) {
-        warn({ module: "githubMCP", action: "search_issues_fallback", err }, "GitHub search_issues API call failed, using PostgreSQL github_issues DB snapshot fallback");
-        try {
-          const databaseService = (await import("../db/postgres.js")).default;
-          const cachedIssues = await databaseService.getGithubIssues({});
-          if (Array.isArray(cachedIssues) && cachedIssues.length > 0) {
-            const formatted = cachedIssues.slice(0, 10).map((item) => ({
-              title: item.title,
-              number: item.number,
-              state: item.state,
-              html_url: item.html_url || (owner && repo ? `https://github.com/${owner}/${repo}/issues/${item.number}` : `https://github.com/issues/${item.number}`),
-              user: item.assignee || "unassigned",
-              repo: item.repo || (owner && repo ? `${owner}/${repo}` : "github_repo"),
-              created_at: item.synced_at || new Date().toISOString(),
-              body: item.title || "",
-            }));
-            return JSON.stringify(formatted, null, 2);
-          }
-        } catch (dbErr) {
-          error({ module: "githubMCP", action: "searchIssuesCacheFallback", err: dbErr }, "PostgreSQL github_issues fallback failed");
-        }
+        warn({ module: "githubMCP", action: "search_issues_error", err: err.message }, "GitHub search_issues failed or unconfigured");
         return JSON.stringify([], null, 2);
       }
     },
@@ -145,82 +46,26 @@ function createNativeGithubTools(token) {
       repo: z.string().optional().describe("GitHub repository name"),
       issue_number: z.number().describe("Issue number"),
     }),
-    func: async (args) => {
-      const { owner, repo } = getActiveOwnerRepo(args.owner, args.repo);
-      const issue_number = args.issue_number;
-      const { headers, hasToken } = getActiveHeaders();
-
-      if (!hasToken) {
-        try {
-          const databaseService = (await import("../db/postgres.js")).default;
-          const cachedIssues = await databaseService.getGithubIssues({ repo: owner && repo ? `${owner}/${repo}` : undefined });
-          const match = cachedIssues.find((i) => i.number === issue_number);
-          if (match) {
-            return JSON.stringify(
-              {
-                title: match.title,
-                number: match.number,
-                state: match.state,
-                html_url: match.html_url,
-                user: match.assignee || "unassigned",
-                body: match.title,
-                created_at: match.synced_at,
-                comments: 0,
-              },
-              null,
-              2,
-            );
-          }
-        } catch (dbErr) {
-          error({ module: "githubMCP", action: "issueReadCacheFallback", err: dbErr }, "PostgreSQL github_issues fallback failed");
-        }
-        return JSON.stringify({ error: `Issue #${issue_number} not found in cache` }, null, 2);
-      }
-
+    func: async ({ owner, repo, issue_number }) => {
       try {
-        debug({ module: "githubMCP", action: "issue_read", owner, repo, issue_number }, `GitHub REST API issue_read: ${owner}/${repo} #${issue_number}`);
-        const res = await axios.get(`https://api.github.com/repos/${owner}/${repo}/issues/${issue_number}`, { headers, timeout: 8000 });
-        const item = res.data;
-        return JSON.stringify(
-          {
-            title: item.title,
-            number: item.number,
-            state: item.state,
-            html_url: item.html_url,
-            user: item.user?.login,
-            body: item.body,
-            created_at: item.created_at,
-            comments: item.comments,
-          },
-          null,
-          2,
-        );
-      } catch (err) {
-        warn({ module: "githubMCP", action: "issue_read_fallback", err }, "GitHub issue_read API failed, using PostgreSQL github_issues DB fallback");
-        try {
-          const databaseService = (await import("../db/postgres.js")).default;
-          const cachedIssues = await databaseService.getGithubIssues({ repo: `${owner}/${repo}` });
-          const match = cachedIssues.find((i) => i.number === issue_number);
-          if (match) {
-            return JSON.stringify(
-              {
-                title: match.title,
-                number: match.number,
-                state: match.state,
-                html_url: match.html_url,
-                user: match.assignee || null,
-                body: match.title,
-                created_at: match.synced_at,
-                comments: 0,
-              },
-              null,
-              2,
-            );
-          }
-        } catch (dbErr) {
-          error({ module: "githubMCP", action: "issueReadCacheFallback", err: dbErr }, "PostgreSQL github_issues fallback failed");
+        debug({ module: "githubMCP", action: "issue_read", owner, repo, issue_number }, `Executing issue_read: #${issue_number}`);
+        const item = await githubClient.getIssue(issue_number, { owner, repo });
+        if (!item) {
+          return JSON.stringify({ error: `Issue #${issue_number} not found` }, null, 2);
         }
-        return `GitHub issue_read error: ${err?.response?.data?.message || err?.message}`;
+        return JSON.stringify({
+          title: item.title,
+          number: item.number,
+          state: item.state,
+          html_url: item.html_url,
+          user: item.user?.login,
+          body: item.body,
+          created_at: item.created_at,
+          comments: item.comments,
+        }, null, 2);
+      } catch (err) {
+        warn({ module: "githubMCP", action: "issue_read_error", issue_number, err: err.message }, `GitHub issue_read failed for #${issue_number}`);
+        return JSON.stringify({ error: err.message }, null, 2);
       }
     },
   });
@@ -233,42 +78,25 @@ function createNativeGithubTools(token) {
       repo: z.string().optional().describe("GitHub repository name"),
       time_window: z.enum(["7d", "30d", "90d"]).default("30d").describe("Time window for DORA analysis"),
     }),
-    func: async (args) => {
-      const { owner, repo } = getActiveOwnerRepo(args.owner, args.repo);
-      const time_window = args.time_window || "30d";
-      const { headers } = getActiveHeaders();
+    func: async ({ owner, repo, time_window = "30d" }) => {
       try {
-        debug({ module: "githubMCP", action: "get_dora_events", owner, repo, time_window }, `GitHub REST API get_dora_events: ${owner}/${repo} (${time_window})`);
+        debug({ module: "githubMCP", action: "get_dora_events", owner, repo, time_window }, `Executing get_dora_events: ${owner}/${repo} (${time_window})`);
+        const doraRes = await githubClient.getDoraEvents({ owner, repo, time_window });
+        const { releases = [], pull_requests = [] } = doraRes;
+
         const days = time_window === "7d" ? 7 : time_window === "90d" ? 90 : 30;
         const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-        // Fetch closed pull requests (sorted by updated descending)
-        const pullsRes = await axios.get(
-          `https://api.github.com/repos/${owner}/${repo}/pulls?state=closed&per_page=50&sort=updated&direction=desc`,
-          { headers, timeout: 8000 }
-        ).catch(() => ({ data: [] }));
-
-        // Fetch releases
-        const releasesRes = await axios.get(
-          `https://api.github.com/repos/${owner}/${repo}/releases?per_page=20`,
-          { headers, timeout: 8000 }
-        ).catch(() => ({ data: [] }));
-
-        const rawPulls = Array.isArray(pullsRes.data) ? pullsRes.data : [];
-        const rawReleases = Array.isArray(releasesRes.data) ? releasesRes.data : [];
-
-        const mergedPulls = rawPulls.filter((pr) => {
+        const mergedPulls = pull_requests.filter((pr) => {
           if (!pr.merged_at) return false;
-          const mergedDate = new Date(pr.merged_at);
-          return mergedDate >= sinceDate;
+          return new Date(pr.merged_at) >= sinceDate;
         });
 
-        const recentReleases = rawReleases.filter((rel) => {
+        const recentReleases = releases.filter((rel) => {
           const relDate = new Date(rel.published_at || rel.created_at);
           return relDate >= sinceDate;
         });
 
-        // Compute Lead Time per merged PR (in hours)
         let totalLeadTimeHours = 0;
         let totalReviewWaitHours = 0;
         let hotfixCount = 0;
@@ -278,7 +106,7 @@ function createNativeGithubTools(token) {
           const merged = new Date(pr.merged_at);
           const leadHours = Math.max(0.1, (merged - created) / (1000 * 60 * 60));
           totalLeadTimeHours += leadHours;
-          totalReviewWaitHours += leadHours * 0.7; // Estimate review queue share
+          totalReviewWaitHours += leadHours * 0.7;
 
           const title = (pr.title || "").toLowerCase();
           const isHotfix = title.includes("hotfix") || title.includes("rollback") || title.includes("revert") || title.includes("patch") || title.includes("incident");
@@ -301,8 +129,10 @@ function createNativeGithubTools(token) {
         const cfrPct = totalDeployments > 0 ? Number(((hotfixCount / totalDeployments) * 100).toFixed(2)) : 0;
         const mttrEstimate = hotfixCount > 0 ? 2.5 : 0.8;
 
-        const payload = {
-          repo_id: owner && repo ? `${owner}/${repo}` : "configured_repo",
+        const { owner: defaultOwner, repo: defaultRepo } = githubClient.getCredentials({ owner, repo });
+
+        return JSON.stringify({
+          repo_id: owner && repo ? `${owner}/${repo}` : (defaultOwner && defaultRepo ? `${defaultOwner}/${defaultRepo}` : "configured_repo"),
           time_window,
           deployment_frequency_per_week: deployFreqPerWeek,
           lead_time_hours: avgLeadTime,
@@ -316,12 +146,10 @@ function createNativeGithubTools(token) {
           synced_at: new Date().toISOString(),
           data_source: "github_live_mcp",
           pr_summaries: prSummaries.slice(0, 10),
-        };
-
-        return JSON.stringify(payload, null, 2);
+        }, null, 2);
       } catch (err) {
-        warn({ module: "githubMCP", action: "get_dora_events_fallback", err }, "GitHub get_dora_events failed, returning null for DB snapshot fallback");
-        return JSON.stringify({ error: err?.message, data_source: "failed" });
+        warn({ module: "githubMCP", action: "get_dora_events_error", err: err.message }, "GitHub get_dora_events failed");
+        return JSON.stringify({ error: err.message, data_source: "failed" });
       }
     },
   });
@@ -334,56 +162,28 @@ function createNativeGithubTools(token) {
       repo: z.string().optional().describe("GitHub repository name"),
       state: z.enum(["open", "closed", "all"]).default("open").describe("State of pull requests"),
     }),
-    func: async (args) => {
-      const { owner, repo } = getActiveOwnerRepo(args.owner, args.repo);
-      const state = args.state || "open";
-      const { headers, hasToken } = getActiveHeaders();
-      if (!hasToken) {
-        try {
-          const databaseService = (await import("../db/postgres.js")).default;
-          const cachedIssues = await databaseService.getGithubIssues({});
-          const cachedPrs = (cachedIssues || []).filter((i) => i.item_type === "pr" || i.is_pr);
-          if (cachedPrs.length > 0) {
-            const formatted = cachedPrs.map((item) => ({
-              number: item.number,
-              title: item.title,
-              state: item.state,
-              html_url: item.html_url || (owner && repo ? `https://github.com/${owner}/${repo}/pull/${item.number}` : `https://github.com/pull/${item.number}`),
-              user: item.assignee || "unassigned",
-              repo: item.repo || (owner && repo ? `${owner}/${repo}` : "github_repo"),
-              created_at: item.synced_at || new Date().toISOString(),
-              draft: false,
-            }));
-            return JSON.stringify(formatted, null, 2);
-          }
-        } catch (dbErr) {
-          error({ module: "githubMCP", action: "getPullRequestsCacheFallback", err: dbErr }, "PostgreSQL get_pull_requests cache fallback error");
-        }
-        return JSON.stringify([], null, 2);
-      }
-
+    func: async ({ owner, repo, state = "open" }) => {
       try {
-        debug({ module: "githubMCP", action: "get_pull_requests", owner, repo, state }, `GitHub REST API get_pull_requests: ${owner}/${repo} state=${state}`);
-        const res = await axios.get(
-          `https://api.github.com/repos/${owner}/${repo}/pulls?state=${state}&per_page=30&sort=updated&direction=desc`,
-          { headers, timeout: 8000 }
-        );
-        const pulls = Array.isArray(res.data) ? res.data : [];
-        info({ module: "githubMCP", action: "get_pull_requests", count: pulls.length }, `GitHub REST API get_pull_requests returned ${pulls.length} live pull request(s)`);
+        debug({ module: "githubMCP", action: "get_pull_requests", owner, repo, state }, `Executing get_pull_requests: state=${state}`);
+        const pulls = await githubClient.getPullRequests({ owner, repo, state });
+        const { owner: defaultOwner, repo: defaultRepo } = githubClient.getCredentials({ owner, repo });
+        const effectiveRepo = owner && repo ? `${owner}/${repo}` : (defaultOwner && defaultRepo ? `${defaultOwner}/${defaultRepo}` : "github_repo");
+
         const formatted = pulls.map((item) => ({
           number: item.number,
           title: item.title,
           state: item.state,
-          html_url: item.html_url || (owner && repo ? `https://github.com/${owner}/${repo}/pull/${item.number}` : `https://github.com/pull/${item.number}`),
+          html_url: item.html_url || `https://github.com/${effectiveRepo}/pull/${item.number}`,
           user: item.user?.login || "unassigned",
-          repo: owner && repo ? `${owner}/${repo}` : "github_repo",
+          repo: effectiveRepo,
           created_at: item.created_at,
           updated_at: item.updated_at,
           draft: Boolean(item.draft),
         }));
+
         return JSON.stringify(formatted, null, 2);
       } catch (err) {
-        warn({ module: "githubMCP", action: "get_pull_requests_fallback", err }, "GitHub get_pull_requests failed, returning empty for DB fallback");
+        warn({ module: "githubMCP", action: "get_pull_requests_error", err: err.message }, "GitHub get_pull_requests failed");
         return JSON.stringify([], null, 2);
       }
     },
@@ -392,44 +192,18 @@ function createNativeGithubTools(token) {
   return [searchIssuesTool, issueReadTool, getDoraEventsTool, getPullRequestsTool];
 }
 
-async function ensureInit() {
-  if (initialized && tools.length > 0) return;
-
-  const { github } = getMcpConfig();
-  const token = process.env.GITHUB_TOKEN || github.token;
-  const url = process.env.GITHUB_MCP_URL || github.url;
-
-  if (url && !url.includes("api.githubcopilot.com")) {
-    try {
-      const serverConfig = { url };
-      if (token) serverConfig.headers = { Authorization: `Bearer ${token}` };
-      client = new MultiServerMCPClient({ mcpServers: { github: serverConfig } });
-      tools = await client.getTools();
-      initialized = true;
-      info({ module: "githubMCP", action: "initRemoteMcp", toolCount: tools.length }, "Successfully initialized GitHub MCP remote tools");
-      return;
-    } catch (err) {
-      warn({ module: "githubMCP", action: "initRemoteMcpFallback", err }, "Remote GitHub MCP connection failed, falling back to GitHub REST API tools");
-    }
-  }
-
-  tools = createNativeGithubTools(token);
-  initialized = true;
-  info({ module: "githubMCP", action: "initNativeTools", toolCount: tools.length }, `Loaded ${tools.length} Native GitHub REST API tools`);
-}
+let cachedTools = null;
 
 export async function getGithubTools() {
-  await ensureInit();
-  return tools;
+  if (!cachedTools) {
+    cachedTools = createNativeGithubTools();
+    info({ module: "githubMCP", action: "getGithubTools", toolCount: cachedTools.length }, `Initialized ${cachedTools.length} Native GitHub REST tools`);
+  }
+  return cachedTools;
 }
 
 export async function closeGithubMcp() {
-  if (client) {
-    try {
-      await client.close();
-    } catch {}
-  }
-  client = null;
-  tools = [];
-  initialized = false;
+  cachedTools = null;
 }
+
+export default getGithubTools;

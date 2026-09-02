@@ -7,6 +7,7 @@
   "scripts": {
     "build": "echo \"No build step needed for JS backend\"",
     "start": "node src/index.js",
+    "start:debug": "node --inspect=0.0.0.0:9229 src/index.js",
     "test": "DATABASE_URL=postgresql://taskflow:taskflow@localhost:5432/taskflow_test NODE_ENV=test NODE_OPTIONS='--loader @istanbuljs/esm-loader-hook' npx nyc jasmine --config=jasmine.json",
     "evaluate": "node evaluation/run-evaluation.js",
     "eval:multi-agent": "node evaluation/evaluators/multi-agent-eval.js",

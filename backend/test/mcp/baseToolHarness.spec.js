@@ -144,5 +144,44 @@ describe('Phase 2 Infrastructure Specs: Deterministic Tool Harness & 3-Tier Fall
       expect(res.data.prs).toBe(5);
       expect(res.data.tickets).toBe(8);
     });
+
+    it('should default data payload when computeMath is omitted', async () => {
+      const harness = createDeterministicToolHarness({
+        name: 'test_harness_no_math',
+        description: 'Test harness without computeMath',
+        featureFlagKey: 'dora',
+        directApiExecutors: {
+          default: async () => ({ value: 42 }),
+        },
+        dbCacheFallback: async () => ({ value: 10 }),
+      });
+
+      const res = await harness.invoke({});
+      expect(res.status).toBe('SUCCESS');
+      expect(res.data.default).toBeDefined();
+      expect(res.data.default.data.value).toBe(42);
+    });
+
+    it('should handle computeMath errors gracefully by falling back to raw data without throwing', async () => {
+      const harness = createDeterministicToolHarness({
+        name: 'test_harness_math_error',
+        description: 'Test harness where computeMath throws',
+        featureFlagKey: 'dora',
+        directApiExecutors: {
+          default: async () => ({ value: 42 }),
+        },
+        computeMath: async () => {
+          throw new Error('Math computation failed');
+        },
+        dbCacheFallback: async () => ({ value: 10 }),
+      });
+
+      const res = await harness.invoke({});
+      expect(res.status).toBe('SUCCESS');
+      expect(res.data.rawSources).toBeDefined();
+      expect(res.data.rawSources.default.data.value).toBe(42);
+      expect(res.data.error).toBe('Math computation failed');
+    });
   });
 });
+

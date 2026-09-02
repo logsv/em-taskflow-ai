@@ -9,6 +9,7 @@ import * as Sentry from '@sentry/node';
 import { initializeLLM } from './llm/index.js';
 import { initializeIngest } from './rag/index.js';
 import { initSemanticCache } from './cache/semanticCache.js';
+import { initFactMatrixRedis } from './services/sessionFactMatrix.js';
 import db from './db/index.js';
 import { attachRequestContext, createRateLimiter } from './middleware/hardening.js';
 import { info, warn, error } from './utils/logger.js';
@@ -122,6 +123,13 @@ async function startServer() {
       info('Semantic cache initialized at startup');
     } catch (e) {
       warn('Semantic cache initialization failed (gracefully degraded)', { err: e.message });
+    }
+
+    try {
+      await initFactMatrixRedis();
+      info('Fact-Matrix Redis cache initialized at startup');
+    } catch (e) {
+      warn('Fact-Matrix Redis cache initialization failed (gracefully degraded)', { err: e.message });
     }
 
     const runtimeConfig = getRuntimeConfig();

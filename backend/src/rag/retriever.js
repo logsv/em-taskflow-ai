@@ -11,6 +11,7 @@ import databaseService from '../db/postgres.js';
 import { getTracerCallbacks, createSpan } from '../utils/tracer.js';
 import pythonAIServiceClient from '../grpc/client.js';
 import { debug, info, warn, error } from '../utils/logger.js';
+import { l1ExactCache } from '../cache/l1ExactCache.js';
 import { checkSemanticCache, setSemanticCache } from '../cache/semanticCache.js';
 
 /**
@@ -18,15 +19,32 @@ import { checkSemanticCache, setSemanticCache } from '../cache/semanticCache.js'
  */
 export async function baselineRetrieve(query, options = {}) {
   const startTime = Date.now();
+  const cacheOptions = { domain: options.domain || 'rag', userId: options.userId, repo: options.repo };
 
-  const cached = await checkSemanticCache(query);
+  // Tier 0: L1 Exact Cache Check (<2ms)
+  const l1Hit = l1ExactCache.get(query, cacheOptions);
+  if (l1Hit) {
+    return {
+      answer: l1Hit.answer,
+      sources: l1Hit.sources,
+      originalQuery: query,
+      executionTime: Date.now() - startTime,
+      fromCache: true,
+      cacheTier: 'L1_EXACT',
+    };
+  }
+
+  // Tier 1: L2 Semantic Cache Check with Dual-Gate Verification (<30ms)
+  const cached = await checkSemanticCache(query, cacheOptions);
   if (cached) {
+    l1ExactCache.set(query, cached.answer, cached.sources, cacheOptions);
     return {
       answer: cached.answer,
       sources: cached.sources,
       originalQuery: query,
       executionTime: Date.now() - startTime,
       fromCache: true,
+      cacheTier: 'L2_SEMANTIC',
     };
   }
 
@@ -43,7 +61,8 @@ export async function baselineRetrieve(query, options = {}) {
     const rerankedDocs = await pythonAIServiceClient.rerankChunks(query, docs, topK);
     const answer = await generateAnswer(query, rerankedDocs, options);
     
-    await setSemanticCache(query, answer, rerankedDocs);
+    l1ExactCache.set(query, answer, rerankedDocs, cacheOptions);
+    await setSemanticCache(query, answer, rerankedDocs, cacheOptions);
 
     const executionTime = Date.now() - startTime;
 
@@ -70,9 +89,29 @@ export async function baselineRetrieve(query, options = {}) {
  */
 export async function agenticRetrieve(query, options = {}) {
   const startTime = Date.now();
+  const cacheOptions = { domain: options.domain || 'rag', userId: options.userId, repo: options.repo };
 
-  const cached = await checkSemanticCache(query);
+  // Tier 0: L1 Exact Cache Check (<2ms)
+  const l1Hit = l1ExactCache.get(query, cacheOptions);
+  if (l1Hit) {
+    info('Agentic retrieval completed from L1 exact cache', { querySnippet: query.slice(0, 50) });
+    return {
+      answer: l1Hit.answer,
+      sources: l1Hit.sources,
+      originalQuery: query,
+      rewrittenQueries: [query],
+      relevanceScores: [],
+      compressionApplied: false,
+      executionTime: Date.now() - startTime,
+      fromCache: true,
+      cacheTier: 'L1_EXACT',
+    };
+  }
+
+  // Tier 1: L2 Semantic Cache Check with Dual-Gate Verification (<30ms)
+  const cached = await checkSemanticCache(query, cacheOptions);
   if (cached) {
+    l1ExactCache.set(query, cached.answer, cached.sources, cacheOptions);
     info('Agentic retrieval completed from semantic cache', { querySnippet: query.slice(0, 50) });
     return {
       answer: cached.answer,
@@ -83,6 +122,7 @@ export async function agenticRetrieve(query, options = {}) {
       compressionApplied: false,
       executionTime: Date.now() - startTime,
       fromCache: true,
+      cacheTier: 'L2_SEMANTIC',
     };
   }
 
@@ -149,7 +189,8 @@ export async function agenticRetrieve(query, options = {}) {
     // Step 5: Generate answer
     const answer = await generateAnswer(query, finalDocs, options);
 
-    await setSemanticCache(query, answer, finalDocs);
+    l1ExactCache.set(query, answer, finalDocs, cacheOptions);
+    await setSemanticCache(query, answer, finalDocs, cacheOptions);
 
     const executionTime = Date.now() - startTime;
     info('Agentic retrieval completed', { docsRetrieved: finalDocs.length, executionTimeMs: executionTime });

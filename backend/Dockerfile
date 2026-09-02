@@ -15,7 +15,7 @@ RUN npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund || \
 
 COPY . .
 
-EXPOSE 4000
+EXPOSE 4000 9229
 
 # --import newrelic/esm-loader.mjs bootstraps the New Relic agent BEFORE any
 # ES module is loaded, and --import newrelic initializes the agent runtime.

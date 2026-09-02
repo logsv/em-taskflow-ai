@@ -19,6 +19,20 @@ export class ThreadRepository {
     }
     return null;
   }
+
+  getThreadContextMatrix(threadId) {
+    if (typeof this.db?.getThreadContextMatrix === 'function') {
+      return this.db.getThreadContextMatrix(threadId);
+    }
+    return null;
+  }
+
+  updateThreadContextMatrix(threadId, contextMatrix) {
+    if (typeof this.db?.updateThreadContextMatrix === 'function') {
+      return this.db.updateThreadContextMatrix(threadId, contextMatrix);
+    }
+    return null;
+  }
 }
 
 const threadRepository = new ThreadRepository();

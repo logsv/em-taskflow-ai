@@ -29,7 +29,7 @@ This file provides system guidance, architectural rules, anti-hallucination guid
    - Agents must NEVER write analytics trace tables into application databases.
 
 4. **Rule of Verification**:
-   - Never declare success without executing unit tests. All **319 backend specs** and **39 Python AI specs** must pass with **0 failures**.
+   - Never declare success without executing unit tests. All **394 backend specs** and **57 Python AI specs** must pass with **0 failures**.
 
 5. **No Superficial Symptom Patches**:
    - NEVER resolve errors by masking symptoms, swallowing exceptions silently, returning dummy fallbacks, or commenting out failing unit test assertions.
@@ -49,19 +49,22 @@ This file provides system guidance, architectural rules, anti-hallucination guid
 - **Default Models**: `hermes3:8b` (or `mistral:latest`) for chat/reasoning/evaluations and `nomic-embed-text` / `qwen3-vl` for embeddings.
 - **Zero Cloud Key Requirement**: External cloud APIs (Gemini, OpenAI, Anthropic) are disabled (`LLM_GOOGLE_ENABLED: false`, `LLM_OPENAI_ENABLED: false`).
 
-### 2. Isolated Database & Vector Storage (PostgreSQL 16 `pgvector/pgvector:pg16` + Redis)
-- **PostgreSQL 16 (`em-taskflow-postgres`)**:
-  - `taskflow_backend`: Application state, sessions, threads, chat messages, GitHub issues cache, team members, `em_audit_runs`, `em_action_items`.
-  - `taskflow_ai`: Dedicated `pdf_chunks` table with `pgvector` HNSW index (`idx_pdf_chunks_embedding`) and `pg_trgm` FTS index (`idx_pdf_chunks_fts`).
-- **Redis (`em-taskflow-redis:6379`)**:
-  - `semanticCache.js`: High-speed vector similarity semantic caching for RAG queries (0.95 threshold, 1-hour TTL, SHA-256 keying).
-- **Fault-Tolerant In-Memory Fallbacks**: In-memory stores (`inMemoryPdfChunks`, `inMemoryGithubIssues`, `inMemoryAuditRuns`, `inMemoryActionItems`) ensure backend endpoints NEVER fail even if PostgreSQL is temporarily offline.
+### 2. 5-Tier Production Caching Architecture & Temporal Invalidation
+- **Tier 0: L1 In-Memory Exact LRU Cache** (`l1ExactCache.js`): Sub-millisecond ($<2\text{ms}$) turnaround for normalized identical queries scoped by domain, user, and repository.
+- **Tier 1: L2 Redis Vector Semantic Cache with Dual-Gate Verification** (`semanticCache.js`):
+  - *Gate 1*: Cosine similarity threshold $\ge 0.95$.
+  - *Gate 2*: Strict Entity Alignment check (Sprint IDs, Jira keys `ENG-1024`, quarters `Q3 2026`, users `@alex`, PRs `PR #89`). Rejects cache hits if entities diverge to eliminate hallucinations.
+  - *Domain-Adaptive TTLs*: 7 days (`rag`/`sop`), 4 hours (`okr`/`roadmap`), 30 minutes (`dora`/`people`), 2 minutes (`sprint`/`delivery`).
+- **Tier 2: MCP Tool Execution Cache** (`toolCache.js`): Hash-keyed cache for read-only Jira JQL, GitHub PR listings, Notion pages, and Google Calendar events (30s–120s TTL).
+- **Temporal Event-Driven Invalidation** (`workflows.js` & `activities.js`): `cacheInvalidationWorkflow` and `invalidateCacheActivity` orchestrate durable cache invalidations upon PDF upload/deletion or settings rotations without introducing external queues or pub/sub.
+- **Isolated PostgreSQL 16 & Redis**: `taskflow_backend`, `taskflow_ai`, `temporal`, `langfuse_db`.
 
 ### 3. Advanced RAG Engine (HyDE + Dense/Sparse Hybrid Search + RRF)
 - **HyDE Query Expansion**: Generates hypothetical candidate document answers (`generateHypotheticalDocument` in `retriever.js`) to enrich retrieval context.
 - **Hybrid Dense + Sparse Search**: Dense cosine similarity (`<=>`) combined with `pg_trgm` BM25 full-text search.
 - **Reciprocal Rank Fusion (RRF)**: Merges dense and sparse ranks via SQL CTE (`1 / (60 + rank)`) in `database.py`.
 - **Multi-Format Ingestion**: Supports PDF, Plain Text, CSV/Sheets, Images (OCR / `qwen3-vl`) processed durably via Temporal workflows (`rag-ingest-queue`).
+
 
 ### 4. Multi-Agent System (LangGraph Supervisor + 10 Domain Micro-Agents)
 - **Fast-Path Classifier**: `<300ms` pre-router classifier (`classifyFastPath`) for direct LLM queries (greetings, code generation, math, attachments), bypassing routing overhead.

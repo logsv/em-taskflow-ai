@@ -343,11 +343,19 @@ class IdentityService {
           });
         }
 
-        // Get searchable assignees
-        const userRes = await axios.get(`${jiraUrl}/rest/api/3/users/search?query=%20&maxResults=50`, {
+        // Get searchable assignees using modern Jira Cloud endpoint (/rest/api/3/user/search)
+        const userRes = await axios.get(`${jiraUrl}/rest/api/3/user/search?query=%20&maxResults=50`, {
           headers,
           timeout: 4500,
-        }).catch(() => ({ data: [] }));
+        }).catch(async (uErr) => {
+          if (uErr.response?.status && [404, 410].includes(uErr.response.status)) {
+            return axios.get(`${jiraUrl}/rest/api/3/users/search?query=%20&maxResults=50`, {
+              headers,
+              timeout: 4500,
+            }).catch(() => ({ data: [] }));
+          }
+          return { data: [] };
+        });
 
         for (const u of (userRes.data || [])) {
           if (u.accountType === 'atlassian' && u.emailAddress) {

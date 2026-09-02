@@ -1,8 +1,7 @@
-import { createAgent } from 'langchain';
 import { z } from 'zod';
-import { getChatModel } from '../llm/index.js';
 import { criticAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
+import { createMicroAgent } from './baseAgent.js';
 
 export const auditReportTool = createDeterministicToolHarness({
   name: 'audit_em_report',
@@ -238,21 +237,11 @@ ${sanitizedRevision ? sanitizedRevision : '_No draft text provided for revision.
 });
 
 export function createCriticAgent(customTools = null, options = {}) {
-  let llm = options.llm;
-  if (!llm) {
-    try {
-      llm = getChatModel({ temperature: 0.05 });
-    } catch (e) {
-      llm = { invoke: async () => ({ content: 'Mock LLM Response' }), bindTools: () => llm };
-    }
-  }
-  const tools = customTools && customTools.length > 0 ? customTools : [auditReportTool];
-
-  const agent = createAgent({
-    model: llm,
-    tools,
+  return createMicroAgent({
     name: 'critic_agent',
-    prompt: criticAgentPromptTemplate,
+    defaultTool: auditReportTool,
+    promptTemplate: criticAgentPromptTemplate,
+    customTools,
+    options,
   });
-  return agent.graph;
 }

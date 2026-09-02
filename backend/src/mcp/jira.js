@@ -1,153 +1,97 @@
+/**
+ * Jira MCP Tool Harness (GoF Adapter / Facade Pattern)
+ * Declarative DynamicStructuredTools wrapping the unified JiraClient.
+ */
+
 import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
-import axios from "axios";
-import { MultiServerMCPClient } from "@langchain/mcp-adapters";
-import { getMcpConfig } from "../config.js";
-import settingsService from "../services/settingsService.js";
-import { info, warn, error, debug } from "../utils/logger.js";
+import jiraClient from "../integrations/clients/JiraClient.js";
+import { info, warn, debug } from "../utils/logger.js";
 
-let client = null;
-let tools = [];
-let initialized = false;
-
-function createNativeJiraTools(token, baseUrl, email = "") {
-  const cleanToken = token ? token.trim() : "";
-  const cleanEmail = (email || process.env.JIRA_USER_EMAIL || process.env.JIRA_USERNAME || "").trim();
-  
-  const authHeader = cleanEmail && cleanToken && !cleanToken.startsWith("Basic ")
-    ? `Basic ${Buffer.from(`${cleanEmail}:${cleanToken}`).toString('base64')}`
-    : (cleanToken ? (cleanToken.startsWith("Basic ") || cleanToken.startsWith("Bearer ") ? cleanToken : `Bearer ${cleanToken}`) : null);
-
-  const headers = {
-    Accept: "application/json",
-    "Content-Type": "application/json",
-    ...(authHeader ? { Authorization: authHeader } : {}),
-  };
-
+export function createNativeJiraTools() {
   const jiraSearchTool = new DynamicStructuredTool({
     name: "jira_search",
-    description: "Search Jira issues using JQL (Jira Query Language) across projects and active sprints.",
+    description: "Search Jira issues using JQL (Jira Query Language) across projects, backlog, and active sprints.",
     schema: z.object({
-      jql: z.string().default('status in ("In Progress", "Blocked")').describe("JQL query string, e.g. status in ('In Progress', 'Blocked')"),
+      jql: z.string().default('status in ("To Do", "In Progress", "Blocked", "Backlog")').describe("JQL query string, e.g. status in ('To Do', 'In Progress', 'Blocked', 'Backlog')"),
       max_results: z.number().default(20).describe("Maximum issues to return"),
     }),
-    func: async ({ jql = 'status in ("In Progress", "Blocked")', max_results = 20 }) => {
+    func: async ({ jql = 'status in ("To Do", "In Progress", "Blocked", "Backlog")', max_results = 20 }) => {
       try {
-        const configuredProjectKey = settingsService.getCachedSettings()?.mcp?.jira?.projectKey || process.env.JIRA_PROJECT_KEY || "";
-        let effectiveJql = jql;
-        if (configuredProjectKey && !effectiveJql.toLowerCase().includes("project =") && !effectiveJql.toLowerCase().includes("project in")) {
-          effectiveJql = `project = "${configuredProjectKey}" AND (${effectiveJql})`;
-        }
-        debug({ module: "jiraMCP", action: "jira_search", effectiveJql }, `Jira REST API jira_search: jql="${effectiveJql}"`);
-        if (baseUrl && (baseUrl.includes("atlassian.net") || baseUrl.includes("/rest/api"))) {
-          const searchUrl = baseUrl.endsWith("/rest/api/3")
-            ? `${baseUrl}/search`
-            : `${baseUrl.replace(/\/$/, "")}/rest/api/3/search`;
-          const res = await axios.post(
-            searchUrl,
-            { jql: effectiveJql, maxResults: max_results, fields: ["summary", "status", "assignee", "duedate", "issuelinks", "priority", "customfield_10020"] },
-            { headers, timeout: 8000 }
-          );
-          const issues = res.data?.issues || [];
-          if (issues.length > 0) {
-            info({ module: "jiraMCP", action: "jira_search", count: issues.length }, `Jira REST API search returned ${issues.length} live issue(s)`);
-            const formatted = issues.map((i) => {
-              const blockedBy = (i.fields?.issuelinks || [])
-                .filter((l) => l.type?.inward === "is blocked by" && l.inwardIssue)
-                .map((l) => l.inwardIssue.key);
-              return {
-                key: i.key,
-                summary: i.fields?.summary || "",
-                status: i.fields?.status?.name || "Unknown",
-                assignee: i.fields?.assignee?.displayName || "unassigned",
-                due_date: i.fields?.duedate || null,
-                priority: i.fields?.priority?.name || "Medium",
-                blocked_by: blockedBy.length > 0 ? blockedBy.join(", ") : null,
-              };
-            });
-            return JSON.stringify({ total: res.data.total || formatted.length, issues: formatted, source: "jira_live_api" }, null, 2);
-          }
-        }
+        debug({ module: "jiraMCP", action: "jira_search", jql }, `Executing jira_search: jql="${jql}"`);
+        const searchRes = await jiraClient.searchJql(jql, { maxResults: max_results });
+        const issues = searchRes?.issues || [];
+
+        const formatted = issues.map((i) => {
+          const blockedBy = (i.fields?.issuelinks || [])
+            .filter((l) => l.type?.inward === "is blocked by" && l.inwardIssue)
+            .map((l) => l.inwardIssue.key);
+          return {
+            key: i.key,
+            summary: i.fields?.summary || "",
+            status: i.fields?.status?.name || "Unknown",
+            assignee: i.fields?.assignee?.displayName || "unassigned",
+            due_date: i.fields?.duedate || null,
+            priority: i.fields?.priority?.name || "Medium",
+            blocked_by: blockedBy.length > 0 ? blockedBy.join(", ") : null,
+          };
+        });
+
+        return JSON.stringify({
+          total: searchRes?.total ?? formatted.length,
+          issues: formatted,
+          source: "jira_live_api",
+        }, null, 2);
       } catch (err) {
-        warn({ module: "jiraMCP", action: "jira_search_fallback", err }, "Jira REST API search failed, using PostgreSQL sprint_analytics fallback");
+        warn({ module: "jiraMCP", action: "jira_search_error", err: err.message }, "Jira search failed or unconfigured");
+        return JSON.stringify({
+          status: "UNAVAILABLE",
+          service: "jira",
+          reason: "JIRA_NOT_CONFIGURED_OR_UNREACHABLE",
+          message: `Jira search failed: ${err.message}. Configure JIRA_BASE_URL and API tokens in Admin Settings.`,
+          total: 0,
+          issues: [],
+          blocked_tickets: [],
+          missed_deadline_tickets: [],
+        }, null, 2);
       }
-
-      // Fallback to PostgreSQL Database Cache
-      try {
-        const databaseService = (await import("../db/postgres.js")).default;
-        const analytics = await databaseService.getSprintAnalytics().catch(() => []);
-        if (analytics && analytics.length > 0) {
-          const snap = analytics[0];
-          return JSON.stringify({
-            total: snap.wip_count || 7,
-            wip_count: snap.wip_count || 7,
-            wip_limit: snap.wip_limit || 5,
-            issues: snap.blocked_tickets || [
-              { key: "ENG-104", summary: "Database migration schema lock", status: "Blocked", blocked_by: "ENG-99", days_blocked: 3.5 },
-              { key: "ENG-105", summary: "Refactor session store connection pool", status: "In Progress", assignee: "backend_dev" },
-            ],
-            blocked_tickets: snap.blocked_tickets || [
-              { key: "ENG-104", summary: "Database migration schema lock", blocked_by: "ENG-99", days_blocked: 3.5 }
-            ],
-            missed_deadline_tickets: snap.missed_deadline_tickets || [
-              { key: "ENG-88", summary: "OAuth token refresh bug", due_date: "2026-08-01", days_overdue: 5 }
-            ],
-            source: "postgres_sprint_analytics",
-            is_cached: true,
-            synced_at: snap.created_at || new Date().toISOString(),
-          }, null, 2);
-        }
-      } catch (dbErr) {
-        error({ module: "jiraMCP", action: "sprintAnalyticsCacheFallback", err: dbErr }, "PostgreSQL sprint_analytics fallback failed");
-      }
-
-      return JSON.stringify({
-        status: "UNAVAILABLE",
-        service: "jira",
-        reason: "JIRA_NOT_CONFIGURED_OR_UNREACHABLE",
-        message: "Jira integration is not configured or the API is unreachable. Configure JIRA_BASE_URL and API tokens in Admin Settings.",
-        total: 0,
-        issues: [],
-        blocked_tickets: [],
-        missed_deadline_tickets: [],
-      }, null, 2);
     },
   });
 
   const jiraGetIssueTool = new DynamicStructuredTool({
     name: "jira_get_issue",
-    description: "Read details of a specific Jira issue by issue key (e.g. ENG-104).",
+    description: "Read details of a specific Jira issue by issue key (e.g. ENG-104, SCRUM-28).",
     schema: z.object({
-      issue_key: z.string().default("ENG-104").describe("Jira issue key, e.g. ENG-104"),
+      issue_key: z.string().default("ENG-104").describe("Jira issue key, e.g. ENG-104, SCRUM-28"),
     }),
     func: async ({ issue_key = "ENG-104" }) => {
       try {
-        debug({ module: "jiraMCP", action: "jira_get_issue", issue_key }, `Jira REST API jira_get_issue: ${issue_key}`);
-        if (baseUrl) {
-          const issueUrl = `${baseUrl.replace(/\/$/, "")}/rest/api/3/issue/${issue_key}`;
-          const res = await axios.get(issueUrl, { headers, timeout: 8000 });
-          const item = res.data;
-          return JSON.stringify({
-            key: item.key,
-            summary: item.fields?.summary,
-            status: item.fields?.status?.name,
-            assignee: item.fields?.assignee?.displayName,
-            description: item.fields?.description,
-            priority: item.fields?.priority?.name,
-            due_date: item.fields?.duedate,
-            blocked_by: item.fields?.issuelinks?.find((l) => l.type?.inward === "is blocked by")?.inwardIssue?.key || null,
-          }, null, 2);
+        debug({ module: "jiraMCP", action: "jira_get_issue", issue_key }, `Executing jira_get_issue: ${issue_key}`);
+        const item = await jiraClient.getIssue(issue_key);
+        if (!item) {
+          throw new Error(`Issue ${issue_key} not found`);
         }
+        return JSON.stringify({
+          key: item.key,
+          summary: item.fields?.summary,
+          status: item.fields?.status?.name,
+          assignee: item.fields?.assignee?.displayName,
+          description: item.fields?.description,
+          priority: item.fields?.priority?.name,
+          due_date: item.fields?.duedate,
+          blocked_by: item.fields?.issuelinks?.find((l) => l.type?.inward === "is blocked by")?.inwardIssue?.key || null,
+          source: "jira_live_api",
+        }, null, 2);
       } catch (err) {
-        warn({ module: "jiraMCP", action: "jira_get_issue_fallback", err }, "Jira get_issue API failed, using mock fallback");
+        warn({ module: "jiraMCP", action: "jira_get_issue_error", issue_key, err: err.message }, `Unable to retrieve Jira issue ${issue_key}`);
+        return JSON.stringify({
+          status: "UNAVAILABLE",
+          service: "jira",
+          key: issue_key,
+          reason: "JIRA_NOT_CONFIGURED_OR_UNREACHABLE",
+          message: `Unable to retrieve Jira issue ${issue_key}: ${err.message}. Configure Jira URL and credentials in Admin Settings.`,
+        }, null, 2);
       }
-      return JSON.stringify({
-        status: "UNAVAILABLE",
-        service: "jira",
-        key: issue_key,
-        reason: "JIRA_NOT_CONFIGURED_OR_UNREACHABLE",
-        message: `Unable to retrieve Jira issue ${issue_key}. Configure JIRA_BASE_URL and API tokens in Admin Settings.`,
-      }, null, 2);
     },
   });
 
@@ -173,57 +117,18 @@ function createNativeJiraTools(token, baseUrl, email = "") {
   return [jiraSearchTool, jiraGetIssueTool, jiraGetSprintReportTool];
 }
 
-import { JiraOAuthProvider } from "./jiraOAuthProvider.js";
-
-async function ensureInit() {
-  if (initialized && tools.length > 0) return;
-  const { jira } = getMcpConfig();
-
-  const oauthProvider = new JiraOAuthProvider();
-  const oauthTokens = await oauthProvider.tokens().catch(() => null);
-  const oauthToken = oauthTokens?.access_token || null;
-
-  const url = process.env.JIRA_MCP_URL || jira.mcpUrl || 'https://mcp.atlassian.com/v1/mcp/authv2';
-  const token = oauthToken || process.env.JIRA_MCP_TOKEN || process.env.JIRA_API_TOKEN || jira.apiToken;
-  const email = process.env.JIRA_USER_EMAIL || process.env.JIRA_USERNAME || jira.email || jira.username;
-  const baseUrl = process.env.JIRA_BASE_URL || jira.url;
-
-  // Only attempt Remote MCP if an explicit, valid remote MCP endpoint is provided (e.g. mcp.atlassian.com) or OAuth is active
-  if (url && url.startsWith("http") && !url.includes("example.jira.com") && !url.includes("localhost:0") && !url.includes("atlassian.net") && (oauthToken || process.env.JIRA_MCP_TOKEN)) {
-    try {
-      const headers = {};
-      if (token) headers.Authorization = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
-      client = new MultiServerMCPClient({
-        mcpServers: {
-          atlassian: { url, headers },
-        },
-      });
-      tools = await client.getTools();
-      initialized = true;
-      info({ module: "jiraMCP", action: "initRemoteMcp", toolCount: tools.length }, "Successfully initialized Remote Jira MCP tools");
-      return;
-    } catch (err) {
-      warn({ module: "jiraMCP", action: "initRemoteMcpFallback", err }, "Remote Jira MCP connection failed, falling back to Native Jira REST tools");
-    }
-  }
-
-  tools = createNativeJiraTools(token, baseUrl, email);
-  initialized = true;
-  info({ module: "jiraMCP", action: "initNativeTools", toolCount: tools.length }, `Loaded ${tools.length} Native Jira REST API tools`);
-}
+let cachedTools = null;
 
 export async function getJiraTools() {
-  await ensureInit();
-  return tools;
+  if (!cachedTools) {
+    cachedTools = createNativeJiraTools();
+    info({ module: "jiraMCP", action: "getJiraTools", toolCount: cachedTools.length }, `Initialized ${cachedTools.length} Native Jira REST tools`);
+  }
+  return cachedTools;
 }
 
 export async function closeJiraMcp() {
-  if (client) {
-    try {
-      await client.close();
-    } catch {}
-  }
-  client = null;
-  tools = [];
-  initialized = false;
+  cachedTools = null;
 }
+
+export default getJiraTools;

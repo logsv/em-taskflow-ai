@@ -1,11 +1,12 @@
-import { createAgent } from 'langchain';
 import { z } from 'zod';
-import { getChatModel } from '../llm/index.js';
 import { sprintAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import identityService from '../services/identityService.js';
+import settingsService from '../services/settingsService.js';
+import { info, warn, error } from '../utils/logger.js';
 import { getDirectOrFormattedJiraUrl, formatMarkdownLinkOrCode } from '../utils/urlHelper.js';
+import { createMicroAgent, safeExecuteMCPTool } from './baseAgent.js';
 
 export const sprintPlanTool = createDeterministicToolHarness({
   name: 'calculate_sprint_plan',
@@ -29,17 +30,9 @@ export const sprintPlanTool = createDeterministicToolHarness({
   mcpExecutors: {
     jira: async (inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
         const jql = 'status in ("To Do", "Ready for Sprint", "Backlog") AND (sprint is null OR sprint in openSprints()) ORDER BY priority DESC';
-        
-        const res = await Promise.race([
-          executeMCPTool('jira_search', { jql }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Jira search timed out')), 2500)),
-        ]).catch(() => null);
-
-        let issues = [];
-        if (Array.isArray(res)) issues = res;
-        else if (res && Array.isArray(res.issues)) issues = res.issues;
+        const res = await safeExecuteMCPTool('jira_search', { jql });
+        const issues = Array.isArray(res) ? res : (Array.isArray(res?.issues) ? res.issues : []);
 
         if (issues.length > 0) {
           const candidateTickets = issues.slice(0, 8).map((iss) => {
@@ -56,36 +49,21 @@ export const sprintPlanTool = createDeterministicToolHarness({
           return {
             total_candidate_issues: issues.length,
             candidate_tickets: candidateTickets,
-            estimated_points: candidateTickets.reduce((sum, t) => sum + (t.story_points || 0), 0),
             source: 'mcp_jira',
             synced_at: new Date().toISOString(),
           };
         }
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'sprintHarness', action: 'jiraExecutor', err: err.message }, 'Jira executor notice');
+      }
       return null;
     },
     googleCalendar: async (_inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
-        const now = new Date();
-        const future = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
-
-        const res = await Promise.race([
-          executeMCPTool('get_calendar_events', {
-            calendarId: 'primary',
-            timeMin: now.toISOString(),
-            timeMax: future.toISOString(),
-            time_window: '14d',
-          }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Google Calendar search timed out')), 2500)),
-        ]).catch(() => null);
-
-        let events = [];
-        if (Array.isArray(res)) events = res;
-        else if (res && Array.isArray(res.items)) events = res.items;
-
-        const ptoEvents = events.filter((ev) => /pto|vacation|ooo|leave|out of office/i.test(ev.summary || ''));
-        const ptoDays = ptoEvents.length > 0 ? ptoEvents.length : 2;
+        const res = await safeExecuteMCPTool('get_calendar_events', { time_window: '14d', max_results: 20 });
+        const events = Array.isArray(res) ? res : [];
+        const ptoEvents = events.filter((e) => /pto|ooo|vacation|leave|holiday/i.test(e.summary || ''));
+        const ptoDays = Math.max(0, ptoEvents.length);
 
         return {
           total_events: events.length,
@@ -94,36 +72,31 @@ export const sprintPlanTool = createDeterministicToolHarness({
           source: 'mcp_google_calendar',
           synced_at: new Date().toISOString(),
         };
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'sprintHarness', action: 'calendarExecutor', err: err.message }, 'Calendar executor notice');
+      }
       return null;
     },
     notion: async (_inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
-        const res = await Promise.race([
-          executeMCPTool('notion_search', { query: 'sprint goals working agreements' }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Notion search timed out')), 2500)),
-        ]).catch(() => null);
+        const res = await safeExecuteMCPTool('notion_search', { query: 'sprint goals working agreements' });
 
         if (res) {
-          let pages = [];
-          if (Array.isArray(res)) pages = res;
-          else if (res.results && Array.isArray(res.results)) pages = res.results;
-          if (pages.length > 0) {
-            return {
-              working_agreements_found: true,
-              working_agreements: {
-                max_pr_lines: 400,
-                review_sla_hours: 4,
-                wip_limit_per_dev: 1.5,
-                tech_debt_target_percentage: 20,
-              },
-              source: 'mcp_notion',
-              synced_at: new Date().toISOString(),
-            };
-          }
+          return {
+            working_agreements_found: true,
+            working_agreements: {
+              max_pr_lines: 400,
+              review_sla_hours: 4,
+              wip_limit_per_dev: 1.5,
+              tech_debt_target_percentage: 20,
+            },
+            source: 'mcp_notion',
+            synced_at: new Date().toISOString(),
+          };
         }
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'sprintHarness', action: 'notionExecutor', err: err.message }, 'Notion executor notice');
+      }
       return null;
     },
     default: async (inputArgs) => {
@@ -388,21 +361,11 @@ ${candidateTickets.map((t) => `| ${formatMarkdownLinkOrCode(t.key, getDirectOrFo
 });
 
 export function createSprintAgent(customTools = null, options = {}) {
-  let llm = options.llm;
-  if (!llm) {
-    try {
-      llm = getChatModel();
-    } catch (e) {
-      llm = { invoke: async () => ({ content: 'Mock LLM Response' }), bindTools: () => llm };
-    }
-  }
-  const tools = customTools && customTools.length > 0 ? customTools : [sprintPlanTool];
-
-  const agent = createAgent({
-    model: llm,
-    tools,
+  return createMicroAgent({
     name: 'sprint_agent',
-    prompt: sprintAgentPromptTemplate,
+    defaultTool: sprintPlanTool,
+    promptTemplate: sprintAgentPromptTemplate,
+    customTools,
+    options,
   });
-  return agent.graph;
 }

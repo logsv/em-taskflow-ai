@@ -1,12 +1,11 @@
-import { createAgent } from 'langchain';
 import { z } from 'zod';
-import { getChatModel } from '../llm/index.js';
 import { deliveryAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
-import identityService from '../services/identityService.js';
 import settingsService from '../services/settingsService.js';
 import { getDirectOrFormattedGithubUrl, getDirectOrFormattedJiraUrl, formatMarkdownLinkOrCode } from '../utils/urlHelper.js';
+import { info, warn, error } from '../utils/logger.js';
+import { createMicroAgent, safeExecuteMCPTool, resolveGithubTarget, resolveMemberTarget } from './baseAgent.js';
 
 export const deliveryBottlenecksTool = createDeterministicToolHarness({
   name: 'analyze_delivery_bottlenecks',
@@ -28,23 +27,14 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
   mcpExecutors: {
     github: async (inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
-        const cachedGithub = settingsService.getCachedSettings()?.mcp?.github || {};
-        const owner = process.env.GITHUB_OWNER || process.env.GITHUB_USERNAME || cachedGithub.owner || '';
-        const repo = inputArgs?.repo_id && inputArgs.repo_id !== 'default' ? inputArgs.repo_id : (cachedGithub.repo || process.env.GITHUB_REPO || '');
+        const { owner, repo, repoId } = resolveGithubTarget(inputArgs);
 
         // Fetch real Pull Requests (not Issues)
-        let prsRes = await Promise.race([
-          executeMCPTool('get_pull_requests', { owner, repo, state: 'open' }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP GitHub get_pull_requests timed out')), 2500)),
-        ]).catch(() => null);
+        let prsRes = await safeExecuteMCPTool('get_pull_requests', { owner, repo, state: 'open' });
 
         if (!prsRes) {
           const repoQuery = owner && repo ? `repo:${owner}/${repo}` : '';
-          prsRes = await Promise.race([
-            executeMCPTool('search_issues', { query: `${repoQuery} is:pr state:open`.trim() }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('MCP GitHub search timed out')), 2500)),
-          ]).catch(() => null);
+          prsRes = await safeExecuteMCPTool('search_issues', { query: `${repoQuery} is:pr state:open`.trim() });
         }
 
         let items = null;
@@ -54,11 +44,6 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
           items = prsRes.items;
         } else if (prsRes && Array.isArray(prsRes.data)) {
           items = prsRes.data;
-        } else if (typeof prsRes === 'string' && prsRes.trim().length > 0) {
-          try {
-            const parsed = JSON.parse(prsRes);
-            items = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.items) ? parsed.items : null;
-          } catch (e) { items = null; }
         }
 
         if (Array.isArray(items)) {
@@ -104,58 +89,49 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
           };
         }
       } catch (err) {
-        // Fall back to PostgreSQL DB cache
+        warn({ module: 'deliveryHarness', action: 'githubExecutor', err: err.message }, 'GitHub executor failed, cascading to PostgreSQL DB cache');
       }
       return null;
     },
     jira: async (inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
-        let jql = 'status in ("In Progress", "Blocked")';
+        let jql = 'status in ("To Do", "In Progress", "Blocked", "Backlog")';
+        if (inputArgs?.filter === 'BLOCKERS') {
+          jql = 'status in ("Blocked")';
+        } else if (inputArgs?.filter === 'WIP_ITEMS') {
+          jql = 'status in ("In Progress")';
+        }
         if (inputArgs?.assignee || inputArgs?.author) {
-          const jiraUser = await identityService.getToolUsernameForMember(inputArgs.assignee || inputArgs.author, 'jira');
-          if (jiraUser) {
-            jql += ` AND assignee = "${jiraUser}"`;
+          const { toolUsername } = await resolveMemberTarget(inputArgs.assignee || inputArgs.author, 'jira');
+          if (toolUsername && toolUsername !== 'unassigned') {
+            jql += ` AND assignee = "${toolUsername}"`;
           }
         }
-        const res = await Promise.race([
-          executeMCPTool('jira_search', { jql }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Jira search timed out')), 2500)),
-        ]).catch(() => null);
+        jql += ' ORDER BY created DESC';
 
-        if (res) {
-          let data = null;
-          if (typeof res === 'object') data = res;
-          else if (typeof res === 'string' && res.trim().startsWith('{')) {
-            try { data = JSON.parse(res); } catch (e) { data = null; }
-          }
-          if (data) {
-            return {
-              wip_count: data.total || 7,
-              wip_limit: 5,
-              blocked_tickets: data.issues || [
-                { key: 'ENG-104', summary: 'Database migration schema lock', blocked_by: 'ENG-99', days_blocked: 3.5 },
-              ],
-              missed_deadline_tickets: [
-                { key: 'ENG-88', summary: 'OAuth token refresh bug', due_date: '2026-08-01', days_overdue: 5 },
-              ],
-              source: 'mcp_jira',
-              synced_at: new Date().toISOString(),
-            };
-          }
+        const data = await safeExecuteMCPTool('jira_search', { jql });
+
+        if (data) {
+          const rawIssues = Array.isArray(data.issues) ? data.issues : (Array.isArray(data) ? data : []);
+          const blocked = rawIssues.filter((i) => (i.status || '').toLowerCase().includes('block') || i.blocked_by);
+          return {
+            wip_count: data.total ?? rawIssues.length,
+            wip_limit: 5,
+            jira_issues: rawIssues,
+            blocked_tickets: blocked.length > 0 ? blocked : (rawIssues.length > 0 ? rawIssues.slice(0, 5) : []),
+            missed_deadline_tickets: rawIssues.filter((i) => i.due_date && new Date(i.due_date) < new Date()),
+            source: data.source || 'mcp_jira',
+            synced_at: new Date().toISOString(),
+          };
         }
       } catch (err) {
-        // Fall back to PostgreSQL DB cache
+        warn({ module: 'deliveryHarness', action: 'jiraExecutor', err: err.message }, 'Jira executor notice');
       }
       return null;
     },
     notion: async () => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
-        const res = await Promise.race([
-          executeMCPTool('notion_search', { query: 'sprint goals working agreements' }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Notion search timed out')), 2500)),
-        ]).catch(() => null);
+        const res = await safeExecuteMCPTool('notion_search', { query: 'sprint goals working agreements' });
 
         if (res) {
           return {
@@ -166,7 +142,7 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
           };
         }
       } catch (err) {
-        // Fall back to built-in working agreements
+        warn({ module: 'deliveryHarness', action: 'notionExecutor', err: err.message }, 'Notion executor notice');
       }
       return null;
     },
@@ -268,7 +244,7 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
       }
 
       if (target === 'WIP_ITEMS' || filter === 'WIP_ITEMS' || filter === 'WIP_VIOLATION') {
-        const wipTickets = Array.isArray(jira.blocked_tickets) && jira.blocked_tickets.length > 0 ? jira.blocked_tickets : [];
+        const wipTickets = (jira.jira_issues && jira.jira_issues.length > 0) ? jira.jira_issues : (Array.isArray(jira.blocked_tickets) && jira.blocked_tickets.length > 0 ? jira.blocked_tickets : []);
 
         const wipRows = wipTickets.map((t) => {
           const url = getDirectOrFormattedJiraUrl(t);
@@ -277,8 +253,8 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
         });
 
         const wipSummary = wipTickets.length > 0
-          ? `### 📋 Active WIP Items in Progress (${wipTickets.length} Items, Limit: 5)\n\n| Jira Key | Issue Summary | Assignee | Status | In-Progress Duration |\n| :--- | :--- | :--- | :---: | :---: |\n${wipRows.join('\n')}\n\n> 💡 **WIP Analysis**: Carrying **${wipTickets.length} in-progress items** against the team limit of **5** (${wipTickets.length > 5 ? `+${wipTickets.length - 5} items over limit. Context-switching overhead is elevated across active developers.` : 'WIP limit respected.'})`
-          : `### 📋 Active WIP Items in Progress (0 Items, Limit: 5)\n\n| Jira Key | Issue Summary | Assignee | Status | In-Progress Duration |\n| :--- | :--- | :--- | :---: | :---: |\n| *No active WIP bottleneck items detected* | - | - | - | - |`;
+          ? `### 📋 Active Jira & WIP Work Items (${wipTickets.length} Items, Limit: 5)\n\n| Jira Key | Issue Summary | Assignee | Status | In-Progress Duration |\n| :--- | :--- | :--- | :---: | :---: |\n${wipRows.join('\n')}\n\n> 💡 **WIP Analysis**: Carrying **${wipTickets.length} active/in-progress items** against the team limit of **5** (${wipTickets.length > 5 ? `+${wipTickets.length - 5} items over limit. Context-switching overhead is elevated across active developers.` : 'WIP limit respected.'})`
+          : `### 📋 Active Jira & WIP Work Items (0 Items, Limit: 5)\n\n| Jira Key | Issue Summary | Assignee | Status | In-Progress Duration |\n| :--- | :--- | :--- | :---: | :---: |\n| *No active WIP bottleneck items detected* | - | - | - | - |`;
 
         return {
           mode: 'LIST_RAW',
@@ -320,7 +296,7 @@ ${blockerRows.length > 0 ? blockerRows.join('\n') : '| *No active blocked ticket
       if (filter === 'MISSED_DEADLINE') {
         rawList = jira.missed_deadline_tickets || [];
       } else {
-        rawList = [...(jira.blocked_tickets || []), ...(jira.missed_deadline_tickets || []), ...githubIssues];
+        rawList = [...(jira.jira_issues || jira.blocked_tickets || []), ...(jira.missed_deadline_tickets || []), ...githubIssues];
       }
 
       const rows = rawList.map((item) => {
@@ -347,7 +323,8 @@ ${rows.length > 0 ? rows.join('\n') : '| *No items found* | - | - | - |'}`;
     }
 
     const hasFiniteMetric = (value) => typeof value === 'number' && Number.isFinite(value);
-    const hasDeliveryData = githubIssues.length > 0 || hasFiniteMetric(jira.wip_count);
+    const allJiraIssues = jira.jira_issues || jira.blocked_tickets || [];
+    const hasDeliveryData = githubIssues.length > 0 || allJiraIssues.length > 0 || hasFiniteMetric(jira.wip_count);
 
     if (!hasDeliveryData) {
       return {
@@ -364,7 +341,7 @@ ${rows.length > 0 ? rows.join('\n') : '| *No items found* | - | - | - |'}`;
     }
 
     const wipLimit = hasFiniteMetric(jira.wip_limit) ? jira.wip_limit : 5;
-    const wipCount = hasFiniteMetric(jira.wip_count) ? jira.wip_count : 0;
+    const wipCount = hasFiniteMetric(jira.wip_count) ? jira.wip_count : allJiraIssues.length;
     const wipViolations = Math.max(0, wipCount - wipLimit);
     const avgPrWaitHours = hasFiniteMetric(gh.avg_pr_review_wait_hours) ? Number(gh.avg_pr_review_wait_hours.toFixed(1)) : 14.0;
     const stalledPrsCount = gh.stalled_prs_count || (avgPrWaitHours > 24.0 ? 1 : 0);
@@ -414,6 +391,26 @@ ${rows.length > 0 ? rows.join('\n') : '| *No items found* | - | - | - |'}`;
       prStallsFormatted = `- **PR Review Stalls (>24h)**: 🔴 ${stalledPrsCount} pull request(s) awaiting review across active repositories.`;
     } else {
       prStallsFormatted = `- **PR Review Stalls (>24h)**: 🟢 0 stalled PRs (All open PRs are within healthy review SLAs).`;
+    }
+
+    let jiraIssuesFormatted = '';
+    if (allJiraIssues.length > 0) {
+      jiraIssuesFormatted = `- **Active Jira Tickets & Backlog** (${allJiraIssues.length} issue(s)):\n` +
+        allJiraIssues.slice(0, 10).map((t) => {
+          const ticketUrl = getDirectOrFormattedJiraUrl(t) || t.html_url || t.url;
+          const ticketRef = formatMarkdownLinkOrCode(`**${t.key}**`, ticketUrl);
+          const metaParts = [];
+          if (t.status) metaParts.push(`Status: \`${t.status}\``);
+          if (t.assignee) metaParts.push(`Assignee: \`@${t.assignee}\``);
+          if (t.priority) metaParts.push(`Priority: \`${t.priority}\``);
+          const metaStr = metaParts.length > 0 ? ` (${metaParts.join(' | ')})` : '';
+          return `  - ${ticketRef}: **${t.summary}**${metaStr}`;
+        }).join('\n');
+      if (allJiraIssues.length > 10) {
+        jiraIssuesFormatted += `\n  - *(and ${allJiraIssues.length - 10} more Jira ticket(s))*`;
+      }
+    } else {
+      jiraIssuesFormatted = `- **Active Jira Tickets & Backlog**: 🟢 0 active Jira issues found.`;
     }
 
     let blockersFormatted = '';
@@ -473,16 +470,17 @@ ${provenanceNotice}
 | Metric | Current Value | Healthy Benchmark | Risk Level |
 | :--- | :--- | :--- | :--- |
 | **Delivery Risk Index** | **${riskIndex}** | LOW | ${riskIndex === 'HIGH' ? '🔴 High Risk' : riskIndex === 'MEDIUM' ? '🟡 Moderate' : '🟢 Healthy'} |
-| **Active WIP Count** | **${wipCount} items (Limit: ${wipLimit})** | $\\le ${wipLimit}$ items | ${wipViolations > 0 ? `🔴 +${wipViolations} Over Limit` : '🟢 Within Limit'} |
+| **Active Jira Issues** | **${allJiraIssues.length} tickets** | - | ${allJiraIssues.length > 0 ? '📋 Active' : '🟢 Clear'} |
 | **PR Review Latency (Avg)** | **${formatWaitTime(avgPrWaitHours)}** | $\\le 4.0$ hours | ${avgPrWaitHours > 24.0 ? '🔴 Stalled' : avgPrWaitHours > 12.0 ? '🟡 Slow' : '🟢 Fast'} |
 | **Cycle Time (P80)** | **${formatWaitTime(cycleTimeP80Hours)}** | $\\le 48.0$ hours | ${cycleTimeP80Hours <= 48.0 ? '🟢 Rapid' : '🟡 Review Delays'} |
 | **Blocked Dependency Count**| **${blockedTickets.length} tickets** | 0 tickets | ${blockedTickets.length > 0 ? '🔴 Blocked' : '🟢 None'} |
 
 > 💡 **Executive Bottom Line**: ${riskIndex === 'HIGH' ? `Delivery flow is **HIGH RISK** due to carrying **${wipViolations} excess WIP items** and **${blockedTickets.length} blocked tickets**.` : riskIndex === 'MEDIUM' ? `Delivery flow is **MODERATE RISK**; review queue latency is elevated.` : `Delivery flow is **HEALTHY**; all items within working agreements.`}
 
-<details>
-<summary><b>🔍 Active Stalls & Blocked Work (${displayedStalledPrs.length} PRs, ${blockedTickets.length} Blockers)</b></summary>
+<details open>
+<summary><b>🔍 Active Work, Stalls & Jira Tickets (${allJiraIssues.length} Jira Tickets, ${displayedStalledPrs.length} PRs)</b></summary>
 
+${jiraIssuesFormatted}
 ${prStallsFormatted}
 ${blockersFormatted}
 ${missedDeadlinesFormatted}
@@ -535,21 +533,11 @@ ${missedDeadlinesFormatted}
 });
 
 export function createDeliveryAgent(customTools = null, options = {}) {
-  let llm = options.llm;
-  if (!llm) {
-    try {
-      llm = getChatModel();
-    } catch (e) {
-      llm = { invoke: async () => ({ content: 'Mock LLM Response' }), bindTools: () => llm };
-    }
-  }
-  const tools = customTools && customTools.length > 0 ? customTools : [deliveryBottlenecksTool];
-
-  const agent = createAgent({
-    model: llm,
-    tools,
+  return createMicroAgent({
     name: options.name || 'delivery_agent',
-    prompt: deliveryAgentPromptTemplate,
+    defaultTool: deliveryBottlenecksTool,
+    promptTemplate: deliveryAgentPromptTemplate,
+    customTools,
+    options,
   });
-  return agent.graph;
 }

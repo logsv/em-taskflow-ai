@@ -136,6 +136,11 @@ class DatabaseService {
     `);
 
     await this.pool.query(`
+      ALTER TABLE chat_threads
+      ADD COLUMN IF NOT EXISTS context_matrix JSONB DEFAULT '{}'::jsonb;
+    `);
+
+    await this.pool.query(`
       ALTER TABLE chat_messages
       ADD COLUMN IF NOT EXISTS trace_id TEXT;
     `);
@@ -833,6 +838,59 @@ class DatabaseService {
       await this.setActiveThread(sessionId, threadId);
     }
     return { id: threadId, session_id: sessionId, title };
+  }
+
+  async getThreadContextMatrix(threadId) {
+    await this.ensureInitialized();
+    if (!threadId) return null;
+    if (!this.pool) {
+      const existing = inMemoryThreads.get(threadId);
+      return existing?.context_matrix || null;
+    }
+    try {
+      const res = await this.pool.query(
+        'SELECT context_matrix FROM chat_threads WHERE id = $1 LIMIT 1',
+        [threadId],
+      );
+      if (res.rowCount > 0 && res.rows[0].context_matrix) {
+        return typeof res.rows[0].context_matrix === 'string'
+          ? JSON.parse(res.rows[0].context_matrix)
+          : res.rows[0].context_matrix;
+      }
+      return null;
+    } catch (err) {
+      warn('Failed to getThreadContextMatrix from PostgreSQL', { threadId, err: err?.message });
+      const existing = inMemoryThreads.get(threadId);
+      return existing?.context_matrix || null;
+    }
+  }
+
+  async updateThreadContextMatrix(threadId, contextMatrix = {}) {
+    await this.ensureInitialized();
+    if (!threadId) return null;
+    const matrixPayload = typeof contextMatrix === 'object' && contextMatrix !== null ? contextMatrix : {};
+    const inMem = inMemoryThreads.get(threadId);
+    if (inMem) {
+      inMem.context_matrix = matrixPayload;
+      inMem.updated_at = new Date().toISOString();
+    }
+    if (!this.pool) {
+      return matrixPayload;
+    }
+    try {
+      await this.pool.query(
+        `
+          UPDATE chat_threads
+          SET context_matrix = $2::jsonb, updated_at = NOW()
+          WHERE id = $1
+        `,
+        [threadId, JSON.stringify(matrixPayload)],
+      );
+      return matrixPayload;
+    } catch (err) {
+      warn('Failed to updateThreadContextMatrix in PostgreSQL', { threadId, err: err?.message });
+      return matrixPayload;
+    }
   }
 
   async getOrCreateActiveThread(sessionId, title = 'New Chat') {

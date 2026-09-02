@@ -1,11 +1,11 @@
-import { createAgent } from 'langchain';
 import { z } from 'zod';
-import { getChatModel } from '../llm/index.js';
 import { roadmapAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import identityService from '../services/identityService.js';
 import { getDirectOrFormattedJiraUrl, formatMarkdownLinkOrCode } from '../utils/urlHelper.js';
+import { info, warn, error } from '../utils/logger.js';
+import { createMicroAgent, safeExecuteMCPTool } from './baseAgent.js';
 
 export const roadmapAlignmentTool = createDeterministicToolHarness({
   name: 'get_roadmap_alignment',
@@ -24,14 +24,10 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
   mcpExecutors: {
     jira: async (inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
-        const res = await Promise.race([
-          executeMCPTool('jira_search', { jql: `issuetype = Epic AND fixVersion in unreleasedVersions()` }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Jira search timed out')), 2500)),
-        ]).catch(() => null);
+        const res = await safeExecuteMCPTool('jira_search', { jql: 'issuetype = Epic AND fixVersion in unreleasedVersions()' });
+        const issues = Array.isArray(res) ? res : (Array.isArray(res?.issues) ? res.issues : []);
 
-        if (res && (Array.isArray(res) || res.issues)) {
-          const issues = Array.isArray(res) ? res : res.issues || [];
+        if (issues.length > 0) {
           return {
             epics_count: issues.length,
             epics: issues.slice(0, 5).map((iss) => ({
@@ -44,22 +40,17 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
             synced_at: new Date().toISOString(),
           };
         }
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'roadmapHarness', action: 'jiraExecutor', err: err.message }, 'Jira executor notice');
+      }
       return null;
     },
     notion: async (_inputArgs) => {
       try {
-        const { executeMCPTool } = await import('../mcp/index.js');
-        const res = await Promise.race([
-          executeMCPTool('notion_search', { query: 'Quarterly Product Roadmap Strategy Brief' }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MCP Notion search timed out')), 2500)),
-        ]).catch(() => null);
+        const res = await safeExecuteMCPTool('notion_search', { query: 'Quarterly Product Roadmap Strategy Brief' });
 
         if (res) {
-          let pages = [];
-          if (Array.isArray(res)) pages = res;
-          else if (res.results && Array.isArray(res.results)) pages = res.results;
-
+          const pages = Array.isArray(res) ? res : (Array.isArray(res.results) ? res.results : []);
           if (pages.length > 0) {
             return {
               strategy_doc_found: true,
@@ -70,7 +61,9 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
             };
           }
         }
-      } catch (_e) {}
+      } catch (err) {
+        warn({ module: 'roadmapHarness', action: 'notionExecutor', err: err.message }, 'Notion executor notice');
+      }
       return null;
     },
     linear: async (_inputArgs) => {
@@ -367,21 +360,11 @@ ${blockersList.length > 0 ? blockersList.map((b) => `- ⚠️ **[${b.epic}] ${b.
 });
 
 export function createRoadmapAgent(customTools = null, options = {}) {
-  let llm = options.llm;
-  if (!llm) {
-    try {
-      llm = getChatModel({ temperature: 0.15 });
-    } catch (e) {
-      llm = { invoke: async () => ({ content: 'Mock LLM Response' }), bindTools: () => llm };
-    }
-  }
-  const tools = customTools && customTools.length > 0 ? customTools : [roadmapAlignmentTool];
-
-  const agent = createAgent({
-    model: llm,
-    tools,
+  return createMicroAgent({
     name: 'roadmap_agent',
-    prompt: roadmapAgentPromptTemplate,
+    defaultTool: roadmapAlignmentTool,
+    promptTemplate: roadmapAgentPromptTemplate,
+    customTools,
+    options,
   });
-  return agent.graph;
 }
