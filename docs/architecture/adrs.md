@@ -39,17 +39,40 @@ This document records the foundational architectural decisions, rationale, and t
 ## 📜 ADR-005: Redis Semantic Vector Cache
 - **Status**: Accepted
 - **Context**: Repeated similar queries create redundant SLM inference latency and GPU overhead.
-- **Decision**: Intercept incoming queries using Redis vector similarity with a 0.95 cosine threshold and 1-hour TTL.
+- **Decision**: Intercept incoming queries using Redis vector similarity with a 0.95 cosine threshold and domain-adaptive TTLs.
 - **Consequences**: Sub-50ms response times for recurring team queries with zero LLM generation cost.
+
+---
+
+## 📜 ADR-006: 100% Python AI Service Delegation & Single-Pass RAG
+- **Status**: Accepted
+- **Context**: Running embeddings and chunking in Node.js leads to heavy event loop blocking and inconsistent tokenizers. Double-LLM JSON re-formatting adds latency.
+- **Decision**: Delegate 100% of RAG chunking, embeddings, and vector operations to a dedicated Python AI Service over gRPC (`ai_service_grpc.py`) with REST fallback. Generate formatted markdown sections directly in a single pass (`Executive Summary`, `Key Insights`, `Citations`), bypassing secondary JSON formatting.
+- **Consequences**: Sub-2s RAG turnaround with superior semantic retrieval.
+
+---
+
+## 📜 ADR-007: 5-Tier Production Caching & Dual-Gate Entity Verification
+- **Status**: Accepted
+- **Context**: Vector similarity cache hits can hallucinate if similar queries mention different entity keys (e.g. `PR #89` vs `PR #92` or `Sprint 41` vs `Sprint 42`).
+- **Decision**: Implement a 5-tier caching suite with Dual-Gate Verification (Gate 1 cosine $\ge 0.95$, Gate 2 Strict Anti-Hallucination Entity Alignment check), MCP tool hash cache, and Temporal event-driven cache invalidations.
+- **Consequences**: Completely eliminates false entity cache hits while serving repeat queries in $<2\text{ms}$.
+
+---
+
+## 📜 ADR-008: Autonomous Multi-Agent EM Audit & Health Governance
+- **Status**: Accepted
+- **Context**: Continuous engineering health oversight requires scheduled, durable polling of multi-source tools without manual manager intervention.
+- **Decision**: Implement a Temporal 4-hour background cron (`0 */4 * * *`) that orchestrates 4 parallel domain harvests, calculates an Engineering Health Score ($20 \le \text{Score} \le 100$), deduplicates action items into PostgreSQL, and provides multi-channel Slack dispatch and an interactive Action Hub (`/actions`).
+- **Consequences**: Autonomous, proactive engineering management decision support.
 
 ---
 
 ## 📜 ADR-009: API Versioning Strategy & URI Namespace Policy
 - **Status**: Accepted
-- **Context**: As EM TaskFlow AI expands to multi-domain agents, autonomous audits, and external MCP tool harnesses, contract evolution requires strict version boundaries to prevent breaking existing sessions, webhooks, and client UI.
+- **Context**: Contract evolution requires strict version boundaries to prevent breaking existing sessions, webhooks, and client UI.
 - **Decision**: 
   1. Adopt canonical URI path versioning: `/api/v1/*` for all REST endpoints and OpenAPI 3.1 specifications (`/api/v1/docs/openapi.json`).
-  2. Maintain legacy unversioned `/api/*` as an aliased backward-compatibility proxy that emits standard HTTP `Deprecation: true`, `Sunset: Sat, 01 Nov 2026 00:00:00 GMT`, and `Link: </api/v1/...>; rel="successor-version"` headers alongside `X-API-Version: v1`.
-  3. Centralize frontend API communication via `apiClient.js` with configurable base path prefixing.
-- **Consequences**: Ensures non-breaking zero-downtime migrations, clear deprecation schedules, and first-class Swagger UI exploration.
-
+  2. Maintain legacy unversioned `/api/*` as an aliased backward-compatibility proxy emitting HTTP `Deprecation: true`, `Sunset`, and `Link: </api/v1/...>; rel="successor-version"` headers alongside `X-API-Version: v1`.
+  3. Centralize frontend API communication via `apiClient.js`.
+- **Consequences**: Non-breaking zero-downtime migrations and clean Swagger UI exploration.

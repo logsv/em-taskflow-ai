@@ -1,69 +1,43 @@
-# Database Per-Service Isolation
+# Database Per-Service Isolation (ADR-008)
 
-EM TaskFlow AI enforces strict microservice database separation to guarantee data privacy, avoid cross-domain noise, and optimize database indexing strategies.
+EM TaskFlow AI enforces strict **Database Per-Service Isolation** across 4 PostgreSQL database instances and isolated telemetry containers to prevent cross-domain pollution and ensure zero-downtime operations.
 
 ---
 
 ## 🗄️ Database Topology
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│               Primary Database Container                    │
-│             (em-taskflow-postgres : Port 5432)              │
-│                                                             │
-│  ┌─────────────────────────┐   ┌─────────────────────────┐  │
-│  │    taskflow_backend     │   │       taskflow_ai       │  │
-│  │ (Sessions, Threads,     │   │ (Vector Chunks, Embeds, │  │
-│  │  Messages, MCP Caches)  │   │  HNSW & GIN FTS Index)  │  │
-│  └─────────────────────────┘   └─────────────────────────┘  │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │             temporal & temporal_visibility            │  │
-│  │          (Durable Workflow State & Task Queues)       │  │
-│  └───────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph AppHost ["Node.js Express Application (Port 4000)"]
+        BackendApp["TaskFlow Backend API"]
+    end
 
-┌─────────────────────────────────────────────────────────────┐
-│               Analytics Database Container                  │
-│           (em-taskflow-analytics-db : Port 5433)            │
-│                                                             │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │                      langfuse_db                      │  │
-│  │      (Telemetry Traces, Spans, Token Costs, Latency)  │  │
-│  └───────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+    subgraph PythonHost ["Python AI Service (Port 8000 / gRPC 50051)"]
+        PythonApp["Python RAG & Evaluation Engine"]
+    end
+
+    subgraph TemporalHost ["Temporal Server (Port 7233 / UI 8233)"]
+        TemporalApp["Temporal Workflow Engine"]
+    end
+
+    subgraph LangfuseHost ["Langfuse Container (Port 3001)"]
+        LangfuseApp["Langfuse Observability Server"]
+    end
+
+    BackendApp -->|App State & Fallbacks| DB1[("🐘 taskflow_backend<br/>Port 5432")]
+    PythonApp -->|Vector Chunks & HNSW| DB2[("🤖 taskflow_ai<br/>Port 5432")]
+    TemporalApp -->|Workflows & Queues| DB3[("⏳ temporal & temporal_visibility<br/>Port 5432")]
+    LangfuseApp -->|Traces & Evals| DB4[("📊 langfuse_db<br/>Port 5433 (analytics-db)")]
 ```
 
 ---
 
-## 📊 Detailed Database Specifications
+## 🔒 Key & Credential Preservation Rules (STRICT)
 
-### 1. `taskflow_backend` (Port 5432)
-- **Service Owner**: Node.js Express Backend
-- **Key Tables**:
-  - `sessions`: Client sessions, IP, User-Agent, last active timestamps.
-  - `chat_threads`: Conversational threads belonging to sessions.
-  - `chat_messages`: Sequence-indexed user prompts and assistant completions.
-  - `github_issues`: Cached GitHub issues and pull requests for offline fallback.
-  - `dora_snapshots`: Historic DORA metrics snapshots.
-  - `sprint_analytics`: Sprint capacity, velocity, and backlog items.
-  - `okr_records` & `okr_tracker`: Quarterly OKRs and Key Results progress.
-  - `sbi_feedback_records`: Situation-Behavior-Impact feedback dossiers.
-  - `team_members`: Synchronized engineer profiles across GitHub, Jira, and Google Calendar.
-  - `app_settings`: Dynamic MCP configuration overrides.
-
-### 2. `taskflow_ai` (Port 5432)
-- **Service Owner**: Python AI RAG Microservice
-- **Key Tables**:
-  - `pdf_chunks`: Extracted text, `parent_content` context windows, metadata JSONB, and 768-dimensional embeddings.
-- **Indexes**:
-  - `idx_pdf_chunks_embedding`: HNSW vector index using `vector_cosine_ops`.
-  - `idx_pdf_chunks_fts`: GIN full-text search index using `pg_trgm`.
-
-### 3. `temporal` & `temporal_visibility` (Port 5432)
-- **Service Owner**: Temporal Workflow Engine
-- **Purpose**: Durable workflow state, activity queues, retry schedules, and execution histories for background RAG document ingestion.
-
-### 4. `langfuse_db` (Port 5433 / `analytics-db`)
-- **Service Owner**: Self-Hosted Langfuse Telemetry
-- **Purpose**: Multi-agent trace trees, latency measurements, token count breakdowns, and user feedback ratings.
-- **Rule**: Backend and Python agents never write analytical trace data directly into application databases.
+1. **`app_settings` Immunity**:
+   - `app_settings` in `taskflow_backend` houses live user API keys (`JIRA_API_TOKEN`, `GITHUB_TOKEN`, `NOTION_API_KEY`, `GOOGLE_CALENDAR_API_KEY`, `SLACK_BOT_TOKEN`) and Ollama model configs.
+   - It is strictly forbidden to drop, truncate, or wipe `app_settings` during database cleanup, migration, or runtime resets.
+2. **Real User Profile Immunity**:
+   - Real user profiles (`logsv`, admin emails, lead engineering managers) in `team_members` are never deleted during test fixture cleanups or mock resets.
+3. **Secret Masking**:
+   - When updating settings via UI or API, existing masked secret fields (`******`) in PostgreSQL are always retained and never replaced with empty strings.

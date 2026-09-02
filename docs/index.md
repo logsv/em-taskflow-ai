@@ -4,7 +4,7 @@ layout: home
 hero:
   name: "EM TaskFlow AI"
   text: "Enterprise Productivity with 100% Local Inference"
-  tagline: "Hybrid RAG • LangGraph Multi-Agent Supervisor • Multi-Source MCP • Database-per-Service Isolation"
+  tagline: "Hybrid RAG • LangGraph Multi-Agent Supervisor • Autonomous Temporal Jobs • 5-Tier Caching • Database-per-Service Isolation"
   actions:
     - theme: brand
       text: Get Started
@@ -13,41 +13,44 @@ hero:
       text: Architecture Blueprint
       link: /architecture/high-level-design
     - theme: alt
-      text: Agent Skills & Playbooks
-      link: /operations/agent-skills
+      text: Autonomous Jobs
+      link: /autonomous-jobs/autonomous-audit-engine
     - theme: alt
-      text: Swagger API Explorer ↗
+      text: UI & Action Hub
+      link: /frontend/overview
+    - theme: alt
+      text: Swagger Explorer ↗
       link: http://localhost:4000/api/v1/docs
 
 features:
   - icon: 🔒
     title: 100% Data Sovereignty
-    details: Zero cloud keys required. Complete local inference using Ollama (hermes3:8b) ensures enterprise source code and metrics never leave private network boundaries.
+    details: Zero cloud keys required. Complete local inference using Ollama (hermes3:8b) ensures enterprise source code, 1-on-1s, and metrics never leave private network boundaries.
   - icon: 👑
     title: LangGraph Multi-Agent Supervisor
     details: 10 bounded domain micro-agents orchestrating DORA, Delivery, SBI, People, Sprint, Retro, Roadmap, OKR, SOP, and Critic workflows with 1-tool SLM bounding (>95% accuracy).
+  - icon: ⚡
+    title: Autonomous EM Jobs & Workflows
+    details: Temporal 4-hour background audit cron, durable Human-in-the-Loop Slack approval queues, cross-platform team auto-discovery, and event-driven cache invalidation.
+  - icon: 💻
+    title: Copilot Cockpit & Action Hub
+    details: Low-distraction ⌘K Quick Actions Palette, morning Needs Attention strip, Kanban vs Dense Table triage, Floating Bulk Action Bar, and Standalone Admin Portal (/admin).
   - icon: 🔍
     title: Production Hybrid RAG Engine
-    details: Dense HNSW vector cosine search + Sparse BM25 full-text search combined via Reciprocal Rank Fusion (RRF SQL CTE) with HyDE query transformation and Cross-Encoder reranking.
+    details: 100% Python AI Service delegation via gRPC, HyDE query expansion, HNSW dense + BM25 sparse RRF search, and single-pass markdown generation with formatter bypass.
+  - icon: ⚡
+    title: 5-Tier Production Caching Suite
+    details: Sub-2ms Tier 0 L1 exact LRU cache, Tier 1 L2 Redis vector semantic cache with Dual-Gate anti-hallucination verification, Tier 2 MCP tool hash cache, and adaptive TTLs.
   - icon: 🔌
     title: Multi-Source MCP Integrations
     details: Native Jira OAuth 2.0 PKCE, Notion REST API, GitHub PAT/OAuth with repo scoping, Slack Web API, and Google Calendar tool harnesses with circuit breakers.
   - icon: 🗄️
     title: Database-per-Service Isolation
-    details: Strict PostgreSQL database boundaries between taskflow_backend, taskflow_ai (vector chunks), temporal, and isolated analytics-db (langfuse_db:5433).
-  - icon: ⚡
-    title: Redis Semantic Cache & Fast-Path
-    details: Vector similarity caching (0.95 cosine threshold) for <50ms cache hits and Fast-Path regex classifier for <300ms direct math, code, and attachment execution.
+    details: Strict PostgreSQL database boundaries between taskflow_backend, taskflow_ai (vector chunks), temporal, and isolated analytics-db (langfuse_db:5433) with key preservation.
   - icon: 🧪
     title: 3-Phase Enterprise Evaluation
-    details: Golden dataset validation, Python LLM-as-a-Judge CoT, DeepEval trajectories, Ragas faithfulness, and TruLens RAG triad benchmarks.
-  - icon: 📋
-    title: Autonomous EM Audit & Action Hub
-    details: 4-hour background cron in Temporal, multi-channel Slack dispatch, Kanban/Table action triage, 1-on-1 cadence tracking, and live ADR-008 governance.
-  - icon: 🧰
-    title: 14 Specialized Agent Skills
-    details: Standardized operational playbooks for autonomous agents and human developers covering multi-agent routing, MCP harnesses, and database ops.
+    details: Golden dataset validation, Python LLM Judge Arena, EM Tau-Bench multi-turn simulation, DeepEval trajectories, Ragas faithfulness, and Promptfoo Cloud benchmarks.
   - icon: 🛡️
-    title: 300+ Verified Unit Specs
-    details: 300 backend unit test specs and 45 Python AI test specs passing with 0 failures under automated pre-push and CI/CD gates.
+    title: 394 Backend & 57 Python Specs
+    details: Full test coverage across 394 Node.js Jasmine specs and 57 Python Pytest specs passing with 0 failures under pre-push verification gates.
 ---

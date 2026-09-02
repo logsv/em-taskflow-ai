@@ -1,6 +1,6 @@
 # Production Hybrid RAG Engine
 
-EM TaskFlow AI features a production-grade Hybrid RAG pipeline combining **Hypothetical Document Embeddings (HyDE)**, **Reciprocal Rank Fusion (RRF)**, **Dense HNSW Vector Search**, **Sparse BM25 Keyword Search**, and **Cross-Encoder Reranking**.
+EM TaskFlow AI features an enterprise-grade Hybrid RAG pipeline combining **100% Python AI Service Delegation**, **Hypothetical Document Embeddings (HyDE)**, **Reciprocal Rank Fusion (RRF)**, **Dense HNSW Vector Search**, **Sparse BM25 Keyword Search**, and **Cross-Encoder Reranking**.
 
 ---
 
@@ -22,11 +22,19 @@ EM TaskFlow AI features a production-grade Hybrid RAG pipeline combining **Hypot
       │
       ├── 5. Maximal Marginal Relevance (MMR) Deduplication (Removes redundant chunks)
       │
-      └── 6. Single-Pass Structured Answer Generation
+      └── 6. Single-Pass Structured Answer Generation (Formatter Bypass)
             ├── ### 📄 Executive Summary
             ├── ### 🔍 Key Document Analysis & Rubric Guidelines
             └── ### 📌 Source Citations
 ```
+
+---
+
+## 🐍 100% Python AI Service Delegation & gRPC Transport
+
+All vector embeddings, document parsing, and RRF searches execute exclusively inside the Python AI Service (`services/python-ai-service/`):
+- **Transport**: High-performance gRPC via `ai_service_grpc.py` (Node.js client in `backend/src/grpc/client.js`) with automatic REST HTTP fallback (`rest_router.py`).
+- **Formatter Bypass**: RAG queries (`decision.ragHit = true`) bypass secondary EM JSON re-formatting in Node.js, eliminating double-LLM latency and text degradation.
 
 ---
 
@@ -58,8 +66,7 @@ LIMIT %s;
 
 ---
 
-## 🔪 Parent-Child Token Chunking
-When documents are ingested:
-- Documents are split into 512-token child chunks with overlapping boundaries.
-- For each child chunk, the full parent section window (`parent_content`) is stored alongside the child text.
-- During synthesis, the parent context is injected into LLM prompts, preventing fragmented document understanding.
+## 🔪 Parent-Child Token Chunking & Multi-Format Ingestion
+
+- **Multi-Format Ingestion**: Supports PDF, Plain Text, CSV/Sheets, and Images (OCR / `qwen3-vl`) processed durably via Temporal workflows (`rag-ingest-queue`).
+- **Parent Context Windows**: Child chunks are 512 tokens with overlapping boundaries. During synthesis, the surrounding parent context (`parent_content`) is injected to provide complete document comprehension.
