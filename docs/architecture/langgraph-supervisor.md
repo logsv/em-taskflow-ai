@@ -1,6 +1,57 @@
-# LangGraph Multi-Agent Supervisor
+# LangGraph Multi-Agent Supervisor & Multi-Agent Architecture
 
-EM TaskFlow AI uses `@langchain/langgraph-supervisor` to orchestrate 10 specialized domain micro-agents. 
+EM TaskFlow AI utilizes `@langchain/langgraph-supervisor` to orchestrate 10 specialized domain micro-agents, implementing strict policy guardrails and multi-agent enhancements optimized for local Small Language Models (SLMs).
+
+---
+
+## 🏗️ Multi-Agent Architecture Diagram
+
+```mermaid
+flowchart TD
+    UserQuery["👤 User Query"] --> PreRewrite["1. Pre-Router Rewriter & Confirmation Interceptor<br/>(preRouterRewriter.js)"]
+    
+    PreRewrite --> FastPath{"2. Fast-Path Pre-Classifier<br/>(<300ms SLA)"}
+    
+    FastPath -->|"Greetings / Code Gen / Math"| DirectSLM["🤖 Direct Local SLM (hermes3:8b)"]
+    FastPath -->|"Domain Query"| LLMRouter["3. LLM Router & Resilient Fallback Parser<br/>(parseStructuredDecision)"]
+
+    LLMRouter --> Dispatch{"4. 5-Tier Dispatch Engine (agentService.js)"}
+
+    Dispatch -->|"Tier 1: Direct LLM"| DirectSLM
+    Dispatch -->|"Tier 2/3: Pure Doc Search"| HybridRAG["🐍 Python AI Hybrid RAG Engine (1.5s–1.8s)"]
+    Dispatch -->|"Tier 4: Single Domain"| SingleDomain["🎯 Bounded Micro-Agent Harness (1.5s–2.5s)"]
+    Dispatch -->|"Tier 5: Composite Multi-Domain"| ParallelFanOut["⚡ Parallel Multi-Agent Fan-Out/Fan-In<br/>(Promise.all 3.0s–4.5s)"]
+
+    subgraph DomainAgentsCluster ["🤖 10 Bounded Domain Micro-Agents (1-Tool Constraint)"]
+        direction TB
+        subgraph Ops ["🚀 Delivery & Ops"]
+            direction LR
+            DORA["doraAgent<br/>(calculate_dora_metrics)"]
+            Delivery["deliveryAgent<br/>(analyze_delivery_bottlenecks)"]
+            Sprint["sprintAgent<br/>(calculate_sprint_plan)"]
+            Roadmap["roadmapAgent<br/>(get_roadmap_alignment)"]
+        end
+        subgraph PeopleGroup ["👥 People & Governance"]
+            direction LR
+            SBI["sbiAgent<br/>(format_sbi_feedback)"]
+            People["peopleAgent<br/>(analyze_personnel_growth)"]
+            OKR["okrAgent<br/>(evaluate_okr_progress)"]
+            SOP["sopAgent<br/>(query_sop_compliance)"]
+        end
+        subgraph AuditGroup ["🕵️ Retros & Audits"]
+            direction LR
+            Retro["retroAgent<br/>(generate_sprint_retro)"]
+            Critic["criticAgent<br/>(audit_em_report)"]
+        end
+    end
+
+    SingleDomain --> DomainAgentsCluster
+    ParallelFanOut --> DomainAgentsCluster
+
+    DomainAgentsCluster --> Formatter["✨ Single-Pass Formatter & Non-Blocking Tracing"]
+    HybridRAG --> Formatter
+    DirectSLM --> Formatter
+```
 
 ---
 
@@ -31,21 +82,24 @@ Each micro-agent in EM TaskFlow AI is architected as a specialized ReAct agent b
 
 ---
 
-## 🛡️ Guardrails & Loop Prevention
-The supervisor maintains state transition history. If an agent executes or transitions more than twice in a single turn without producing new information, the supervisor intercepts the cycle and forces final response synthesis.
+## ⚡ Multi-Agent Enhancements
 
----
+### 1. Pre-Router Rewriter & Confirmation Interceptor (`preRouterRewriter.js`)
+Intercepts multi-turn conversational confirmations (*"yes"*, *"proceed"*, *"sure"*, *"confirm"*), traversing message history to rehydrate the original user query and routing plan without losing context.
 
-## ⚡ 5-Tier Dispatch & Parallel Multi-Agent Execution
+### 2. Fast-Path Pre-Classifier (`<300ms`)
+Zero-latency classifier intercepting pure math, coding, greetings, and attachment questions, answering in $<300\text{ms}$ with zero tool overhead.
 
-To optimize latency and precision across local SLM inference:
+### 3. Resilient JSON Fallback Parser (`parseStructuredDecision`)
+Extracts clean JSON decisions even when local SLMs output markdown backticks or commentary text.
 
-1. **Tier 1: Fast-Path Classifier (<300ms)**
-   - Pre-router classifier identifies pure coding, math, greeting, or attachment questions, answering directly with zero tool overhead.
-2. **Tier 2 / 3: Dedicated RAG Engine (1.5s–1.8s)**
-   - Single-pass HyDE + Reciprocal Rank Fusion against `taskflow_ai` vector database, with structured onboarding guidance on zero hits.
-3. **Tier 4: Direct Single-Domain Dispatch (1.5s–2.5s)**
-   - When the query matches 1 specialized domain (`sbi`, `people`, `dora`, etc.), dispatches directly to the domain micro-agent tool harness with recent chat history context.
-4. **Tier 5: Parallel Multi-Domain Fan-Out / Fan-In (3.0s–4.5s)**
-   - For composite queries requiring multiple domains (`["dora", "delivery", "sbi"]`), executes all domain tool harnesses concurrently in parallel (`Promise.all()`), aggregating all results into a unified executive scorecard.
+### 4. 5-Tier Dispatch Pipeline & Parallel Fan-Out/Fan-In
+- **Tier 1 (Fast-Path)**: $<300\text{ms}$ direct SLM output.
+- **Tier 2/3 (Dedicated RAG)**: 1.5s–1.8s single-pass document retrieval.
+- **Tier 4 (Direct Single-Domain)**: 1.5s–2.5s targeted micro-agent execution.
+- **Tier 5 (Parallel Multi-Domain Fan-Out / Fan-In)**: Composite queries execute multiple domain harnesses in parallel (`Promise.all()`), aggregating results into an executive scorecard in 3.0s–4.5s.
 
+### 5. `VALID_DOMAINS` Policy Alignment & Zero Misleading Fallbacks
+- Synchronized domain sets eliminate false `unexpected_domains` policy violations.
+- System never outputs fake hardcoded strings (such as fake `@logsv`), ensuring fallbacks accurately reflect real PostgreSQL snapshots.
+- Direct API URL resolution (`urlHelper.js`) ensures valid deep-links to Jira and GitHub items.
