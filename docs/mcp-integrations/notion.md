@@ -12,7 +12,7 @@ EM TaskFlow AI integrates with Notion to query engineering handbooks, SOP polici
 3. Name it `EM TaskFlow AI` and grant **Read content**, **Update content**, and **Insert content** capabilities.
 4. Copy the **Internal Integration Secret**.
 5. In Notion, open the root workspace pages you want the assistant to access (e.g. Engineering Wiki, OKRs, Career Ladder), click **...** $\rightarrow$ **Connections** $\rightarrow$ **Connect to EM TaskFlow AI**.
-6. Add token to [`backend/.env`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/.env):
+6. Add token to [`backend/.env`](https://github.com/logsv/em-taskflow-ai/blob/main/backend/.env):
    ```bash
    NOTION_API_KEY=secret_your_notion_api_key
    MCP_NOTION_ENABLED=true

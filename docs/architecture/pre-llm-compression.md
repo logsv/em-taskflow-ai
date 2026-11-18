@@ -75,6 +75,6 @@ In long-running multi-turn sessions ($>10\text{ turns}$):
 
 ## 5. Fast-Path Classifier Interceptor (`<300ms`)
 
-Mounted in [`backend/src/agent/llmRouter.js`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/src/agent/llmRouter.js):
+Mounted in [`backend/src/agent/llmRouter.js`](https://github.com/logsv/em-taskflow-ai/blob/main/backend/src/agent/llmRouter.js):
 - High-priority pre-classifier identifying conversational queries, math expressions, and direct code generation.
 - Executes in **$<300\text{ms}$**, completely bypassing tool execution harnesses and RAG search overhead.

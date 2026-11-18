@@ -52,7 +52,7 @@ jobs:
     - name: Install Node dependencies
       run: npm ci --legacy-peer-deps
     
-    - name: Run Node Unit Tests (155 Specs)
+    - name: Run Node Unit Tests
       run: npm test
       continue-on-error: false
 
@@ -139,7 +139,7 @@ jobs:
         echo "✅ Ollama is ready!"
         ollama pull hermes3:8b
 
-    - name: Run Python Pytest Specs (32 Specs)
+    - name: Run Python Pytest Specs
       run: $HOME/.local/bin/uv run pytest
       env:
         OLLAMA_BASE_URL: http://localhost:11434

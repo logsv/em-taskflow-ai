@@ -51,7 +51,7 @@ sequenceDiagram
 
 ## ⚙️ Signal Definitions & Code Example
 
-Located in [`backend/src/temporal/workflows.js`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/src/temporal/workflows.js):
+Located in [`backend/src/temporal/workflows.js`](https://github.com/logsv/em-taskflow-ai/blob/main/backend/src/temporal/workflows.js):
 
 ```javascript
 import { proxyActivities, defineSignal, setHandler, condition } from '@temporalio/workflow';

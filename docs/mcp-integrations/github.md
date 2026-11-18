@@ -14,7 +14,7 @@ The GitHub MCP integration powers DORA metrics, pull request turnaround tracking
 3. Copy the token.
 
 ### 2. Configure Backend Environment
-Add the token to [`backend/.env`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/.env):
+Add the token to [`backend/.env`](https://github.com/logsv/em-taskflow-ai/blob/main/backend/.env):
 ```bash
 GITHUB_TOKEN=ghp_your_github_token
 MCP_GITHUB_ENABLED=true

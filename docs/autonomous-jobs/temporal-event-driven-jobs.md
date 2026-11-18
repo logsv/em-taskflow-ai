@@ -31,7 +31,7 @@ When documents are uploaded, edited, or deleted, or when MCP credentials change:
 
 ## 🌙 Scheduled Deep Multi-Agent Benchmarks (`scheduled_deep_benchmark.py`)
 
-Located in [`services/python-ai-service/evaluation/scheduled_deep_benchmark.py`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/evaluation/scheduled_deep_benchmark.py):
+Located in [`services/python-ai-service/evaluation/scheduled_deep_benchmark.py`](https://github.com/logsv/em-taskflow-ai/blob/main/services/python-ai-service/evaluation/scheduled_deep_benchmark.py):
 - Runs automated evaluation sweeps overnight against the local `hermes3:8b` Ollama instance.
 - Measures:
   - **Multi-Agent Routing Precision & Recall**: Domain selection accuracy across all 10 domain micro-agents.

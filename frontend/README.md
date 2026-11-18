@@ -91,7 +91,7 @@ Generates optimized production assets in the `dist/` folder.
 
 During local development, Vite proxies API calls starting with `/api` to the backend Node.js server running at `http://127.0.0.1:4000`.
 
-Configuration in [`vite.config.js`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/frontend/vite.config.js):
+Configuration in [`vite.config.js`](https://github.com/logsv/em-taskflow-ai/blob/main/frontend/vite.config.js):
 
 ```javascript
 server: {

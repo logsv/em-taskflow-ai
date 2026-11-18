@@ -51,6 +51,6 @@ features:
     title: 3-Phase Enterprise Evaluation
     details: Golden dataset validation, Python LLM Judge Arena, EM Tau-Bench multi-turn simulation, DeepEval trajectories, Ragas faithfulness, and Promptfoo Cloud benchmarks.
   - icon: 🛡️
-    title: 394 Backend & 57 Python Specs
-    details: Full test coverage across 394 Node.js Jasmine specs and 57 Python Pytest specs passing with 0 failures under pre-push verification gates.
+    title: Gated Backend & Python Test Suites
+    details: Node.js Jasmine and Python pytest suites must pass with 0 failures, enforced by the committed pre-push hook (scripts/verify.sh) and CI.
 ---

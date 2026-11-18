@@ -6,7 +6,7 @@ EM TaskFlow AI integrates with **Promptfoo** to evaluate prompt engineering vari
 
 ## 🧪 Test Matrix Coverage (32+ Assertions)
 
-The Promptfoo test matrix in [`backend/evaluation/promptfooconfig.yaml`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/evaluation/promptfooconfig.yaml) verifies:
+The Promptfoo test matrix in [`backend/evaluation/promptfooconfig.yaml`](https://github.com/logsv/em-taskflow-ai/blob/main/backend/evaluation/promptfooconfig.yaml) verifies:
 - **10 Domain Micro-Agents**: Accurate classification for `dora`, `delivery`, `sbi`, `people`, `sprint`, `retro`, `roadmap`, `okr`, `sop`, `critic`.
 - **Fast-Path Zero-Tool Gates**: Direct routing for pure Python code generation, algorithms, math, and conversational greetings without tool overhead.
 - **Intent Disambiguation**:

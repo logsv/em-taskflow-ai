@@ -1,112 +1,39 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code in this repository. The full architecture, hard rules and commands live in **AGENTS.md** (shared by all agents) and are imported here:
 
-## Project Overview
+@AGENTS.md
 
-**EM TaskFlow AI** is a full-stack, local-first enterprise productivity platform powered by **100% Local LLM Inference (Ollama)**, Hybrid RAG (HyDE + RRF + HNSW), Model Context Protocol (MCP) integrations (Jira OAuth 2.0 PKCE, Notion REST API, GitHub PAT/OAuth, Slack Web API, Google Calendar), a LangGraph Multi-Agent Supervisor, and isolated PostgreSQL databases.
+---
 
-## Architecture
+## Claude Code specifics
 
-This is a polyglot microservices system:
+### Skills (`.claude/skills/`)
+Project skills load automatically when relevant. Task skills you can invoke directly:
 
-- **Backend**: Node.js 20+ with ES Modules (`"type": "module"`), Express, `@langchain/langgraph-supervisor`, and pg driver.
-- **Frontend**: React 18 SPA built with Vite, `@assistant-ui/react`, space-dark glassmorphism design system, and Standalone Admin Portal (`/admin`).
-- **Python AI Service**: Python 3.12 microservice (REST on port 8000 & gRPC on port 50051) for parent-child chunking, Cross-Encoder reranking, and `taskflow_ai` vector operations.
-- **Vector & Relational Storage**: PostgreSQL 16 (`pgvector/pgvector:pg16`) with per-service database isolation (`taskflow_backend`, `taskflow_ai`, `temporal`).
-- **Semantic Caching**: Redis 7 Alpine (`em-taskflow-redis:6379`) with vector similarity caching (0.95 cosine threshold, 1h TTL).
-- **Telemetry & Tracing**: Self-hosted Langfuse (port 3001) backed by isolated `langfuse_db` on port 5433 (`analytics-db`).
-- **Durable Orchestration**: Temporal Workflows on port 7233 (UI on port 8233).
+| Skill | Use for |
+|---|---|
+| `/verify [--all\|backend\|python\|frontend]` | Run the test gates and report real results. **Required before saying a change is done or pushing.** |
+| `/add-micro-agent <domain>` | Scaffold and register a new EM domain agent (touches ~12 files) |
+| `/add-mcp-tool <provider> <tool>` | Add an integration tool: client facade → tool → registration → spec |
+| `/sync-docs` | Audit AGENTS.md / skills / docs against the code and fix drift |
 
-### Key Services & Modules
+Area skills (picked up automatically from their descriptions): `slm-routing-ops`, `domain-micro-agent-ops`, `mcp-integrations-ops`, `rag-pipeline-ops`, `multi-tier-caching-ops`, `db-per-service-ops`, `session-thread-management-ops`, `frontend-copilot-ui-ops`, `admin-portal-ops`, `autonomous-em-audit-ops`, `em-dora-productivity-ops`, `enterprise-evaluation-framework-ops`, `langfuse-analytics-migration`, `structured-json-logging-ops`.
 
-- **Agent Service (`backend/src/services/agentService.js`)**: Coordinates Fast-Path classifier, LLM router, and LangGraph multi-agent supervisor.
-- **10 Domain Micro-Agents (`backend/src/agent/`)**:
-  - `dora`: DORA metrics from GitHub, Jira, and PostgreSQL snapshots.
-  - `delivery`: Delivery bottlenecks, review cycle turnaround, and Jira blockers.
-  - `sbi`: Situation-Behavior-Impact coaching using Jira, 1-on-1 notes, and Slack.
-  - `people`: Career progression, 1-on-1s, Google Calendar frequency, Notion career ladders.
-  - `sprint`: Sprint capacity, story point velocity, Jira backlog, and calendar PTOs.
-  - `retro`: Retrospective generation with thematic clustering (Notion, Jira, GitHub, Slack).
-  - `roadmap`: Milestone alignment and drift detection across Jira, GitHub, Notion.
-  - `okr`: Quarterly OKR pacing scores and KPI progress evaluation.
-  - `sop`: SOP compliance, ADR governance, architecture decision records, review SLAs.
-  - `critic`: Audit and critique draft EM status reports, dossiers, and performance summaries.
-- **MCP Ecosystem (`backend/src/mcp/`)**:
-  - `jiraOAuth.js` & `jira.js`: Jira OAuth 2.0 PKCE flow, JQL search, and issue retrieval.
-  - `notion.js` & `notionOAuth.js`: Native Notion REST API and database query tools.
-  - `github.js` & `githubOAuth.js`: Repo-scoped PAT/OAuth, PR search, and DORA events.
-  - `slack.js`: Slack Web API channel search and messaging.
-  - `google.js`: Google Calendar REST API event listing and schedule inspection.
-  - `baseToolHarness.js`: Standardized circuit breaker, backoff, and execution logging.
-- **RAG Retriever (`backend/src/rag/retriever.js`)**: Single-pass answer synthesis with HyDE query transformation and Reciprocal Rank Fusion (RRF CTE).
-- **Database Layer (`backend/src/db/postgres.js`)**: Multi-session persistence, chat threads, messages, and MCP fallback caches.
+### Hooks (`.claude/settings.json`)
+- **PreToolUse / Bash** (`.claude/hooks/guard-bash.mjs`) blocks destructive commands that break AGENTS.md rules: wiping `app_settings` or `team_members`, dropping non-test databases, `docker compose down -v`, force-push, `--no-verify`. If the user really wants one of these, ask them to run it themselves.
+- **PostToolUse / Edit|Write** (`.claude/hooks/check-syntax.mjs`) runs `node --check` on JS, `py_compile` on Python, and parses JSON after every edit. Fix reported syntax errors right away.
 
-## Development & Test Commands
+### Workflow expectations
+1. **Plan first** (plan mode) for changes to routing (`llmRouter.js`, `graph.js`, `agentService.js`), caching, DB schema, or anything that spans backend + Python service.
+2. **Domain lists are duplicated.** When adding or renaming a domain, follow `/add-micro-agent` rather than editing files ad hoc.
+3. **Iterate on one spec file, then run the full gate:** `cd backend && npx jasmine --config=jasmine.json test/<path>.spec.js`, then `/verify`.
+4. **Before pushing:** run `/verify`, and for non-trivial diffs `/code-review`. Use `/simplify` after large features.
+5. **Never** weaken or skip a test, add hard-coded fallback data, or leave an empty `catch {}` to make something pass (AGENTS.md rules 4–5).
+6. Keep docs in sync: if you change something AGENTS.md or a skill describes, update that file in the same change. Don't write test counts into docs.
 
-### Backend (from `/backend`)
-```bash
-# Start development server with auto-reload
-npm run dev
-
-# Build ESM JavaScript output
-npm run build
-
-# Run unit tests with Jasmine (319 specs, 0 failures)
-npm test
-
-# Run full evaluation suite (Model: hermes3:8b)
-npm run evaluate
-npm run eval:multi-agent
-npm run eval:rag
-npm run eval:pre-llm
-```
-
-### Python AI Service (from `/services/python-ai-service`)
-```bash
-# Run Pytest suite (45 specs, 0 failures)
-uv run pytest
-```
-
-
-### Frontend (from `/frontend`)
-```bash
-# Start Vite dev server (port 3000)
-npm run dev
-
-# Build production bundle
-npm run build
-```
-
-### Full Container Management (from project root)
-```bash
-# Start all containers in background
-docker compose up -d --build
-
-# Check container status
-docker compose ps
-
-# View container logs
-docker compose logs -f backend python-ai-service postgres redis langfuse
-```
-
-## Service Topology & Ports
-
-1. **Frontend Cockpit**: `http://localhost:3000` (Admin Portal at `http://localhost:3000/admin`)
-2. **Backend Express API**: `http://localhost:4000` (`/api/health`, `/api/chat`, `/api/sessions`, `/api/admin/*`, `/api/docs`)
-3. **Python AI Microservice**: Port 8000 (REST) and Port 50051 (gRPC)
-4. **PostgreSQL 16**: Port 5432 (`taskflow_backend`, `taskflow_ai`, `temporal`)
-5. **Analytics DB (Langfuse)**: Port 5433 (`langfuse_db`)
-6. **Langfuse UI**: `http://localhost:3001`
-7. **Promptfoo Matrix Server**: `http://localhost:15500`
-8. **Adminer Database Explorer**: `http://localhost:8080`
-9. **Temporal Web UI**: `http://localhost:8233`
-10. **Ollama Local LLM**: `http://localhost:11434` (`hermes3:8b`, `nomic-embed-text`)
-
-## Architectural Guidelines & Rules
-
-- **Zero Cloud LLM Requirement**: All inferences run locally against Ollama (`hermes3:8b`). External cloud LLMs are disabled.
-- **1-Tool Sub-Agent Bounding**: Sub-agents in LangGraph are bounded to maximum 1 tool per call for local SLM accuracy >95%.
-- **Zero Misleading Fallbacks**: Fallback responses return real PostgreSQL cached snapshots (`github_issues`, `dora_snapshots`, `sprint_analytics`, `okr_records`). Never output hardcoded dummy strings.
-- **Non-Blocking Telemetry**: Tracing calls to Langfuse must be non-blocking and never crash request lifecycles.
-- **Test Integrity**: Never push without running backend unit tests (`240 specs`) and Python unit tests (`39 specs`).
+### Gotchas
+- Backend unit tests expect PostgreSQL `taskflow_test` on `localhost:5432`, and some specs need the Python gRPC service. Without them, expect environment failures (`RAG Service processPDF` timeout, `TeamSyncWorker lastRunStatus`). Name them as environmental; don't "fix" them by mocking around the assertion.
+- `services/python-ai-service` needs Python 3.12 (`uv sync --python 3.12`); `psycopg-binary` has no 3.13 wheel.
+- Fresh `npm ci` in `backend/` on a machine without CUDA: add `--onnxruntime-node-install-cuda=skip`.
+- All API routes are under `/api/v1/*`. Legacy `/api/*` is a deprecated alias.

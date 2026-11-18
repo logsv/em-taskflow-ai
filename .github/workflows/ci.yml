@@ -112,7 +112,7 @@ jobs:
           done
           echo "✅ Ollama is ready!"
           ollama pull hermes3:8b
-      - name: Run Python Pytest Specs (32 Specs)
+      - name: Run Python Pytest Specs
         run: $HOME/.local/bin/uv run pytest
         env:
           OLLAMA_BASE_URL: http://localhost:11434

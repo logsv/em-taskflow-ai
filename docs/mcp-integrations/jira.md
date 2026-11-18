@@ -25,7 +25,7 @@ http://localhost:4000/api/mcp/jira/oauth/callback
 ```
 
 ### 4. Configure Backend Environment
-Add your Atlassian App Client ID and Secret to [`backend/.env`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/.env):
+Add your Atlassian App Client ID and Secret to [`backend/.env`](https://github.com/logsv/em-taskflow-ai/blob/main/backend/.env):
 ```bash
 JIRA_CLIENT_ID=your_atlassian_client_id
 JIRA_CLIENT_SECRET=your_atlassian_client_secret
