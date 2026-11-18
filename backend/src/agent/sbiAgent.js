@@ -3,7 +3,8 @@ import { sbiAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import settingsService from '../services/settingsService.js';
-import { info, warn, error } from '../utils/logger.js';
+import { warn } from '../utils/logger.js';
+import identityService from '../services/identityService.js';
 import { createMicroAgent, safeExecuteMCPTool, resolveMemberTarget } from './baseAgent.js';
 
 // Dictionary of subjective/emotional terms mapped to objective behavioral anchors
@@ -35,7 +36,8 @@ function sanitizeSubjectiveDraft(rawText) {
 
 function cleanMetaPromptSituation(text, contextType) {
   if (!text || typeof text !== 'string' || text.trim().length === 0) {
-    return `During the recent sprint release deployment (${contextType || '1on1_meeting'})`;
+    // No situation was supplied: report it as missing rather than inventing a context.
+    return null;
   }
   let cleaned = text.trim();
   cleaned = cleaned.replace(/^(draft|generate|format|write|provide|create)\s+(an?\s+)?(sbi\s+)?(coaching\s+)?(feedback\s+)?(for|on|regarding|about)\s+/i, '');
@@ -48,6 +50,58 @@ function cleanMetaPromptSituation(text, contextType) {
     return `During ${cleaned.charAt(0).toLowerCase() + cleaned.slice(1)}`;
   }
   return cleaned;
+}
+
+// "<behavior> and it caused <impact>" / "<behavior>, resulting in <impact>"
+const DRAFT_IMPACT_SPLITTERS = [
+  /\s*,?\s*(?:\band\s+)?\b(?:it|this|which)\s+(?=(?:caused|causes|resulted|results|led|leads|meant|delayed|blocked|helped|enabled|reduced|improved|saved|accelerated|triggered|broke|prevented)\b)/i,
+  /\s*,?\s*\b(?:resulting in|causing|leading to)\s+/i,
+];
+
+/** Splits a manager's draft into the behavior and the impact it states, when it states one. */
+function splitDraftBehaviorImpact(draft) {
+  if (!draft) return { behavior: null, impact: null };
+  for (const re of DRAFT_IMPACT_SPLITTERS) {
+    const m = re.exec(draft);
+    if (m && m.index > 0) {
+      const behavior = draft.slice(0, m.index).trim();
+      const impact = draft.slice(m.index + m[0].length).trim().replace(/[.\s]+$/, '');
+      if (behavior && impact) return { behavior, impact };
+    }
+  }
+  return { behavior: draft.trim() || null, impact: null };
+}
+
+const nonEmpty = (v) => (typeof v === 'string' && v.trim().length > 0 ? v.trim() : null);
+
+/**
+ * Builds SBI fields strictly from what the manager supplied (explicit fields first,
+ * then the de-biased raw draft). Missing dimensions stay null and are listed in
+ * `missing_fields`; no situation, behavior, impact, or action plan is ever invented.
+ */
+function deriveSbiFields(inputArgs = {}) {
+  const { text: cleanedDraft, eliminatedTerms } = sanitizeSubjectiveDraft(inputArgs.raw_draft || '');
+  const draftParts = splitDraftBehaviorImpact(nonEmpty(cleanedDraft));
+
+  const situation = cleanMetaPromptSituation(nonEmpty(inputArgs.situation) || nonEmpty(cleanedDraft), inputArgs.context_type);
+  const behavior = nonEmpty(inputArgs.behavior) ? sanitizeSubjectiveDraft(inputArgs.behavior).text : draftParts.behavior;
+  const impact = nonEmpty(inputArgs.impact) || draftParts.impact;
+  const actionPlan = nonEmpty(inputArgs.action_plan);
+  const extraTerms = nonEmpty(inputArgs.behavior) ? sanitizeSubjectiveDraft(inputArgs.behavior).eliminatedTerms : [];
+
+  const missing = [];
+  if (!situation) missing.push('situation');
+  if (!behavior) missing.push('behavior');
+  if (!impact) missing.push('impact');
+
+  return {
+    situation,
+    behavior,
+    impact,
+    action_plan: actionPlan,
+    eliminated_terms: [...eliminatedTerms, ...extraTerms],
+    missing_fields: missing,
+  };
 }
 
 function linkifyWorkItems(text, repo) {
@@ -88,7 +142,7 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
     sources: z.array(z.string()).default(['default', 'github', 'jira', 'notion', 'slack']),
     mode: z.enum(['ANALYZE', 'LIST_RAW', 'DRILL_DOWN', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
     target: z.enum(['ALL', 'TALKING_SCRIPT', 'BIAS_AUDIT', 'ACTION_PLAN', 'RECORDS']).default('ALL'),
-    engineer_id: z.string().default('eng_alex').describe('Recipient name, alias, or engineer ID'),
+    engineer_id: z.string().optional().describe('Recipient name, alias, or engineer ID'),
     raw_draft: z.string().optional().describe('Raw unstructured manager notes or observations'),
     feedback_type: z.enum(['CONSTRUCTIVE_COACHING', 'POSITIVE_PRAISE', 'PERFORMANCE_REVIEW', 'INCIDENT_POSTMORTEM']).default('CONSTRUCTIVE_COACHING'),
     situation: z.string().optional().describe('Specific event or context where the behavior occurred'),
@@ -135,14 +189,14 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
           const cached = settingsService.getCachedSettings();
           const defaultRepo = cached?.mcp?.github?.owner && cached?.mcp?.github?.repo 
             ? `${cached.mcp.github.owner}/${cached.mcp.github.repo}` 
-            : (cached?.mcp?.github?.repo || process.env.GITHUB_REPO || 'github_repo');
+            : (cached?.mcp?.github?.repo || process.env.GITHUB_REPO || null);
           return {
             related_prs_count: prs.length,
             // Only real PR identifiers; PRs without a number are dropped instead of being given a placeholder.
             recent_prs: prs.filter((p) => p && p.number !== undefined && p.number !== null).slice(0, 3).map((p) => ({
               number: p.number,
               title: p.title || null,
-              html_url: p.html_url || `https://github.com/${defaultRepo}/pull/${p.number}`,
+              html_url: p.html_url || (defaultRepo ? `https://github.com/${defaultRepo}/pull/${p.number}` : null),
             })),
             source: 'mcp_github',
             synced_at: new Date().toISOString(),
@@ -166,9 +220,9 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
         if (issues.length > 0) {
           return {
             related_tickets_count: issues.length,
-            recent_tickets: issues.slice(0, 3).map((iss) => ({
-              key: iss.key || 'ENG-104',
-              summary: iss.summary || iss.fields?.summary || 'Database migration incident',
+            recent_tickets: issues.filter((iss) => iss && iss.key).slice(0, 3).map((iss) => ({
+              key: iss.key,
+              summary: iss.summary || iss.fields?.summary || null,
             })),
             source: 'mcp_jira',
             synced_at: new Date().toISOString(),
@@ -190,8 +244,8 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
             return {
               feedback_notes_count: pages.length,
               past_notes: pages.slice(0, 2).map((p) => ({
-                title: p.title || p.name || '1-on-1 Feedback History',
-                url: p.url || 'https://notion.so/feedback',
+                title: p.title || p.name || null,
+                url: p.url || null,
               })),
               source: 'mcp_notion',
               synced_at: new Date().toISOString(),
@@ -204,52 +258,31 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
       return null;
     },
     default: async (inputArgs) => {
-      const { text: cleanedDraft, eliminatedTerms } = sanitizeSubjectiveDraft(inputArgs.raw_draft || '');
-
-      let situationText = inputArgs.situation;
-      let behaviorText = inputArgs.behavior;
-      let impactText = inputArgs.impact;
-      let actionPlanText = inputArgs.action_plan;
-
-      if (!situationText) {
-        situationText = cleanMetaPromptSituation(cleanedDraft, inputArgs.context_type);
-      } else {
-        situationText = cleanMetaPromptSituation(situationText, inputArgs.context_type);
-      }
-
-      if (!behaviorText) {
-        behaviorText = cleanedDraft || 'Bypassed automated integration test verification before merging PR #402';
-      }
-      if (!impactText) {
-        impactText = inputArgs.feedback_type === 'POSITIVE_PRAISE'
-          ? 'Accelerated team delivery velocity by 25% and eliminated production regression defects'
-          : 'Triggered a 35-minute authentication outage affecting 1,200 active users and delayed release milestone';
-      }
-      if (!actionPlanText) {
-        actionPlanText = inputArgs.feedback_type === 'POSITIVE_PRAISE'
-          ? 'Lead the architecture best practices tech talk for the engineering team next sprint'
-          : 'Adhere to the emergency pairing protocol and CI checklist for all future hotfixes';
-      }
-
-      // Persist to database
-      try {
-        await databaseService.saveSbiRecord({
-          engineer_id: inputArgs.engineer_id,
-          situation: situationText,
-          behavior: behaviorText,
-          impact: impactText,
-          action_plan: actionPlanText,
-        });
-      } catch (_e) {
-        // Fall back gracefully
-      }
+      const fields = deriveSbiFields(inputArgs);
 
       let resolvedMember = null;
       try {
-        resolvedMember = (await identityService.resolveMember(inputArgs.engineer_id)) ||
+        resolvedMember = (inputArgs.engineer_id ? await identityService.resolveMember(inputArgs.engineer_id) : null) ||
           (await identityService.resolveMemberFromText(inputArgs.raw_draft || inputArgs.engineer_id || ''));
       } catch (_e) {
-        // Fall back gracefully
+        // Identity resolution is best-effort; the raw engineer_id is used when it fails.
+      }
+
+      // Only complete, user-provided feedback is persisted. Nothing is invented to fill gaps.
+      let persisted = false;
+      if (fields.missing_fields.length === 0) {
+        try {
+          await databaseService.saveSbiRecord({
+            engineer_id: inputArgs.engineer_id || resolvedMember?.id || null,
+            situation: fields.situation,
+            behavior: fields.behavior,
+            impact: fields.impact,
+            action_plan: fields.action_plan || '',
+          });
+          persisted = true;
+        } catch (err) {
+          warn({ module: 'sbiHarness', action: 'saveSbiRecord', err: err.message }, 'SBI record not persisted');
+        }
       }
 
       const effectiveRole = resolvedMember?.currentLevel
@@ -257,117 +290,91 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
         : inputArgs.recipient_role;
 
       return {
-        engineer_id: resolvedMember?.id || inputArgs.engineer_id,
-        recipient_name: resolvedMember?.displayName || inputArgs.engineer_id,
+        engineer_id: resolvedMember?.id || inputArgs.engineer_id || null,
+        recipient_name: resolvedMember?.displayName || inputArgs.engineer_id || null,
         recipient_role: effectiveRole,
         context_type: inputArgs.context_type,
         feedback_type: inputArgs.feedback_type,
-        situation: situationText,
-        behavior: behaviorText,
-        impact: impactText,
-        action_plan: actionPlanText,
-        eliminated_terms: eliminatedTerms,
-        data_source: 'postgres_sbi_records',
+        status: fields.missing_fields.length === 0 ? 'OK' : 'NEEDS_INPUT',
+        ...fields,
+        persisted,
+        data_source: 'user_input',
         synced_at: new Date().toISOString(),
       };
     },
   },
-  // Tier 2: PostgreSQL Database Snapshot Fallback
+  // Tier 3: PostgreSQL Database Snapshot Fallback (real stored records only)
   dbCacheFallback: async (source, inputArgs = {}) => {
-    try {
-      const records = await databaseService.getSbiRecords(inputArgs?.engineer_id || 'eng_alex').catch(() => []);
-      if (records && records.length > 0) {
-        return {
-          ...records[0],
-          is_cached: true,
-          data_source: 'postgres_sbi_records',
-          synced_at: new Date().toISOString(),
-        };
-      }
+    const engineerId = inputArgs?.engineer_id || null;
+    const records = await databaseService.getSbiRecords(engineerId).catch(() => []);
+    if (records && records.length > 0) {
       return {
-        engineer_id: inputArgs?.engineer_id || 'eng_alex',
-        situation: 'During recent sprint release cycle',
-        behavior: 'Maintained high quality PR reviews and adhered to team review SLA',
-        impact: 'Improved overall team delivery velocity and code predictability',
-        action_plan: 'Continue mentoring junior engineers during architecture pairing',
+        ...records[0],
+        status: 'OK',
         is_cached: true,
-        data_source: 'postgres_sbi_rubric_fallback',
+        data_source: 'postgres_sbi_records',
         synced_at: new Date().toISOString(),
       };
-    } catch (_e) {
-      return {
-        engineer_id: inputArgs?.engineer_id || 'eng_alex',
-        situation: 'During recent sprint execution',
-        behavior: 'Adhered to team review standards',
-        impact: 'Ensured release stability',
-        action_plan: 'Continue standard development protocols',
-        is_cached: true,
-        data_source: 'static_sbi_fallback',
-      };
     }
+    return {
+      engineer_id: engineerId,
+      status: 'NO_DATA',
+      situation: null,
+      behavior: null,
+      impact: null,
+      action_plan: null,
+      is_cached: true,
+      data_source: 'postgres_sbi_records',
+      synced_at: new Date().toISOString(),
+    };
   },
   computeMath: async (sourceResults, inputArgs) => {
     const data = sourceResults.default?.data || {};
     const mode = inputArgs.mode || 'ANALYZE';
-    const engineerId = inputArgs.engineer_id || 'eng_alex';
+    const engineerId = inputArgs.engineer_id || null;
+    const recipientLabel = engineerId || data.recipient_name || 'the engineer';
     const role = inputArgs.recipient_role || 'Software Engineer';
     const feedbackType = inputArgs.feedback_type || 'CONSTRUCTIVE_COACHING';
 
     if (mode === 'LIST_RAW') {
       const historyRecords = await databaseService.getSbiRecords(engineerId).catch(() => []);
       const recordRows = historyRecords.map((r) => {
-        return `| \`${r.created_at ? new Date(r.created_at).toLocaleDateString() : 'Recent'}\` | **${r.feedback_type || 'COACHING'}** | *${(r.situation || '').slice(0, 45)}...* | 🟢 Recorded |`;
+        return `| \`${r.created_at ? new Date(r.created_at).toLocaleDateString() : 'n/a'}\` | **${r.feedback_type || 'COACHING'}** | *${(r.situation || '').slice(0, 45)}...* | 🟢 Recorded |`;
       });
-      const listSummary = `### 📋 SBI Feedback History: ${engineerId} (${historyRecords.length} Records)\n\n` +
+      const listSummary = `### 📋 SBI Feedback History: ${engineerId || 'All Engineers'} (${historyRecords.length} Records)\n\n` +
         `| Date | Type | Situation Context | Status |\n| :--- | :--- | :--- | :---: |\n` +
-        (recordRows.length > 0 ? recordRows.join('\n') : '| *No previous SBI coaching records logged* | - | - | 🟢 Clean Record |') +
+        (recordRows.length > 0 ? recordRows.join('\n') : '| *No SBI feedback records logged* | - | - | - |') +
         `\n\n> 💡 **SBI Best Practice**: Maintain a bi-weekly cadence of constructive and reinforcing feedback.`;
 
       return {
         mode: 'LIST_RAW',
         target: inputArgs.target || 'ALL',
         engineer_id: engineerId,
+        status: historyRecords.length > 0 ? 'OK' : 'NO_DATA',
         totalRecords: historyRecords.length,
         items: historyRecords,
         summary: listSummary,
       };
     }
 
-    const rawSituation = data.situation || inputArgs.situation || inputArgs.raw_draft || `During the recent release deployment (${inputArgs.context_type || '1on1_meeting'})`;
-    const situation = cleanMetaPromptSituation(rawSituation, inputArgs.context_type);
-    
-    let defaultBehavior = 'Bypassed automated integration tests prior to merging PR #402';
-    let defaultImpact = 'Caused an unexpected 35-minute auth outage delaying the release';
-    let defaultActionPlan = 'Adhere strictly to emergency pairing protocols and CI verification checklist';
-
-    const sitLower = situation.toLowerCase();
-    if (sitLower.includes('review') || sitLower.includes('unblock') || sitLower.includes('pr') || sitLower.includes('pull request')) {
-      defaultBehavior = 'Turnaround time on open peer pull request reviews exceeded the 24-hour team SLA, creating a review queue bottleneck';
-      defaultImpact = 'Blocked 3 downstream feature PRs from integration testing and delayed sprint release verification';
-      defaultActionPlan = 'Block a dedicated 45-minute daily focus window for peer PR reviews and triage review queue by 10 AM daily';
-    } else if (sitLower.includes('incident') || sitLower.includes('outage') || sitLower.includes('bug')) {
-      defaultBehavior = 'Deployed hotfix directly to production without completing the staging rollback verification checklist';
-      defaultImpact = 'Extended service degradation by 25 minutes during peak customer traffic';
-      defaultActionPlan = 'Follow mandatory dual-engineer verification protocols on all production emergency patches';
-    }
-
-    const behavior = data.behavior || defaultBehavior;
-    const impact = data.impact || defaultImpact;
-    const actionPlan = data.action_plan || defaultActionPlan;
-    const eliminatedTerms = data.eliminated_terms || [];
+    // SBI content comes only from what the manager supplied in this request.
+    const fields = deriveSbiFields(inputArgs);
+    const { situation, behavior, impact, missing_fields: missingFields } = fields;
+    const actionPlan = fields.action_plan;
+    const eliminatedTerms = fields.eliminated_terms;
     const objectivityScore = eliminatedTerms.length > 0 ? 94 : 98;
+    const objectivityAudit = {
+      tone_objectivity_score: objectivityScore,
+      bias_risk: 'CLEAN',
+      eliminated_terms: eliminatedTerms,
+    };
+    const structuredFeedback = { situation, behavior, impact, action_plan: actionPlan };
 
-    // Formatting for table (with clickable links)
-    const linkedSituation = linkifyWorkItems(situation);
-    const linkedBehavior = linkifyWorkItems(behavior);
-    const linkedImpact = linkifyWorkItems(impact);
-    const linkedActionPlan = linkifyWorkItems(actionPlan);
-
-    const scriptSituation = situation.toLowerCase().startsWith('during ') ? situation : `during ${situation}`;
-
-    const talkingScript = feedbackType === 'POSITIVE_PRAISE'
-      ? `"${engineerId}, I want to highlight your contributions ${scriptSituation}. When you ${smartLowerFirst(behavior)}, it ${smartLowerFirst(impact)}. Thank you for setting a great standard for the team. Let's look at having you ${smartLowerFirst(actionPlan)}."`
-      : `"${engineerId}, I want to talk about what occurred ${scriptSituation}. Specifically, when you ${smartLowerFirst(behavior)}, it resulted in ${smartLowerFirst(impact)}. Moving forward, I need us to ${smartLowerFirst(actionPlan)} so we protect system reliability. How can I support you with this?"`;
+    const NOT_PROVIDED = '_Not provided_';
+    const linkedSituation = situation ? linkifyWorkItems(situation) : NOT_PROVIDED;
+    const linkedBehavior = behavior ? linkifyWorkItems(behavior) : NOT_PROVIDED;
+    const linkedImpact = impact ? linkifyWorkItems(impact) : NOT_PROVIDED;
+    const linkedActionPlan = actionPlan ? linkifyWorkItems(actionPlan) : `_To be agreed with ${recipientLabel} in the 1-on-1_`;
 
     const ghData = sourceResults.github?.data || {};
     const jiraData = sourceResults.jira?.data || {};
@@ -376,14 +383,14 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
 
     const artifactLines = [];
     if (ghData.recent_prs && ghData.recent_prs.length > 0) {
-      artifactLines.push(`- **GitHub PR Evidence**: ${ghData.recent_prs.map((p) => `[PR #${p.number}](${p.html_url}) (${p.title})`).join(', ')}`);
+      artifactLines.push(`- **GitHub PR Evidence**: ${ghData.recent_prs.map((p) => `${p.html_url ? `[PR #${p.number}](${p.html_url})` : `\`PR #${p.number}\``}${p.title ? ` (${p.title})` : ''}`).join(', ')}`);
     }
     if (jiraData.recent_tickets && jiraData.recent_tickets.length > 0) {
       const jiraBaseUrl = process.env.JIRA_BASE_URL ? process.env.JIRA_BASE_URL.replace(/\/$/, '') : null;
       artifactLines.push(`- **Jira Tickets & Incidents**: ${jiraData.recent_tickets.map((t) => (jiraBaseUrl ? `[${t.key}](${jiraBaseUrl}/browse/${t.key})` : `\`${t.key}\``) + (t.summary ? ` (${t.summary})` : '')).join(', ')}`);
     }
     if (notionData.past_notes && notionData.past_notes.length > 0) {
-      artifactLines.push(`- **Notion 1-on-1 History**: ${notionData.past_notes.map((n) => `[${n.title}](${n.url})`).join(', ')}`);
+      artifactLines.push(`- **Notion 1-on-1 History**: ${notionData.past_notes.map((n) => (n.url ? `[${n.title || n.url}](${n.url})` : (n.title || 'untitled'))).join(', ')}`);
     }
     if (slackData.recent_messages && slackData.recent_messages.length > 0) {
       artifactLines.push(`- **Slack Communications**: ${slackData.recent_messages.map((m) => `"${(m.text || '').slice(0, 50)}..."`).join(', ')}`);
@@ -392,12 +399,55 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
       ? `\n\n### 🔗 Corroborating Workspace Artifacts\n${artifactLines.join('\n')}`
       : '';
 
+    const sbiTable = `| Dimension | Formulated Objective Coaching Content |
+| :--- | :--- |
+| **📍 Situation** | *${linkedSituation}* |
+| **👀 Behavior** | *${linkedBehavior}* |
+| **💥 Impact** | *${linkedImpact}* |
+| **🌱 Growth Action** | *${linkedActionPlan}* |`;
+
+    // Honest empty state: the observable behavior and/or its impact were not supplied.
+    if (missingFields.length > 0) {
+      const noInputAtAll = !situation && !behavior && !impact;
+      const summary = `### 🎯 Situation-Behavior-Impact (SBI) Feedback: ${recipientLabel} — Input Needed
+
+SBI feedback must describe a real, observed event. ${noInputAtAll ? 'No situation, behavior, or impact was provided' : `Missing: **${missingFields.join(', ')}**`}, so no feedback was formulated and nothing was saved to \`sbi_feedback_records\`.
+
+Please provide ${missingFields.map((f) => `\`${f}\``).join(', ')} (or a draft that states what happened and what it caused).
+
+${sbiTable}${artifactsSection}
+`;
+      return {
+        mode,
+        target: inputArgs.target || 'ALL',
+        status: noInputAtAll ? 'NO_DATA' : 'NEEDS_INPUT',
+        framework: 'Situation-Behavior-Impact (SBI)',
+        engineer_id: engineerId,
+        recipient_role: role,
+        context_type: inputArgs.context_type || '1on1_meeting',
+        feedback_type: feedbackType,
+        missing_fields: missingFields,
+        structured_feedback: structuredFeedback,
+        objectivity_audit: objectivityAudit,
+        talking_script: null,
+        persisted: false,
+        summary,
+      };
+    }
+
+    const scriptSituation = situation.toLowerCase().startsWith('during ') ? situation : `during ${situation}`;
+    const talkingScript = feedbackType === 'POSITIVE_PRAISE'
+      ? `"${recipientLabel}, I want to highlight your contributions ${scriptSituation}. When you ${smartLowerFirst(behavior)}, it ${smartLowerFirst(impact)}. Thank you for setting a great standard for the team.${actionPlan ? ` Let's look at having you ${smartLowerFirst(actionPlan)}.` : ''}"`
+      : `"${recipientLabel}, I want to talk about what occurred ${scriptSituation}. Specifically, when you ${smartLowerFirst(behavior)}, it resulted in ${smartLowerFirst(impact)}. ${actionPlan ? `Moving forward, I need us to ${smartLowerFirst(actionPlan)}.` : 'What do you think we could do differently next time?'} How can I support you with this?"`;
+
+    const persisted = data.persisted === true;
+
     if (mode === 'DRILL_DOWN') {
       let drillSummary = '';
       if (inputArgs.target === 'TALKING_SCRIPT') {
-        drillSummary = `### 🎙️ 1-on-1 Delivery Talking Script: ${engineerId}\n\n` +
+        drillSummary = `### 🎙️ 1-on-1 Delivery Talking Script: ${recipientLabel}\n\n` +
           `> ${talkingScript}\n\n` +
-          `- **Delivery Guidance**: Maintain a blameless, curious posture. Allow ${engineerId} time to respond.\n` +
+          `- **Delivery Guidance**: Maintain a blameless, curious posture. Allow ${recipientLabel} time to respond.\n` +
           `- **Follow-up Protocol**: Log commitments in 1-on-1 notes and set a 30-day checkpoint.`;
       } else if (inputArgs.target === 'BIAS_AUDIT') {
         drillSummary = `### 🛡️ Objectivity & Bias Audit Breakdown (${objectivityScore}% Score)\n\n` +
@@ -405,7 +455,7 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
           `- **Eliminated Subjective Terms**: ${eliminatedTerms.length > 0 ? eliminatedTerms.map((t) => `\`"${t}"\``).join(', ') : 'None (Strictly factual language observed)'}\n` +
           `- **Compliance Guarantee**: Meets SOP-07 Blameless Coaching and EM Feedback standards.`;
       } else {
-        drillSummary = `### 🎯 Targeted SBI Coaching Deep Dive: ${engineerId}\n\n` +
+        drillSummary = `### 🎯 Targeted SBI Coaching Deep Dive: ${recipientLabel}\n\n` +
           `- **📍 Situation**: *${linkedSituation}*\n` +
           `- **👀 Behavior**: *${linkedBehavior}*\n` +
           `- **💥 Impact**: *${linkedImpact}*\n` +
@@ -416,26 +466,23 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
       return {
         mode: 'DRILL_DOWN',
         target: inputArgs.target || 'ALL',
+        status: 'OK',
         engineer_id: engineerId,
         feedback_type: feedbackType,
         situation,
         behavior,
         impact,
         action_plan: actionPlan,
+        persisted,
         summary: drillSummary,
       };
     }
 
-    const summaryText = `### 🎯 Situation-Behavior-Impact (SBI) Feedback: ${engineerId} (${role})
+    const summaryText = `### 🎯 Situation-Behavior-Impact (SBI) Feedback: ${recipientLabel} (${role})
 
-> **Context**: ${inputArgs.context_type || '1on1_meeting'} | **Type**: ${feedbackType} | **Data Source**: PostgreSQL \`sbi_feedback_records\`
+> **Context**: ${inputArgs.context_type || '1on1_meeting'} | **Type**: ${feedbackType} | **Data Source**: manager-provided input${persisted ? ' (saved to PostgreSQL `sbi_feedback_records`)' : ''}
 
-| Dimension | Formulated Objective Coaching Content |
-| :--- | :--- |
-| **📍 Situation** | *${linkedSituation}* |
-| **👀 Behavior** | *${linkedBehavior}* |
-| **💥 Impact** | *${linkedImpact}* |
-| **🌱 Growth Action** | *${linkedActionPlan}* |
+${sbiTable}
 
 <details>
 <summary><b>🛡️ Objectivity & Bias Audit (Score: ${objectivityScore}%)</b></summary>
@@ -459,23 +506,17 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
 
     return {
       mode: 'ANALYZE',
+      status: 'OK',
       framework: 'Situation-Behavior-Impact (SBI)',
       engineer_id: engineerId,
       recipient_role: role,
       context_type: inputArgs.context_type || '1on1_meeting',
       feedback_type: feedbackType,
-      structured_feedback: {
-        situation,
-        behavior,
-        impact,
-        action_plan: actionPlan,
-      },
-      objectivity_audit: {
-        tone_objectivity_score: objectivityScore,
-        bias_risk: 'CLEAN',
-        eliminated_terms: eliminatedTerms,
-      },
+      missing_fields: [],
+      structured_feedback: structuredFeedback,
+      objectivity_audit: objectivityAudit,
       talking_script: talkingScript,
+      persisted,
       summary: summaryText,
     };
   },

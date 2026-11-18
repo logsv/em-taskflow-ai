@@ -315,19 +315,10 @@ export const sprintPlanTool = createDeterministicToolHarness({
       };
     }
 
-    // Persist to PostgreSQL sprint_analytics
-    try {
-      await databaseService.saveSprintAnalytics({
-        sprint_id: sprintId,
-        total_points: recommendedCommitment,
-        completed_points: 0,
-        wip_violations: riskWarnings.length,
-        retro_action_items: [
-          `Maintain ${techDebtPct}% capacity commitment to technical debt reduction`,
-          `Keep PR review turnaround SLA under 4 hours`,
-        ],
-      });
-    } catch (_e) {}
+    // Intentionally read-only: a sprint *plan* is a forecast, not sprint actuals. Writing it to
+    // sprint_analytics (an upsert on sprint_id) would overwrite real total/completed points with a
+    // forecast and `completed_points: 0`, corrupting the velocity history this planner reads, and
+    // would record retro action items no retro produced.
 
     const summaryText = `### 📊 Sprint Capacity & Rolling Velocity Forecast: ${sprintName}
 

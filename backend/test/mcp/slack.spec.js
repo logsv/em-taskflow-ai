@@ -217,6 +217,7 @@ describe('Slack MCP Tool Integration & Agent Harness Specs', () => {
       const res = await sprintRetroTool.invoke({
         sprint_name: 'Sprint 42',
         sources: ['default', 'slack'],
+        retro_notes: '- Flaky checkout tests blocked two merges',
         post_to_slack: true,
         slack_channel: '#engineering-retro',
       });
@@ -225,7 +226,7 @@ describe('Slack MCP Tool Integration & Agent Harness Specs', () => {
       expect(res.data.what_went_well).toBeDefined();
       expect(res.data.extracted_action_items).toBeDefined();
       expect(res.data.extracted_action_items.length).toBeGreaterThan(0);
-      expect(res.data.slack_post_status).toBeDefined();
+      expect(typeof res.data.slack_post_status).toBe('string');
     });
 
     it('sbiFeedbackTool should execute with slack source', async () => {
@@ -236,7 +237,9 @@ describe('Slack MCP Tool Integration & Agent Harness Specs', () => {
 
       expect(res.status).toBe('SUCCESS');
       expect(res.data.structured_feedback).toBeDefined();
-      expect(res.data.talking_script).toBeDefined();
+      // No behavior/impact supplied: explicit empty state, no generated script.
+      expect(res.data.status).toBe('NO_DATA');
+      expect(res.data.talking_script).toBeNull();
     });
   });
 });

@@ -261,6 +261,124 @@ export function seedGithubIssues(databaseService) {
   ];
 }
 
+const isoDaysFromNow = (days) => new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+/**
+ * Raw Jira REST epics (the `fields` shape) for the roadmap agent. Dates are relative to "now"
+ * so drift assertions stay deterministic. Formerly hard-coded ENG-201/205/210 epics lived in
+ * roadmapAgent.js production code; they now exist only here.
+ */
+export function buildJiraRoadmapEpics() {
+  return [
+    {
+      key: 'RM-1',
+      fields: {
+        summary: 'Overdue epic blocked upstream',
+        status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } },
+        aggregateprogress: { percent: 40 },
+        customfield_10016: 20,
+        duedate: isoDaysFromNow(-6),
+        created: isoDaysFromNow(-60),
+        assignee: { displayName: 'Alex Williams' },
+        issuelinks: [
+          { type: { inward: 'is blocked by' }, inwardIssue: { key: 'RM-9', fields: { summary: 'Auth token API', status: { statusCategory: { key: 'indeterminate' } } } } },
+          { type: { inward: 'is blocked by' }, inwardIssue: { key: 'RM-8', fields: { summary: 'Already shipped', status: { statusCategory: { key: 'done' } } } } },
+        ],
+      },
+    },
+    {
+      key: 'RM-2',
+      fields: {
+        summary: 'Overdue epic with no blockers',
+        status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } },
+        aggregateprogress: { percent: 70 },
+        customfield_10016: 10,
+        duedate: isoDaysFromNow(-3),
+        created: isoDaysFromNow(-40),
+        assignee: { displayName: 'Sarah Chen' },
+      },
+    },
+    {
+      key: 'RM-3',
+      fields: {
+        summary: 'Behind-schedule epic',
+        status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } },
+        aggregateprogress: { percent: 10 },
+        customfield_10016: 10,
+        duedate: isoDaysFromNow(10),
+        created: isoDaysFromNow(-90),
+        assignee: null,
+      },
+    },
+    {
+      key: 'RM-4',
+      fields: {
+        summary: 'Completed epic',
+        status: { name: 'Done', statusCategory: { key: 'done' } },
+        aggregateprogress: { percent: 100 },
+        customfield_10016: 5,
+        duedate: isoDaysFromNow(-20),
+        created: isoDaysFromNow(-80),
+        assignee: { displayName: 'Vikas Kumar' },
+      },
+    },
+    {
+      key: 'RM-5',
+      fields: {
+        summary: 'Unestimated epic without a due date',
+        status: { name: 'To Do', statusCategory: { key: 'new' } },
+      },
+    },
+  ];
+}
+
+/** Retro harness source results built from Slack, GitHub, Jira and past sprint_analytics retro items. */
+export function buildRetroSourceResults({ sprintName = 'Sprint 50' } = {}) {
+  return {
+    default: {
+      tierUsed: 'TIER_1_MCP',
+      data: {
+        sprint_id: 'sprint_50',
+        sprint_name: sprintName,
+        team_members: ['Alex Williams', 'Sarah Chen'],
+        past_retros: [
+          { sprint_id: 'sprint_49', sprint_name: 'Sprint 49', items: ['Fix flaky checkout integration tests in CI'] },
+          { sprint_id: 'sprint_48', sprint_name: 'Sprint 48', items: [{ task: 'Quarantine flaky e2e tests' }, 'Add PR review rotation'] },
+          { sprint_id: 'sprint_47', sprint_name: 'Sprint 47', items: [] },
+        ],
+        synced_at: new Date().toISOString(),
+      },
+    },
+    slack: {
+      tierUsed: 'TIER_1_MCP',
+      data: {
+        channel: '#engineering-retro',
+        source: 'mcp_slack',
+        messages: [
+          { user: 'sarah-c', text: 'Kudos to the infra pod for the smooth database cutover' },
+          { user: 'alex-dev99', text: 'Flaky payment tests kept failing the pipeline again' },
+          { user: 'taylor-dev', text: 'Lunch order is at noon' },
+        ],
+      },
+    },
+    github: {
+      tierUsed: 'TIER_1_MCP',
+      data: { pr_turnaround_hours: 9.5, total_prs_merged: 23, source: 'mcp_github' },
+    },
+    jira: {
+      tierUsed: 'TIER_1_MCP',
+      data: {
+        total_incidents_reported: 2,
+        recent_incidents: [
+          { key: 'OPS-11', summary: 'Checkout latency spike', status: 'In Progress' },
+          { key: 'OPS-10', summary: 'Login 500s', status: 'Resolved' },
+        ],
+        source: 'mcp_jira',
+      },
+    },
+  };
+}
+
 /**
  * Seeds ALL in-memory stores with test fixture data.
  * Call this in test setup to provide baseline data for agent tool execution.

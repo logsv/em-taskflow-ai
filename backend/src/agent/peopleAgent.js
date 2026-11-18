@@ -64,11 +64,12 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     mode: z.enum(['ANALYZE', 'LIST_RAW', 'DRILL_DOWN', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
     filter: z.enum(['ALL', 'TODAY_EVENTS', 'ONE_ON_ONES', 'CAREER_NOTES', 'SKILL_GAPS']).default('ALL'),
     target: z.enum(['ALL', 'ONE_ON_ONES', 'SKILL_GAPS', 'RADAR', 'CAREER_NOTES']).default('ALL'),
-    engineer_id: z.string().default('eng_alex').describe('Name, alias, or identifier of the engineer'),
-    current_level: z.enum(['L3_JUNIOR', 'L4_MID', 'L5_SENIOR', 'L6_STAFF', 'L7_PRINCIPAL', 'M1_EM']).default('L4_MID'),
-    target_level: z.enum(['L4_MID', 'L5_SENIOR', 'L6_STAFF', 'L7_PRINCIPAL', 'M1_EM', 'M2_SENIOR_EM']).default('L5_SENIOR'),
-    track: z.enum(['INDIVIDUAL_CONTRIBUTOR', 'ENGINEERING_MANAGEMENT']).default('INDIVIDUAL_CONTRIBUTOR'),
-    tenure_months: z.number().default(18),
+    engineer_id: z.string().optional().describe('Name, alias, or identifier of the engineer'),
+    // Optional so the engineer's real roster profile is used when the caller does not override it.
+    current_level: z.enum(['L3_JUNIOR', 'L4_MID', 'L5_SENIOR', 'L6_STAFF', 'L7_PRINCIPAL', 'M1_EM']).optional(),
+    target_level: z.enum(['L4_MID', 'L5_SENIOR', 'L6_STAFF', 'L7_PRINCIPAL', 'M1_EM', 'M2_SENIOR_EM']).optional(),
+    track: z.enum(['INDIVIDUAL_CONTRIBUTOR', 'ENGINEERING_MANAGEMENT']).optional(),
+    tenure_months: z.number().optional(),
     skill_ratings: z.record(z.string(), z.number()).optional().describe('Custom 12-dimension ratings map (1.0-5.0)'),
     review_period: z.string().default('current_quarter'),
     fetch_fresh_data: z.boolean().default(true),
@@ -109,9 +110,9 @@ export const peopleGrowthTool = createDeterministicToolHarness({
           if (items.length > 0) {
             return {
               today_events: items.map((ev) => ({
-                summary: ev.summary || '1-on-1 Meeting',
-                start_time: ev.start?.dateTime || ev.start?.date || 'Today',
-                attendee: ev.attendees?.[0]?.email || gcalUser || 'team',
+                summary: ev.summary || null,
+                start_time: ev.start?.dateTime || ev.start?.date || null,
+                attendee: ev.attendees?.[0]?.email || null,
               })),
               weekly_meeting_hours: Math.min(items.length * 1.5, 30),
               source: 'google_calendar_rest',
@@ -139,9 +140,9 @@ export const peopleGrowthTool = createDeterministicToolHarness({
             return {
               career_notes_count: pages.length,
               career_docs: pages.slice(0, 3).map((p) => ({
-                title: p.title || p.name || '1-on-1 Career Sync',
-                url: p.url || (configuredPageId ? `https://notion.so/${configuredPageId}` : 'https://notion.so/career-notes'),
-                last_edited: p.last_edited_time || new Date().toISOString(),
+                title: p.title || p.name || null,
+                url: p.url || (configuredPageId ? `https://notion.so/${configuredPageId}` : null),
+                last_edited: p.last_edited_time || null,
               })),
               source: 'mcp_notion',
               synced_at: new Date().toISOString(),
@@ -179,11 +180,11 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     default: async (inputArgs) => {
       const member = (await identityService.resolveMember(inputArgs?.engineer_id)) || (await identityService.resolveMemberFromText(inputArgs?.engineer_id || ''));
       return {
-        engineer_id: member?.id || inputArgs?.engineer_id || 'unassigned',
-        displayName: member?.displayName || inputArgs?.engineer_id || 'Engineer',
-        current_level: member?.currentLevel || inputArgs?.current_level || 'L4_MID',
-        target_level: member?.targetLevel || inputArgs?.target_level || 'L5_SENIOR',
-        track: member?.track || inputArgs?.track || 'INDIVIDUAL_CONTRIBUTOR',
+        engineer_id: member?.id || inputArgs?.engineer_id || null,
+        displayName: member?.displayName || inputArgs?.engineer_id || null,
+        current_level: member?.currentLevel || inputArgs?.current_level || null,
+        target_level: member?.targetLevel || inputArgs?.target_level || null,
+        track: member?.track || inputArgs?.track || null,
         tenure_months: member?.tenureMonths ?? inputArgs?.tenure_months ?? null,
         // No workload telemetry source exists; report unknown rather than a placeholder value.
         weekly_workload_hours: null,
@@ -313,8 +314,27 @@ export const peopleGrowthTool = createDeterministicToolHarness({
       };
     }
 
-    const currentLevel = inputArgs.current_level || member?.currentLevel || defaultData.current_level || 'L4_MID';
-    const targetLevel = inputArgs.target_level || member?.targetLevel || defaultData.target_level || 'L5_SENIOR';
+    if (!String(inputArgs.engineer_id || '').trim()) {
+      return {
+        mode,
+        status: 'NEEDS_INPUT',
+        engineer_id: null,
+        missing_fields: ['engineer_id'],
+        metrics: null,
+        competency_radar: [],
+        one_on_one_agenda: [],
+        summary: '### 🎯 Promotion Readiness Scorecard — Input Needed\n\n' +
+          'No engineer was specified, so no growth analysis was run. Please provide the engineer\'s name, alias, or ID (`engineer_id`).',
+      };
+    }
+
+    const explicitLevel = inputArgs.current_level || member?.currentLevel || defaultData.current_level;
+    const explicitTarget = inputArgs.target_level || member?.targetLevel || defaultData.target_level;
+    // Benchmark comparison needs a level pair; when neither the request nor the roster has one,
+    // the L4→L5 benchmark is used and flagged as an assumption in the output.
+    const levelsAssumed = !explicitLevel || !explicitTarget;
+    const currentLevel = explicitLevel || 'L4_MID';
+    const targetLevel = explicitTarget || 'L5_SENIOR';
     const track = inputArgs.track || member?.track || defaultData.track || 'INDIVIDUAL_CONTRIBUTOR';
     const finiteOrNull = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
     const tenureMonths = finiteOrNull(inputArgs.tenure_months ?? member?.tenureMonths ?? defaultData.tenure_months);
@@ -385,7 +405,8 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     const prerequisites = [
       { name: 'Lead 1 High-Impact Architecture RFC to approval', status: readinessScore >= 80 ? 'MET' : 'PENDING' },
       { name: 'Complete 1 Mentorship cycle with positive peer feedback', status: readinessScore >= 75 ? 'MET' : 'PENDING' },
-      { name: 'Zero critical production regressions in last 2 quarters', status: 'MET' },
+      // No incident-attribution source exists, so this cannot be asserted either way.
+      { name: 'Zero critical production regressions in last 2 quarters', status: 'UNKNOWN' },
       { name: 'Active Incident Commander / on-call rotation participation', status: currentLevel !== 'L3_JUNIOR' ? 'MET' : 'PENDING' },
     ];
     const metPrereqsCount = prerequisites.filter((p) => p.status === 'MET').length;
@@ -394,7 +415,7 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     const roadmaps = {
       immediate_3_to_6m: {
         horizon: '3–6 Months',
-        focus: `Close top technical gaps: ${significantGaps.slice(0, 2).join(', ') || 'System Architecture RFC'}`,
+        focus: significantGaps.length > 0 ? `Close top technical gaps: ${significantGaps.slice(0, 2).join(', ')}` : `Sustain ${targetLevel} benchmarks (no gaps found)`,
         deliverables: [
           'Author and present Technical RFC for service decomposition / caching',
           'Pair with Staff Engineer on quarterly architecture roadmap reviews',
@@ -419,10 +440,17 @@ export const peopleGrowthTool = createDeterministicToolHarness({
       },
     };
 
+    // No stretch-project record exists in any source; suggest a focus area from the computed gaps only.
+    const topGapDim = competencyRadar.filter((r) => r.gap > 0).sort((a, b) => b.gap - a.gap)[0];
+    const topGapDesc = topGapDim ? COMPETENCY_DIMENSIONS.find((d) => d.key === topGapDim.code)?.desc : null;
+    const stretchText = topGapDim
+      ? `No stretch project is recorded for ${resolvedName}. Suggested focus: an assignment exercising **${topGapDim.dimension}** (${topGapDesc}), the largest benchmark gap (-${topGapDim.gap}) against ${targetLevel}.`
+      : `No stretch project is recorded for ${resolvedName}, and no benchmark gap was found against ${targetLevel}.`;
+
     const notionData = sourceResults.notion?.data || {};
     const notionDocs = notionData.career_docs || [];
     const notionSection = notionDocs.length > 0
-      ? `\n\n### 📓 Notion 1-on-1 Notes & Career Rubrics\n${notionDocs.map((d) => `- [${d.title}](${d.url}) (Last edited: ${d.last_edited ? new Date(d.last_edited).toLocaleDateString() : 'Recent'})`).join('\n')}`
+      ? `\n\n### 📓 Notion 1-on-1 Notes & Career Rubrics\n${notionDocs.map((d) => `- ${d.url ? `[${d.title || d.url}](${d.url})` : (d.title || 'Untitled')} (Last edited: ${d.last_edited ? new Date(d.last_edited).toLocaleDateString() : 'n/a'})`).join('\n')}`
       : '';
 
     if (mode === 'DRILL_DOWN') {
@@ -451,7 +479,7 @@ export const peopleGrowthTool = createDeterministicToolHarness({
 
     const summaryText = `### 🎯 Promotion Readiness Scorecard: ${inputArgs.engineer_id} (${currentLevel} ➔ ${targetLevel})
 
-> **Track**: ${track === 'ENGINEERING_MANAGEMENT' ? 'Management (M1/M2)' : 'Individual Contributor (IC)'} | **Tenure**: ${tenureMonths === null ? 'n/a' : `${tenureMonths} Months`} | **Promotion Readiness**: **${readinessScore}% (${readinessVerdict.replace(/_/g, ' ')})** | **Workload**: ${hrs(workloadHours)}/wk (${burnoutRisk} Burnout Risk)
+${levelsAssumed ? `> ⚠️ **Assumed Levels**: No current/target level was provided or found in the team roster for ${resolvedName}; the ${currentLevel} ➔ ${targetLevel} benchmark is used.\n\n` : ''}> **Track**: ${track === 'ENGINEERING_MANAGEMENT' ? 'Management (M1/M2)' : 'Individual Contributor (IC)'} | **Tenure**: ${tenureMonths === null ? 'n/a' : `${tenureMonths} Months`} | **Promotion Readiness**: **${readinessScore}% (${readinessVerdict.replace(/_/g, ' ')})** | **Workload**: ${hrs(workloadHours)}/wk (${burnoutRisk} Burnout Risk)
 
 | Metric | Measured Value | Requirement | Status |
 | :--- | :--- | :--- | :--- |
@@ -494,7 +522,7 @@ ${roadmaps.long_term_1_to_3y.deliverables.map((d) => `- ${d}`).join('\n')}
 <details>
 <summary><b>🚀 Stretch Assignments & Google Calendar 1-on-1 Sync</b></summary>
 
-- **Primary Stretch Project**: Lead the migration to isolated database-per-service vector architecture.
+- **Stretch Assignment**: ${stretchText}
 - **Upcoming 1-on-1 Calendar Schedule**:
 ${events.length > 0 ? events.map((ev) => `  * 📅 **${ev.start_time}**: ${ev.summary} (${ev.attendee})`).join('\n') : (calendarUnavailable ? '  * Calendar data unavailable (no live Google Calendar source)' : '  * No upcoming 1-on-1 events')}
 - **Weekly Meeting Load**: **${meetingHours === null ? 'n/a' : `${meetingHours} hrs/week`}** (Sustainability Status: **${burnoutRisk} Risk**).${notionSection}
@@ -504,9 +532,11 @@ ${events.length > 0 ? events.map((ev) => `  * 📅 **${ev.start_time}**: ${ev.su
 
     return {
       mode: 'ANALYZE',
+      status: 'OK',
       engineer_id: inputArgs.engineer_id || member?.id || null,
       current_level: currentLevel,
       target_level: targetLevel,
+      levels_assumed: levelsAssumed,
       track,
       tenure_months: tenureMonths,
       metrics: {
@@ -518,13 +548,14 @@ ${events.length > 0 ? events.map((ev) => `  * 📅 **${ev.start_time}**: ${ev.su
         prerequisites_met: `${metPrereqsCount} / ${prerequisites.length}`,
       },
       competency_radar: competencyRadar,
-      skill_matrix_gaps: significantGaps.length > 0 ? significantGaps : ['System Architecture Design'],
+      skill_matrix_gaps: significantGaps,
       one_on_one_agenda: [
         `Review progress on ${significantGaps[0] || 'technical goals'}`,
         'Discuss team workload, on-call rotation, and upcoming PTO',
         `Review career progression milestones for ${targetLevel} (${track === 'ENGINEERING_MANAGEMENT' ? 'Management Track' : 'IC Track'})`,
       ],
       prerequisites,
+      stretch_assignment: { recorded_project: null, suggested_focus: topGapDim ? topGapDim.dimension : null, summary: stretchText },
       roadmaps,
       today_schedule: events,
       summary: summaryText,

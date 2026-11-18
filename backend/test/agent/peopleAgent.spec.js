@@ -165,6 +165,47 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
     expect(unknown.tenure_months).toBeNull();
   });
 
+  it('should ask for an engineer instead of defaulting to a fixture persona', async () => {
+    for (const mode of ['ANALYZE', 'DRILL_DOWN']) {
+      const res = await peopleGrowthTool.invoke({ sources: ['default'], mode });
+      expect(res.status).toBe('SUCCESS');
+      expect(res.data.status).toBe('NEEDS_INPUT');
+      expect(res.data.engineer_id).toBeNull();
+      expect(res.data.missing_fields).toEqual(['engineer_id']);
+      expect(res.data.metrics).toBeNull();
+      expect(res.data.summary).not.toContain('Alex');
+    }
+  });
+
+  it('should derive the stretch assignment from computed gaps instead of a fixed project', async () => {
+    const res = await peopleGrowthTool.invoke({
+      engineer_id: 'eng_alex',
+      sources: ['default'],
+      current_level: 'L4_MID',
+      target_level: 'L5_SENIOR',
+    });
+
+    expect(res.data.summary).not.toContain('database-per-service vector architecture');
+    expect(res.data.stretch_assignment.recorded_project).toBeNull();
+    expect(res.data.stretch_assignment.suggested_focus).toBe('Architecture & System Design'); // largest L4->L5 gap
+    expect(res.data.summary).toContain('No stretch project is recorded for Alex Williams');
+    expect(res.data.prerequisites.find((p) => /production regressions/.test(p.name)).status).toBe('UNKNOWN');
+  });
+
+  it('should use the roster profile instead of schema-default levels and tenure', async () => {
+    const known = await peopleGrowthTool.invoke({ engineer_id: 'Sarah Chen', sources: ['default'] });
+    expect(known.data.current_level).toBe('L5_SENIOR');
+    expect(known.data.target_level).toBe('M1_EM');
+    expect(known.data.track).toBe('ENGINEERING_MANAGEMENT');
+    expect(known.data.tenure_months).toBe(36);
+    expect(known.data.levels_assumed).toBe(false);
+
+    const unknown = await peopleGrowthTool.invoke({ engineer_id: 'nobody_on_record', sources: ['default'] });
+    expect(unknown.data.tenure_months).toBeNull();
+    expect(unknown.data.levels_assumed).toBe(true);
+    expect(unknown.data.summary).toContain('Assumed Levels');
+  });
+
   it('should instantiate createPeopleAgent graph', () => {
     const agent = createPeopleAgent();
     expect(agent).toBeDefined();
