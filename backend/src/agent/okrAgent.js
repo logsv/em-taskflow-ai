@@ -3,8 +3,33 @@ import { okrAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import settingsService from '../services/settingsService.js';
-import { info, warn, error } from '../utils/logger.js';
-import { createMicroAgent, safeExecuteMCPTool } from './baseAgent.js';
+import { warn } from '../utils/logger.js';
+import { createMicroAgent, safeExecuteMCPTool, createProvenanceNotice } from './baseAgent.js';
+
+const OKR_SOURCE_NAME = 'PostgreSQL okr_tracker';
+
+/**
+ * Maps okr_tracker rows to the KR shape used by computeMath.
+ * Only fields that actually exist on the record are carried over.
+ */
+function mapOkrRows(rows) {
+  return (rows || []).map((r) => ({
+    id: r.id,
+    objective: r.objective,
+    kr: r.key_result,
+    target_value: r.target_value === null || r.target_value === undefined ? null : Number(r.target_value),
+    current_value: r.current_value === null || r.current_value === undefined ? null : Number(r.current_value),
+    unit: r.unit || '',
+    status: r.status,
+    quarter: r.quarter,
+  }));
+}
+
+function toFiniteOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
 export const okrProgressTool = createDeterministicToolHarness({
   name: 'evaluate_okr_progress',
@@ -30,8 +55,8 @@ export const okrProgressTool = createDeterministicToolHarness({
           if (pages.length > 0) {
             return {
               okr_hub_found: true,
-              hub_title: pages[0].title || 'Engineering OKRs & KPI Hub',
-              hub_url: pages[0].url || (configuredPageId ? `https://notion.so/${configuredPageId}` : 'https://notion.so/okrs'),
+              hub_title: pages[0].title || null,
+              hub_url: pages[0].url || (configuredPageId ? `https://notion.so/${configuredPageId}` : null),
               source: 'mcp_notion',
               synced_at: new Date().toISOString(),
             };
@@ -46,10 +71,15 @@ export const okrProgressTool = createDeterministicToolHarness({
       try {
         const jql = 'issuetype in (Bug, Incident) AND status in (Closed, Resolved) AND resolved >= -90d';
         const res = await safeExecuteMCPTool('jira_search', { jql });
+        if (!res || typeof res !== 'object' || res.error) {
+          // Jira unreachable / not configured / errored: let the harness fall through to Tier 3
+          // instead of reporting a fabricated or misleading zero count as live data.
+          return null;
+        }
         const issues = Array.isArray(res) ? res : (Array.isArray(res?.issues) ? res.issues : []);
 
         return {
-          total_resolved_bugs: issues.length || 14,
+          total_resolved_bugs: issues.length,
           source: 'mcp_jira',
           synced_at: new Date().toISOString(),
         };
@@ -61,91 +91,13 @@ export const okrProgressTool = createDeterministicToolHarness({
     default: async (inputArgs) => {
       const quarter = inputArgs.quarter || 'Q4';
       const dbRecords = await databaseService.getOkrRecords(quarter).catch(() => []);
-      
-      if (dbRecords && dbRecords.length > 0) {
-        return {
-          quarter,
-          okrs: dbRecords.map((r) => ({
-            id: r.id,
-            objective: r.objective,
-            kr: r.key_result,
-            target_value: Number(r.target_value),
-            current_value: Number(r.current_value),
-            status: r.status,
-            quarter: r.quarter,
-          })),
-          synced_at: new Date().toISOString(),
-        };
-      }
-
-      // Seed realistic engineering OKR tree if table is empty
-      const defaultKrs = [
-        {
-          objective: 'O1: Elevate System Reliability & Operational Excellence',
-          kr: 'KR1: Maintain >99.9% API uptime across core gateway services',
-          target_value: 99.9,
-          current_value: 99.95,
-          unit: '%',
-          direction: 'HIGHER_IS_BETTER',
-          type: 'LAGGING',
-          quarter,
-        },
-        {
-          objective: 'O1: Elevate System Reliability & Operational Excellence',
-          kr: 'KR2: Reduce P95 API response latency to <150ms under peak load',
-          target_value: 150,
-          current_value: 138,
-          unit: 'ms',
-          direction: 'LOWER_IS_BETTER',
-          type: 'LEADING',
-          quarter,
-        },
-        {
-          objective: 'O2: Accelerate Engineering Delivery Velocity & Quality',
-          kr: 'KR3: Achieve >=85% unit and integration test coverage across all microservices',
-          target_value: 85,
-          current_value: 78,
-          unit: '%',
-          direction: 'HIGHER_IS_BETTER',
-          type: 'LEADING',
-          quarter,
-        },
-        {
-          objective: 'O2: Accelerate Engineering Delivery Velocity & Quality',
-          kr: 'KR4: Decrease PR code review turnaround time to <12 hours',
-          target_value: 12,
-          current_value: 14.5,
-          unit: 'hours',
-          direction: 'LOWER_IS_BETTER',
-          type: 'LEADING',
-          quarter,
-        },
-        {
-          objective: 'O3: Foster High-Performance Engineering Culture',
-          kr: 'KR5: Complete 100% of bi-weekly 1-on-1 career progression check-ins',
-          target_value: 100,
-          current_value: 92,
-          unit: '%',
-          direction: 'HIGHER_IS_BETTER',
-          type: 'LEADING',
-          quarter,
-        },
-      ];
-
-      for (const kr of defaultKrs) {
-        await databaseService.saveOkrRecord({
-          objective: kr.objective,
-          key_result: kr.kr,
-          target_value: kr.target_value,
-          current_value: kr.current_value,
-          status: 'ON_TRACK',
-          quarter,
-        }).catch(() => {});
-      }
+      const okrs = mapOkrRows(dbRecords);
 
       return {
         quarter,
-        okrs: defaultKrs,
+        okrs,
+        status: okrs.length > 0 ? 'OK' : 'NO_DATA',
+        source: 'postgres_okr_tracker',
         synced_at: new Date().toISOString(),
       };
     },
@@ -154,19 +106,14 @@ export const okrProgressTool = createDeterministicToolHarness({
   dbCacheFallback: async (source, inputArgs) => {
     const quarter = inputArgs.quarter || 'Q4';
     const records = await databaseService.getOkrRecords(quarter).catch(() => []);
-    
+    const okrs = mapOkrRows(records);
+
     return {
       quarter,
-      okrs: records.map((r) => ({
-        id: r.id,
-        objective: r.objective,
-        kr: r.key_result,
-        target_value: Number(r.target_value),
-        current_value: Number(r.current_value),
-        status: r.status,
-        quarter: r.quarter,
-      })),
+      okrs,
+      status: okrs.length > 0 ? 'OK' : 'NO_DATA',
       source: 'postgres_okr_tracker',
+      is_cached: true,
       staleDataWarning: true,
       synced_at: new Date().toISOString(),
     };
@@ -175,70 +122,101 @@ export const okrProgressTool = createDeterministicToolHarness({
   computeMath: async (sourceResults, inputArgs) => {
     const defaultData = sourceResults.default?.data;
     const dbFallbackData = sourceResults.dbCacheFallback?.data;
+    const notionData = sourceResults.notion?.data;
+    const jiraData = sourceResults.jira?.data;
     const mode = inputArgs.mode || 'ANALYZE';
     const quarter = inputArgs.quarter || 'Q4';
+    const target = inputArgs.target || 'ALL';
 
-    const rawKrs = defaultData?.okrs || dbFallbackData?.okrs || [
-      {
-        objective: 'O1: Elevate System Reliability & Operational Excellence',
-        kr: 'KR1: Maintain >99.9% API uptime across core gateway services',
-        target_value: 99.9,
-        current_value: 99.95,
-        unit: '%',
-        direction: 'HIGHER_IS_BETTER',
-        type: 'LAGGING',
-      },
-      {
-        objective: 'O1: Elevate System Reliability & Operational Excellence',
-        kr: 'KR2: Reduce P95 API response latency to <150ms under peak load',
-        target_value: 150,
-        current_value: 138,
-        unit: 'ms',
-        direction: 'LOWER_IS_BETTER',
-        type: 'LEADING',
-      },
-      {
-        objective: 'O2: Accelerate Engineering Delivery Velocity & Quality',
-        kr: 'KR3: Achieve >=85% unit and integration test coverage across all microservices',
-        target_value: 85,
-        current_value: 78,
-        unit: '%',
-        direction: 'HIGHER_IS_BETTER',
-        type: 'LEADING',
-      },
-      {
-        objective: 'O2: Accelerate Engineering Delivery Velocity & Quality',
-        kr: 'KR4: Decrease PR code review turnaround time to <12 hours',
-        target_value: 12,
-        current_value: 14.5,
-        unit: 'hours',
-        direction: 'LOWER_IS_BETTER',
-        type: 'LEADING',
-      },
-    ];
+    const primary = (Array.isArray(defaultData?.okrs) && defaultData.okrs.length > 0)
+      ? defaultData
+      : (Array.isArray(dbFallbackData?.okrs) && dbFallbackData.okrs.length > 0 ? dbFallbackData : (defaultData || dbFallbackData || null));
+    const rawKrs = Array.isArray(primary?.okrs) ? primary.okrs : [];
+    const isCached = Boolean(primary?.is_cached) || sourceResults.default?.tierUsed === 'TIER_3_DB_CACHE';
+    const syncedAt = primary?.synced_at || new Date().toISOString();
+    const provenanceNotice = createProvenanceNotice(isCached, syncedAt, OKR_SOURCE_NAME);
+
+    const auxiliarySources = [];
+    if (notionData?.source === 'mcp_notion' && notionData.okr_hub_found) {
+      auxiliarySources.push(`Notion OKR hub${notionData.hub_title ? `: ${notionData.hub_title}` : ''}`);
+    }
+    if (jiraData?.source === 'mcp_jira' && typeof jiraData.total_resolved_bugs === 'number') {
+      auxiliarySources.push(`Jira (${jiraData.total_resolved_bugs} bugs/incidents resolved in last 90d)`);
+    }
+
+    // Honest empty state: no OKR records exist for this quarter.
+    if (rawKrs.length === 0) {
+      const emptySummary = `### 🎯 Engineering OKRs: ${quarter}\n\n` +
+        `No OKR records were found for **${quarter}** in the OKR tracker. ` +
+        `No progress, confidence, or pacing scores can be computed until key results are recorded.\n\n` +
+        `${provenanceNotice}`;
+
+      return {
+        mode,
+        target,
+        quarter,
+        objective_id: inputArgs.objective_id || 'all',
+        status: 'NO_DATA',
+        okrs: [],
+        items: [],
+        total_krs: 0,
+        key_results: [],
+        lagging_key_results: [],
+        at_risk_krs: [],
+        pacing: 'NO_DATA',
+        overall_completion_pct: null,
+        overall_progress_pct: null,
+        overall_confidence_score: null,
+        leading_avg_progress: null,
+        lagging_avg_progress: null,
+        provenance: { source: OKR_SOURCE_NAME, is_cached: isCached, synced_at: syncedAt },
+        summary: emptySummary,
+      };
+    }
+
+    // Per-KR scoring. KRs without a numeric target/current are listed but not scored.
+    const scoreKr = (item) => {
+      const krText = item.kr || item.key_result || '';
+      const targetValue = toFiniteOrNull(item.target_value ?? item.target);
+      const currentValue = toFiniteOrNull(item.current_value ?? item.current);
+      const isInverse = item.direction === 'LOWER_IS_BETTER' || /latency|turnaround|hours|ms|seconds|bugs|incidents|flakiness/i.test(krText);
+      const isLeading = item.type === 'LEADING' || /latency|turnaround|coverage|check-ins|review|prs|commit/i.test(krText);
+      if (targetValue === null || currentValue === null) {
+        return { krText, targetValue, currentValue, isInverse, isLeading, score: null, progressPct: null };
+      }
+      let score;
+      if (isInverse) {
+        score = currentValue > 0 ? Math.min(1.0, targetValue / currentValue) : 1.0;
+      } else {
+        score = targetValue > 0 ? Math.min(1.0, currentValue / targetValue) : 1.0;
+      }
+      return { krText, targetValue, currentValue, isInverse, isLeading, score, progressPct: Math.round(score * 100) };
+    };
+
+    const fmt = (value, unit) => (value === null ? 'n/a' : `${value} ${unit || ''}`.trim());
 
     if (mode === 'LIST_RAW') {
       const krRows = rawKrs.map((item) => {
-        const target = Number(item.target_value || item.target || 100);
-        const current = Number(item.current_value || item.current || 0);
-        const isInverse = item.direction === 'LOWER_IS_BETTER' || /latency|turnaround|hours|ms|seconds|bugs|incidents|flakiness/i.test(item.kr || item.key_result || '');
-        const score = isInverse ? (current > 0 ? Math.min(1.0, target / current) : 1.0) : (target > 0 ? Math.min(1.0, current / target) : 1.0);
-        const progressPct = Math.round(score * 100);
-        const statusBadge = progressPct >= 80 ? '🟢 On Track' : progressPct >= 60 ? '🟡 At Risk' : '🔴 Off Track';
-        return `| **${item.kr || item.key_result || 'Key Result'}** | \`${current} ${item.unit || ''}\` | \`${target} ${item.unit || ''}\` | **${progressPct}%** | ${statusBadge} |`;
+        const s = scoreKr(item);
+        const statusBadge = s.progressPct === null
+          ? '⚪ Unscored'
+          : s.progressPct >= 80 ? '🟢 On Track' : s.progressPct >= 60 ? '🟡 At Risk' : '🔴 Off Track';
+        return `| **${s.krText || 'Key Result'}** | \`${fmt(s.currentValue, item.unit)}\` | \`${fmt(s.targetValue, item.unit)}\` | **${s.progressPct === null ? 'n/a' : `${s.progressPct}%`}** | ${statusBadge} |`;
       });
 
       const listSummary = `### 🎯 Engineering OKRs & Key Results: ${quarter} (${rawKrs.length} Key Results)\n\n` +
         `| Key Result Description | Current | Target | Progress | Status |\n| :--- | :---: | :---: | :---: | :---: |\n` +
-        (krRows.length > 0 ? krRows.join('\n') : '| *No OKRs recorded for quarter* | - | - | - | - |') +
-        `\n\n> 💡 **Pacing Guidance**: Focus engineering sprints on items flagged At Risk or Off Track.`;
+        krRows.join('\n') +
+        `\n\n${provenanceNotice}`;
 
       return {
         mode: 'LIST_RAW',
-        target: inputArgs.target || 'ALL',
+        target,
         quarter,
+        status: 'OK',
         total_krs: rawKrs.length,
         items: rawKrs,
+        provenance: { source: OKR_SOURCE_NAME, is_cached: isCached, synced_at: syncedAt },
         summary: listSummary,
       };
     }
@@ -246,6 +224,7 @@ export const okrProgressTool = createDeterministicToolHarness({
     // Directional Metric Progress & Confidence Scoring
     const analyzedKrs = [];
     const laggingKrs = [];
+    let scoredCount = 0;
     let totalProgressSum = 0;
     let totalConfidenceSum = 0;
     let leadingCount = 0;
@@ -254,23 +233,30 @@ export const okrProgressTool = createDeterministicToolHarness({
     let laggingProgressSum = 0;
 
     rawKrs.forEach((item) => {
-      const target = Number(item.target_value || item.target || 100);
-      const current = Number(item.current_value || item.current || 0);
-      const isInverse = item.direction === 'LOWER_IS_BETTER' || /latency|turnaround|hours|ms|seconds|bugs|incidents|flakiness/i.test(item.kr || item.key_result || '');
-      const isLeading = item.type === 'LEADING' || /latency|turnaround|coverage|check-ins|review|prs|commit/i.test(item.kr || item.key_result || '');
+      const s = scoreKr(item);
+      const unit = item.unit || '';
+      const current = fmt(s.currentValue, unit);
+      const targetStr = fmt(s.targetValue, unit);
 
-      let score = 0;
-      if (isInverse) {
-        score = current > 0 ? Math.min(1.0, target / current) : 1.0;
-      } else {
-        score = target > 0 ? Math.min(1.0, current / target) : 1.0;
+      if (s.score === null) {
+        analyzedKrs.push({
+          objective: item.objective || null,
+          kr: s.krText,
+          target: targetStr,
+          current,
+          progress_pct: null,
+          confidence_score: null,
+          indicator_type: s.isLeading ? 'Leading' : 'Lagging',
+          status: 'UNSCORED',
+        });
+        return;
       }
 
-      const progressPct = Math.round(score * 100);
-      
-      // Calculate normalized confidence score (0.00 to 1.00)
-      let confidenceScore = Number(Math.min(1.0, score * 1.05).toFixed(2));
+      const progressPct = s.progressPct;
+      let confidenceScore = Number(Math.min(1.0, s.score * 1.05).toFixed(2));
       let status = 'ON_TRACK';
+      const gap = Number(Math.abs(s.targetValue - s.currentValue).toFixed(2));
+      const gapRemediation = `Close the remaining gap of ${`${gap} ${unit}`.trim()} (${s.isInverse ? 'reduce' : 'raise'} ${current} → ${targetStr}) and assign an accountable owner.`;
 
       if (progressPct >= 80) {
         status = 'ON_TRACK';
@@ -278,32 +264,28 @@ export const okrProgressTool = createDeterministicToolHarness({
       } else if (progressPct >= 60) {
         status = 'AT_RISK';
         confidenceScore = Number(Math.max(0.50, Math.min(0.79, confidenceScore)).toFixed(2));
-        laggingKrs.push({
-          objective: item.objective,
-          kr: item.kr || item.key_result,
-          current: `${current} ${item.unit || ''}`.trim(),
-          target: `${target} ${item.unit || ''}`.trim(),
-          progress_pct: progressPct,
-          confidence_score: confidenceScore,
-          root_cause: isInverse ? 'Review bottlenecks & large PR batch sizing' : 'Coverage gap in legacy auth/payment modules',
-          remediation: isInverse ? 'Enforce PR size limit <300 lines & daily review SLAs' : 'Dedicate 20% sprint capacity budget to integration tests',
-        });
       } else {
         status = 'OFF_TRACK';
         confidenceScore = Number(Math.min(0.49, confidenceScore).toFixed(2));
+      }
+
+      if (status !== 'ON_TRACK') {
         laggingKrs.push({
-          objective: item.objective,
-          kr: item.kr || item.key_result,
-          current: `${current} ${item.unit || ''}`.trim(),
-          target: `${target} ${item.unit || ''}`.trim(),
+          objective: item.objective || null,
+          kr: s.krText,
+          current,
+          target: targetStr,
           progress_pct: progressPct,
           confidence_score: confidenceScore,
-          root_cause: 'Critical timeline friction & unmet prerequisite milestones',
-          remediation: 'Escalate to Engineering Director & re-scope secondary deliverables',
+          status,
+          root_cause: null,
+          remediation: status === 'OFF_TRACK'
+            ? `${gapRemediation} Escalate and re-scope if the gap cannot be closed this quarter.`
+            : gapRemediation,
         });
       }
 
-      if (isLeading) {
+      if (s.isLeading) {
         leadingCount++;
         leadingProgressSum += progressPct;
       } else {
@@ -311,106 +293,127 @@ export const okrProgressTool = createDeterministicToolHarness({
         laggingProgressSum += progressPct;
       }
 
+      scoredCount++;
       totalProgressSum += progressPct;
       totalConfidenceSum += confidenceScore;
 
       analyzedKrs.push({
-        objective: item.objective || 'General Engineering Excellence',
-        kr: item.kr || item.key_result,
-        target: `${target} ${item.unit || ''}`.trim(),
-        current: `${current} ${item.unit || ''}`.trim(),
+        objective: item.objective || null,
+        kr: s.krText,
+        target: targetStr,
+        current,
         progress_pct: progressPct,
         confidence_score: confidenceScore,
-        indicator_type: isLeading ? 'Leading' : 'Lagging',
+        indicator_type: s.isLeading ? 'Leading' : 'Lagging',
         status,
       });
     });
 
-    const totalKrsCount = Math.max(1, analyzedKrs.length);
-    const overallProgressPct = Math.round(totalProgressSum / totalKrsCount);
-    const overallConfidenceScore = Number((totalConfidenceSum / totalKrsCount).toFixed(2));
-    const leadingAvgProgress = leadingCount > 0 ? Math.round(leadingProgressSum / leadingCount) : overallProgressPct;
-    const laggingAvgProgress = laggingCount > 0 ? Math.round(laggingProgressSum / laggingCount) : overallProgressPct;
+    const overallProgressPct = scoredCount > 0 ? Math.round(totalProgressSum / scoredCount) : null;
+    const overallConfidenceScore = scoredCount > 0 ? Number((totalConfidenceSum / scoredCount).toFixed(2)) : null;
+    const leadingAvgProgress = leadingCount > 0 ? Math.round(leadingProgressSum / leadingCount) : null;
+    const laggingAvgProgress = laggingCount > 0 ? Math.round(laggingProgressSum / laggingCount) : null;
 
-    let pacing = 'ON_TRACK';
-    if (overallConfidenceScore < 0.60 || overallProgressPct < 65) {
-      pacing = 'AT_RISK';
+    let pacing = 'NO_DATA';
+    if (scoredCount > 0) {
+      pacing = 'ON_TRACK';
+      if (overallConfidenceScore < 0.60 || overallProgressPct < 65) pacing = 'AT_RISK';
+      if (overallConfidenceScore < 0.40 || overallProgressPct < 45) pacing = 'OFF_TRACK';
     }
-    if (overallConfidenceScore < 0.40 || overallProgressPct < 45) {
-      pacing = 'OFF_TRACK';
-    }
+    const pctStr = (v) => (v === null ? 'n/a' : `${v}%`);
 
     if (mode === 'DRILL_DOWN') {
       let drillSummary = '';
-      if (inputArgs.target === 'AT_RISK' || inputArgs.target === 'GAP_REMEDIATION') {
+      if (target === 'AT_RISK' || target === 'GAP_REMEDIATION') {
         drillSummary = `### ⚠️ At-Risk Key Results & Gap Remediation: ${quarter}\n\n` +
           (laggingKrs.length > 0
-            ? laggingKrs.map((k) => `#### 📌 ${k.kr}\n- **Current vs Target**: ${k.current} / ${k.target} (${k.progress_pct}% complete, Confidence: ${k.confidence_score})\n- **Root Cause**: ${k.root_cause}\n- **Remediation Plan**: ${k.remediation}`).join('\n\n')
-            : '🟢 **All Key Results On Track**: Zero high-risk pacing gaps detected.') +
-          `\n\n> 💡 **Executive Action**: Review remediation resource allocation with tech leads.`;
+            ? laggingKrs.map((k) => `#### 📌 ${k.kr}\n- **Current vs Target**: ${k.current} / ${k.target} (${k.progress_pct}% complete, Confidence: ${k.confidence_score})\n- **Remediation Plan**: ${k.remediation}`).join('\n\n')
+            : (scoredCount > 0 ? '🟢 **All scored Key Results On Track**: No pacing gaps detected.' : '⚪ No Key Results have numeric targets to score.')) +
+          `\n\n${provenanceNotice}`;
       } else {
         drillSummary = `### 🎯 Targeted OKR Progress Breakdown: ${quarter}\n\n` +
-          analyzedKrs.map((k) => `- **${k.kr}**: Current: ${k.current} (Target: ${k.target}, ${k.progress_pct}% complete - ${k.status})`).join('\n') +
-          `\n\n> 💡 **Status**: Track leading indicator metrics in weekly EM dashboards.`;
+          analyzedKrs.map((k) => `- **${k.kr}**: Current: ${k.current} (Target: ${k.target}, ${pctStr(k.progress_pct)} complete - ${k.status})`).join('\n') +
+          `\n\n${provenanceNotice}`;
       }
 
       return {
         mode: 'DRILL_DOWN',
-        target: inputArgs.target || 'ALL',
+        target,
         quarter,
+        status: 'OK',
         overall_progress_pct: overallProgressPct,
         overall_confidence_score: overallConfidenceScore,
         at_risk_krs: laggingKrs,
+        provenance: { source: OKR_SOURCE_NAME, is_cached: isCached, synced_at: syncedAt },
         summary: drillSummary,
       };
     }
+
+    const pacingLabel = { ON_TRACK: '🟢 ON TRACK', AT_RISK: '🟡 AT RISK', OFF_TRACK: '🔴 OFF TRACK', NO_DATA: '⚪ NO DATA' }[pacing];
+    const statusLabel = (st) => ({ ON_TRACK: '🟢 On Track', AT_RISK: '🟡 At Risk', OFF_TRACK: '🔴 Off Track', UNSCORED: '⚪ Unscored' }[st]);
+
+    let divergenceLine;
+    if (leadingAvgProgress === null || laggingAvgProgress === null) {
+      divergenceLine = 'ℹ️ Divergence cannot be assessed: both leading and lagging Key Results are required.';
+    } else if (leadingAvgProgress < laggingAvgProgress) {
+      divergenceLine = `⚠️ **Leading indicators (${leadingAvgProgress}%) trail lagging outcomes (${laggingAvgProgress}%)**: future outcome metrics are likely to slip if leading behaviors do not recover.`;
+    } else {
+      divergenceLine = '✅ Leading indicators are in alignment with lagging outcome goals.';
+    }
+
+    const remediationProposals = laggingKrs.length > 0
+      ? laggingKrs
+        .slice()
+        .sort((a, b) => a.progress_pct - b.progress_pct)
+        .map((k, idx) => `${idx + 1}. **${k.kr}** (P${Math.min(idx, 2)}): ${k.remediation}`)
+        .join('\n')
+      : '- No remediation required: no scored Key Results are At Risk or Off Track.';
 
     // Build Executive Markdown Report
     const markdownSummary = `
 ### 🎯 Executive OKR Pacing & Strategic Scorecard
 - **Quarterly Target Cycle**: **${quarter} Engineering Objectives**
-- **Overall Execution Pacing**: **${pacing === 'ON_TRACK' ? '🟢 ON TRACK' : pacing === 'AT_RISK' ? '🟡 AT RISK' : '🔴 OFF TRACK'}**
-- **Aggregate Quarter Completion**: **${overallProgressPct}%** across ${analyzedKrs.length} Key Results
-- **Overall Confidence Score**: **${overallConfidenceScore} / 1.00**
-- **Leading Indicator Health**: **${leadingAvgProgress}%** (Operational Pace) vs **Lagging Outcome**: **${laggingAvgProgress}%** (System Metrics)
+- **Overall Execution Pacing**: **${pacingLabel}**
+- **Aggregate Quarter Completion**: **${pctStr(overallProgressPct)}** across ${scoredCount} scored of ${analyzedKrs.length} Key Results
+- **Overall Confidence Score**: **${overallConfidenceScore === null ? 'n/a' : overallConfidenceScore} / 1.00**
+- **Leading Indicator Health**: **${pctStr(leadingAvgProgress)}** vs **Lagging Outcome**: **${pctStr(laggingAvgProgress)}**
 
 ---
 
 ### 📊 Objective & Key Result Detail Breakdown
 | Objective | Key Result | Target | Current | Progress | Confidence | Indicator Type | Status |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-${analyzedKrs.map((k) => `| ${k.objective.replace(/O\d+:\s*/, '')} | **${k.kr.replace(/KR\d+:\s*/, '')}** | \`${k.target}\` | \`${k.current}\` | **${k.progress_pct}%** | \`${k.confidence_score}\` | *${k.indicator_type}* | ${k.status === 'ON_TRACK' ? '🟢 On Track' : k.status === 'AT_RISK' ? '🟡 At Risk' : '🔴 Off Track'} |`).join('\n')}
+${analyzedKrs.map((k) => `| ${(k.objective || '—').replace(/O\d+:\s*/, '')} | **${(k.kr || '').replace(/KR\d+:\s*/, '')}** | \`${k.target}\` | \`${k.current}\` | **${pctStr(k.progress_pct)}** | \`${k.confidence_score === null ? 'n/a' : k.confidence_score}\` | *${k.indicator_type}* | ${statusLabel(k.status)} |`).join('\n')}
 
 ---
 
 ### 🔄 Leading vs Lagging Indicator Divergence Analysis
-- **Leading Indicators Average**: **${leadingAvgProgress}%** (Reflects daily review responsiveness, test velocity, and 1-on-1 rhythm).
-- **Lagging Outcomes Average**: **${laggingAvgProgress}%** (Reflects production SLA uptime and incident escapement).
-- **Divergence Warning**: ${leadingAvgProgress < laggingAvgProgress ? '⚠️ **Leading metrics are lagging behind historical uptime outcomes** (e.g. PR turnaround time is 14.5h vs 12h target). If code review friction continues, delivery slippage will impact future quarterly milestones.' : '✅ Leading behavioral indicators are in alignment with production outcome goals.'}
+- **Leading Indicators Average**: **${pctStr(leadingAvgProgress)}** (${leadingCount} Key Results)
+- **Lagging Outcomes Average**: **${pctStr(laggingAvgProgress)}** (${laggingCount} Key Results)
+- **Divergence Warning**: ${divergenceLine}
 
 ---
 
-### ⚠️ Lagging Key Results & Root Cause Diagnosis
-${laggingKrs.length > 0 ? laggingKrs.map((l) => `- 🟡 **${l.kr}** (${l.progress_pct}% Progress, Confidence: \`${l.confidence_score}\`):\n  - **Root Cause**: ${l.root_cause}\n  - **Remediation**: ${l.remediation}`).join('\n') : '- ✅ All quarterly Key Results are meeting or exceeding trajectory milestones.'}
+### ⚠️ Lagging Key Results
+${laggingKrs.length > 0 ? laggingKrs.map((l) => `- ${l.status === 'OFF_TRACK' ? '🔴' : '🟡'} **${l.kr}** (${l.progress_pct}% Progress, Confidence: \`${l.confidence_score}\`): ${l.current} vs target ${l.target}`).join('\n') : '- ✅ All scored Key Results are meeting or exceeding trajectory milestones.'}
 
 ---
 
 ### 🛠️ Actionable Gap Remediation Proposals
-1. **Accelerate Code Review Turnaround (P0)**: Institute async review blocks and enforce PR size thresholds (<300 lines) to compress review latency from 14.5h back under the 12.0h target.
-2. **Close Integration Test Coverage Gap (P1)**: Direct 20% sprint debt budget toward authentication and billing service test suites to elevate coverage from 78% to >=85%.
-3. **Weekly OKR Checkpoint Sync (P2)**: Maintain bi-weekly 1-on-1 cadence to ensure engineer personal growth goals directly align with Q4 engineering milestones.
+${remediationProposals}
 
 ---
 
 ### 📌 Data Provenance
-- **Telemetry Sources**: ${defaultData?.okrs ? '🟢 Live Notion OKR Hub & Jira Delivery Metrics' : '🟡 PostgreSQL okr_tracker cached snapshot'}
-- **Generated At**: \`${new Date().toISOString()}\`
+${provenanceNotice}
+- **Supplementary Sources**: ${auxiliarySources.length > 0 ? auxiliarySources.join('; ') : 'None available'}
 `.trim();
 
     return {
       mode: 'ANALYZE',
       quarter,
       objective_id: inputArgs.objective_id || 'all',
+      status: 'OK',
       pacing,
       overall_completion_pct: overallProgressPct,
       overall_confidence_score: overallConfidenceScore,
@@ -418,6 +421,7 @@ ${laggingKrs.length > 0 ? laggingKrs.map((l) => `- 🟡 **${l.kr}** (${l.progres
       lagging_avg_progress: laggingAvgProgress,
       key_results: analyzedKrs,
       lagging_key_results: laggingKrs,
+      provenance: { source: OKR_SOURCE_NAME, is_cached: isCached, synced_at: syncedAt },
       summary: markdownSummary,
     };
   },

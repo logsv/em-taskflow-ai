@@ -2,6 +2,9 @@ import { sprintPlanTool, createSprintAgent } from '../../src/agent/sprintAgent.j
 import { sprintRetroTool, createRetroAgent } from '../../src/agent/retroAgent.js';
 import { roadmapAlignmentTool, createRoadmapAgent } from '../../src/agent/roadmapAgent.js';
 import { okrProgressTool, createOkrAgent } from '../../src/agent/okrAgent.js';
+import databaseService from '../../src/db/postgres.js';
+import identityService from '../../src/services/identityService.js';
+import { buildOkrRecords } from '../fixtures/seedTestData.js';
 
 describe('Phase 5 Planning & Strategy Agents Specs: Sprint, Retro, Roadmap, OKR', () => {
   let originalTimeout;
@@ -77,6 +80,46 @@ describe('Phase 5 Planning & Strategy Agents Specs: Sprint, Retro, Roadmap, OKR'
       expect(fallback.rolling_avg_velocity).toBeGreaterThanOrEqual(15);
       expect(fallback.is_cached).toBe(true);
       expect(fallback.data_source).toBe('postgres_sprint_analytics');
+    });
+
+    describe('honest empty state (no roster, no sprint history)', () => {
+      let sandbox;
+      beforeEach(() => {
+        sandbox = createMockSandbox();
+        sandbox.stub(databaseService, 'getSprintAnalytics').resolves([]);
+        sandbox.stub(databaseService, 'getTeamMembers').resolves([]);
+        sandbox.stub(identityService, 'getTeamMembers').resolves([]);
+      });
+      afterEach(() => sandbox.restore());
+
+      it('should return NO_DATA instead of seeded velocities, team size, or a capacity floor', async () => {
+        const res = await sprintPlanTool.invoke({ sprint_id: 'sprint_empty', sources: ['default'] });
+
+        expect(res.status).toBe('SUCCESS');
+        expect(res.data.status).toBe('NO_DATA');
+        expect(res.data.capacity_metrics.team_size).toBe(0);
+        expect(res.data.capacity_metrics.gross_capacity_hours).toBe(0);
+        expect(res.data.capacity_metrics.net_capacity_hours).toBe(0);
+        expect(res.data.capacity_metrics.rolling_avg_velocity_points).toBeNull();
+        expect(res.data.capacity_metrics.velocity_std_dev).toBeNull();
+        expect(res.data.capacity_metrics.recommended_commitment_points).toBeNull();
+        expect(res.data.capacity_metrics.pto_days_detected).toBeNull();
+        expect(res.data.allocation_breakdown.feature_points).toBeNull();
+        expect(res.data.candidate_backlog).toEqual([]);
+        expect(res.data.missing_inputs.length).toBe(2);
+        expect(res.data.summary).toContain('No sprint commitment can be computed');
+        expect(res.data.summary).toContain('Notice');
+      });
+
+      it('should report an empty PostgreSQL fallback without invented velocity or PTO', async () => {
+        const fallback = await sprintPlanTool.dbCacheFallback('postgres_sprint', { sprint_id: 'sprint_fallback' });
+        expect(fallback.team_size).toBe(0);
+        expect(fallback.gross_capacity_hours).toBe(0);
+        expect(fallback.rolling_avg_velocity).toBeNull();
+        expect(fallback.historical_velocities).toEqual([]);
+        expect(fallback.pto_days_detected).toBeNull();
+        expect(fallback.is_cached).toBe(true);
+      });
     });
 
     it('should create sprintAgent safely', () => {
@@ -221,6 +264,17 @@ describe('Phase 5 Planning & Strategy Agents Specs: Sprint, Retro, Roadmap, OKR'
   });
 
   describe('okrAgent & evaluate_okr_progress Tool Harness', () => {
+    let sandbox;
+    let getOkrRecordsStub;
+
+    beforeEach(() => {
+      sandbox = createMockSandbox();
+      getOkrRecordsStub = sandbox.stub(databaseService, 'getOkrRecords')
+        .callsFake(async (quarter) => buildOkrRecords(quarter));
+    });
+
+    afterEach(() => sandbox.restore());
+
     it('should compute OKR pacing, confidence scores, and leading/lagging metrics', async () => {
       const res = await okrProgressTool.invoke({
         sources: ['notion', 'default', 'jira'],
@@ -242,6 +296,97 @@ describe('Phase 5 Planning & Strategy Agents Specs: Sprint, Retro, Roadmap, OKR'
       expect(res.data.summary).toContain('Executive OKR Pacing & Strategic Scorecard');
       expect(res.data.summary).toContain('Objective & Key Result Detail Breakdown');
       expect(res.data.summary).toContain('Leading vs Lagging Indicator Divergence');
+      expect(res.data.status).toBe('OK');
+      expect(res.data.key_results.length).toBe(4);
+      expect(res.data.key_results.map((k) => k.kr)).toEqual(buildOkrRecords('Q4').map((r) => r.key_result));
+      expect(res.data.lagging_key_results.map((k) => k.kr)).toEqual([
+        'KR3: Achieve >=85% unit and integration test coverage',
+        'KR4: Decrease PR code review turnaround time to <12 hours',
+      ]);
+      expect(res.data.summary).toContain('Notice');
+      expect(res.data.summary).toContain('PostgreSQL okr_tracker');
+    });
+
+    it('should not seed or persist placeholder OKRs into the database', async () => {
+      const saveSpy = sandbox.spy(databaseService, 'saveOkrRecord');
+      getOkrRecordsStub.resolves([]);
+      await okrProgressTool.invoke({ sources: ['default'], quarter: 'Q4', mode: 'ANALYZE' });
+      expect(saveSpy.called).toBe(false);
+    });
+
+    describe('honest empty state when no OKR records exist', () => {
+      beforeEach(() => getOkrRecordsStub.resolves([]));
+
+      const expectEmptyShape = (data, mode) => {
+        expect(data.mode).toBe(mode);
+        expect(data.status).toBe('NO_DATA');
+        expect(data.quarter).toBe('Q4');
+        expect(data.okrs).toEqual([]);
+        expect(data.items).toEqual([]);
+        expect(data.total_krs).toBe(0);
+        expect(data.key_results).toEqual([]);
+        expect(data.lagging_key_results).toEqual([]);
+        expect(data.at_risk_krs).toEqual([]);
+        expect(data.pacing).toBe('NO_DATA');
+        expect(data.overall_completion_pct).toBeNull();
+        expect(data.overall_confidence_score).toBeNull();
+        expect(data.leading_avg_progress).toBeNull();
+        expect(data.lagging_avg_progress).toBeNull();
+        expect(data.summary).toContain('No OKR records were found for **Q4**');
+        expect(data.summary).toContain('Notice');
+        expect(data.summary).not.toContain('99.95');
+        expect(data.summary).not.toMatch(/O1:|KR\d:/);
+      };
+
+      it('ANALYZE returns an explicit NO_DATA result', async () => {
+        const res = await okrProgressTool.invoke({ sources: ['default', 'notion', 'jira'], quarter: 'Q4', mode: 'ANALYZE' });
+        expect(res.status).toBe('SUCCESS');
+        expectEmptyShape(res.data, 'ANALYZE');
+      });
+
+      it('LIST_RAW returns an explicit NO_DATA result', async () => {
+        const res = await okrProgressTool.invoke({ quarter: 'Q4', mode: 'LIST_RAW' });
+        expect(res.status).toBe('SUCCESS');
+        expectEmptyShape(res.data, 'LIST_RAW');
+      });
+
+      it('DRILL_DOWN returns an explicit NO_DATA result', async () => {
+        const res = await okrProgressTool.invoke({ quarter: 'Q4', mode: 'DRILL_DOWN', target: 'AT_RISK' });
+        expect(res.status).toBe('SUCCESS');
+        expectEmptyShape(res.data, 'DRILL_DOWN');
+      });
+
+      it('default executor reports NO_DATA with an empty okrs array', async () => {
+        const data = await okrProgressTool.mcpExecutors.default({ quarter: 'Q4' });
+        expect(data.okrs).toEqual([]);
+        expect(data.status).toBe('NO_DATA');
+      });
+
+      it('computeMath handles missing source data without crashing', async () => {
+        const data = await okrProgressTool.computeMath({}, { quarter: 'Q4', mode: 'ANALYZE' });
+        expectEmptyShape(data, 'ANALYZE');
+      });
+    });
+
+    it('should report a real zero Jira count instead of a placeholder', async () => {
+      const okrs = buildOkrRecords('Q4').map((r) => ({ ...r, kr: r.key_result }));
+      const data = await okrProgressTool.computeMath({
+        default: { data: { quarter: 'Q4', okrs, synced_at: new Date().toISOString() }, tierUsed: 'TIER_1_MCP' },
+        jira: { data: { total_resolved_bugs: 0, source: 'mcp_jira' }, tierUsed: 'TIER_1_MCP' },
+      }, { quarter: 'Q4', mode: 'ANALYZE' });
+      expect(data.summary).toContain('Jira (0 bugs/incidents resolved in last 90d)');
+      expect(data.summary).not.toContain('14 bugs');
+    });
+
+    it('should list KRs without a numeric target as UNSCORED instead of defaulting the target', async () => {
+      const data = await okrProgressTool.computeMath({
+        default: { data: { quarter: 'Q4', okrs: [{ objective: 'O9: Test', kr: 'KR9: Unmeasured', target_value: null, current_value: 5 }] }, tierUsed: 'TIER_1_MCP' },
+      }, { quarter: 'Q4', mode: 'ANALYZE' });
+      expect(data.key_results.length).toBe(1);
+      expect(data.key_results[0].status).toBe('UNSCORED');
+      expect(data.key_results[0].progress_pct).toBeNull();
+      expect(data.overall_completion_pct).toBeNull();
+      expect(data.pacing).toBe('NO_DATA');
     });
 
     it('should list key results in LIST_RAW mode', async () => {
@@ -253,7 +398,8 @@ describe('Phase 5 Planning & Strategy Agents Specs: Sprint, Retro, Roadmap, OKR'
       expect(res.status).toBe('SUCCESS');
       expect(res.data.mode).toBe('LIST_RAW');
       expect(Array.isArray(res.data.items)).toBe(true);
-      expect(res.data.items.length).toBeGreaterThan(0);
+      expect(res.data.items.length).toBe(4);
+      expect(res.data.total_krs).toBe(4);
       expect(res.data.summary).toContain('Engineering OKRs & Key Results');
     });
 
@@ -267,6 +413,8 @@ describe('Phase 5 Planning & Strategy Agents Specs: Sprint, Retro, Roadmap, OKR'
       expect(res.status).toBe('SUCCESS');
       expect(res.data.mode).toBe('DRILL_DOWN');
       expect(res.data.summary).toContain('At-Risk Key Results & Gap Remediation');
+      expect(res.data.at_risk_krs.length).toBe(2);
+      expect(res.data.at_risk_krs.every((k) => k.root_cause === null)).toBe(true);
     });
 
     it('should create okrAgent safely with low temperature', () => {

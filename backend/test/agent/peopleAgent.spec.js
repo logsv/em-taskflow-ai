@@ -1,4 +1,5 @@
 import { peopleGrowthTool, createPeopleAgent, COMPETENCY_DIMENSIONS, LEVEL_BENCHMARKS } from '../../src/agent/peopleAgent.js';
+import { buildCalendarSourceData } from '../fixtures/seedTestData.js';
 
 describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
   it('should define 12 standardized competency dimensions', () => {
@@ -53,7 +54,7 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
     expect(res.data.roadmaps.long_term_1_to_3y.focus).toContain('Engineering Management');
   });
 
-  it('should detect high burnout risk when workload or meeting hours exceed thresholds', async () => {
+  it('should report UNKNOWN burnout risk when no workload or calendar telemetry exists', async () => {
     const res = await peopleGrowthTool.invoke({
       engineer_id: 'eng_overloaded',
       current_level: 'L4_MID',
@@ -61,8 +62,25 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
     });
 
     expect(res.status).toBe('SUCCESS');
-    expect(res.data.metrics.burnout_risk_score).toBeDefined();
-    expect(['LOW', 'MEDIUM', 'HIGH']).toContain(res.data.metrics.burnout_risk_score);
+    expect(res.data.metrics.burnout_risk_score).toBe('UNKNOWN');
+    expect(res.data.metrics.weekly_workload_hours).toBeNull();
+    expect(res.data.metrics.weekly_meeting_hours).toBeNull();
+    expect(res.data.summary).toContain('n/a (no workload data)');
+  });
+
+  it('should detect high burnout risk when meeting hours exceed thresholds', async () => {
+    const args = { engineer_id: 'eng_overloaded', current_level: 'L4_MID', target_level: 'L5_SENIOR', mode: 'ANALYZE' };
+    const high = await peopleGrowthTool.computeMath(
+      { default: { data: {} }, googleCalendar: { data: buildCalendarSourceData({ weeklyMeetingHours: 24 }) } }, args);
+    const medium = await peopleGrowthTool.computeMath(
+      { default: { data: {} }, googleCalendar: { data: buildCalendarSourceData({ weeklyMeetingHours: 18 }) } }, args);
+    const low = await peopleGrowthTool.computeMath(
+      { default: { data: {} }, googleCalendar: { data: buildCalendarSourceData({ weeklyMeetingHours: 8 }) } }, args);
+
+    expect(high.metrics.burnout_risk_score).toBe('HIGH');
+    expect(high.metrics.weekly_meeting_hours).toBe(24);
+    expect(medium.metrics.burnout_risk_score).toBe('MEDIUM');
+    expect(low.metrics.burnout_risk_score).toBe('LOW');
   });
 
   it('should support LIST_RAW mode to return calendar 1-on-1 events', async () => {
@@ -74,9 +92,25 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
 
     expect(res.status).toBe('SUCCESS');
     expect(res.data.mode).toBe('LIST_RAW');
-    expect(Array.isArray(res.data.items)).toBe(true);
-    expect(res.data.totalEvents).toBeGreaterThanOrEqual(1);
+    // No live calendar in tests: an explicit empty state, never an invented meeting.
+    expect(res.data.items).toEqual([]);
+    expect(res.data.totalEvents).toBe(0);
+    expect(res.data.data_availability).toBe('no_data');
     expect(res.data.summary).toContain('Scheduled 1-on-1 & Growth Check-ins');
+    expect(res.data.summary).toContain('Calendar data unavailable');
+  });
+
+  it('should list real calendar events in LIST_RAW mode when the calendar source returns them', async () => {
+    const calendar = buildCalendarSourceData();
+    const data = await peopleGrowthTool.computeMath(
+      { default: { data: {} }, googleCalendar: { data: calendar } },
+      { engineer_id: 'eng_alex', mode: 'LIST_RAW', filter: 'ONE_ON_ONES' },
+    );
+
+    expect(data.totalEvents).toBe(2);
+    expect(data.items).toEqual(calendar.today_events);
+    expect(data.data_availability).toBe('ok');
+    expect(data.summary).toContain('1-on-1 with Manager: Alex Williams');
   });
 
   it('should support DRILL_DOWN mode for targeted skill gap analysis', async () => {
@@ -106,9 +140,29 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
 
   it('should fall back to PostgreSQL database profile when external MCP APIs time out', async () => {
     const fallback = await peopleGrowthTool.dbCacheFallback('notion');
-    expect(fallback.career_notes_count).toBeGreaterThanOrEqual(1);
+    // Career docs are not persisted in PostgreSQL: explicit empty state, no placeholder doc.
+    expect(fallback.career_notes_count).toBe(0);
+    expect(fallback.career_docs).toEqual([]);
+    expect(fallback.data_availability).toBe('no_data');
     expect(fallback.is_cached).toBe(true);
     expect(fallback.data_source).toBe('postgres_team_members_notion_fallback');
+
+    const calendarFallback = await peopleGrowthTool.dbCacheFallback('googleCalendar', { engineer_id: 'eng_alex' });
+    expect(calendarFallback.today_events).toEqual([]);
+    expect(calendarFallback.weekly_meeting_hours).toBeNull();
+    expect(calendarFallback.data_availability).toBe('no_data');
+  });
+
+  it('should only use the requested engineer profile in the PostgreSQL fallback', async () => {
+    const known = await peopleGrowthTool.dbCacheFallback('default', { engineer_id: 'Alex Williams' });
+    expect(known.engineer_id).toBe('mem_alex');
+    expect(known.displayName).toBe('Alex Williams');
+    expect(known.weekly_workload_hours).toBeNull();
+
+    const unknown = await peopleGrowthTool.dbCacheFallback('default', { engineer_id: 'nobody_on_record' });
+    expect(unknown.displayName).toBeNull();
+    expect(unknown.data_availability).toBe('no_data');
+    expect(unknown.tenure_months).toBeNull();
   });
 
   it('should instantiate createPeopleAgent graph', () => {

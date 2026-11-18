@@ -3,6 +3,45 @@ import { criticAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import { createMicroAgent } from './baseAgent.js';
 
+/**
+ * Deterministic draft scan shared by the primary executor and the fallback tier,
+ * so the fallback reports real measurements of the draft instead of static placeholders.
+ */
+function scanDraft(text) {
+  // 1. Vanity Metrics Scan
+  const vanityRegex = /\b(lines of code|loc written|total commits|commit count|individual velocity|story points per dev)\b/i;
+  const hasVanityMetrics = vanityRegex.test(text);
+
+  // 2. Misleading Fallback & Fake Handle Scan
+  const fakeHandleRegex = /@logsv|PROJ-999|XYZ-000|fake_user|placeholder/i;
+  const hasFakeHandles = fakeHandleRegex.test(text);
+
+  // 3. Tone & Empathy Scan (blamelessness check)
+  const accusatoryRegex = /\b(lazy|fault|blame|careless|incompetent|screwed up|failed on their own)\b/i;
+  const hasAccusatoryLanguage = accusatoryRegex.test(text);
+
+  // 4. Mathematical Consistency Scan
+  const percentageMatches = text.match(/\b\d+(\.\d+)?%/g) || [];
+  const invalidPercentages = percentageMatches.some((p) => parseFloat(p) > 100.0);
+  const hasNumbers = /\d+/.test(text);
+
+  // 5. Link & Citation Integrity Scan
+  const markdownLinks = text.match(/\[.*?\]\(.*?\)/g) || [];
+  const brokenLinkBrackets = /\[[^\]]*\([^)]*$/.test(text);
+
+  return {
+    draft_length: text.length,
+    hasVanityMetrics,
+    hasFakeHandles,
+    hasAccusatoryLanguage,
+    invalidPercentages,
+    hasNumbers,
+    markdownLinksCount: markdownLinks.length,
+    brokenLinkBrackets,
+    synced_at: new Date().toISOString(),
+  };
+}
+
 export const auditReportTool = createDeterministicToolHarness({
   name: 'audit_em_report',
   description: 'Audits draft Engineering Management reports and feedback for tone neutrality, mathematical accuracy, citation backing, absence of vanity metrics, and EM policy compliance.',
@@ -18,59 +57,13 @@ export const auditReportTool = createDeterministicToolHarness({
   }),
   // Tier 1: Direct API & Policy Guardrail Scanner
   directApiExecutors: {
-    default: async (inputArgs) => {
-      const text = inputArgs.draft_response || '';
-      
-      // 1. Vanity Metrics Scan
-      const vanityRegex = /\b(lines of code|loc written|total commits|commit count|individual velocity|story points per dev)\b/i;
-      const hasVanityMetrics = vanityRegex.test(text);
-
-      // 2. Misleading Fallback & Fake Handle Scan
-      const fakeHandleRegex = /@logsv|PROJ-999|XYZ-000|fake_user|placeholder/i;
-      const hasFakeHandles = fakeHandleRegex.test(text);
-
-      // 3. Tone & Empathy Scan (blamelessness check)
-      const accusatoryRegex = /\b(lazy|fault|blame|careless|incompetent|screwed up|failed on their own)\b/i;
-      const hasAccusatoryLanguage = accusatoryRegex.test(text);
-
-      // 4. Mathematical Consistency Scan
-      const percentageMatches = text.match(/\b\d+(\.\d+)?%/g) || [];
-      const invalidPercentages = percentageMatches.some((p) => parseFloat(p) > 100.0);
-      const hasNumbers = /\d+/.test(text);
-
-      // 5. Link & Citation Integrity Scan
-      const markdownLinks = text.match(/\[.*?\]\(.*?\)/g) || [];
-      const brokenLinkBrackets = /\[[^\]]*\([^)]*$/.test(text);
-
-      return {
-        draft_length: text.length,
-        hasVanityMetrics,
-        hasFakeHandles,
-        hasAccusatoryLanguage,
-        invalidPercentages,
-        hasNumbers,
-        markdownLinksCount: markdownLinks.length,
-        brokenLinkBrackets,
-        synced_at: new Date().toISOString(),
-      };
-    },
+    default: async (inputArgs) => scanDraft(inputArgs.draft_response || ''),
   },
   // Tier 2: Resilient Heuristic Fallback
-  dbCacheFallback: async (_source, inputArgs) => {
-    const text = inputArgs.draft_response || '';
-    return {
-      draft_length: text.length || 100,
-      hasVanityMetrics: false,
-      hasFakeHandles: false,
-      hasAccusatoryLanguage: false,
-      invalidPercentages: false,
-      hasNumbers: true,
-      markdownLinksCount: 1,
-      brokenLinkBrackets: false,
-      source: 'static_heuristic_guardrails',
-      synced_at: new Date().toISOString(),
-    };
-  },
+  dbCacheFallback: async (_source, inputArgs) => ({
+    ...scanDraft(inputArgs.draft_response || ''),
+    source: 'static_heuristic_guardrails',
+  }),
   // Tier 3: Quality Audit Decision & Sanitization Engine
   computeMath: async (sourceResults, inputArgs) => {
     const data = sourceResults.default?.data || sourceResults.dbCacheFallback?.data || {};

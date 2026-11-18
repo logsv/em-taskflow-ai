@@ -6,7 +6,14 @@ import identityService from '../services/identityService.js';
 import settingsService from '../services/settingsService.js';
 import { info, warn, error } from '../utils/logger.js';
 import { getDirectOrFormattedJiraUrl, formatMarkdownLinkOrCode } from '../utils/urlHelper.js';
-import { createMicroAgent, safeExecuteMCPTool } from './baseAgent.js';
+import { createMicroAgent, safeExecuteMCPTool, createProvenanceNotice } from './baseAgent.js';
+
+/** Real completed (or committed) points per past sprint; sprints without numbers are skipped, never defaulted. */
+function extractVelocities(pastSprints) {
+  return pastSprints
+    .map((s) => Number(s.completed_points ?? s.total_points))
+    .filter((v) => Number.isFinite(v) && v > 0);
+}
 
 export const sprintPlanTool = createDeterministicToolHarness({
   name: 'calculate_sprint_plan',
@@ -36,7 +43,8 @@ export const sprintPlanTool = createDeterministicToolHarness({
 
         if (issues.length > 0) {
           const candidateTickets = issues.slice(0, 8).map((iss) => {
-            const points = iss.story_points || iss.fields?.customfield_10016 || iss.fields?.story_points || (iss.key ? (parseInt(iss.key.replace(/\D/g, ''), 10) % 5 || 3) : 3);
+            // Unestimated tickets stay null; never synthesize an estimate.
+            const points = iss.story_points ?? iss.fields?.customfield_10016 ?? iss.fields?.story_points ?? null;
             return {
               key: iss.key,
               summary: iss.summary || iss.fields?.summary || 'Candidate backlog feature',
@@ -84,12 +92,8 @@ export const sprintPlanTool = createDeterministicToolHarness({
         if (res) {
           return {
             working_agreements_found: true,
-            working_agreements: {
-              max_pr_lines: 400,
-              review_sla_hours: 4,
-              wip_limit_per_dev: 1.5,
-              tech_debt_target_percentage: 20,
-            },
+            // The Notion page content is not parsed into structured values, so none are reported.
+            working_agreements: null,
             source: 'mcp_notion',
             synced_at: new Date().toISOString(),
           };
@@ -104,17 +108,17 @@ export const sprintPlanTool = createDeterministicToolHarness({
       const analytics = await databaseService.getSprintAnalytics().catch(() => []);
       const pastSprints = analytics.slice(0, 5);
 
-      const velocities = pastSprints.map((s) => s.completed_points || s.total_points || 35);
+      const velocities = extractVelocities(pastSprints);
       const avgVelocity = velocities.length > 0
         ? Math.round(velocities.reduce((a, b) => a + b, 0) / velocities.length)
-        : 35;
+        : null;
 
       return {
         sprint_id: inputArgs.sprint_id || 'upcoming_sprint',
         sprint_name: inputArgs.sprint_name || 'Sprint 43',
-        team_size: members.length > 0 ? members.length : 4,
+        team_size: members.length,
         team_members: members.map((m) => m.displayName),
-        historical_velocities: velocities.length > 0 ? velocities : [34, 38, 32, 36, 35],
+        historical_velocities: velocities,
         rolling_avg_velocity: avgVelocity,
         candidate_tickets: analytics[0]?.candidate_tickets || [],
         synced_at: new Date().toISOString(),
@@ -127,12 +131,12 @@ export const sprintPlanTool = createDeterministicToolHarness({
       const members = await databaseService.getTeamMembers().catch(() => []);
       const analytics = await databaseService.getSprintAnalytics().catch(() => []);
       const pastSprints = analytics.slice(0, 5);
-      const velocities = pastSprints.map((s) => s.completed_points || s.total_points || 35);
+      const velocities = extractVelocities(pastSprints);
       const avgVelocity = velocities.length > 0
         ? Math.round(velocities.reduce((a, b) => a + b, 0) / velocities.length)
-        : 35;
+        : null;
 
-      const teamSize = members.length > 0 ? members.length : 4;
+      const teamSize = members.length;
       const grossHours = teamSize * 10 * 8 * 0.75; // 10 days * 8h * 75% focus
 
       return {
@@ -141,11 +145,11 @@ export const sprintPlanTool = createDeterministicToolHarness({
         team_size: teamSize,
         team_members: members.map((m) => m.displayName),
         gross_capacity_hours: grossHours,
-        net_capacity_hours: grossHours - (2 * 8 * 0.75), // 2 days PTO default
+        net_capacity_hours: grossHours, // PTO unknown without a live calendar source
         rolling_avg_velocity: avgVelocity,
-        historical_velocities: velocities.length > 0 ? velocities : [34, 38, 32, 36, 35],
+        historical_velocities: velocities,
         candidate_tickets: analytics[0]?.candidate_tickets || [],
-        pto_days_detected: 2,
+        pto_days_detected: null,
         is_cached: true,
         data_source: 'postgres_sprint_analytics',
         synced_at: new Date().toISOString(),
@@ -178,7 +182,7 @@ export const sprintPlanTool = createDeterministicToolHarness({
 
     const sprintName = inputArgs.sprint_name || defaultData.sprint_name || 'Sprint 43';
     const sprintId = inputArgs.sprint_id || defaultData.sprint_id || 'upcoming_sprint';
-    const teamSize = Number(defaultData.team_size || 4);
+    const teamSize = Number(defaultData.team_size ?? dbFallbackData.team_size ?? 0) || 0;
     const sprintDurationDays = Number(inputArgs.sprint_duration_days || 10);
     const focusFactor = 0.75; // 75% productive engineering time
 
@@ -186,60 +190,57 @@ export const sprintPlanTool = createDeterministicToolHarness({
     const grossHours = Math.round(teamSize * sprintDurationDays * 8 * focusFactor);
 
     // Calculate Deductions (PTO + On-Call Shift Buffer)
-    const ptoDays = Number(gcalData.pto_days_detected || 2);
-    const ptoHours = Math.round(ptoDays * 8 * focusFactor);
-    const onCallHours = Math.round(1 * 8 * focusFactor); // 1 on-call rotation buffer
-    const netAvailableHours = Math.max(40, grossHours - ptoHours - onCallHours);
-    const capacityRatio = netAvailableHours / grossHours;
+    // PTO is only deducted when a live calendar actually reported it; otherwise it is unknown (null).
+    const ptoDaysRaw = gcalData.pto_days_detected ?? dbFallbackData.pto_days_detected;
+    const ptoDays = Number.isFinite(Number(ptoDaysRaw)) && ptoDaysRaw !== null ? Number(ptoDaysRaw) : null;
+    const ptoHours = ptoDays === null ? 0 : Math.round(ptoDays * 8 * focusFactor);
+    const onCallHours = grossHours > 0 ? Math.round(1 * 8 * focusFactor) : 0; // 1 on-call rotation buffer
+    const netAvailableHours = Math.max(0, grossHours - ptoHours - onCallHours);
+    const capacityRatio = grossHours > 0 ? netAvailableHours / grossHours : null;
 
-    // Rolling 5-Sprint Velocity Calculation
-    const velocities = defaultData.historical_velocities && defaultData.historical_velocities.length > 0
+    // Rolling 5-Sprint Velocity Calculation (real history only)
+    const historicalVelocities = Array.isArray(defaultData.historical_velocities) && defaultData.historical_velocities.length > 0
       ? defaultData.historical_velocities
-      : [34, 38, 32, 36, 35];
-    const velocityMean = Number((velocities.reduce((a, b) => a + b, 0) / velocities.length).toFixed(1));
-    const variance = velocities.reduce((sum, v) => sum + Math.pow(v - velocityMean, 2), 0) / velocities.length;
-    const velocityStdDev = Number(Math.sqrt(variance).toFixed(1));
+      : (Array.isArray(dbFallbackData.historical_velocities) ? dbFallbackData.historical_velocities : []);
+    const velocities = historicalVelocities.map(Number).filter((v) => Number.isFinite(v));
+    const velocityMean = velocities.length > 0
+      ? Number((velocities.reduce((a, b) => a + b, 0) / velocities.length).toFixed(1))
+      : null;
+    const velocityStdDev = velocities.length > 0
+      ? Number(Math.sqrt(velocities.reduce((sum, v) => sum + Math.pow(v - velocityMean, 2), 0) / velocities.length).toFixed(1))
+      : null;
 
     // Target Recommended Commitment
-    const baseTargetVelocity = Number(inputArgs.target_velocity || defaultData.rolling_avg_velocity || velocityMean);
-    const recommendedCommitment = Math.round(baseTargetVelocity * capacityRatio);
-    const bufferPoints = Math.max(2, Math.round(baseTargetVelocity * 0.10));
+    const targetCandidate = inputArgs.target_velocity ?? defaultData.rolling_avg_velocity ?? velocityMean;
+    const baseTargetVelocity = targetCandidate === null || targetCandidate === undefined ? null : Number(targetCandidate);
+    const hasPlanInputs = Number.isFinite(baseTargetVelocity) && capacityRatio !== null;
+    const recommendedCommitment = hasPlanInputs ? Math.round(baseTargetVelocity * capacityRatio) : null;
+    const bufferPoints = hasPlanInputs ? Math.max(2, Math.round(baseTargetVelocity * 0.10)) : null;
 
     // 70 / 20 / 10 Capacity Allocation Breakdown
     const techDebtPct = Number(inputArgs.custom_tech_debt_percentage || notionData.working_agreements?.tech_debt_target_percentage || 20);
     const unplannedBufferPct = Number(inputArgs.unplanned_buffer_percentage || 10);
     const featurePct = Math.max(10, 100 - techDebtPct - unplannedBufferPct);
 
-    const featurePoints = Math.round((recommendedCommitment * featurePct) / 100);
-    const techDebtPoints = Math.round((recommendedCommitment * techDebtPct) / 100);
-    const bufferAllocationPoints = Math.max(1, recommendedCommitment - featurePoints - techDebtPoints);
+    const featurePoints = hasPlanInputs ? Math.round((recommendedCommitment * featurePct) / 100) : null;
+    const techDebtPoints = hasPlanInputs ? Math.round((recommendedCommitment * techDebtPct) / 100) : null;
+    const bufferAllocationPoints = hasPlanInputs ? Math.max(1, recommendedCommitment - featurePoints - techDebtPoints) : null;
 
-    // Backlog Candidate Processing
-    let candidateTickets = jiraData.candidate_tickets || defaultData.candidate_tickets || dbFallbackData.candidate_tickets || [];
-    const isTestEnv = process.env.NODE_ENV === 'test' || (Array.isArray(process.argv) && process.argv.some(a => a.includes('jasmine')));
-    if (candidateTickets.length === 0 && isTestEnv) {
-      candidateTickets = [
-        { key: 'ENG-201', summary: 'Core Auth OAuth v2 token refresh pipeline', story_points: 5, assignee: 'Alex Williams', is_tech_debt: false },
-        { key: 'ENG-204', summary: 'PostgreSQL connection pool & pgvector HNSW index tuning', story_points: 5, assignee: 'Sarah Chen', is_tech_debt: true },
-        { key: 'ENG-208', summary: 'RAG single-pass Markdown streaming response optimization', story_points: 8, assignee: 'Alex Williams', is_tech_debt: false },
-        { key: 'ENG-212', summary: 'Temporal durable workflow timeout retry policy hardening', story_points: 3, assignee: 'Lead Engineer', is_tech_debt: true },
-        { key: 'ENG-215', summary: 'LangGraph multi-agent supervisor domain policy validator', story_points: 5, assignee: 'Elena Rostova', is_tech_debt: false },
-        { key: 'ENG-219', summary: 'Redis semantic vector cache invalidation hooks', story_points: 3, assignee: 'Sarah Chen', is_tech_debt: true },
-        { key: 'ENG-222', summary: 'Admin Portal team member sync & role management tab', story_points: 5, assignee: 'Elena Rostova', is_tech_debt: false },
-      ];
-    }
+    // Backlog Candidate Processing (live Jira, then persisted sprint analytics; never synthesized)
+    const candidateTickets = jiraData.candidate_tickets || defaultData.candidate_tickets || dbFallbackData.candidate_tickets || [];
+    const ptsLabel = (p) => (p === null || p === undefined ? 'unestimated' : `${p} pts`);
 
     if (mode === 'LIST_RAW') {
       const ticketRows = candidateTickets.map((t) => {
         const url = process.env.JIRA_BASE_URL ? `${process.env.JIRA_BASE_URL.replace(/\/$/, '')}/browse/${t.key}` : '#';
         const typeBadge = t.is_tech_debt ? '🛠️ Tech Debt' : '✨ Feature';
-        return `| [**${t.key}**](${url}) | **${t.summary}** | **${t.story_points} pts** | \`@${t.assignee}\` | ${typeBadge} |`;
+        return `| [**${t.key}**](${url}) | **${t.summary}** | **${ptsLabel(t.story_points)}** | \`@${t.assignee}\` | ${typeBadge} |`;
       });
 
       const listSummary = `### 📋 Candidate Sprint Backlog: ${sprintName} (${candidateTickets.length} Tickets, ${candidateTickets.reduce((sum, t) => sum + (t.story_points || 0), 0)} pts)\n\n` +
         `| Jira Key | Summary | Estimate | Assignee | Category |\n| :--- | :--- | :---: | :--- | :---: |\n` +
         (ticketRows.length > 0 ? ticketRows.join('\n') : '| *No candidate tickets found* | - | - | - | - |') +
-        `\n\n> 💡 **Commitment Target**: Recommended capacity commitment is **${recommendedCommitment} pts**.`;
+        `\n\n> 💡 **Commitment Target**: ${hasPlanInputs ? `Recommended capacity commitment is **${recommendedCommitment} pts**.` : 'No commitment can be recommended: team size or velocity history is unavailable.'}`;
 
       return {
         mode: 'LIST_RAW',
@@ -267,12 +268,51 @@ export const sprintPlanTool = createDeterministicToolHarness({
       }
     });
 
-    if (ptoDays >= 2) {
+    if (ptoDays !== null && ptoDays >= 2) {
       riskWarnings.push(`📅 **Capacity Deduction**: **${ptoDays} days of team PTO** detected in the sprint window (-${ptoHours} engineering hours).`);
     }
 
-    if (totalCandidatePoints > recommendedCommitment) {
+    if (hasPlanInputs && totalCandidatePoints > recommendedCommitment) {
       riskWarnings.push(`🚨 **Scope Over-Commitment**: Total candidate backlog (**${totalCandidatePoints} pts**) exceeds recommended commitment target (**${recommendedCommitment} pts**) by **${totalCandidatePoints - recommendedCommitment} pts**.`);
+    }
+
+    if (!hasPlanInputs) {
+      const missing = [];
+      if (teamSize <= 0) missing.push('team roster (0 team members on record)');
+      if (!Number.isFinite(baseTargetVelocity)) missing.push('velocity history (no completed sprints on record and no target velocity provided)');
+      const syncedAt = defaultData.synced_at || dbFallbackData.synced_at || new Date().toISOString();
+      return {
+        mode: 'ANALYZE',
+        status: 'NO_DATA',
+        sprint_id: sprintId,
+        sprint_name: sprintName,
+        missing_inputs: missing,
+        capacity_metrics: {
+          team_size: teamSize,
+          gross_capacity_hours: grossHours,
+          net_capacity_hours: netAvailableHours,
+          pto_hours_deducted: ptoHours,
+          pto_days_detected: ptoDays,
+          on_call_hours_deducted: onCallHours,
+          rolling_avg_velocity_points: velocityMean,
+          velocity_std_dev: velocityStdDev,
+          recommended_commitment_points: null,
+          commitment_buffer_points: null,
+        },
+        allocation_breakdown: {
+          feature_percentage: featurePct,
+          feature_points: null,
+          tech_debt_percentage: techDebtPct,
+          tech_debt_points: null,
+          buffer_percentage: unplannedBufferPct,
+          buffer_points: null,
+        },
+        risk_factors: riskWarnings,
+        candidate_backlog: candidateTickets,
+        summary: `### 📊 Sprint Capacity & Rolling Velocity Forecast: ${sprintName}\n\n` +
+          `No sprint commitment can be computed. Missing: ${missing.join('; ')}.\n\n` +
+          createProvenanceNotice(Boolean(dbFallbackData.is_cached), syncedAt, 'PostgreSQL sprint_analytics & team roster'),
+      };
     }
 
     // Persist to PostgreSQL sprint_analytics
@@ -291,12 +331,12 @@ export const sprintPlanTool = createDeterministicToolHarness({
 
     const summaryText = `### 📊 Sprint Capacity & Rolling Velocity Forecast: ${sprintName}
 
-> **Sprint Duration**: ${sprintDurationDays} Days | **Team Size**: ${teamSize} Engineers | **5-Sprint Rolling Velocity**: **${velocityMean} ± ${velocityStdDev} pts** | **Recommended Commitment**: **${recommendedCommitment} pts**
+> **Sprint Duration**: ${sprintDurationDays} Days | **Team Size**: ${teamSize} Engineers | **5-Sprint Rolling Velocity**: **${velocityMean === null ? 'n/a (no sprint history)' : `${velocityMean} ± ${velocityStdDev} pts`}** | **Recommended Commitment**: **${recommendedCommitment} pts**
 
 | Capacity Metric | Calculated Value | Baseline Comparison | Status |
 | :--- | :---: | :---: | :---: |
 | **Gross Available Hours** | **${grossHours} hrs** | ${teamSize} devs × ${sprintDurationDays}d × 8h × 75% | Standard Baseline |
-| **PTO & On-Call Deductions** | **-${ptoHours + onCallHours} hrs** | ${ptoDays}d PTO (${ptoHours}h) + 1 on-call shift (${onCallHours}h) | 📅 Accounted |
+| **PTO & On-Call Deductions** | **-${ptoHours + onCallHours} hrs** | ${ptoDays === null ? 'PTO unknown (no calendar data)' : `${ptoDays}d PTO (${ptoHours}h)`} + 1 on-call shift (${onCallHours}h) | 📅 Accounted |
 | **Net Productive Hours** | **${netAvailableHours} hrs** | ${Math.round(capacityRatio * 100)}% of gross available time | ✅ Sustainable Pace |
 | **Recommended Target Velocity** | **${recommendedCommitment} pts** | Adjusted for availability (-${baseTargetVelocity - recommendedCommitment} pts) | 🎯 High Reliability |
 
@@ -323,7 +363,7 @@ ${riskWarnings.length > 0 ? riskWarnings.map((w) => `  * ${w}`).join('\n') : '  
 
 | Issue Key | Summary | Type | Points | Assignee |
 | :--- | :--- | :---: | :---: | :--- |
-${candidateTickets.map((t) => `| ${formatMarkdownLinkOrCode(t.key, getDirectOrFormattedJiraUrl(t))} | ${t.summary} | ${t.is_tech_debt ? '🛠️ Tech Debt' : '🚀 Feature'} | **${t.story_points} pts** | ${t.assignee} |`).join('\n')}
+${candidateTickets.map((t) => `| ${formatMarkdownLinkOrCode(t.key, getDirectOrFormattedJiraUrl(t))} | ${t.summary} | ${t.is_tech_debt ? '🛠️ Tech Debt' : '🚀 Feature'} | **${ptsLabel(t.story_points)}** | ${t.assignee} |`).join('\n')}
 
 - **Ceremony Next Steps**: Ensure peer pairing for issues $\ge 5$ story points.
 
@@ -339,6 +379,7 @@ ${candidateTickets.map((t) => `| ${formatMarkdownLinkOrCode(t.key, getDirectOrFo
         gross_capacity_hours: grossHours,
         net_capacity_hours: netAvailableHours,
         pto_hours_deducted: ptoHours,
+        pto_days_detected: ptoDays,
         on_call_hours_deducted: onCallHours,
         rolling_avg_velocity_points: velocityMean,
         velocity_std_dev: velocityStdDev,

@@ -155,6 +155,8 @@ export function createDeterministicToolHarness({
   createdTool.dbCacheFallback = dbCacheFallback;
   createdTool.mcpExecutors = mcpExecutors;
   createdTool.directApiExecutors = directApiExecutors;
+  // Exposed so the deterministic Tier-3 math can be exercised against fixture source data in tests.
+  createdTool.computeMath = computeMath;
 
   return createdTool;
 }

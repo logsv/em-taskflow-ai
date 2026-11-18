@@ -92,10 +92,16 @@ export const sprintRetroTool = createDeterministicToolHarness({
     github: async (_inputArgs) => {
       try {
         const res = await safeExecuteMCPTool('get_dora_events', { window_days: 14 });
+        if (!res || typeof res !== 'object' || res.error) {
+          // No live GitHub data: fall through to the DB tier rather than reporting invented metrics.
+          return null;
+        }
+        const turnaround = Number(res.pr_turnaround_hours);
+        const merged = Number(res.total_prs_merged);
 
         return {
-          pr_turnaround_hours: res?.pr_turnaround_hours || 14.5,
-          total_prs_merged: res?.total_prs_merged || 18,
+          pr_turnaround_hours: Number.isFinite(turnaround) ? turnaround : null,
+          total_prs_merged: Number.isFinite(merged) ? merged : null,
           source: 'mcp_github',
           synced_at: new Date().toISOString(),
         };

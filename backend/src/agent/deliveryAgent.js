@@ -7,6 +7,12 @@ import { getDirectOrFormattedGithubUrl, getDirectOrFormattedJiraUrl, formatMarkd
 import { info, warn, error } from '../utils/logger.js';
 import { createMicroAgent, safeExecuteMCPTool, resolveGithubTarget, resolveMemberTarget } from './baseAgent.js';
 
+/** Renders a real day count, or 'unknown' when the source did not report one (never a placeholder). */
+function daysLabel(days) {
+  const n = Number(days);
+  return days === null || days === undefined || !Number.isFinite(n) ? 'unknown' : `${n} days`;
+}
+
 export const deliveryBottlenecksTool = createDeterministicToolHarness({
   name: 'analyze_delivery_bottlenecks',
   description: 'Analyzes team throughput, WIP limits, blocked tickets, PR review latency, or lists raw open issues/tickets across Jira, GitHub, and Notion.',
@@ -249,7 +255,7 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
         const wipRows = wipTickets.map((t) => {
           const url = getDirectOrFormattedJiraUrl(t);
           const link = formatMarkdownLinkOrCode(`**${t.key}**`, url);
-          return `| ${link} | **${t.summary}** | \`@${t.assignee || 'unassigned'}\` | \`${t.status || 'In Progress'}\` | ${t.days || t.days_blocked || 2} days |`;
+          return `| ${link} | **${t.summary}** | \`@${t.assignee || 'unassigned'}\` | \`${t.status || 'In Progress'}\` | ${daysLabel(t.days ?? t.days_blocked)} |`;
         });
 
         const wipSummary = wipTickets.length > 0
@@ -271,7 +277,7 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
         const blockerRows = blockers.map((t) => {
           const keyLink = formatMarkdownLinkOrCode(`**${t.key}**`, getDirectOrFormattedJiraUrl(t));
           const blockedByLink = t.blocked_by ? formatMarkdownLinkOrCode(`**${t.blocked_by}**`, getDirectOrFormattedJiraUrl(t.blocked_by)) : '-';
-          return `| ${keyLink} | **${t.summary}** | ${blockedByLink} | \`@${t.assignee || 'unassigned'}\` | ${t.days_blocked || 2} days |`;
+          return `| ${keyLink} | **${t.summary}** | ${blockedByLink} | \`@${t.assignee || 'unassigned'}\` | ${daysLabel(t.days_blocked)} |`;
         });
 
         const blockerSummary = `### 🚫 Cross-Team Blocked Dependencies (${blockers.length} Tickets)
@@ -426,7 +432,7 @@ ${rows.length > 0 ? rows.join('\n') : '| *No items found* | - | - | - |'}`;
           if (t.assignee) metaParts.push(`Assignee: \`@${t.assignee}\``);
           if (t.priority) metaParts.push(`Priority: \`${t.priority}\``);
           const metaStr = metaParts.length > 0 ? ` (${metaParts.join(' | ')})` : '';
-          return `  - ${ticketRef}: **${t.summary}** — Blocked by ${blockerRef} for **${t.days_blocked || 2}d**${metaStr}`;
+          return `  - ${ticketRef}: **${t.summary}** — Blocked by ${blockerRef} ${t.days_blocked === undefined || t.days_blocked === null ? '' : ` for **${t.days_blocked}d**`}${metaStr}`;
         }).join('\n');
     } else {
       blockersFormatted = `- **Cross-Team Blockers**: 🟢 No active blocked ticket dependencies.`;
@@ -442,7 +448,7 @@ ${rows.length > 0 ? rows.join('\n') : '| *No items found* | - | - | - |'}`;
           if (t.assignee) metaParts.push(`Assignee: \`@${t.assignee}\``);
           if (t.priority) metaParts.push(`Priority: \`${t.priority}\``);
           const metaStr = metaParts.length > 0 ? ` (${metaParts.join(' | ')})` : '';
-          return `  - ${ticketRef}: **${t.summary}** — Due: \`${t.due_date || 'Past Sprint'}\` (🔴 **Overdue by ${t.days_overdue || 3}d**)${metaStr}`;
+          return `  - ${ticketRef}: **${t.summary}** — Due: \`${t.due_date || 'Past Sprint'}\` (🔴 **${t.days_overdue === undefined || t.days_overdue === null ? 'Overdue' : `Overdue by ${t.days_overdue}d`}**)${metaStr}`;
         }).join('\n');
     } else {
       missedDeadlinesFormatted = `- **Missed Milestone Deadlines**: 🟢 All active tickets on track for sprint milestone.`;

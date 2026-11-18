@@ -138,10 +138,11 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
             : (cached?.mcp?.github?.repo || process.env.GITHUB_REPO || 'github_repo');
           return {
             related_prs_count: prs.length,
-            recent_prs: prs.slice(0, 3).map((p) => ({
-              number: p.number || 402,
-              title: p.title || 'Feature implementation PR',
-              html_url: p.html_url || `https://github.com/${defaultRepo}/pull/${p.number || 402}`,
+            // Only real PR identifiers; PRs without a number are dropped instead of being given a placeholder.
+            recent_prs: prs.filter((p) => p && p.number !== undefined && p.number !== null).slice(0, 3).map((p) => ({
+              number: p.number,
+              title: p.title || null,
+              html_url: p.html_url || `https://github.com/${defaultRepo}/pull/${p.number}`,
             })),
             source: 'mcp_github',
             synced_at: new Date().toISOString(),

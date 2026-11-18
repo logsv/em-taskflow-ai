@@ -161,9 +161,12 @@ export function seedDoraSnapshots(databaseService) {
   ];
 }
 
-export function seedOkrRecords(databaseService) {
-  const quarter = `Q${Math.ceil((new Date().getMonth() + 1) / 3)}`;
-  databaseService.inMemoryOkrTracker = [
+/**
+ * OKR tracker rows (formerly a hard-coded "realistic OKR tree" inside okrAgent.js production code).
+ * Shape mirrors the okr_tracker table returned by databaseService.getOkrRecords().
+ */
+export function buildOkrRecords(quarter = `Q${Math.ceil((new Date().getMonth() + 1) / 3)}`) {
+  return [
     {
       id: 1,
       objective: 'O1: Elevate System Reliability & Operational Excellence',
@@ -177,16 +180,58 @@ export function seedOkrRecords(databaseService) {
     },
     {
       id: 2,
+      objective: 'O1: Elevate System Reliability & Operational Excellence',
+      key_result: 'KR2: Reduce P95 API response latency to <150ms under peak load',
+      target_value: 150,
+      current_value: 138,
+      unit: 'ms',
+      status: 'ON_TRACK',
+      quarter,
+      created_at: new Date(),
+    },
+    {
+      id: 3,
       objective: 'O2: Accelerate Engineering Delivery Velocity & Quality',
       key_result: 'KR3: Achieve >=85% unit and integration test coverage',
       target_value: 85,
-      current_value: 78,
+      current_value: 60,
       unit: '%',
       status: 'AT_RISK',
       quarter,
       created_at: new Date(),
     },
+    {
+      id: 4,
+      objective: 'O2: Accelerate Engineering Delivery Velocity & Quality',
+      key_result: 'KR4: Decrease PR code review turnaround time to <12 hours',
+      target_value: 12,
+      current_value: 20,
+      unit: 'hours',
+      status: 'AT_RISK',
+      quarter,
+      created_at: new Date(),
+    },
   ];
+}
+
+export function seedOkrRecords(databaseService, quarter) {
+  databaseService.inMemoryOkrTracker = buildOkrRecords(quarter);
+}
+
+/**
+ * Google Calendar source payload for the people agent (formerly a hard-coded
+ * fallback schedule inside peopleAgent.js production code).
+ */
+export function buildCalendarSourceData({ weeklyMeetingHours = 12.0, attendee = 'Alex Williams' } = {}) {
+  return {
+    today_events: [
+      { summary: `1-on-1 with Manager: ${attendee}`, start_time: '10:00 AM (Weekly)', attendee },
+      { summary: 'Architecture Guild: Distributed Systems RFC', start_time: '2:00 PM (Bi-weekly)', attendee: 'team' },
+    ],
+    weekly_meeting_hours: weeklyMeetingHours,
+    source: 'mcp_google_calendar',
+    synced_at: new Date().toISOString(),
+  };
 }
 
 export function seedGithubIssues(databaseService) {
