@@ -1,5 +1,6 @@
 import { sbiFeedbackTool, createSbiAgent } from '../../src/agent/sbiAgent.js';
 import { peopleGrowthTool, createPeopleAgent } from '../../src/agent/peopleAgent.js';
+import { SKILL_RATINGS_FIXTURES } from '../fixtures/seedTestData.js';
 
 describe('Phase 4 People & Performance Agents Specs: SBI & People Harnesses', () => {
   describe('sbiAgent & format_sbi_feedback Tool Harness', () => {
@@ -42,13 +43,33 @@ describe('Phase 4 People & Performance Agents Specs: SBI & People Harnesses', ()
         engineer_id: 'eng_alex',
         review_period: 'Q3',
         mode: 'ANALYZE',
+        skill_ratings: SKILL_RATINGS_FIXTURES.alex_l4_to_l5,
       });
 
       expect(res.status).toBe('SUCCESS');
       expect(res.name).toBe('analyze_personnel_growth');
       expect(res.data.mode).toBe('ANALYZE');
       expect(res.data.metrics.burnout_risk_score).toBeDefined();
+      expect(res.data.metrics.scoring_status).toBe('SCORED');
+      expect(typeof res.data.metrics.promotion_readiness_score).toBe('number');
       expect(Array.isArray(res.data.one_on_one_agenda)).toBe(true);
+    });
+
+    it('should compute burnout risk but leave promotion readiness UNSCORED without ratings', async () => {
+      const res = await peopleGrowthTool.invoke({
+        engineer_id: 'eng_alex',
+        review_period: 'Q3',
+        mode: 'ANALYZE',
+      });
+
+      expect(res.status).toBe('SUCCESS');
+      expect(res.data.mode).toBe('ANALYZE');
+      expect(['LOW', 'MEDIUM', 'HIGH']).toContain(res.data.metrics.burnout_risk_score);
+      expect(res.data.metrics.promotion_readiness_score).toBeNull();
+      expect(res.data.metrics.promotion_verdict).toBe('UNSCORED');
+      expect(res.data.competency_radar.every((r) => r.current === null)).toBe(true);
+      expect(res.data.prerequisites.every((p) => p.status === 'UNKNOWN')).toBe(true);
+      expect(res.data.one_on_one_agenda[0]).toContain('competency rating');
     });
 
     it('should list calendar events in LIST_RAW mode', async () => {
