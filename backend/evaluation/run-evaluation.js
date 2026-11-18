@@ -156,6 +156,18 @@ async function runEvaluation() {
 
   const allPassed = Object.values(gateResults).every(Boolean);
 
+  const fastPathLatencies = slaResults
+    .map((r) => r.latencyMs)
+    .filter((v) => typeof v === 'number' && Number.isFinite(v))
+    .sort((a, b) => a - b);
+  const fastPathP95 = fastPathLatencies.length > 0
+    ? Math.round(fastPathLatencies[Math.min(fastPathLatencies.length - 1, Math.ceil(fastPathLatencies.length * 0.95) - 1)])
+    : null;
+  const fastPathAvg = fastPathLatencies.length > 0
+    ? Math.round(fastPathLatencies.reduce((a, b) => a + b, 0) / fastPathLatencies.length)
+    : null;
+  const fastPathMax = fastPathLatencies.length > 0 ? Math.round(fastPathLatencies[fastPathLatencies.length - 1]) : null;
+
   console.log(`\n📊 Evaluation Metric Summary (${activeModel}):`);
   console.table(trajectoryResults.map((r) => ({
     ID: r.eval_id,
@@ -194,8 +206,23 @@ async function runEvaluation() {
       tool_abstention_rate: toolAbstentionRate,
       ast_validation_rate: astValidationRate,
       coreference_resolution_rate: coreferenceRate,
-      fast_path_latency_ms: slaResults.length > 0 ? Math.round(slaResults[0].latency_ms || 185) : 185,
-      rag_faithfulness: ragResults.length > 0 ? (ragResults[0].faithfulness || 0.95) : 0.95,
+      // Measured values only: null when no samples were collected (never a default).
+      fast_path_samples: fastPathLatencies.length,
+      fast_path_latency_ms: fastPathP95, // p95 across fast_path_edge samples
+      fast_path_latency_avg_ms: fastPathAvg,
+      fast_path_latency_max_ms: fastPathMax,
+      context_samples: contextResults.length,
+      rag_samples: ragResults.length,
+      rag_faithfulness: ragResults.length > 0 ? ragAgg.avgFaithfulness : null,
+      gates: {
+        domainSelectionAccuracyMin: gates.domainSelectionAccuracyMin ?? 0.90,
+        unwantedRagRateMax: gates.unwantedRagRateMax ?? 0.05,
+        toolGroundedRateMin: gates.toolGroundedRateMin ?? 0.95,
+        toolAbstentionRateMin: 0.95,
+        astValidationRateMin: 0.95,
+        coreferenceRateMin: 0.85,
+      },
+      gate_results: gateResults,
       status: allPassed ? 'PASS' : 'FAIL',
     };
 

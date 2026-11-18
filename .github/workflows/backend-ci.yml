@@ -6,12 +6,14 @@ on:
     paths:
       - 'backend/**'
       - 'services/python-ai-service/**'
+      - 'scripts/ci/**'
       - '.github/workflows/backend-ci.yml'
   pull_request:
     branches: [ main, develop ]
     paths:
       - 'backend/**'
       - 'services/python-ai-service/**'
+      - 'scripts/ci/**'
       - '.github/workflows/backend-ci.yml'
 
 jobs:
@@ -52,9 +54,11 @@ jobs:
     - name: Install Node dependencies
       run: npm ci --legacy-peer-deps
     
-    - name: Run Node Unit Tests (155 Specs)
-      run: npm test
-      continue-on-error: false
+    - name: Run Node Unit Tests
+      id: unit-tests
+      run: |
+        set -o pipefail
+        npm test 2>&1 | tee "$RUNNER_TEMP/backend-unit.log"
 
     - name: Cache Ollama Models
       uses: actions/cache@v4
@@ -76,26 +80,27 @@ jobs:
         ollama pull hermes3:8b
 
     - name: Run Evaluation Suite Gate
-      run: npm run evaluate
+      id: evaluate
+      run: |
+        # Remove any stale report so the summary only ever reads this run's output.
+        rm -f ../reports/evaluations/composite_latest.json
+        npm run evaluate
       env:
         OLLAMA_AVAILABLE: true
         CI_MODE: false
 
     - name: Display Evaluation & Coverage Summary
       if: always()
+      env:
+        UNIT_OUTCOME: ${{ steps.unit-tests.outcome }}
+        EVAL_OUTCOME: ${{ steps.evaluate.outcome }}
       run: |
-        echo "## 📊 EM TaskFlow AI — CI & Evaluation Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Metric / Suite | SLA Target | Result | Status |" >> $GITHUB_STEP_SUMMARY
-        echo "| :--- | :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Backend Unit Tests** | 155 Specs | 155 Passing | 🟢 PASS |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Domain Selection Accuracy** | $\ge 90\%$ | 100% | 🟢 PASS |" >> $GITHUB_STEP_SUMMARY
-        echo "| **1-Tool Constraint Adherence** | $\ge 95\%$ | 100% | 🟢 PASS |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Unwanted RAG Rate** | $\le 5\%$ | 0.0% | 🟢 PASS |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Fast-Path Pre-Router Latency** | $< 300\text{ms}$ | ~185ms | 🟢 PASS |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Ragas Faithfulness** | $\ge 0.90$ | 1.0000 | 🟢 PASS |" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "*Model Evaluator Target: \`hermes3:8b\` on Local Ollama Infrastructure.*" >> $GITHUB_STEP_SUMMARY
+        python3 ../scripts/ci/ci_summary.py backend \
+          --unit-log "$RUNNER_TEMP/backend-unit.log" \
+          --unit-outcome "$UNIT_OUTCOME" \
+          --coverage-summary coverage/coverage-summary.json \
+          --eval-report ../reports/evaluations/composite_latest.json \
+          --eval-outcome "$EVAL_OUTCOME" | tee -a "$GITHUB_STEP_SUMMARY"
 
   python-ai-test:
     name: Python AI Service Specs & Trajectories
@@ -139,13 +144,19 @@ jobs:
         echo "✅ Ollama is ready!"
         ollama pull hermes3:8b
 
-    - name: Run Python Pytest Specs (32 Specs)
-      run: $HOME/.local/bin/uv run pytest
+    - name: Run Python Pytest Specs
+      id: pytest
+      run: |
+        set -o pipefail
+        $HOME/.local/bin/uv run pytest 2>&1 | tee "$RUNNER_TEMP/pytest.log"
       env:
         OLLAMA_BASE_URL: http://localhost:11434
 
     - name: Display Python AI Test Summary
       if: always()
+      env:
+        PYTEST_OUTCOME: ${{ steps.pytest.outcome }}
       run: |
-        echo "### 🐍 Python AI Service Test Suite Summary" >> $GITHUB_STEP_SUMMARY
-        echo "✅ **32 Python AI Pytest specs passed with 0 failures** (including DeepEval agent trajectories, LLM-as-a-Judge Arena, Ragas metrics, and Temporal workflows)." >> $GITHUB_STEP_SUMMARY
+        python3 ../../scripts/ci/ci_summary.py python \
+          --pytest-log "$RUNNER_TEMP/pytest.log" \
+          --pytest-outcome "$PYTEST_OUTCOME" | tee -a "$GITHUB_STEP_SUMMARY"
