@@ -44,8 +44,19 @@ class CacheInvalidator extends EventEmitter {
       }
     }
 
-    this.emit('domainInvalidated', { domain, l1Count, l2Count, timestamp: Date.now() });
-    return { domain, l1Count, l2Count };
+    // 3. Invalidate Tier 2 MCP tool cache entries feeding this domain
+    let toolCount = 0;
+    for (const handler of this.toolInvalidators) {
+      try {
+        const res = await Promise.resolve(handler({ type: 'domain', domain }));
+        if (typeof res === 'number') toolCount += res;
+      } catch (err) {
+        warn(`Tool cache domain invalidator error for ${domain}: ${err.message}`);
+      }
+    }
+
+    this.emit('domainInvalidated', { domain, l1Count, l2Count, toolCount, timestamp: Date.now() });
+    return { domain, l1Count, l2Count, toolCount };
   }
 
   async invalidateDocument(filename) {
@@ -67,8 +78,18 @@ class CacheInvalidator extends EventEmitter {
       }
     }
 
-    this.emit('documentInvalidated', { filename, l1Count: l1Rag + l1Sop, l2Count, timestamp: Date.now() });
-    return { filename, l1Count: l1Rag + l1Sop, l2Count };
+    let toolCount = 0;
+    for (const handler of this.toolInvalidators) {
+      try {
+        const res = await Promise.resolve(handler({ type: 'document', filename }));
+        if (typeof res === 'number') toolCount += res;
+      } catch (err) {
+        warn(`Tool cache document invalidator error for ${filename}: ${err.message}`);
+      }
+    }
+
+    this.emit('documentInvalidated', { filename, l1Count: l1Rag + l1Sop, l2Count, toolCount, timestamp: Date.now() });
+    return { filename, l1Count: l1Rag + l1Sop, l2Count, toolCount };
   }
 
   async invalidateAll() {

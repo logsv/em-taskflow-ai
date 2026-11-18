@@ -2,6 +2,7 @@ import { config, getMcpConfig } from "../config.js";
 import { ChatOpenAI } from "@langchain/openai";
 import { info, warn, error } from "../utils/logger.js";
 import settingsService from "../services/settingsService.js";
+import { toolCache, isCacheableTool } from "../cache/toolCache.js";
 
 let mcpTools = [];
 let jiraMcpTools = [];
@@ -173,7 +174,21 @@ export async function executeMCPTool(toolName, parameters) {
         .filter(Boolean);
       throw new Error(`Tool '${toolName}' not found. Available tools: ${available.join(", ") || "none"}`);
     }
-    const result = await tool.invoke(parameters);
+    // Harness freshness flag: `fetch_fresh_data: true` skips the cache lookup
+    // (the live result still refreshes the entry); false/absent allows hits.
+    // It is a control flag, not a tool argument, so strip it before invoking.
+    let toolParams = parameters;
+    let forceFresh = false;
+    if (parameters && typeof parameters === "object" && !Array.isArray(parameters) && "fetch_fresh_data" in parameters) {
+      const { fetch_fresh_data: fetchFresh, ...rest } = parameters;
+      forceFresh = fetchFresh === true;
+      toolParams = rest;
+    }
+
+    const resolvedName = tool.name || toolName;
+    const result = isCacheableTool(resolvedName)
+      ? await toolCache.wrap(resolvedName, toolParams, () => tool.invoke(toolParams), null, { bypassRead: forceFresh })
+      : await tool.invoke(toolParams);
     info(`MCP tool completed`, { toolName });
     return result;
   } catch (err) {
@@ -428,3 +443,17 @@ async function loadTools(name, getToolsFn) {
 }
 
 export { createDeterministicToolHarness, commonHarnessSchema } from './baseToolHarness.js';
+
+/**
+ * Test-only seam: install in-memory tool groups so executeMCPTool can be
+ * exercised without live integrations. Not used by production code.
+ */
+export function __setMCPToolsForTesting({ jira = [], notion = [], github = [], google = [], slack = [] } = {}) {
+  jiraMcpTools = jira;
+  notionMcpTools = notion;
+  githubMcpTools = github;
+  googleMcpTools = google;
+  slackMcpTools = slack;
+  mcpTools = [...jira, ...notion, ...github, ...google, ...slack];
+  isInitialized = true;
+}
