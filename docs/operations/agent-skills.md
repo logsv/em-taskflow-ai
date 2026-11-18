@@ -1,106 +1,35 @@
 # 🧰 Agent Skills & Operational Playbooks
 
-This guide provides documentation for the **14 Specialized Operational Skills** configured for autonomous AI agents (Codex, Claude Code, Gemini CLI, Antigravity) and human software engineers maintaining the EM TaskFlow AI platform.
+AI coding agents (Claude Code, Codex, Gemini CLI, Antigravity) working on EM TaskFlow AI follow a shared set of **skills**: Markdown playbooks that say where the code is, which rules apply, and how to verify a change.
 
-All skills are maintained as standard Markdown operational playbooks under [`.agents/skills/`](https://github.com/logsv/em-taskflow-ai/tree/main/.agents/skills) with an index in [`SKILLS.md`](https://github.com/logsv/em-taskflow-ai/blob/main/SKILLS.md).
+- **Location**: [`.claude/skills/<name>/SKILL.md`](https://github.com/logsv/em-taskflow-ai/tree/main/.claude/skills). Claude Code discovers these automatically. `.agents/skills` is a symlink to the same folder for other agents.
+- **Index**: [`SKILLS.md`](https://github.com/logsv/em-taskflow-ai/blob/main/SKILLS.md) lists every skill and when to use it.
+- **Rules & architecture**: [`AGENTS.md`](https://github.com/logsv/em-taskflow-ai/blob/main/AGENTS.md) is the single source of truth. `CLAUDE.md` and `GEMINI.md` import it.
 
----
+## Task skills
 
-## 📑 Categorized Skills Directory
+| Skill | Purpose |
+| :--- | :--- |
+| `/verify` | Runs `scripts/verify.sh`: backend Jasmine, Python pytest and the frontend build for whatever changed, and reports the real results. |
+| `/add-micro-agent <domain>` | Checklist and template for a new EM domain agent, covering every file the domain name must be registered in. |
+| `/add-mcp-tool <provider> <tool>` | Client facade → tool definition → registration → spec, for a new integration tool. |
+| `/sync-docs` | Mechanical and semantic audit of agent docs against the code. |
 
-### 1. 👑 Multi-Agent Orchestration & SLM Inference
+## Area skills
 
-#### `domain-micro-agent-ops`
-- **Location**: `.agents/skills/domain-micro-agent-ops/SKILL.md`
-- **Purpose**: Operational procedures for managing, testing, and adding the 10 Engineering Manager domain micro-agents, deterministic 1-tool harnesses, and policy guardrail validation.
-- **Key Verification**:
-  ```bash
-  cd backend && npm test # Verifies all 240 unit test specs
-  ```
+`slm-routing-ops` · `domain-micro-agent-ops` · `mcp-integrations-ops` · `rag-pipeline-ops` · `multi-tier-caching-ops` · `db-per-service-ops` · `session-thread-management-ops` · `frontend-copilot-ui-ops` · `admin-portal-ops` · `autonomous-em-audit-ops` · `em-dora-productivity-ops` · `enterprise-evaluation-framework-ops` · `langfuse-analytics-migration` · `structured-json-logging-ops`
 
-#### `langgraph-slm-agent`
-- **Location**: `.agents/skills/langgraph-slm-agent/SKILL.md`
-- **Purpose**: Managing LangGraph supervisor routing, sub-agent tool bounding, loop prevention, and local Ollama SLM execution (`hermes3:8b`).
-- **Core Rule**: Limits specialized sub-agents to **at most 1 tool definition per call**, elevating tool execution accuracy above 95%.
+## Guardrails (Claude Code)
 
-#### `ollama-slm-ops`
-- **Location**: `.agents/skills/ollama-slm-ops/SKILL.md`
-- **Purpose**: Managing local Ollama SLM inference (`hermes3:8b`, `mistral`, `nomic-embed-text`), zero-cloud key policies, and model parameter tuning.
+`.claude/settings.json` wires two project hooks:
 
-#### `pre-llm-compression-ops`
-- **Location**: `.agents/skills/pre-llm-compression-ops/SKILL.md`
-- **Purpose**: Pre-LLM Preprocessing Suite, LangChain Map-Reduce file compression (>15k chars), Cross-Encoder reranking with MMR deduplication, and sliding window chat history state anchoring (>10 turns).
+- **`guard-bash.mjs`** (before every shell command) blocks wiping `app_settings` / `team_members`, dropping non-test databases, `docker compose down -v`, force-push and `--no-verify`.
+- **`check-syntax.mjs`** (after every edit) runs `node --check`, `py_compile` and JSON parsing, so syntax errors surface immediately.
 
----
+## Pre-push hook (everyone)
 
-### 2. 🔌 MCP Integrations & Tool Ecosystem
+```bash
+npm run hooks:install   # once per clone; sets core.hooksPath=scripts/git-hooks
+```
 
-#### `mcp-integrations-ops`
-- **Location**: `.agents/skills/mcp-integrations-ops/SKILL.md`
-- **Purpose**: Operational management of Jira OAuth 2.0 PKCE, Notion REST API, GitHub PAT/OAuth with repository scoping, Slack Web API, and Google Calendar dynamic ID tools.
-- **Key Component**: Standardized `BaseToolHarness` circuit breaker with exponential backoff and PostgreSQL fallback schemas.
-
-#### `github-sync-fallback`
-- **Location**: `.agents/skills/github-sync-fallback/SKILL.md`
-- **Purpose**: Testing live GitHub REST API sync, repo-scoped PAT authentication, dual DB cache snapshot fallback (`github_issues`), and manual UI refresh triggers.
-
----
-
-### 3. 🗄️ Database, Storage & Hybrid RAG
-
-#### `db-per-service-ops`
-- **Location**: `.agents/skills/db-per-service-ops/SKILL.md`
-- **Purpose**: Procedures for managing isolated PostgreSQL microservice databases:
-  - `taskflow_backend` (Port 5432) - Node.js Backend API
-  - `taskflow_ai` (Port 5432) - Python AI RAG & Vector Embeddings
-  - `temporal` & `temporal_visibility` (Port 5432) - Temporal Orchestration
-  - `langfuse_db` (Port 5433) - Telemetry & Tracing Database
-
-#### `rag-pdf-ingestion`
-- **Location**: `.agents/skills/rag-pdf-ingestion/SKILL.md`
-- **Purpose**: Testing multi-format document ingestion (PDF, CSV, Images OCR, Text), HyDE query transformation, CTE-based RRF hybrid search, Redis semantic caching, and single-pass RAG synthesis.
-
-#### `multi-tier-caching-ops`
-- **Location**: `.agents/skills/multi-tier-caching-ops/SKILL.md`
-- **Purpose**: Managing and testing the 5-Tier Production Caching Architecture, L1 In-Memory exact cache, L2 Redis vector semantic cache with Dual-Gate anti-hallucination verification, Tier 2 MCP tool cache, and Temporal durable event-driven invalidation workflows.
-
-#### `session-thread-management-ops`
-- **Location**: `.agents/skills/session-thread-management-ops/SKILL.md`
-- **Purpose**: Managing PostgreSQL multi-session persistence, chat threads, pagination, context menus, thread renaming, and dynamic title derivation.
-
-
----
-
-### 4. 📊 Observability, Evaluations & Operations
-
-#### `autonomous-em-audit-ops`
-- **Location**: `.agents/skills/autonomous-em-audit-ops/SKILL.md`
-- **Purpose**: Operational management of the Autonomous EM Task & Health Audit Engine, 4-hour background cron in Temporal, multi-channel Slack notifications, and the interactive EM Action Hub UI (`/actions`).
-
-#### `admin-portal-ops`
-- **Location**: `.agents/skills/admin-portal-ops/SKILL.md`
-- **Purpose**: Operational management of the Standalone Admin Portal (`/admin`), external service launchers (Langfuse, Promptfoo, Adminer, Temporal), DORA metrics tier ratings, vector chunk inspection, and Express admin APIs.
-
-#### `em-dora-productivity-ops`
-- **Location**: `.agents/skills/em-dora-productivity-ops/SKILL.md`
-- **Purpose**: Tracking, testing, and managing Engineering Manager (EM) DORA productivity metrics (tier ratings), Sprint health analytics, OKRs, and SBI feedback records.
-
-#### `enterprise-evaluation-framework-ops`
-- **Location**: `.agents/skills/enterprise-evaluation-framework-ops/SKILL.md`
-- **Purpose**: Managing, executing, and calibrating the 3-Phase Enterprise Evaluation Framework (`hermes3:8b`), strategy evaluators, DeepEval, Ragas, TruLens, and CI/CD pre-push verification gates.
-- **Key Command**:
-  ```bash
-  npm run eval:enterprise
-  ```
-
-#### `langfuse-analytics-migration`
-- **Location**: `.agents/skills/langfuse-analytics-migration/SKILL.md`
-- **Purpose**: Operational guidelines for self-hosted Langfuse telemetry (port 3001), non-blocking tracing, and isolated `analytics-db` (`langfuse_db` on port 5433).
-
----
-
-## 🛠️ How AI Agents Discover and Execute Skills
-
-1. **Autonomous Discovery**: Agents inspect `SKILLS.md` and match user requests to the appropriate operational skill.
-2. **Context Ingestion**: The agent loads the designated `SKILL.md` into context using file viewing tools before making source code edits.
-3. **Deterministic Verification**: Every skill defines exact CLI test commands that must be executed upon completing code changes, ensuring all **385 backend unit test specs** and **52 Python AI test specs** pass with 0 failures.
+Every `git push` then runs `scripts/verify.sh` for the areas your branch changed.
