@@ -55,7 +55,7 @@ This file provides system guidance, architectural rules, anti-hallucination guid
   - *Gate 1*: Cosine similarity threshold $\ge 0.95$.
   - *Gate 2*: Strict Entity Alignment check (Sprint IDs, Jira keys `ENG-1024`, quarters `Q3 2026`, users `@alex`, PRs `PR #89`). Rejects cache hits if entities diverge to eliminate hallucinations.
   - *Domain-Adaptive TTLs*: 7 days (`rag`/`sop`), 4 hours (`okr`/`roadmap`), 30 minutes (`dora`/`people`), 2 minutes (`sprint`/`delivery`).
-- **Tier 2: MCP Tool Execution Cache** (`toolCache.js`): Hash-keyed cache for read-only Jira JQL, GitHub PR listings, Notion pages, and Google Calendar events (30s–120s TTL).
+- **Tier 2: MCP Tool Execution Cache** (`toolCache.js`): Hash-keyed LRU cache applied inside `executeMCPTool` (`mcp/index.js`) for the explicit read-only allowlist `CACHEABLE_READ_TOOLS` (Jira search/issue, GitHub issue/PR/DORA reads, Notion search/page/database, Calendar reads, Slack search/list channels; 60s–120s TTL). Write tools (`slack_post_message`, `jira_create_issue`, `create_calendar_event`) and `status: 'UNAVAILABLE'` / error payloads are never cached. `fetch_fresh_data: true` skips the lookup and refreshes the entry. Settings saves and credential rotation (`invalidateAll`), `invalidateDomain`, and document events (Notion entries) purge it via `cacheInvalidator`.
 - **Temporal Event-Driven Invalidation** (`workflows.js` & `activities.js`): `cacheInvalidationWorkflow` and `invalidateCacheActivity` orchestrate durable cache invalidations upon PDF upload/deletion or settings rotations without introducing external queues or pub/sub.
 - **Isolated PostgreSQL 16 & Redis**: `taskflow_backend`, `taskflow_ai`, `temporal`, `langfuse_db`.
 
