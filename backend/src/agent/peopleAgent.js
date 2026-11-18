@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { z } from 'zod';
 import { peopleAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
@@ -54,6 +55,24 @@ export const LEVEL_BENCHMARKS = {
     MENTOR: 5.0, COLLAB: 5.0, STRAT: 5.0, INCID: 5.0, ALIGN: 5.0, CULT: 5.0,
   },
 };
+
+/**
+ * Keeps only real, in-range (1.0–5.0) ratings for known competency dimensions.
+ * Returns an empty object when no usable ratings exist — callers must treat that as UNSCORED.
+ */
+export function normalizeSkillRatings(raw) {
+  const ratings = {};
+  if (!raw || typeof raw !== 'object') return ratings;
+  const validKeys = new Set(COMPETENCY_DIMENSIONS.map((d) => d.key));
+  for (const [key, value] of Object.entries(raw)) {
+    const code = String(key).trim().toUpperCase();
+    const num = Number(value);
+    if (validKeys.has(code) && value !== null && value !== '' && Number.isFinite(num) && num >= 1 && num <= 5) {
+      ratings[code] = num;
+    }
+  }
+  return ratings;
+}
 
 export const peopleGrowthTool = createDeterministicToolHarness({
   name: 'analyze_personnel_growth',
@@ -308,10 +327,18 @@ export const peopleGrowthTool = createDeterministicToolHarness({
       burnoutRisk = 'MEDIUM';
     }
 
-    // Baseline current skill ratings if not explicitly passed
-    const currentBase = LEVEL_BENCHMARKS[currentLevel] || LEVEL_BENCHMARKS.L4_MID;
+    // Competency ratings must come from a real source: explicit `skill_ratings` input or ratings
+    // persisted on the team member record. Level benchmarks are targets, never a stand-in for
+    // the engineer's actual ratings (Zero Misleading Fallbacks).
     const targetReqs = LEVEL_BENCHMARKS[targetLevel] || LEVEL_BENCHMARKS.L5_SENIOR;
-    const customRatings = inputArgs.skill_ratings || {};
+    const realRatings = normalizeSkillRatings(inputArgs.skill_ratings || member?.skillRatings || defaultData.skill_ratings);
+    const ratingsSource = inputArgs.skill_ratings ? 'input' : (member?.skillRatings || defaultData.skill_ratings ? 'team_member_record' : null);
+    const ratedCount = Object.keys(realRatings).length;
+    const scoringStatus = ratedCount === 0
+      ? 'UNSCORED'
+      : (ratedCount < COMPETENCY_DIMENSIONS.length ? 'PARTIAL' : 'SCORED');
+    const isScored = scoringStatus !== 'UNSCORED';
+    const ratingsCoverage = `${ratedCount} / ${COMPETENCY_DIMENSIONS.length}`;
 
     let totalGaps = 0;
     let totalTargetWeight = 0;
@@ -319,12 +346,22 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     const significantGaps = [];
 
     COMPETENCY_DIMENSIONS.forEach((dim) => {
-      const currentRating = customRatings[dim.key] !== undefined
-        ? customRatings[dim.key]
-        : Math.min(currentBase[dim.key] + 0.3, 5.0);
       const targetRating = targetReqs[dim.key] || 4.0;
-      const gap = Math.max(0, Number((targetRating - currentRating).toFixed(1)));
+      const currentRating = realRatings[dim.key];
 
+      if (currentRating === undefined) {
+        competencyRadar.push({
+          dimension: dim.name,
+          code: dim.key,
+          current: null,
+          target: Number(targetRating.toFixed(1)),
+          gap: null,
+          status: 'UNRATED',
+        });
+        return;
+      }
+
+      const gap = Math.max(0, Number((targetRating - currentRating).toFixed(1)));
       totalGaps += gap;
       totalTargetWeight += targetRating;
 
@@ -347,33 +384,59 @@ export const peopleGrowthTool = createDeterministicToolHarness({
       });
     });
 
-    const readinessScore = Math.min(100, Math.max(0, Math.round((1 - (totalGaps / totalTargetWeight)) * 100)));
+    // Readiness is computed only over dimensions that actually have ratings.
+    const readinessScore = isScored
+      ? Math.min(100, Math.max(0, Math.round((1 - (totalGaps / totalTargetWeight)) * 100)))
+      : null;
 
-    let readinessVerdict = 'ON_TRACK';
-    if (readinessScore >= 90) {
-      readinessVerdict = 'READY_FOR_PROMOTION';
-    } else if (readinessScore < 75) {
-      readinessVerdict = 'DEVELOPING';
+    let readinessVerdict = 'UNSCORED';
+    if (isScored) {
+      readinessVerdict = 'ON_TRACK';
+      if (readinessScore >= 90) {
+        readinessVerdict = 'READY_FOR_PROMOTION';
+      } else if (readinessScore < 75) {
+        readinessVerdict = 'DEVELOPING';
+      }
     }
 
-    // Prerequisite Checklist
+    // Prerequisite Checklist: no data source tracks RFC authorship, mentorship cycles, production
+    // regressions or on-call participation, so each prerequisite is UNKNOWN until verified.
+    // (Competency scores are not evidence that a specific deliverable happened.)
     const prerequisites = [
-      { name: 'Lead 1 High-Impact Architecture RFC to approval', status: readinessScore >= 80 ? 'MET' : 'PENDING' },
-      { name: 'Complete 1 Mentorship cycle with positive peer feedback', status: readinessScore >= 75 ? 'MET' : 'PENDING' },
-      { name: 'Zero critical production regressions in last 2 quarters', status: 'MET' },
-      { name: 'Active Incident Commander / on-call rotation participation', status: currentLevel !== 'L3_JUNIOR' ? 'MET' : 'PENDING' },
+      { name: 'Lead 1 High-Impact Architecture RFC to approval', status: 'UNKNOWN' },
+      { name: 'Complete 1 Mentorship cycle with positive peer feedback', status: 'UNKNOWN' },
+      { name: 'Zero critical production regressions in last 2 quarters', status: 'UNKNOWN' },
+      { name: 'Active Incident Commander / on-call rotation participation', status: 'UNKNOWN' },
     ];
     const metPrereqsCount = prerequisites.filter((p) => p.status === 'MET').length;
+    const unknownPrereqsCount = prerequisites.filter((p) => p.status === 'UNKNOWN').length;
+    const prereqsLabel = unknownPrereqsCount === prerequisites.length
+      ? `UNKNOWN (0 / ${prerequisites.length} verified)`
+      : `${metPrereqsCount} / ${prerequisites.length}`;
+    const readinessLabel = isScored ? `${readinessScore}%` : 'N/A';
+    const verdictLabel = isScored
+      ? `${readinessVerdict.replace(/_/g, ' ')}${scoringStatus === 'PARTIAL' ? `, partial: ${ratingsCoverage} dimensions rated` : ''}`
+      : 'UNSCORED — competency ratings needed';
+    const ratingsNeededNote = `No competency ratings on record for ${resolvedName}. Provide \`skill_ratings\` (1.0–5.0 for each of the 12 dimensions) from a calibrated review to compute promotion readiness against ${targetLevel}.`;
 
     // Roadmaps
     const roadmaps = {
       immediate_3_to_6m: {
         horizon: '3–6 Months',
-        focus: `Close top technical gaps: ${significantGaps.slice(0, 2).join(', ') || 'System Architecture RFC'}`,
-        deliverables: [
-          'Author and present Technical RFC for service decomposition / caching',
-          'Pair with Staff Engineer on quarterly architecture roadmap reviews',
-        ],
+        focus: !isScored
+          ? `Collect calibrated competency ratings across all 12 dimensions to baseline against ${targetLevel}`
+          : (significantGaps.length > 0
+            ? `Close top competency gaps: ${significantGaps.slice(0, 2).join(', ')}`
+            : `Sustain ${targetLevel} benchmarks across rated dimensions`),
+        deliverables: !isScored
+          ? [
+            'Run a calibrated self + manager competency rating against the 12-dimension rubric',
+            `Review the ${targetLevel} benchmark expectations together in the next 1-on-1`,
+          ]
+          : [
+            'Author and present Technical RFC for service decomposition / caching',
+            'Pair with Staff Engineer on quarterly architecture roadmap reviews',
+          ],
       },
       medium_6_to_18m: {
         horizon: '6–18 Months',
@@ -402,15 +465,19 @@ export const peopleGrowthTool = createDeterministicToolHarness({
 
     if (mode === 'DRILL_DOWN') {
       const drillSummary = `### 🎯 Skill Gap & Career Growth Breakdown: ${inputArgs.engineer_id} (${currentLevel} ➔ ${targetLevel})\n\n` +
-        `- **Promotion Readiness Score**: **${readinessScore}%** (${readinessVerdict.replace(/_/g, ' ')})\n` +
-        `- **Prerequisites Completed**: **${metPrereqsCount} / ${prerequisites.length}**\n` +
+        `- **Promotion Readiness Score**: **${readinessLabel}** (${verdictLabel})\n` +
+        `- **Prerequisites Completed**: **${prereqsLabel}**\n` +
         `- **Top Growth Gaps**:\n` +
-        (significantGaps.length > 0 
-          ? significantGaps.map((g) => `  - **${g}**: Benchmark gap against ${targetLevel} requirements.`).join('\n')
-          : '  - 🟢 All competency benchmarks met for target level.\n') +
+        (!isScored
+          ? `  - ⚪ ${ratingsNeededNote}\n`
+          : significantGaps.length > 0
+            ? significantGaps.map((g) => `  - **${g}**: Benchmark gap against ${targetLevel} requirements.`).join('\n')
+            : '  - 🟢 All rated competency benchmarks met for target level.\n') +
         `\n- **Immediate 3–6 Month Deliverable**: ${roadmaps.immediate_3_to_6m.focus}\n` +
         `  - ${roadmaps.immediate_3_to_6m.deliverables[0] || 'Lead architectural initiative'}\n\n` +
-        `> 💡 **Next 1-on-1 Action**: Structure upcoming coaching sessions around closing the primary technical gap.`;
+        (isScored
+          ? `> 💡 **Next 1-on-1 Action**: Structure upcoming coaching sessions around closing the primary technical gap.`
+          : `> 💡 **Next 1-on-1 Action**: Complete a calibrated competency rating before discussing promotion readiness.`);
 
       return {
         mode: 'DRILL_DOWN',
@@ -419,33 +486,36 @@ export const peopleGrowthTool = createDeterministicToolHarness({
         target_level: targetLevel,
         readiness_score: readinessScore,
         readiness_verdict: readinessVerdict,
+        scoring_status: scoringStatus,
+        ratings_coverage: ratingsCoverage,
         significant_gaps: significantGaps,
+        prerequisites,
         summary: drillSummary,
       };
     }
 
     const summaryText = `### 🎯 Promotion Readiness Scorecard: ${inputArgs.engineer_id} (${currentLevel} ➔ ${targetLevel})
 
-> **Track**: ${track === 'ENGINEERING_MANAGEMENT' ? 'Management (M1/M2)' : 'Individual Contributor (IC)'} | **Tenure**: ${tenureMonths} Months | **Promotion Readiness**: **${readinessScore}% (${readinessVerdict.replace(/_/g, ' ')})** | **Workload**: ${workloadHours}h/wk (${burnoutRisk} Burnout Risk)
+> **Track**: ${track === 'ENGINEERING_MANAGEMENT' ? 'Management (M1/M2)' : 'Individual Contributor (IC)'} | **Tenure**: ${tenureMonths} Months | **Promotion Readiness**: **${readinessLabel} (${verdictLabel})** | **Workload**: ${workloadHours}h/wk (${burnoutRisk} Burnout Risk)
 
 | Metric | Measured Value | Requirement | Status |
 | :--- | :--- | :--- | :--- |
-| **Promotion Readiness** | **${readinessScore}%** | $\\ge 90\%$ (Ready) | ${readinessScore >= 90 ? '🟢 Ready for Promotion' : readinessScore >= 75 ? '🟡 On Track' : '🔴 Developing'} |
-| **Prerequisites Met** | **${metPrereqsCount} / ${prerequisites.length}** | 100% Mandatory | ${metPrereqsCount === prerequisites.length ? '🟢 Complete' : '🟡 In Progress'} |
+| **Promotion Readiness** | **${readinessLabel}** | $\\ge 90\%$ (Ready) | ${!isScored ? '⚪ Unscored — ratings needed' : readinessScore >= 90 ? '🟢 Ready for Promotion' : readinessScore >= 75 ? '🟡 On Track' : '🔴 Developing'} |
+| **Prerequisites Met** | **${prereqsLabel}** | 100% Mandatory | ${unknownPrereqsCount > 0 ? '⚪ Unverified' : metPrereqsCount === prerequisites.length ? '🟢 Complete' : '🟡 In Progress'} |
 | **Weekly Workload** | **${workloadHours} hrs/wk** | $\\le 44.0$ hrs/wk | ${burnoutRisk === 'LOW' ? '🟢 Sustainable' : burnoutRisk === 'MEDIUM' ? '🟡 Elevated' : '🔴 High Burnout Risk'} |
-| **Significant Skill Gaps** | **${significantGaps.length > 0 ? significantGaps.join(', ') : 'None'}** | 0 Major Gaps | ${significantGaps.length === 0 ? '🟢 None' : '⚠️ Action Required'} |
+| **Significant Skill Gaps** | **${!isScored ? 'Unknown (no ratings)' : significantGaps.length > 0 ? significantGaps.join(', ') : 'None'}** | 0 Major Gaps | ${!isScored ? '⚪ Unscored' : significantGaps.length === 0 ? '🟢 None' : '⚠️ Action Required'} |
 
-> 💡 **Executive Bottom Line**: Overall readiness is **${readinessVerdict.replace(/_/g, ' ')} (${readinessScore}%)**. ${significantGaps.length > 0 ? `Primary growth area: **${significantGaps[0]}**.` : 'All baseline dimension benchmarks satisfied.'}
+> 💡 **Executive Bottom Line**: ${!isScored ? `Promotion readiness is **UNSCORED**. ${ratingsNeededNote}` : `Overall readiness is **${verdictLabel} (${readinessScore}%)**. ${significantGaps.length > 0 ? `Primary growth area: **${significantGaps[0]}**.` : 'All rated dimension benchmarks satisfied.'}`}
 
 <details>
 <summary><b>📊 12-Dimension Competency Radar & Gap Analysis</b></summary>
 
-| Competency Dimension | Current (${currentLevel}) | Target (${targetLevel}) | Status | Gap |
+| Competency Dimension | Current Rating | Target (${targetLevel}) | Status | Gap |
 | :--- | :---: | :---: | :---: | :---: |
-${competencyRadar.map((r) => `| **${r.dimension}** | ${r.current} / 5 | ${r.target} / 5 | ${r.status === 'MET' ? '✅ Met' : r.status === 'MINOR_GAP' ? '⚠️ Minor Gap' : '❌ Major Gap'} | ${r.gap > 0 ? `-${r.gap}` : '0.0'} |`).join('\n')}
+${competencyRadar.map((r) => `| **${r.dimension}** | ${r.current === null ? '— (unrated)' : `${r.current} / 5`} | ${r.target} / 5 | ${r.status === 'UNRATED' ? '⚪ Unrated' : r.status === 'MET' ? '✅ Met' : r.status === 'MINOR_GAP' ? '⚠️ Minor Gap' : '❌ Major Gap'} | ${r.gap === null ? '—' : r.gap > 0 ? `-${r.gap}` : '0.0'} |`).join('\n')}
 
 - **Mandatory Prerequisites Checklist**:
-${prerequisites.map((p) => `- [${p.status === 'MET' ? 'x' : ' '}] **${p.name}** (${p.status})`).join('\n')}
+${prerequisites.map((p) => `- [${p.status === 'MET' ? 'x' : ' '}] **${p.name}** (${p.status === 'UNKNOWN' ? 'UNKNOWN — not tracked by any connected source' : p.status})`).join('\n')}
 
 </details>
 
@@ -487,15 +557,20 @@ ${events.map((ev) => `  * 📅 **${ev.start_time}**: ${ev.summary} (${ev.attende
       metrics: {
         promotion_readiness_score: readinessScore,
         promotion_verdict: readinessVerdict,
+        scoring_status: scoringStatus,
+        ratings_coverage: ratingsCoverage,
+        ratings_source: ratingsSource,
         burnout_risk_score: burnoutRisk,
         weekly_workload_hours: workloadHours,
         weekly_meeting_hours: meetingHours,
-        prerequisites_met: `${metPrereqsCount} / ${prerequisites.length}`,
+        prerequisites_met: prereqsLabel,
       },
       competency_radar: competencyRadar,
-      skill_matrix_gaps: significantGaps.length > 0 ? significantGaps : ['System Architecture Design'],
+      skill_matrix_gaps: significantGaps,
       one_on_one_agenda: [
-        `Review progress on ${significantGaps[0] || 'technical goals'}`,
+        !isScored
+          ? `Complete a calibrated 12-dimension competency rating against ${targetLevel}`
+          : `Review progress on ${significantGaps[0] || 'technical goals'}`,
         'Discuss team workload, on-call rotation, and upcoming PTO',
         `Review career progression milestones for ${targetLevel} (${track === 'ENGINEERING_MANAGEMENT' ? 'Management Track' : 'IC Track'})`,
       ],

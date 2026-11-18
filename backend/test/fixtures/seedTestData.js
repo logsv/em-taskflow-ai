@@ -79,6 +79,25 @@ export function seedTeamMembers(databaseService) {
   ];
 }
 
+/**
+ * Calibrated 12-dimension competency ratings (1.0–5.0) used by people agent specs.
+ * Passed explicitly as `skill_ratings`; production never synthesizes ratings.
+ */
+export const SKILL_RATINGS_FIXTURES = {
+  // L4 engineer partway to L5: gaps in ARCH/STRAT/MENTOR, meets CODE/DELIV.
+  alex_l4_to_l5: {
+    ARCH: 3.4, DB: 3.6, CLOUD: 3.5, SEC: 3.3, CODE: 4.5, DELIV: 4.0,
+    MENTOR: 3.0, COLLAB: 3.6, STRAT: 2.5, INCID: 3.5, ALIGN: 3.0, CULT: 3.5,
+  },
+  // L5 engineer moving to M1 on the management track.
+  sarah_l5_to_m1: {
+    ARCH: 4.4, DB: 4.0, CLOUD: 4.0, SEC: 4.0, CODE: 4.5, DELIV: 4.5,
+    MENTOR: 4.6, COLLAB: 4.7, STRAT: 4.2, INCID: 4.3, ALIGN: 4.5, CULT: 4.8,
+  },
+  // Only three dimensions rated — exercises PARTIAL scoring.
+  partial: { ARCH: 4.5, CODE: 4.5, DELIV: 4.0 },
+};
+
 export function seedSprintAnalytics(databaseService) {
   databaseService.inMemorySprintAnalytics = [
     {
