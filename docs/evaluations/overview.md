@@ -50,10 +50,6 @@ npm run eval:deepeval
 # Run Ragas Hybrid RAG metrics (Precision, Recall, Faithfulness)
 npm run eval:ragas
 
-# Run TruLens RAG Triad Evaluation & Dashboard
-npm run eval:trulens
-npm run eval:trulens:dashboard
-
 # Launch Promptfoo Matrix Server & Red-Teaming (32+ test assertions)
 npm run eval:promptfoo
 npm run eval:promptfoo:view

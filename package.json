@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "scripts": {
     "test": "cd backend && npm test",
+    "verify": "bash scripts/verify.sh",
+    "hooks:install": "git config core.hooksPath scripts/git-hooks && echo 'Git hooks installed from scripts/git-hooks'",
     "start": "cd backend && npm start",
     "dev": "cd backend && npm run dev",
     "backend:test": "cd backend && npm test",
@@ -13,13 +15,11 @@
     "eval": "cd backend && npm run evaluate",
     "eval:deepeval": "cd services/python-ai-service && uv run pytest tests/test_deepeval_agent_trajectories.py",
     "eval:ragas": "cd services/python-ai-service && uv run python evaluation/ragas_runner.py",
-    "eval:trulens": "cd services/python-ai-service && uv run python evaluation/trulens_rag_triad.py",
-    "eval:trulens:dashboard": "cd services/python-ai-service && uv run trulens-eval run dashboard --port 8501",
     "eval:promptfoo": "cd backend && npm run eval:promptfoo",
     "eval:promptfoo:view": "cd backend && npm run eval:promptfoo:view",
     "eval:nightly": "bash scripts/run-nightly-eval.sh",
     "eval:setup-daemon": "bash scripts/setup-nightly-eval-daemon.sh",
-    "eval:enterprise": "npm run eval && npm run eval:deepeval && npm run eval:ragas && npm run eval:trulens",
+    "eval:enterprise": "npm run eval && npm run eval:deepeval && npm run eval:ragas",
     "docs:dev": "cd docs && npm run docs:dev",
     "docs:build": "cd docs && npm run docs:build",
     "docs:preview": "cd docs && npm run docs:preview"

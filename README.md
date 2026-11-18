@@ -40,7 +40,7 @@
   npm run docs:build   # Build static documentation bundle
   ```
 - **⚡ Interactive Swagger API Explorer**: Test Express REST endpoints interactively at [`http://localhost:4000/api/docs`](http://localhost:4000/api/docs) (OpenAPI 3.1 schema at `/api/docs/openapi.json`).
-- **🧰 Agent Skills Directory**: Full sitemap of 17 operational skills located in [`SKILLS.md`](SKILLS.md) and [`.agents/skills/`](.agents/skills).
+- **🧰 Agent Skills Directory**: Index of agent skills in [`SKILLS.md`](SKILLS.md); skills live in [`.claude/skills/`](.claude/skills) (symlinked as `.agents/skills`).
 
 ---
 
@@ -310,20 +310,22 @@ curl -X POST http://localhost:4000/api/chat \
   -d '{"message":"Summarize the uploaded document","mode":"baseline"}'
 ```
 
-### 5. Automated Backend Unit Tests (385 Specs)
+### 5. Automated Backend Unit Tests
 Run Jasmine unit tests and evaluation suite (`hermes3:8b`):
 ```bash
 cd backend
-npm test            # 385 unit tests, 0 failures
+npm test            # Jasmine unit tests, 0 failures required
 npm run evaluate    # Enterprise evaluation suite (140 Golden Dataset items)
 ```
 
-### 6. Automated Python AI Service Tests (52 Specs)
+### 6. Automated Python AI Service Tests
 Run the Pytest suite:
 ```bash
 cd services/python-ai-service
-uv run pytest       # 52 specs, 0 failures
+uv run pytest       # 0 failures required
 ```
+
+Or run every affected suite at once from the repo root with `npm run verify`, and install the pre-push gate with `npm run hooks:install`.
 
 ---
 
@@ -345,13 +347,13 @@ docker compose down -v
 
 ```
 em-taskflow-ai/
-├── .agents/skills/     # 13 specialized operational skills for AI agents
-├── backend/            # Express API, LangGraph supervisor, Admin routes, Jasmine tests (240 specs)
+├── .claude/            # Claude Code skills, hooks & shared settings (.agents/skills → .claude/skills)
+├── backend/            # Express API, LangGraph supervisor, Admin routes, Jasmine tests
 │   └── README.md       # Backend internal docs & API endpoints
 ├── docs/               # Full VitePress developer documentation & architecture portal
 ├── frontend/           # React, Vite, Cockpit, Standalone Admin Portal (/admin)
 │   └── README.md       # Frontend UI architecture & build guide
-├── services/           # Python AI Service (gRPC/REST RAG processor, Pytest 39 specs)
+├── services/           # Python AI Service (gRPC/REST RAG processor, pytest)
 ├── docker/             # Postgres init-databases.sql and container assets
 ├── data/               # Vector storage & database seeds
 ├── docker-compose.yml  # Production multi-container composition

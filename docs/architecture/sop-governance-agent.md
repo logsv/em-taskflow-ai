@@ -6,7 +6,7 @@ The **SOP Compliance & Architectural Governance Agent** (`sopAgent.js`) acts as 
 
 ## 🏗️ Governance Dimensions Catalog
 
-Located in [`backend/src/agent/sopAgent.js`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/src/agent/sopAgent.js):
+Located in [`backend/src/agent/sopAgent.js`](https://github.com/logsv/em-taskflow-ai/blob/main/backend/src/agent/sopAgent.js):
 
 ```mermaid
 graph TD

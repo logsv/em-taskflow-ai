@@ -55,4 +55,4 @@ The UI is built with a cohesive dark-themed semantic token system:
 
 ## ⚡ Client Centralization (`apiClient.js`)
 
-All API interactions flow through a centralized API client module [`frontend/src/services/apiClient.js`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/frontend/src/services/apiClient.js) that enforces canonical `/api/v1/*` route pathing and attaches session context headers transparently.
+All API interactions flow through a centralized API client module [`frontend/src/services/apiClient.js`](https://github.com/logsv/em-taskflow-ai/blob/main/frontend/src/services/apiClient.js) that enforces canonical `/api/v1/*` route pathing and attaches session context headers transparently.

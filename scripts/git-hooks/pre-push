@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Committed pre-push hook. Install once per clone with:  npm run hooks:install
+# Runs the unit-test suites for the areas this branch changed. Bypass in an emergency with: git push --no-verify
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+echo "pre-push: running scripts/verify.sh ..."
+exec bash "$ROOT/scripts/verify.sh"

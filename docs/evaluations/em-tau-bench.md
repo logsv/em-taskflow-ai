@@ -1,6 +1,6 @@
 # 🧪 EM Tau-Bench Multi-Turn Simulation Framework
 
-Located in [`services/python-ai-service/evaluation/em_tau_bench/`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/services/python-ai-service/evaluation/em_tau_bench/), **EM Tau-Bench** is a specialized benchmark environment for evaluating multi-turn conversational trajectories, goal convergence, policy compliance, and tool-use reliability across Engineering Manager workflows.
+Located in [`services/python-ai-service/evaluation/em_tau_bench/`](https://github.com/logsv/em-taskflow-ai/blob/main/services/python-ai-service/evaluation/em_tau_bench/), **EM Tau-Bench** is a specialized benchmark environment for evaluating multi-turn conversational trajectories, goal convergence, policy compliance, and tool-use reliability across Engineering Manager workflows.
 
 ---
 

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides system guidance, architectural rules, anti-hallucination guidelines, and development rules for Codex, Gemini CLI, Antigravity, and AI agents working in this repository.
+This file is the **single source of truth** for architecture, rules and commands for every AI coding agent in this repository (Claude Code, Codex, Gemini CLI, Antigravity). `CLAUDE.md` and `GEMINI.md` import it and add only tool-specific notes. Task procedures live in `.claude/skills/*/SKILL.md` (also reachable via the `.agents/skills` symlink); see `SKILLS.md` for the index.
 
 ---
 
@@ -29,7 +29,7 @@ This file provides system guidance, architectural rules, anti-hallucination guid
    - Agents must NEVER write analytics trace tables into application databases.
 
 4. **Rule of Verification**:
-   - Never declare success without executing unit tests. All **394 backend specs** and **57 Python AI specs** must pass with **0 failures**.
+   - Never declare success without running the unit tests (`bash scripts/verify.sh`). All backend Jasmine specs and Python pytest specs must pass with **0 failures**. Report the actual summary line; do not quote spec counts from docs.
 
 5. **No Superficial Symptom Patches**:
    - NEVER resolve errors by masking symptoms, swallowing exceptions silently, returning dummy fallbacks, or commenting out failing unit test assertions.
@@ -55,7 +55,7 @@ This file provides system guidance, architectural rules, anti-hallucination guid
   - *Gate 1*: Cosine similarity threshold $\ge 0.95$.
   - *Gate 2*: Strict Entity Alignment check (Sprint IDs, Jira keys `ENG-1024`, quarters `Q3 2026`, users `@alex`, PRs `PR #89`). Rejects cache hits if entities diverge to eliminate hallucinations.
   - *Domain-Adaptive TTLs*: 7 days (`rag`/`sop`), 4 hours (`okr`/`roadmap`), 30 minutes (`dora`/`people`), 2 minutes (`sprint`/`delivery`).
-- **Tier 2: MCP Tool Execution Cache** (`toolCache.js`): Hash-keyed cache for read-only Jira JQL, GitHub PR listings, Notion pages, and Google Calendar events (30s–120s TTL).
+- **Tier 2: MCP Tool Execution Cache** (`toolCache.js`): Hash-keyed cache for read-only Jira JQL, GitHub PR listings, Notion pages, and Google Calendar events (60s–300s TTL by tool name). ⚠️ Currently only its stats are surfaced (`/api/v1/admin`); it is not yet called from `executeMCPTool` in `backend/src/mcp/index.js`.
 - **Temporal Event-Driven Invalidation** (`workflows.js` & `activities.js`): `cacheInvalidationWorkflow` and `invalidateCacheActivity` orchestrate durable cache invalidations upon PDF upload/deletion or settings rotations without introducing external queues or pub/sub.
 - **Isolated PostgreSQL 16 & Redis**: `taskflow_backend`, `taskflow_ai`, `temporal`, `langfuse_db`.
 
@@ -116,7 +116,7 @@ This file provides system guidance, architectural rules, anti-hallucination guid
   - `DeepEval & Ragas`: Trajectory scoring and hybrid retrieval evaluations.
 - **Phase 3: Telemetry Tracing, Local Git Hook & CI/CD Enforcement**:
   - `scoreTrace()`: Non-blocking trace score exporter to `langfuse_db` (port 5433).
-  - `.git/hooks/pre-push`: Automated local pre-push git verification executing Jasmine unit tests, Python Pytests, and evaluation SLA gates.
+  - `scripts/git-hooks/pre-push` (install with `npm run hooks:install`): runs `scripts/verify.sh` — the backend Jasmine and Python pytest suites for the areas the branch changed.
 
 ### 9. Autonomous EM Task & Health Audit Engine & Action Hub (`/actions`)
 - **Temporal 4-Hour Background Cron** (`0 */4 * * *`): `emAutonomousAuditWorkflow` coordinates parallel domain harvests (`dora_and_delivery`, `people_and_cadence`, `sprint_and_okr`, `sop_and_governance`).
@@ -136,7 +136,7 @@ This file provides system guidance, architectural rules, anti-hallucination guid
 ### 10. Standalone Admin Portal & Modular UI Architecture (`/admin`)
 - **Global Shell & De-cluttered Viewport (`AdminShell.jsx`)**: Replaced repeated KPI strips with a compact `● System Healthy` status pill in the header. Clicking opens the slide-out **System Diagnostics Drawer** (`SystemStatusDrawer.jsx`) showing real-time health across 10 domain micro-agents, Ollama, PostgreSQL 5432, Langfuse DB 5433, and RAG vector storage.
 - **Operator-First Top Navigation**: 5 primary domain groups (*Overview*, *People*, *AI Platform*, *Operations*, *Quality*) with nested sub-navigation pills for progressive disclosure (*Models & Tools*, *Services & Storage*).
-- **Reusable UI Design Primitives (`frontend/src/components/admin/ui/`)**: Zero-dependency component library (`Button`, `Badge`, `StatusBadge`, `Card`, `MetricCard`, `Section`, `Tabs`, `Table`, `Drawer`, `Modal`, `Dropdown`, `SearchInput`, `EmptyState`, `Alert`) adhering to semantic dark-theme design tokens (`adminTokens.css`).
+- **Reusable UI Design Primitives (`frontend/src/components/admin/ui/`, exported from `ui/index.js`)**: Zero-dependency component library (`Button`, `Badge`, `StatusBadge`, `Card`, `MetricCard`, `Section`, `Tabs`, `Table`, `Drawer`, `Modal`, `Dropdown`, `SearchInput`, `EmptyState`, `Alert`) styled by `ui/ui.css` via `--admin-*` CSS custom properties defined in `admin/adminTokens.css` (imported by `AdminShell.jsx`). The main app's tokens are in `components/ui/tokens.css` (imported by `src/index.jsx`).
 - **Readymade 8-Service Catalog**: Direct deep-links to Langfuse (:3001), Promptfoo Managed Cloud, Adminer (:8080), Temporal (:8233), Sentry, New Relic, Axiom, and Swagger REST API Explorer (:4000/api/v1/docs).
 
 ### 12. Canonical REST API Versioning & Deprecation Policy (`ADR-009`)
@@ -156,13 +156,10 @@ This file provides system guidance, architectural rules, anti-hallucination guid
 
 ### Backend Commands (from `/backend`)
 ```bash
-# Start development server with auto-reload
+# Start development server with auto-reload (node --watch)
 npm run dev
 
-# Build ESM JavaScript output
-npm run build
-
-# Run unit tests with Jasmine & coverage (319 specs, 0 failures)
+# Run unit tests with Jasmine & coverage (0 failures required)
 npm test
 
 # Run full evaluation suite (Model: hermes3:8b)
@@ -176,7 +173,8 @@ npm run eval:pre-llm
 
 ### Python AI Service Commands (from `/services/python-ai-service`)
 ```bash
-# Run Python unit & evaluation tests (45 specs, 0 failures)
+# Run Python unit & evaluation tests (0 failures required;
+# tests/test_deepeval_agent_trajectories.py needs Ollama as the judge)
 uv run pytest
 ```
 
@@ -197,3 +195,10 @@ docker compose up -d --build
 # Check container health status
 docker compose ps
 ```
+### Verification gate (all agents)
+```bash
+# Runs only the suites affected by your branch (backend / python / frontend build)
+bash scripts/verify.sh          # or: npm run verify
+bash scripts/verify.sh --all    # everything
+```
+Install the committed pre-push hook once per clone: `npm run hooks:install`.

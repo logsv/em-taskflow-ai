@@ -17,7 +17,7 @@ The Google Calendar MCP tool powers sprint capacity planning (PTO schedules, com
 3. Restrict the key to Google Calendar API for production security.
 
 ### 3. Configure Backend Environment
-Add the credentials to [`backend/.env`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/.env):
+Add the credentials to [`backend/.env`](https://github.com/logsv/em-taskflow-ai/blob/main/backend/.env):
 ```bash
 GOOGLE_API_KEY=your_google_api_key
 GOOGLE_CALENDAR_ID=primary

@@ -203,6 +203,9 @@ mcp-servers/
 *token*
 *secret*
 *credential*
+# ...but design-token stylesheets are source code, not secrets (imported by
+# frontend/src/index.jsx and the admin UI; ignoring them breaks the build).
+!*[Tt]okens.css
 
 # Google Cloud Service Account credentials
 backend/gcp-oauth.keys.json
@@ -309,3 +312,6 @@ docs/node_modules/
 .ruff_cache/
 .mypy_cache/
 .coverage.*
+
+# Claude Code personal settings (shared settings live in .claude/settings.json)
+.claude/settings.local.json

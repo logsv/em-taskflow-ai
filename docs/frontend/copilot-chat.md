@@ -6,7 +6,7 @@ The primary chat interface (`/`) is engineered for rapid management decision-mak
 
 ## ⚡ Quick Actions Palette (`⌘K` / `Ctrl+K`)
 
-Mounted in [`frontend/src/components/AgentPromptPalette.jsx`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/frontend/src/components/AgentPromptPalette.jsx), the Quick Actions Palette allows engineering managers to instantly trigger complex domain workflows with a single keystroke.
+Mounted in [`frontend/src/components/AgentPromptPalette.jsx`](https://github.com/logsv/em-taskflow-ai/blob/main/frontend/src/components/AgentPromptPalette.jsx), the Quick Actions Palette allows engineering managers to instantly trigger complex domain workflows with a single keystroke.
 
 ### Workflow Domain Catalog
 1. 🚀 **Delivery & Operations**:

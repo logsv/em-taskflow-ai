@@ -63,7 +63,7 @@ Under **Features** $\rightarrow$ **OAuth & Permissions**, scroll to **Scopes** $
 2. Copy the **Bot User OAuth Token** (`xoxb-...`).
 
 ### 4. Configure Backend Environment
-Add the credentials to [`backend/.env`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/.env):
+Add the credentials to [`backend/.env`](https://github.com/logsv/em-taskflow-ai/blob/main/backend/.env):
 ```bash
 SLACK_BOT_TOKEN=xoxb-your_bot_token
 SLACK_DEFAULT_CHANNEL=#engineering-retro
@@ -87,7 +87,7 @@ You can also configure or test credentials dynamically via the **⚙️ Standalo
 ## ⏳ Temporal Human-in-the-Loop (HITL) Workflow Details
 
 ### 1. Workflow Definition (`slackPostHITLWorkflow`)
-Defined in [`backend/src/temporal/workflows.js`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/src/temporal/workflows.js):
+Defined in [`backend/src/temporal/workflows.js`](https://github.com/logsv/em-taskflow-ai/blob/main/backend/src/temporal/workflows.js):
 - **Signals**:
   - `approveSlackPostSignal`: Delivers approval signal along with reviewer identity.
   - `rejectSlackPostSignal`: Delivers rejection signal and reason.
@@ -95,7 +95,7 @@ Defined in [`backend/src/temporal/workflows.js`](file:///Users/logsv/Documents/a
 - **Activity Execution**: Triggers `postSlackMessageActivity` only after receiving a confirmed approval signal.
 
 ### 2. Activity Execution (`postSlackMessageActivity`)
-Defined in [`backend/src/temporal/activities.js`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/src/temporal/activities.js):
+Defined in [`backend/src/temporal/activities.js`](https://github.com/logsv/em-taskflow-ai/blob/main/backend/src/temporal/activities.js):
 - Reads active Slack bot token from dynamic `settingsService` or environment.
 - Executes `chat.postMessage` via Slack Web API.
 - Falls back to simulated post logs if credentials are unconfigured in test environments.
@@ -104,7 +104,7 @@ Defined in [`backend/src/temporal/activities.js`](file:///Users/logsv/Documents/
 
 ## 📡 REST Management APIs for Slack HITL
 
-The backend exposes administrative endpoints under `/api/admin/temporal/slack-post/*` in [`backend/src/routes/admin.js`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/src/routes/admin.js):
+The backend exposes administrative endpoints under `/api/admin/temporal/slack-post/*` in [`backend/src/routes/admin.js`](https://github.com/logsv/em-taskflow-ai/blob/main/backend/src/routes/admin.js):
 
 ### 1. Initiate Draft Slack Post
 ```bash

@@ -6,9 +6,9 @@ The Golden Dataset serves as the schema-validated ground-truth evaluation benchm
 
 ## 📁 Repository Structure
 
-- **Dataset File**: [`backend/evaluation/golden-dataset.json`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/evaluation/golden-dataset.json)
-- **JSON Schema**: [`backend/evaluation/golden-dataset-schema.json`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/evaluation/golden-dataset-schema.json)
-- **Evaluation Runner**: [`backend/evaluation/run-evaluation.js`](file:///Users/logsv/Documents/agent-dev/em-taskflow-ai/backend/evaluation/run-evaluation.js)
+- **Dataset File**: [`backend/evaluation/golden-dataset.json`](https://github.com/logsv/em-taskflow-ai/blob/main/backend/evaluation/golden-dataset.json)
+- **JSON Schema**: [`backend/evaluation/golden-dataset-schema.json`](https://github.com/logsv/em-taskflow-ai/blob/main/backend/evaluation/golden-dataset-schema.json)
+- **Evaluation Runner**: [`backend/evaluation/run-evaluation.js`](https://github.com/logsv/em-taskflow-ai/blob/main/backend/evaluation/run-evaluation.js)
 
 ---
 
