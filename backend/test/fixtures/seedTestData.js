@@ -99,26 +99,28 @@ export const SKILL_RATINGS_FIXTURES = {
 };
 
 /**
- * Live-source payloads for the people agent's Google Calendar and profile executors.
- * Specs stub `peopleGrowthTool.mcpExecutors.*` with these; production never invents
- * calendar events or workload/meeting hours when a source is not connected.
+ * Raw Google Calendar events (MCP `get_calendar_events` shape) and profile payloads for the
+ * people agent. Specs run the calendar events through `buildCalendarSourceResult` and stub
+ * `peopleGrowthTool.mcpExecutors.*`; production never invents events or workload/meeting hours.
  */
+const overloadedMeetings = Array.from({ length: 12 }, (_, i) => ({
+  id: `evt_over_${i}`,
+  summary: `Design review #${i + 1}`,
+  start: `2026-11-${String(20 + Math.floor(i / 3)).padStart(2, '0')}T${String(9 + (i % 3) * 2).padStart(2, '0')}:00:00Z`,
+  end: `2026-11-${String(20 + Math.floor(i / 3)).padStart(2, '0')}T${String(11 + (i % 3) * 2).padStart(2, '0')}:00:00Z`,
+  attendees: ['overloaded@company.internal'],
+  status: 'confirmed',
+}));
+
 export const PEOPLE_SOURCE_FIXTURES = {
-  calendar_alex: {
-    today_events: [
-      { summary: '1-on-1: Alex Williams / Manager', start_time: '2026-11-20T10:00:00Z', attendee: 'alex.williams@company.internal', status: 'confirmed' },
-      { summary: 'Career growth check-in', start_time: '2026-11-21T15:00:00Z', attendee: 'alex.williams@company.internal', status: 'tentative' },
-    ],
-    weekly_meeting_hours: 12.0,
-    source: 'test_fixture_google_calendar',
-  },
-  calendar_overloaded: {
-    today_events: [
-      { summary: '1-on-1: Overloaded Engineer / Manager', start_time: '2026-11-20T09:00:00Z', attendee: 'overloaded@company.internal', status: 'confirmed' },
-    ],
-    weekly_meeting_hours: 24.0,
-    source: 'test_fixture_google_calendar',
-  },
+  // 1h + 30m timed meetings, plus an all-day event that must not count toward hours.
+  calendar_alex_events: [
+    { id: 'evt_1', summary: '1-on-1: Alex Williams / Manager', start: '2026-11-20T10:00:00Z', end: '2026-11-20T11:00:00Z', attendees: ['alex.williams@company.internal'], status: 'confirmed' },
+    { id: 'evt_2', summary: 'Career growth check-in', start: '2026-11-21T15:00:00Z', end: '2026-11-21T15:30:00Z', attendees: ['alex.williams@company.internal'], status: 'tentative' },
+    { id: 'evt_3', summary: 'Team offsite', start: '2026-11-22', end: '2026-11-23', attendees: [], status: 'confirmed' },
+  ],
+  // 12 x 2h = 24h of meetings in the window.
+  calendar_overloaded_events: overloadedMeetings,
   profile_overloaded: {
     engineer_id: 'eng_overloaded',
     displayName: 'Overloaded Engineer',

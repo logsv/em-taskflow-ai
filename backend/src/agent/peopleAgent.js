@@ -5,6 +5,7 @@ import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import settingsService from '../services/settingsService.js';
 import identityService from '../services/identityService.js';
+import googleCalendarClient from '../integrations/clients/GoogleCalendarClient.js';
 import { createMicroAgent, safeExecuteMCPTool, resolveMemberTarget } from './baseAgent.js';
 import { warn } from '../utils/logger.js';
 
@@ -74,6 +75,111 @@ export function normalizeSkillRatings(raw) {
   return ratings;
 }
 
+// Meeting load is measured over the next 7 days of calendar events.
+export const MEETING_HOURS_WINDOW_DAYS = 7;
+const CALENDAR_MAX_RESULTS = 250;
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const pickEventTime = (value) => {
+  if (!value) return null;
+  if (typeof value === 'object') return value.dateTime || value.date || null;
+  return String(value);
+};
+
+/**
+ * Normalizes a Google Calendar event from either the MCP tool shape ({ start, end, attendees: [email] })
+ * or the REST API shape ({ start: { dateTime }, end: { dateTime }, attendees: [{ email }] }).
+ * Missing fields stay null; nothing is invented.
+ */
+export function normalizeCalendarEvent(ev, fallbackAttendee = null) {
+  const attendees = Array.isArray(ev?.attendees)
+    ? ev.attendees.map((a) => (typeof a === 'string' ? a : (a?.email || a?.displayName))).filter(Boolean)
+    : [];
+  return {
+    summary: ev?.summary || '(untitled event)',
+    start_time: pickEventTime(ev?.start_time ?? ev?.start),
+    end_time: pickEventTime(ev?.end_time ?? ev?.end),
+    attendee: ev?.attendee || attendees[0] || fallbackAttendee || null,
+    status: ev?.status || null,
+  };
+}
+
+/**
+ * Sums the real durations of timed events. All-day (date-only), cancelled, or events
+ * without a valid start/end are excluded and counted as untimed.
+ * Returns `hours: null` when there are events but none has a measurable duration.
+ */
+export function computeMeetingHours(events = []) {
+  let totalMs = 0;
+  let timedCount = 0;
+  let untimedCount = 0;
+  for (const ev of events) {
+    if (ev?.status === 'cancelled') continue;
+    const start = ev?.start_time;
+    const end = ev?.end_time;
+    if (!start || !end || DATE_ONLY_RE.test(start) || DATE_ONLY_RE.test(end)) {
+      untimedCount += 1;
+      continue;
+    }
+    const startMs = Date.parse(start);
+    const endMs = Date.parse(end);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+      untimedCount += 1;
+      continue;
+    }
+    totalMs += endMs - startMs;
+    timedCount += 1;
+  }
+  const hours = timedCount > 0 || untimedCount === 0
+    ? Number((totalMs / 3600000).toFixed(1))
+    : null;
+  return { hours, timedCount, untimedCount };
+}
+
+/**
+ * Builds the calendar source payload from real events. An empty list from a configured
+ * calendar is a measured zero, not missing data.
+ */
+export function buildCalendarSourceResult(rawEvents, { source, fallbackAttendee = null, maxResults = CALENDAR_MAX_RESULTS } = {}) {
+  const events = (Array.isArray(rawEvents) ? rawEvents : []).map((ev) => normalizeCalendarEvent(ev, fallbackAttendee));
+  const { hours, timedCount, untimedCount } = computeMeetingHours(events);
+  return {
+    today_events: events,
+    weekly_meeting_hours: hours,
+    meeting_hours_basis: {
+      method: 'sum_of_event_durations',
+      window_days: MEETING_HOURS_WINDOW_DAYS,
+      timed_events: timedCount,
+      untimed_events_excluded: untimedCount,
+      // Hitting the page limit means more events may exist, so hours are a lower bound.
+      truncated: events.length >= maxResults,
+    },
+    source,
+    synced_at: new Date().toISOString(),
+  };
+}
+
+const isCalendarConfigured = () => {
+  try {
+    return Boolean(googleCalendarClient.getCredentials().apiKey);
+  } catch (_err) {
+    return false;
+  }
+};
+
+const parseToolArray = (res) => {
+  if (Array.isArray(res)) return res;
+  if (typeof res === 'string') {
+    try {
+      const parsed = JSON.parse(res);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+  return null;
+};
+
 export const peopleGrowthTool = createDeterministicToolHarness({
   name: 'analyze_personnel_growth',
   description: 'Analyzes engineer competencies across 12 dimensions, evaluates promotion readiness, identifies skill gaps, syncs Google Calendar 1-on-1s, Notion career notes, and formulates career roadmaps.',
@@ -83,7 +189,7 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     mode: z.enum(['ANALYZE', 'LIST_RAW', 'DRILL_DOWN', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
     filter: z.enum(['ALL', 'TODAY_EVENTS', 'ONE_ON_ONES', 'CAREER_NOTES', 'SKILL_GAPS']).default('ALL'),
     target: z.enum(['ALL', 'ONE_ON_ONES', 'SKILL_GAPS', 'RADAR', 'CAREER_NOTES']).default('ALL'),
-    engineer_id: z.string().default('eng_alex').describe('Name, alias, or identifier of the engineer'),
+    engineer_id: z.string().optional().describe('Name, alias, or identifier of the engineer (required to resolve a profile; never defaulted)'),
     current_level: z.enum(['L3_JUNIOR', 'L4_MID', 'L5_SENIOR', 'L6_STAFF', 'L7_PRINCIPAL', 'M1_EM']).default('L4_MID'),
     target_level: z.enum(['L4_MID', 'L5_SENIOR', 'L6_STAFF', 'L7_PRINCIPAL', 'M1_EM', 'M2_SENIOR_EM']).default('L5_SENIOR'),
     track: z.enum(['INDIVIDUAL_CONTRIBUTOR', 'ENGINEERING_MANAGEMENT']).default('INDIVIDUAL_CONTRIBUTOR'),
@@ -96,47 +202,55 @@ export const peopleGrowthTool = createDeterministicToolHarness({
   mcpExecutors: {
     googleCalendar: async (inputArgs) => {
       try {
+        // The calendar client returns "[]" when no credentials exist, which would be indistinguishable
+        // from a configured calendar with no meetings. Treat an unconfigured calendar as not connected.
+        if (!isCalendarConfigured()) return null;
+
         const { executeMCPTool } = await import('../mcp/index.js');
-        const member = (await identityService.resolveMember(inputArgs?.engineer_id)) || (await identityService.resolveMemberFromText(inputArgs?.engineer_id || ''));
-        const gcalUser = member?.gcalEmail || (await identityService.getToolUsernameForMember(inputArgs?.engineer_id, 'gcal'));
-        
-        // Attempt live MCP tool call if available
+        const member = inputArgs?.engineer_id
+          ? ((await identityService.resolveMember(inputArgs.engineer_id)) || (await identityService.resolveMemberFromText(inputArgs.engineer_id)))
+          : null;
+        const gcalUser = member?.gcalEmail
+          || (inputArgs?.engineer_id ? await identityService.getToolUsernameForMember(inputArgs.engineer_id, 'gcal') : null);
+
+        // Live MCP tool call (returns a JSON string of events, or an error object on failure).
         const res = await Promise.race([
-          executeMCPTool('get_calendar_events', { user: gcalUser || 'primary', time_window: '7d' }),
+          executeMCPTool('get_calendar_events', {
+            user: gcalUser || 'primary',
+            time_window: `${MEETING_HOURS_WINDOW_DAYS}d`,
+            max_results: CALENDAR_MAX_RESULTS,
+          }),
           new Promise((_, reject) => setTimeout(() => reject(new Error('MCP GCal timed out')), 2500)),
         ]).catch(() => null);
 
-        if (res && Array.isArray(res)) {
-          return {
-            today_events: res,
-            weekly_meeting_hours: Math.min(res.length * 1.5, 30),
-            source: 'mcp_google_calendar',
-            synced_at: new Date().toISOString(),
-          };
+        const mcpEvents = parseToolArray(res);
+        if (mcpEvents) {
+          return buildCalendarSourceResult(mcpEvents, { source: 'mcp_google_calendar', fallbackAttendee: gcalUser });
         }
 
-        // Direct REST API Fallback
+        // Direct REST API Fallback over the same 7-day window.
         const rawSettings = settingsService.getCachedRawSettings ? settingsService.getCachedRawSettings() : (settingsService.getCachedSettings ? settingsService.getCachedSettings() : null);
         const gcal = rawSettings?.mcp?.googleCalendar;
         if (gcal?.apiKey) {
           const calendarId = encodeURIComponent(gcal.calendarId || 'primary');
+          const now = new Date();
+          const timeMax = new Date(now.getTime() + MEETING_HOURS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
           const apiRes = await axios.get(
-            `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events?maxResults=8&timeMin=${new Date().toISOString()}&key=${gcal.apiKey}`,
-            { timeout: 2500 }
+            `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events`,
+            {
+              params: {
+                maxResults: CALENDAR_MAX_RESULTS,
+                singleEvents: true,
+                orderBy: 'startTime',
+                timeMin: now.toISOString(),
+                timeMax: timeMax.toISOString(),
+                key: gcal.apiKey,
+              },
+              timeout: 2500,
+            }
           ).catch(() => null);
-          const items = apiRes?.data?.items || [];
-          if (items.length > 0) {
-            return {
-              today_events: items.map((ev) => ({
-                summary: ev.summary || '(untitled event)',
-                start_time: ev.start?.dateTime || ev.start?.date || null,
-                attendee: ev.attendees?.[0]?.email || gcalUser || null,
-                status: ev.status || null,
-              })),
-              weekly_meeting_hours: Math.min(items.length * 1.5, 30),
-              source: 'google_calendar_rest',
-              synced_at: new Date().toISOString(),
-            };
+          if (apiRes && Array.isArray(apiRes.data?.items)) {
+            return buildCalendarSourceResult(apiRes.data.items, { source: 'google_calendar_rest', fallbackAttendee: gcalUser });
           }
         }
       } catch (err) {
@@ -199,8 +313,8 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     default: async (inputArgs) => {
       const member = (await identityService.resolveMember(inputArgs?.engineer_id)) || (await identityService.resolveMemberFromText(inputArgs?.engineer_id || ''));
       return {
-        engineer_id: member?.id || inputArgs?.engineer_id || 'unassigned',
-        displayName: member?.displayName || inputArgs?.engineer_id || 'Engineer',
+        engineer_id: member?.id || inputArgs?.engineer_id || null,
+        displayName: member?.displayName || null,
         current_level: member?.currentLevel || inputArgs?.current_level || 'L4_MID',
         target_level: member?.targetLevel || inputArgs?.target_level || 'L5_SENIOR',
         track: member?.track || inputArgs?.track || 'INDIVIDUAL_CONTRIBUTOR',
@@ -301,12 +415,16 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     const googleData = sourceResults.googleCalendar?.data || sourceResults.google?.data || {};
     const mode = inputArgs.mode || 'ANALYZE';
 
-    const member = (await identityService.resolveMember(inputArgs.engineer_id)) || (await identityService.resolveMemberFromText(inputArgs.engineer_id));
-    let rawId = String(inputArgs.engineer_id || 'eng_alex').trim();
-    if (rawId.length > 30 || /\b(review|progression|readiness|career|growth|notes|developer|engineer|1-on-1|our)\b/i.test(rawId)) {
-      rawId = member?.displayName || 'Unresolved engineer';
+    const requestedId = inputArgs.engineer_id ? String(inputArgs.engineer_id).trim() : '';
+    const member = requestedId
+      ? ((await identityService.resolveMember(requestedId)) || (await identityService.resolveMemberFromText(requestedId)))
+      : null;
+    let rawId = requestedId;
+    if (!rawId || rawId.length > 30 || /\b(review|progression|readiness|career|growth|notes|developer|engineer|1-on-1|our)\b/i.test(rawId)) {
+      rawId = member?.displayName || 'Unspecified engineer';
     }
     const resolvedName = member?.displayName || rawId;
+    const engineerResolved = Boolean(member);
 
     // Calendar events only ever come from a live calendar source; never synthesize a meeting.
     const rawEvents = googleData.today_events || defaultData.today_events;
@@ -338,6 +456,7 @@ export const peopleGrowthTool = createDeterministicToolHarness({
         totalEvents: events.length,
         items: events,
         calendar_status: calendarStatus,
+        engineer_resolved: engineerResolved,
         summary: listSummary,
       };
     }
@@ -361,7 +480,13 @@ export const peopleGrowthTool = createDeterministicToolHarness({
       burnoutRisk = 'LOW';
     }
     const workloadLabel = workloadHours !== null ? `${workloadHours}h/wk` : 'Unknown (no workload source connected)';
-    const meetingLabel = meetingHours !== null ? `${meetingHours} hrs/week` : 'Unknown (Google Calendar not connected)';
+    const meetingBasis = googleData.meeting_hours_basis || null;
+    let meetingLabel = 'Unknown (Google Calendar not connected)';
+    if (meetingHours !== null) {
+      meetingLabel = `${meetingHours} hrs over next ${meetingBasis?.window_days || MEETING_HOURS_WINDOW_DAYS} days${meetingBasis?.truncated ? ' (lower bound — event limit reached)' : ''}`;
+    } else if (calendarConnected) {
+      meetingLabel = 'Unknown (calendar events have no measurable start/end times)';
+    }
 
     // Competency ratings must come from a real source: explicit `skill_ratings` input or ratings
     // persisted on the team member record. Level benchmarks are targets, never a stand-in for
@@ -500,7 +625,7 @@ export const peopleGrowthTool = createDeterministicToolHarness({
       : `\n\n### 📓 Notion 1-on-1 Notes & Career Rubrics\n- ${notionData.source_status || 'No Notion career notes found for this engineer.'}`;
 
     if (mode === 'DRILL_DOWN') {
-      const drillSummary = `### 🎯 Skill Gap & Career Growth Breakdown: ${inputArgs.engineer_id} (${currentLevel} ➔ ${targetLevel})\n\n` +
+      const drillSummary = `### 🎯 Skill Gap & Career Growth Breakdown: ${resolvedName} (${currentLevel} ➔ ${targetLevel})\n\n` +
         `- **Promotion Readiness Score**: **${readinessLabel}** (${verdictLabel})\n` +
         `- **Prerequisites Completed**: **${prereqsLabel}**\n` +
         `- **Top Growth Gaps**:\n` +
@@ -517,7 +642,8 @@ export const peopleGrowthTool = createDeterministicToolHarness({
 
       return {
         mode: 'DRILL_DOWN',
-        engineer_id: inputArgs.engineer_id,
+        engineer_id: member?.id || requestedId || null,
+        engineer_resolved: engineerResolved,
         current_level: currentLevel,
         target_level: targetLevel,
         readiness_score: readinessScore,
@@ -530,7 +656,7 @@ export const peopleGrowthTool = createDeterministicToolHarness({
       };
     }
 
-    const summaryText = `### 🎯 Promotion Readiness Scorecard: ${inputArgs.engineer_id} (${currentLevel} ➔ ${targetLevel})
+    const summaryText = `### 🎯 Promotion Readiness Scorecard: ${resolvedName} (${currentLevel} ➔ ${targetLevel})
 
 > **Track**: ${track === 'ENGINEERING_MANAGEMENT' ? 'Management (M1/M2)' : 'Individual Contributor (IC)'} | **Tenure**: ${tenureMonths} Months | **Promotion Readiness**: **${readinessLabel} (${verdictLabel})** | **Workload**: ${workloadLabel} (${burnoutRisk} Burnout Risk)
 
@@ -578,7 +704,8 @@ ${roadmaps.long_term_1_to_3y.deliverables.map((d) => `- ${d}`).join('\n')}
 - **Primary Stretch Project**: Not recorded — no stretch assignment source (Jira epics / Notion plans) is connected for this engineer.
 - **Upcoming 1-on-1 Calendar Schedule**:
 ${events.length > 0
-    ? events.map((ev) => `  * 📅 **${ev.start_time || 'Time not provided'}**: ${ev.summary || '(untitled event)'} (${ev.attendee || resolvedName})`).join('\n')
+    ? events.slice(0, 10).map((ev) => `  * 📅 **${ev.start_time || 'Time not provided'}**: ${ev.summary || '(untitled event)'} (${ev.attendee || resolvedName})`).join('\n')
+      + (events.length > 10 ? `\n  * …and ${events.length - 10} more` : '')
     : `  * ${calendarConnected ? 'No upcoming 1-on-1s returned by Google Calendar.' : calendarNotConnectedNote}`}
 - **Weekly Meeting Load**: **${meetingLabel}** (Sustainability Status: **${burnoutRisk} Risk**).${notionSection}
 
@@ -587,7 +714,8 @@ ${events.length > 0
 
     return {
       mode: 'ANALYZE',
-      engineer_id: inputArgs.engineer_id || null,
+      engineer_id: member?.id || requestedId || null,
+      engineer_resolved: engineerResolved,
       current_level: currentLevel,
       target_level: targetLevel,
       track,
@@ -601,6 +729,7 @@ ${events.length > 0
         burnout_risk_score: burnoutRisk,
         weekly_workload_hours: workloadHours,
         weekly_meeting_hours: meetingHours,
+        meeting_hours_basis: meetingBasis,
         calendar_status: calendarStatus,
         prerequisites_met: prereqsLabel,
       },

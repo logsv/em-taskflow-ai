@@ -1,4 +1,7 @@
-import { peopleGrowthTool, createPeopleAgent, normalizeSkillRatings, COMPETENCY_DIMENSIONS, LEVEL_BENCHMARKS } from '../../src/agent/peopleAgent.js';
+import {
+  peopleGrowthTool, createPeopleAgent, normalizeSkillRatings, normalizeCalendarEvent, computeMeetingHours,
+  buildCalendarSourceResult, COMPETENCY_DIMENSIONS, LEVEL_BENCHMARKS,
+} from '../../src/agent/peopleAgent.js';
 import sinon from 'sinon';
 import { SKILL_RATINGS_FIXTURES, PEOPLE_SOURCE_FIXTURES } from '../fixtures/seedTestData.js';
 
@@ -12,6 +15,9 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
     if (profile !== undefined) sandbox.stub(peopleGrowthTool.mcpExecutors, 'default').resolves(profile);
     if (notion !== undefined) sandbox.stub(peopleGrowthTool.mcpExecutors, 'notion').resolves(notion);
   };
+  const calendarFrom = (events) => buildCalendarSourceResult(events, { source: 'mcp_google_calendar' });
+  const ALEX_CALENDAR = () => calendarFrom(PEOPLE_SOURCE_FIXTURES.calendar_alex_events);
+  const OVERLOADED_CALENDAR = () => calendarFrom(PEOPLE_SOURCE_FIXTURES.calendar_overloaded_events);
 
   it('should define 12 standardized competency dimensions', () => {
     expect(COMPETENCY_DIMENSIONS.length).toBe(12);
@@ -147,7 +153,7 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
   });
 
   it('should detect high burnout risk when workload or meeting hours exceed thresholds', async () => {
-    stubSources({ calendar: PEOPLE_SOURCE_FIXTURES.calendar_overloaded, profile: PEOPLE_SOURCE_FIXTURES.profile_overloaded });
+    stubSources({ calendar: OVERLOADED_CALENDAR(), profile: PEOPLE_SOURCE_FIXTURES.profile_overloaded });
     const res = await peopleGrowthTool.invoke({
       engineer_id: 'eng_overloaded',
       current_level: 'L4_MID',
@@ -162,14 +168,17 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
   });
 
   it('should rate burnout LOW only when both workload and meeting hours are measured and sustainable', async () => {
-    stubSources({ calendar: PEOPLE_SOURCE_FIXTURES.calendar_alex, profile: PEOPLE_SOURCE_FIXTURES.profile_sustainable });
+    stubSources({ calendar: ALEX_CALENDAR(), profile: PEOPLE_SOURCE_FIXTURES.profile_sustainable });
     const res = await peopleGrowthTool.invoke({ engineer_id: 'eng_alex' });
 
     expect(res.status).toBe('SUCCESS');
     expect(res.data.metrics.burnout_risk_score).toBe('LOW');
     expect(res.data.metrics.weekly_workload_hours).toBe(40);
-    expect(res.data.metrics.weekly_meeting_hours).toBe(12);
+    expect(res.data.metrics.weekly_meeting_hours).toBe(1.5);
+    expect(res.data.metrics.meeting_hours_basis.method).toBe('sum_of_event_durations');
+    expect(res.data.metrics.meeting_hours_basis.untimed_events_excluded).toBe(1);
     expect(res.data.metrics.calendar_status).toBe('CONNECTED');
+    expect(res.data.summary).toContain('1.5 hrs over next 7 days');
   });
 
   it('should report UNKNOWN burnout risk and null hours when no hours source is connected', async () => {
@@ -204,7 +213,7 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
   });
 
   it('should support LIST_RAW mode to return calendar 1-on-1 events', async () => {
-    stubSources({ calendar: PEOPLE_SOURCE_FIXTURES.calendar_alex });
+    stubSources({ calendar: ALEX_CALENDAR() });
     const res = await peopleGrowthTool.invoke({
       engineer_id: 'eng_alex',
       mode: 'LIST_RAW',
@@ -214,9 +223,15 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
     expect(res.status).toBe('SUCCESS');
     expect(res.data.mode).toBe('LIST_RAW');
     expect(Array.isArray(res.data.items)).toBe(true);
-    expect(res.data.totalEvents).toBe(2);
+    expect(res.data.totalEvents).toBe(3);
     expect(res.data.calendar_status).toBe('CONNECTED');
-    expect(res.data.items).toEqual(PEOPLE_SOURCE_FIXTURES.calendar_alex.today_events);
+    expect(res.data.items[0]).toEqual({
+      summary: '1-on-1: Alex Williams / Manager',
+      start_time: '2026-11-20T10:00:00Z',
+      end_time: '2026-11-20T11:00:00Z',
+      attendee: 'alex.williams@company.internal',
+      status: 'confirmed',
+    });
     expect(res.data.summary).toContain('Scheduled 1-on-1 & Growth Check-ins');
     expect(res.data.summary).toContain('1-on-1: Alex Williams / Manager');
     expect(res.data.summary).toContain('`tentative`');
@@ -275,7 +290,7 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
   });
 
   it('should execute multi-source executors including Notion notes and Google Calendar', async () => {
-    stubSources({ calendar: PEOPLE_SOURCE_FIXTURES.calendar_alex });
+    stubSources({ calendar: ALEX_CALENDAR() });
     const res = await peopleGrowthTool.invoke({
       sources: ['default', 'googleCalendar', 'notion'],
       mode: 'ANALYZE',
@@ -286,7 +301,76 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
     expect(res.data.summary).toBeDefined();
     expect(res.data.summary).toContain('Google Calendar 1-on-1 Sync');
     expect(res.data.summary).toContain('Career growth check-in');
-    expect(res.data.metrics.weekly_meeting_hours).toBe(12);
+    expect(res.data.metrics.weekly_meeting_hours).toBe(1.5);
+  });
+
+  it('should not default engineer_id to a placeholder engineer', async () => {
+    stubSources({ calendar: null, notion: null });
+    const res = await peopleGrowthTool.invoke({ mode: 'ANALYZE' });
+
+    expect(res.status).toBe('SUCCESS');
+    expect(res.data.engineer_id).toBeNull();
+    expect(res.data.engineer_resolved).toBe(false);
+    expect(res.data.summary).toContain('Scorecard: Unspecified engineer');
+    expect(res.data.summary).not.toContain('eng_alex');
+    expect(res.data.summary).not.toContain('Alex Williams');
+  });
+
+  it('should label the scorecard with the resolved member and report their id', async () => {
+    stubSources({ calendar: null, notion: null });
+    const res = await peopleGrowthTool.invoke({ engineer_id: 'eng_alex' });
+
+    expect(res.data.engineer_id).toBe('mem_alex');
+    expect(res.data.engineer_resolved).toBe(true);
+    expect(res.data.summary).toContain('Scorecard: Alex Williams');
+  });
+
+  describe('calendar meeting-hours measurement', () => {
+    it('should treat an unconfigured calendar as not connected rather than a measured zero', async () => {
+      const saved = { a: process.env.GOOGLE_CALENDAR_API_KEY, b: process.env.GOOGLE_API_KEY };
+      delete process.env.GOOGLE_CALENDAR_API_KEY;
+      delete process.env.GOOGLE_API_KEY;
+      try {
+        // The calendar client returns "[]" without credentials; that must not read as 0 meeting hours.
+        expect(await peopleGrowthTool.mcpExecutors.googleCalendar({ engineer_id: 'eng_alex' })).toBeNull();
+      } finally {
+        if (saved.a !== undefined) process.env.GOOGLE_CALENDAR_API_KEY = saved.a;
+        if (saved.b !== undefined) process.env.GOOGLE_API_KEY = saved.b;
+      }
+    });
+
+    it('should normalize MCP and REST event shapes without inventing fields', () => {
+      expect(normalizeCalendarEvent({ summary: 'Sync', start: '2026-11-20T10:00:00Z', end: '2026-11-20T10:45:00Z', attendees: ['a@x.io'] }))
+        .toEqual({ summary: 'Sync', start_time: '2026-11-20T10:00:00Z', end_time: '2026-11-20T10:45:00Z', attendee: 'a@x.io', status: null });
+      expect(normalizeCalendarEvent({ start: { dateTime: '2026-11-20T10:00:00Z' }, end: { dateTime: '2026-11-20T11:00:00Z' }, attendees: [{ email: 'b@x.io' }], status: 'confirmed' }))
+        .toEqual({ summary: '(untitled event)', start_time: '2026-11-20T10:00:00Z', end_time: '2026-11-20T11:00:00Z', attendee: 'b@x.io', status: 'confirmed' });
+      expect(normalizeCalendarEvent({})).toEqual({ summary: '(untitled event)', start_time: null, end_time: null, attendee: null, status: null });
+    });
+
+    it('should sum real durations and exclude all-day, cancelled and untimed events', () => {
+      const events = [
+        { start_time: '2026-11-20T10:00:00Z', end_time: '2026-11-20T11:30:00Z' },
+        { start_time: '2026-11-20T13:00:00Z', end_time: '2026-11-20T13:15:00Z' },
+        { start_time: '2026-11-21', end_time: '2026-11-22' },
+        { start_time: '2026-11-21T09:00:00Z', end_time: null },
+        { start_time: '2026-11-21T09:00:00Z', end_time: '2026-11-21T08:00:00Z' },
+        { start_time: '2026-11-21T10:00:00Z', end_time: '2026-11-21T12:00:00Z', status: 'cancelled' },
+      ];
+      expect(computeMeetingHours(events)).toEqual({ hours: 1.8, timedCount: 2, untimedCount: 3 });
+    });
+
+    it('should report 0 hours for a connected calendar with no events and null when nothing is measurable', () => {
+      expect(computeMeetingHours([]).hours).toBe(0);
+      expect(computeMeetingHours([{ start_time: '2026-11-21', end_time: '2026-11-22' }]).hours).toBeNull();
+    });
+
+    it('should flag meeting hours as a lower bound when the event page limit is reached', () => {
+      const events = PEOPLE_SOURCE_FIXTURES.calendar_overloaded_events;
+      expect(buildCalendarSourceResult(events, { source: 't', maxResults: events.length }).meeting_hours_basis.truncated).toBe(true);
+      const full = buildCalendarSourceResult(events, { source: 't' });
+      expect(full.meeting_hours_basis.truncated).toBe(false);
+      expect(full.weekly_meeting_hours).toBe(24);
+    });
   });
 
   it('should fall back to PostgreSQL database profile when external MCP APIs time out', async () => {
