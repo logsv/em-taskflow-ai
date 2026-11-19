@@ -1,7 +1,18 @@
 import { peopleGrowthTool, createPeopleAgent, normalizeSkillRatings, COMPETENCY_DIMENSIONS, LEVEL_BENCHMARKS } from '../../src/agent/peopleAgent.js';
-import { SKILL_RATINGS_FIXTURES } from '../fixtures/seedTestData.js';
+import sinon from 'sinon';
+import { SKILL_RATINGS_FIXTURES, PEOPLE_SOURCE_FIXTURES } from '../fixtures/seedTestData.js';
 
 describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
+  let sandbox;
+  beforeEach(() => { sandbox = sinon.createSandbox(); });
+  afterEach(() => { sandbox.restore(); });
+
+  const stubSources = ({ calendar, profile, notion } = {}) => {
+    if (calendar !== undefined) sandbox.stub(peopleGrowthTool.mcpExecutors, 'googleCalendar').resolves(calendar);
+    if (profile !== undefined) sandbox.stub(peopleGrowthTool.mcpExecutors, 'default').resolves(profile);
+    if (notion !== undefined) sandbox.stub(peopleGrowthTool.mcpExecutors, 'notion').resolves(notion);
+  };
+
   it('should define 12 standardized competency dimensions', () => {
     expect(COMPETENCY_DIMENSIONS.length).toBe(12);
     const keys = COMPETENCY_DIMENSIONS.map((d) => d.key);
@@ -136,6 +147,7 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
   });
 
   it('should detect high burnout risk when workload or meeting hours exceed thresholds', async () => {
+    stubSources({ calendar: PEOPLE_SOURCE_FIXTURES.calendar_overloaded, profile: PEOPLE_SOURCE_FIXTURES.profile_overloaded });
     const res = await peopleGrowthTool.invoke({
       engineer_id: 'eng_overloaded',
       current_level: 'L4_MID',
@@ -143,11 +155,56 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
     });
 
     expect(res.status).toBe('SUCCESS');
-    expect(res.data.metrics.burnout_risk_score).toBeDefined();
-    expect(['LOW', 'MEDIUM', 'HIGH']).toContain(res.data.metrics.burnout_risk_score);
+    expect(res.data.metrics.burnout_risk_score).toBe('HIGH');
+    expect(res.data.metrics.weekly_workload_hours).toBe(52);
+    expect(res.data.metrics.weekly_meeting_hours).toBe(24);
+    expect(res.data.summary).toContain('52 hrs/wk');
+  });
+
+  it('should rate burnout LOW only when both workload and meeting hours are measured and sustainable', async () => {
+    stubSources({ calendar: PEOPLE_SOURCE_FIXTURES.calendar_alex, profile: PEOPLE_SOURCE_FIXTURES.profile_sustainable });
+    const res = await peopleGrowthTool.invoke({ engineer_id: 'eng_alex' });
+
+    expect(res.status).toBe('SUCCESS');
+    expect(res.data.metrics.burnout_risk_score).toBe('LOW');
+    expect(res.data.metrics.weekly_workload_hours).toBe(40);
+    expect(res.data.metrics.weekly_meeting_hours).toBe(12);
+    expect(res.data.metrics.calendar_status).toBe('CONNECTED');
+  });
+
+  it('should report UNKNOWN burnout risk and null hours when no hours source is connected', async () => {
+    stubSources({ calendar: null });
+    const res = await peopleGrowthTool.invoke({
+      engineer_id: 'eng_alex',
+      sources: ['default', 'googleCalendar', 'notion'],
+    });
+
+    expect(res.status).toBe('SUCCESS');
+    expect(res.data.metrics.weekly_workload_hours).toBeNull();
+    expect(res.data.metrics.weekly_meeting_hours).toBeNull();
+    expect(res.data.metrics.burnout_risk_score).toBe('UNKNOWN');
+    expect(res.data.metrics.calendar_status).toBe('NOT_CONNECTED');
+    expect(res.data.today_schedule).toEqual([]);
+    expect(res.data.summary).toContain('Workload**: Unknown');
+    expect(res.data.summary).toContain('Google Calendar is not connected');
+    expect(res.data.summary).not.toContain('41.5');
+    expect(res.data.summary).not.toContain('14.5');
+  });
+
+  it('should not fabricate a stretch project, calendar events or Notion docs in the ANALYZE summary', async () => {
+    stubSources({ calendar: null, notion: null });
+    const res = await peopleGrowthTool.invoke({ engineer_id: 'eng_alex' });
+
+    expect(res.status).toBe('SUCCESS');
+    expect(res.data.summary).toContain('**Primary Stretch Project**: Not recorded');
+    expect(res.data.summary).not.toContain('database-per-service vector architecture');
+    expect(res.data.summary).not.toContain('Performance & Growth Review');
+    expect(res.data.summary).not.toContain('notion.so/career-ladder');
+    expect(res.data.summary).toContain('Notion is not connected');
   });
 
   it('should support LIST_RAW mode to return calendar 1-on-1 events', async () => {
+    stubSources({ calendar: PEOPLE_SOURCE_FIXTURES.calendar_alex });
     const res = await peopleGrowthTool.invoke({
       engineer_id: 'eng_alex',
       mode: 'LIST_RAW',
@@ -157,8 +214,30 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
     expect(res.status).toBe('SUCCESS');
     expect(res.data.mode).toBe('LIST_RAW');
     expect(Array.isArray(res.data.items)).toBe(true);
-    expect(res.data.totalEvents).toBeGreaterThanOrEqual(1);
+    expect(res.data.totalEvents).toBe(2);
+    expect(res.data.calendar_status).toBe('CONNECTED');
+    expect(res.data.items).toEqual(PEOPLE_SOURCE_FIXTURES.calendar_alex.today_events);
     expect(res.data.summary).toContain('Scheduled 1-on-1 & Growth Check-ins');
+    expect(res.data.summary).toContain('1-on-1: Alex Williams / Manager');
+    expect(res.data.summary).toContain('`tentative`');
+    expect(res.data.summary).not.toContain('Confirmed');
+  });
+
+  it('should return no events and a not-connected note in LIST_RAW mode when the calendar is unavailable', async () => {
+    stubSources({ calendar: null });
+    const res = await peopleGrowthTool.invoke({
+      engineer_id: 'eng_alex',
+      mode: 'LIST_RAW',
+      filter: 'ONE_ON_ONES',
+    });
+
+    expect(res.status).toBe('SUCCESS');
+    expect(res.data.items).toEqual([]);
+    expect(res.data.totalEvents).toBe(0);
+    expect(res.data.calendar_status).toBe('NOT_CONNECTED');
+    expect(res.data.summary).toContain('Google Calendar is not connected');
+    expect(res.data.summary).not.toContain('Performance & Growth Review');
+    expect(res.data.summary).not.toContain('🟢');
   });
 
   it('should support DRILL_DOWN mode for targeted skill gap analysis', async () => {
@@ -196,6 +275,7 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
   });
 
   it('should execute multi-source executors including Notion notes and Google Calendar', async () => {
+    stubSources({ calendar: PEOPLE_SOURCE_FIXTURES.calendar_alex });
     const res = await peopleGrowthTool.invoke({
       sources: ['default', 'googleCalendar', 'notion'],
       mode: 'ANALYZE',
@@ -205,13 +285,41 @@ describe('peopleAgent & analyze_personnel_growth Tool Harness', () => {
     expect(res.status).toBe('SUCCESS');
     expect(res.data.summary).toBeDefined();
     expect(res.data.summary).toContain('Google Calendar 1-on-1 Sync');
+    expect(res.data.summary).toContain('Career growth check-in');
+    expect(res.data.metrics.weekly_meeting_hours).toBe(12);
   });
 
   it('should fall back to PostgreSQL database profile when external MCP APIs time out', async () => {
-    const fallback = await peopleGrowthTool.dbCacheFallback('notion');
-    expect(fallback.career_notes_count).toBeGreaterThanOrEqual(1);
+    const fallback = await peopleGrowthTool.dbCacheFallback('default', { engineer_id: 'eng_alex' });
     expect(fallback.is_cached).toBe(true);
-    expect(fallback.data_source).toBe('postgres_team_members_notion_fallback');
+    expect(fallback.data_source).toBe('postgres_team_members');
+    expect(fallback.engineer_id).toBe('mem_alex');
+    expect(fallback.displayName).toBe('Alex Williams');
+    expect(fallback.current_level).toBe('L4_MID');
+    expect(fallback.weekly_workload_hours).toBeNull();
+    expect(fallback.weekly_meeting_hours).toBeNull();
+  });
+
+  it('should return an explicit no-data profile instead of a placeholder member when none matches', async () => {
+    const fallback = await peopleGrowthTool.dbCacheFallback('default', { engineer_id: 'eng_nobody_zz' });
+    expect(fallback.data_availability).toBe('no_data');
+    expect(fallback.displayName).toBeNull();
+    expect(fallback.engineer_id).toBe('eng_nobody_zz');
+    expect(fallback.weekly_workload_hours).toBeNull();
+  });
+
+  it('should return explicit not-connected empty states for Notion and Google Calendar fallbacks', async () => {
+    const notion = await peopleGrowthTool.dbCacheFallback('notion', { engineer_id: 'eng_alex' });
+    expect(notion.career_notes_count).toBe(0);
+    expect(notion.career_docs).toEqual([]);
+    expect(notion.is_cached).toBe(true);
+    expect(notion.data_availability).toBe('not_connected');
+    expect(JSON.stringify(notion)).not.toContain('notion.so');
+
+    const calendar = await peopleGrowthTool.dbCacheFallback('googleCalendar', { engineer_id: 'eng_alex' });
+    expect(calendar.today_events).toEqual([]);
+    expect(calendar.weekly_meeting_hours).toBeNull();
+    expect(calendar.data_availability).toBe('not_connected');
   });
 
   it('should instantiate createPeopleAgent graph', () => {

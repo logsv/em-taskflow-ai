@@ -64,7 +64,10 @@ describe('Phase 4 People & Performance Agents Specs: SBI & People Harnesses', ()
 
       expect(res.status).toBe('SUCCESS');
       expect(res.data.mode).toBe('ANALYZE');
-      expect(['LOW', 'MEDIUM', 'HIGH']).toContain(res.data.metrics.burnout_risk_score);
+      // No workload/calendar source is connected in tests, so burnout cannot be measured.
+      expect(res.data.metrics.burnout_risk_score).toBe('UNKNOWN');
+      expect(res.data.metrics.weekly_workload_hours).toBeNull();
+      expect(res.data.metrics.weekly_meeting_hours).toBeNull();
       expect(res.data.metrics.promotion_readiness_score).toBeNull();
       expect(res.data.metrics.promotion_verdict).toBe('UNSCORED');
       expect(res.data.competency_radar.every((r) => r.current === null)).toBe(true);
@@ -82,6 +85,10 @@ describe('Phase 4 People & Performance Agents Specs: SBI & People Harnesses', ()
       expect(res.status).toBe('SUCCESS');
       expect(res.data.mode).toBe('LIST_RAW');
       expect(Array.isArray(res.data.items)).toBe(true);
+      expect(res.data.items).toEqual([]);
+      expect(res.data.totalEvents).toBe(0);
+      expect(res.data.calendar_status).toBe('NOT_CONNECTED');
+      expect(res.data.summary).toContain('Google Calendar is not connected');
     });
 
     it('should create peopleAgent instance safely', () => {

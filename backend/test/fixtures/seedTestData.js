@@ -98,6 +98,47 @@ export const SKILL_RATINGS_FIXTURES = {
   partial: { ARCH: 4.5, CODE: 4.5, DELIV: 4.0 },
 };
 
+/**
+ * Live-source payloads for the people agent's Google Calendar and profile executors.
+ * Specs stub `peopleGrowthTool.mcpExecutors.*` with these; production never invents
+ * calendar events or workload/meeting hours when a source is not connected.
+ */
+export const PEOPLE_SOURCE_FIXTURES = {
+  calendar_alex: {
+    today_events: [
+      { summary: '1-on-1: Alex Williams / Manager', start_time: '2026-11-20T10:00:00Z', attendee: 'alex.williams@company.internal', status: 'confirmed' },
+      { summary: 'Career growth check-in', start_time: '2026-11-21T15:00:00Z', attendee: 'alex.williams@company.internal', status: 'tentative' },
+    ],
+    weekly_meeting_hours: 12.0,
+    source: 'test_fixture_google_calendar',
+  },
+  calendar_overloaded: {
+    today_events: [
+      { summary: '1-on-1: Overloaded Engineer / Manager', start_time: '2026-11-20T09:00:00Z', attendee: 'overloaded@company.internal', status: 'confirmed' },
+    ],
+    weekly_meeting_hours: 24.0,
+    source: 'test_fixture_google_calendar',
+  },
+  profile_overloaded: {
+    engineer_id: 'eng_overloaded',
+    displayName: 'Overloaded Engineer',
+    current_level: 'L4_MID',
+    target_level: 'L5_SENIOR',
+    track: 'INDIVIDUAL_CONTRIBUTOR',
+    tenure_months: 20,
+    weekly_workload_hours: 52.0,
+  },
+  profile_sustainable: {
+    engineer_id: 'eng_alex',
+    displayName: 'Alex Williams',
+    current_level: 'L4_MID',
+    target_level: 'L5_SENIOR',
+    track: 'INDIVIDUAL_CONTRIBUTOR',
+    tenure_months: 18,
+    weekly_workload_hours: 40.0,
+  },
+};
+
 export function seedSprintAnalytics(databaseService) {
   databaseService.inMemorySprintAnalytics = [
     {

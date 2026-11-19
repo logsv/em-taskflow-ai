@@ -128,9 +128,10 @@ export const peopleGrowthTool = createDeterministicToolHarness({
           if (items.length > 0) {
             return {
               today_events: items.map((ev) => ({
-                summary: ev.summary || '1-on-1 Meeting',
-                start_time: ev.start?.dateTime || ev.start?.date || 'Today',
-                attendee: ev.attendees?.[0]?.email || gcalUser || 'team',
+                summary: ev.summary || '(untitled event)',
+                start_time: ev.start?.dateTime || ev.start?.date || null,
+                attendee: ev.attendees?.[0]?.email || gcalUser || null,
+                status: ev.status || null,
               })),
               weekly_meeting_hours: Math.min(items.length * 1.5, 30),
               source: 'google_calendar_rest',
@@ -158,9 +159,9 @@ export const peopleGrowthTool = createDeterministicToolHarness({
             return {
               career_notes_count: pages.length,
               career_docs: pages.slice(0, 3).map((p) => ({
-                title: p.title || p.name || '1-on-1 Career Sync',
-                url: p.url || (configuredPageId ? `https://notion.so/${configuredPageId}` : 'https://notion.so/career-notes'),
-                last_edited: p.last_edited_time || new Date().toISOString(),
+                title: p.title || p.name || '(untitled page)',
+                url: p.url || null,
+                last_edited: p.last_edited_time || null,
               })),
               source: 'mcp_notion',
               synced_at: new Date().toISOString(),
@@ -204,76 +205,95 @@ export const peopleGrowthTool = createDeterministicToolHarness({
         target_level: member?.targetLevel || inputArgs?.target_level || 'L5_SENIOR',
         track: member?.track || inputArgs?.track || 'INDIVIDUAL_CONTRIBUTOR',
         tenure_months: member?.tenureMonths || inputArgs?.tenure_months || 0,
-        weekly_workload_hours: 40.0,
+        // No connected source tracks worked hours; never assume a standard week.
+        weekly_workload_hours: null,
         synced_at: new Date().toISOString(),
       };
     },
   },
   // Tier 2: PostgreSQL Database Profile Snapshot Fallback
+  // Tier 2: PostgreSQL Database Profile Snapshot Fallback.
+  // Only the team member profile is persisted in PostgreSQL. Calendar, Notion and Jira have no
+  // cached snapshot table, so their fallbacks return explicit not-connected empty states
+  // (Zero Misleading Fallbacks) instead of invented events, documents or meeting hours.
   dbCacheFallback: async (source, inputArgs = {}) => {
+    const syncedAt = new Date().toISOString();
+
+    if (source === 'googleCalendar' || source === 'google') {
+      return {
+        today_events: [],
+        weekly_meeting_hours: null,
+        is_cached: true,
+        data_source: 'none',
+        data_availability: 'not_connected',
+        source_status: 'Google Calendar is not connected — no live or cached calendar data available.',
+        synced_at: syncedAt,
+      };
+    }
+
+    if (source === 'notion') {
+      return {
+        career_notes_count: 0,
+        career_docs: [],
+        is_cached: true,
+        data_source: 'none',
+        data_availability: 'not_connected',
+        source_status: 'Notion is not connected — no live or cached career notes available.',
+        synced_at: syncedAt,
+      };
+    }
+
+    if (source === 'jira') {
+      return {
+        leadership_epics_count: 0,
+        leadership_epics: [],
+        is_cached: true,
+        data_source: 'none',
+        data_availability: 'not_connected',
+        source_status: 'Jira is not connected — no live or cached leadership epics available.',
+        synced_at: syncedAt,
+      };
+    }
+
+    const noProfile = {
+      engineer_id: inputArgs?.engineer_id || null,
+      displayName: null,
+      current_level: null,
+      target_level: null,
+      track: null,
+      tenure_months: null,
+      weekly_workload_hours: null,
+      weekly_meeting_hours: null,
+      is_cached: true,
+      data_source: 'none',
+      data_availability: 'no_data',
+      synced_at: syncedAt,
+    };
+
     try {
       const members = await databaseService.getTeamMembers().catch(() => []);
-      const member = members[0] || {
-        id: 'mem_alex',
-        displayName: 'Alex Williams',
-        currentLevel: 'L4_MID',
-        targetLevel: 'L5_SENIOR',
-        track: 'INDIVIDUAL_CONTRIBUTOR',
-        tenureMonths: 18,
-      };
-
-      if (source === 'googleCalendar') {
-        return {
-          today_events: [
-            { summary: `1-on-1 with Manager: ${member.displayName}`, start_time: '10:00 AM (Weekly)', attendee: member.displayName },
-            { summary: 'Architecture Guild: Distributed Systems RFC', start_time: '2:00 PM (Bi-weekly)', attendee: 'team' },
-          ],
-          weekly_meeting_hours: 12.0,
-          is_cached: true,
-          data_source: 'postgres_team_members_calendar_fallback',
-          synced_at: new Date().toISOString(),
-        };
-      }
-
-      if (source === 'notion') {
-        return {
-          career_notes_count: 1,
-          career_docs: [
-            { title: `${member.displayName} — Career Development Plan & Rubric`, url: 'https://notion.so/career-ladder', last_edited: new Date().toISOString() },
-          ],
-          is_cached: true,
-          data_source: 'postgres_team_members_notion_fallback',
-          synced_at: new Date().toISOString(),
-        };
-      }
+      if (!Array.isArray(members) || members.length === 0) return noProfile;
+      const query = String(inputArgs?.engineer_id || '').trim().toLowerCase();
+      const member = (await identityService.resolveMember(inputArgs?.engineer_id))
+        || members.find((m) => m.id?.toLowerCase() === query || m.displayName?.toLowerCase() === query);
+      if (!member) return noProfile;
 
       return {
         engineer_id: member.id,
         displayName: member.displayName,
-        current_level: member.currentLevel || 'L4_MID',
-        target_level: member.targetLevel || 'L5_SENIOR',
-        track: member.track || 'INDIVIDUAL_CONTRIBUTOR',
-        tenure_months: member.tenureMonths || 18,
-        weekly_workload_hours: 40.0,
-        weekly_meeting_hours: 12.0,
+        current_level: member.currentLevel || null,
+        target_level: member.targetLevel || null,
+        track: member.track || null,
+        tenure_months: member.tenureMonths ?? null,
+        weekly_workload_hours: null,
+        weekly_meeting_hours: null,
         is_cached: true,
         data_source: 'postgres_team_members',
-        synced_at: new Date().toISOString(),
+        data_availability: 'profile_only',
+        synced_at: syncedAt,
       };
     } catch (_err) {
-      return {
-        engineer_id: inputArgs?.engineer_id || null,
-        displayName: null,
-        current_level: inputArgs?.current_level || null,
-        target_level: inputArgs?.target_level || null,
-        track: inputArgs?.track || null,
-        tenure_months: inputArgs?.tenure_months || 0,
-        weekly_workload_hours: 0,
-        weekly_meeting_hours: 0,
-        is_cached: true,
-        data_source: 'empty',
-        data_availability: 'no_data',
-      };
+      return noProfile;
     }
   },
   computeMath: async (sourceResults, inputArgs) => {
@@ -284,22 +304,31 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     const member = (await identityService.resolveMember(inputArgs.engineer_id)) || (await identityService.resolveMemberFromText(inputArgs.engineer_id));
     let rawId = String(inputArgs.engineer_id || 'eng_alex').trim();
     if (rawId.length > 30 || /\b(review|progression|readiness|career|growth|notes|developer|engineer|1-on-1|our)\b/i.test(rawId)) {
-      rawId = member?.displayName || 'Alex Williams';
+      rawId = member?.displayName || 'Unresolved engineer';
     }
     const resolvedName = member?.displayName || rawId;
 
-    const events = googleData.today_events || defaultData.today_events || [
-      { summary: '1-on-1: Performance & Growth Review', start_time: '10:00 AM', attendee: resolvedName },
-    ];
+    // Calendar events only ever come from a live calendar source; never synthesize a meeting.
+    const rawEvents = googleData.today_events || defaultData.today_events;
+    const events = Array.isArray(rawEvents) ? rawEvents : [];
+    const calendarConnected = Array.isArray(rawEvents) && googleData.data_availability !== 'not_connected';
+    const calendarStatus = calendarConnected
+      ? (events.length > 0 ? 'CONNECTED' : 'CONNECTED_NO_EVENTS')
+      : 'NOT_CONNECTED';
+    const calendarNotConnectedNote = googleData.source_status
+      || 'Google Calendar is not connected — no live or cached calendar data available.';
 
     if (mode === 'LIST_RAW') {
       const eventRows = events.map((e) => {
-        return `| **${e.summary || '1-on-1 Meeting'}** | \`${e.start_time || 'Scheduled'}\` | \`@${e.attendee || resolvedName}\` | 🟢 Confirmed |`;
+        return `| **${e.summary || '(untitled event)'}** | \`${e.start_time || 'Time not provided'}\` | \`@${e.attendee || resolvedName}\` | ${e.status ? `\`${e.status}\`` : 'Status not provided'} |`;
       });
+
+      let emptyRow = '| *No 1-on-1 meetings returned by Google Calendar* | - | - | - |';
+      if (!calendarConnected) emptyRow = `| *${calendarNotConnectedNote}* | - | - | ⚪ No data |`;
 
       const listSummary = `### 📅 Scheduled 1-on-1 & Growth Check-ins (${events.length} Events)\n\n` +
         `| Meeting / Event | Time | Engineer / Attendee | Status |\n| :--- | :---: | :--- | :---: |\n` +
-        (eventRows.length > 0 ? eventRows.join('\n') : '| *No 1-on-1 meetings scheduled for today* | - | - | 🟢 Clear |') +
+        (eventRows.length > 0 ? eventRows.join('\n') : emptyRow) +
         `\n\n> 💡 **1-on-1 Cadence**: Bi-weekly dedicated 1-on-1 coaching sessions are recommended to track career progression.`;
 
       return {
@@ -308,6 +337,7 @@ export const peopleGrowthTool = createDeterministicToolHarness({
         target: inputArgs.target || 'ALL',
         totalEvents: events.length,
         items: events,
+        calendar_status: calendarStatus,
         summary: listSummary,
       };
     }
@@ -316,16 +346,22 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     const targetLevel = inputArgs.target_level || member?.targetLevel || defaultData.target_level || 'L5_SENIOR';
     const track = inputArgs.track || member?.track || defaultData.track || 'INDIVIDUAL_CONTRIBUTOR';
     const tenureMonths = inputArgs.tenure_months || member?.tenureMonths || defaultData.tenure_months || 18;
-    const workloadHours = Number(defaultData.weekly_workload_hours || 41.5);
-    const meetingHours = Number(googleData.weekly_meeting_hours || 14.5);
+    const toHours = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+    const workloadHours = toHours(defaultData.weekly_workload_hours);
+    const meetingHours = toHours(googleData.weekly_meeting_hours);
 
-    // Calculate Burnout Index
-    let burnoutRisk = 'LOW';
-    if (workloadHours > 50.0 || meetingHours > 22.0) {
+    // Burnout Index: only computed from measured hours. A known value over a threshold is enough
+    // to flag HIGH/MEDIUM, but LOW requires both inputs to be measured; otherwise UNKNOWN.
+    let burnoutRisk = 'UNKNOWN';
+    if ((workloadHours !== null && workloadHours > 50.0) || (meetingHours !== null && meetingHours > 22.0)) {
       burnoutRisk = 'HIGH';
-    } else if (workloadHours > 44.0 || meetingHours > 16.0) {
+    } else if ((workloadHours !== null && workloadHours > 44.0) || (meetingHours !== null && meetingHours > 16.0)) {
       burnoutRisk = 'MEDIUM';
+    } else if (workloadHours !== null && meetingHours !== null) {
+      burnoutRisk = 'LOW';
     }
+    const workloadLabel = workloadHours !== null ? `${workloadHours}h/wk` : 'Unknown (no workload source connected)';
+    const meetingLabel = meetingHours !== null ? `${meetingHours} hrs/week` : 'Unknown (Google Calendar not connected)';
 
     // Competency ratings must come from a real source: explicit `skill_ratings` input or ratings
     // persisted on the team member record. Level benchmarks are targets, never a stand-in for
@@ -460,8 +496,8 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     const notionData = sourceResults.notion?.data || {};
     const notionDocs = notionData.career_docs || [];
     const notionSection = notionDocs.length > 0
-      ? `\n\n### 📓 Notion 1-on-1 Notes & Career Rubrics\n${notionDocs.map((d) => `- [${d.title}](${d.url}) (Last edited: ${d.last_edited ? new Date(d.last_edited).toLocaleDateString() : 'Recent'})`).join('\n')}`
-      : '';
+      ? `\n\n### 📓 Notion 1-on-1 Notes & Career Rubrics\n${notionDocs.map((d) => `- ${d.url ? `[${d.title}](${d.url})` : d.title} (Last edited: ${d.last_edited ? new Date(d.last_edited).toLocaleDateString() : 'unknown'})`).join('\n')}`
+      : `\n\n### 📓 Notion 1-on-1 Notes & Career Rubrics\n- ${notionData.source_status || 'No Notion career notes found for this engineer.'}`;
 
     if (mode === 'DRILL_DOWN') {
       const drillSummary = `### 🎯 Skill Gap & Career Growth Breakdown: ${inputArgs.engineer_id} (${currentLevel} ➔ ${targetLevel})\n\n` +
@@ -496,13 +532,13 @@ export const peopleGrowthTool = createDeterministicToolHarness({
 
     const summaryText = `### 🎯 Promotion Readiness Scorecard: ${inputArgs.engineer_id} (${currentLevel} ➔ ${targetLevel})
 
-> **Track**: ${track === 'ENGINEERING_MANAGEMENT' ? 'Management (M1/M2)' : 'Individual Contributor (IC)'} | **Tenure**: ${tenureMonths} Months | **Promotion Readiness**: **${readinessLabel} (${verdictLabel})** | **Workload**: ${workloadHours}h/wk (${burnoutRisk} Burnout Risk)
+> **Track**: ${track === 'ENGINEERING_MANAGEMENT' ? 'Management (M1/M2)' : 'Individual Contributor (IC)'} | **Tenure**: ${tenureMonths} Months | **Promotion Readiness**: **${readinessLabel} (${verdictLabel})** | **Workload**: ${workloadLabel} (${burnoutRisk} Burnout Risk)
 
 | Metric | Measured Value | Requirement | Status |
 | :--- | :--- | :--- | :--- |
 | **Promotion Readiness** | **${readinessLabel}** | $\\ge 90\%$ (Ready) | ${!isScored ? '⚪ Unscored — ratings needed' : readinessScore >= 90 ? '🟢 Ready for Promotion' : readinessScore >= 75 ? '🟡 On Track' : '🔴 Developing'} |
 | **Prerequisites Met** | **${prereqsLabel}** | 100% Mandatory | ${unknownPrereqsCount > 0 ? '⚪ Unverified' : metPrereqsCount === prerequisites.length ? '🟢 Complete' : '🟡 In Progress'} |
-| **Weekly Workload** | **${workloadHours} hrs/wk** | $\\le 44.0$ hrs/wk | ${burnoutRisk === 'LOW' ? '🟢 Sustainable' : burnoutRisk === 'MEDIUM' ? '🟡 Elevated' : '🔴 High Burnout Risk'} |
+| **Weekly Workload** | **${workloadHours !== null ? `${workloadHours} hrs/wk` : 'Unknown'}** | $\\le 44.0$ hrs/wk | ${burnoutRisk === 'LOW' ? '🟢 Sustainable' : burnoutRisk === 'MEDIUM' ? '🟡 Elevated' : burnoutRisk === 'HIGH' ? '🔴 High Burnout Risk' : '⚪ Unknown — hours not measured'} |
 | **Significant Skill Gaps** | **${!isScored ? 'Unknown (no ratings)' : significantGaps.length > 0 ? significantGaps.join(', ') : 'None'}** | 0 Major Gaps | ${!isScored ? '⚪ Unscored' : significantGaps.length === 0 ? '🟢 None' : '⚠️ Action Required'} |
 
 > 💡 **Executive Bottom Line**: ${!isScored ? `Promotion readiness is **UNSCORED**. ${ratingsNeededNote}` : `Overall readiness is **${verdictLabel} (${readinessScore}%)**. ${significantGaps.length > 0 ? `Primary growth area: **${significantGaps[0]}**.` : 'All rated dimension benchmarks satisfied.'}`}
@@ -539,17 +575,19 @@ ${roadmaps.long_term_1_to_3y.deliverables.map((d) => `- ${d}`).join('\n')}
 <details>
 <summary><b>🚀 Stretch Assignments & Google Calendar 1-on-1 Sync</b></summary>
 
-- **Primary Stretch Project**: Lead the migration to isolated database-per-service vector architecture.
+- **Primary Stretch Project**: Not recorded — no stretch assignment source (Jira epics / Notion plans) is connected for this engineer.
 - **Upcoming 1-on-1 Calendar Schedule**:
-${events.map((ev) => `  * 📅 **${ev.start_time}**: ${ev.summary} (${ev.attendee})`).join('\n')}
-- **Weekly Meeting Load**: **${meetingHours} hrs/week** (Sustainability Status: **${burnoutRisk} Risk**).${notionSection}
+${events.length > 0
+    ? events.map((ev) => `  * 📅 **${ev.start_time || 'Time not provided'}**: ${ev.summary || '(untitled event)'} (${ev.attendee || resolvedName})`).join('\n')
+    : `  * ${calendarConnected ? 'No upcoming 1-on-1s returned by Google Calendar.' : calendarNotConnectedNote}`}
+- **Weekly Meeting Load**: **${meetingLabel}** (Sustainability Status: **${burnoutRisk} Risk**).${notionSection}
 
 </details>
 `;
 
     return {
       mode: 'ANALYZE',
-      engineer_id: inputArgs.engineer_id || 'eng_alex',
+      engineer_id: inputArgs.engineer_id || null,
       current_level: currentLevel,
       target_level: targetLevel,
       track,
@@ -563,6 +601,7 @@ ${events.map((ev) => `  * 📅 **${ev.start_time}**: ${ev.summary} (${ev.attende
         burnout_risk_score: burnoutRisk,
         weekly_workload_hours: workloadHours,
         weekly_meeting_hours: meetingHours,
+        calendar_status: calendarStatus,
         prerequisites_met: prereqsLabel,
       },
       competency_radar: competencyRadar,
