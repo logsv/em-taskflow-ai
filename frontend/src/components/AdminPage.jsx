@@ -18,6 +18,21 @@ function formatUptime(totalSeconds) {
   return parts.join(' ');
 }
 
+
+const isMeasured = (v) => typeof v === 'number' && Number.isFinite(v);
+
+// Render a measured metric, or "n/a" when the evaluation did not produce one.
+// Never substitute a made-up number for a missing measurement.
+const formatMetric = (value, fmt) => (isMeasured(value) ? fmt(value) : 'n/a');
+
+const EvalBadge = ({ value, pass, label }) => {
+  if (!isMeasured(value)) {
+    return <span className="eval-badge">NOT MEASURED</span>;
+  }
+  const ok = pass(value);
+  return <span className={`eval-badge ${ok ? 'badge-pass' : 'badge-fail'}`}>{ok ? 'PASS' : 'FAIL'} {label}</span>;
+};
+
 function AdminPage({ onBackToChat }) {
   const [systemStatus, setSystemStatus] = useState(null);
   const [documents, setDocuments] = useState([]);
@@ -1169,12 +1184,10 @@ function AdminPage({ onBackToChat }) {
                 <div className="eval-card">
                   <div className="eval-card-top">
                     <span className="eval-card-icon">🎯</span>
-                    <span className="eval-badge badge-pass">PASS (&ge;90%)</span>
+                    <EvalBadge value={evalMetrics?.domainAccuracyPct} pass={(v) => v >= 90} label="(&ge;90%)" />
                   </div>
                   <div className="eval-card-value">
-                    {evalMetrics?.domainPrecision
-                      ? `${(evalMetrics.domainPrecision * 100).toFixed(0)}%`
-                      : '100%'}
+                    {formatMetric(evalMetrics?.domainAccuracyPct, (v) => `${v}%`)}
                   </div>
                   <div className="eval-card-title">Domain Selection Accuracy</div>
                   <div className="eval-card-sub">Target SLA: &ge; 90% | Multi-Agent Supervisor</div>
@@ -1183,12 +1196,10 @@ function AdminPage({ onBackToChat }) {
                 <div className="eval-card">
                   <div className="eval-card-top">
                     <span className="eval-card-icon">🎛️</span>
-                    <span className="eval-badge badge-pass">PASS (&ge;95%)</span>
+                    <EvalBadge value={evalMetrics?.toolGroundedPct} pass={(v) => v >= 95} label="(&ge;95%)" />
                   </div>
                   <div className="eval-card-value">
-                    {evalMetrics?.oneToolAdherence
-                      ? `${(evalMetrics.oneToolAdherence * 100).toFixed(0)}%`
-                      : '100%'}
+                    {formatMetric(evalMetrics?.toolGroundedPct, (v) => `${v}%`)}
                   </div>
                   <div className="eval-card-title">1-Tool Constraint Adherence</div>
                   <div className="eval-card-sub">Target SLA: &ge; 95% | DeepEval Trajectory</div>
@@ -1197,12 +1208,10 @@ function AdminPage({ onBackToChat }) {
                 <div className="eval-card">
                   <div className="eval-card-top">
                     <span className="eval-card-icon">✨</span>
-                    <span className="eval-badge badge-pass">PASS (&ge;0.80)</span>
+                    <EvalBadge value={evalMetrics?.ragasFaithfulness} pass={(v) => v >= 0.8} label="(&ge;0.80)" />
                   </div>
                   <div className="eval-card-value">
-                    {evalMetrics?.ragasFaithfulness
-                      ? evalMetrics.ragasFaithfulness.toFixed(4)
-                      : '0.9650'}
+                    {formatMetric(evalMetrics?.ragasFaithfulness, (v) => v.toFixed(4))}
                   </div>
                   <div className="eval-card-title">Ragas Faithfulness Score</div>
                   <div className="eval-card-sub">Zero Hallucination | nomic-embed-text RRF</div>
@@ -1211,11 +1220,9 @@ function AdminPage({ onBackToChat }) {
                 <div className="eval-card">
                   <div className="eval-card-top">
                     <span className="eval-card-icon">⚡</span>
-                    <span className={`eval-badge ${(evalMetrics?.fastPathAvgLatencyMs ?? 185) < 300 ? 'badge-pass' : 'badge-fail'}`}>
-                      &lt;300ms SLA
-                    </span>
+                    <EvalBadge value={evalMetrics?.fastPathAvgLatencyMs} pass={(v) => v < 300} label="&lt;300ms SLA" />
                   </div>
-                  <div className="eval-card-value">{evalMetrics?.fastPathAvgLatencyMs ?? 185}ms</div>
+                  <div className="eval-card-value">{formatMetric(evalMetrics?.fastPathAvgLatencyMs, (v) => `${v}ms`)}</div>
                   <div className="eval-card-title">Fast-Path Pre-Router Latency</div>
                   <div className="eval-card-sub">0-Tool Direct Inference Gate</div>
                 </div>
@@ -2835,12 +2842,10 @@ function AdminPage({ onBackToChat }) {
               <div className="eval-card">
                 <div className="eval-card-top">
                   <span className="eval-card-icon">🎯</span>
-                  <span className="eval-badge badge-pass">PASS (&ge;90%)</span>
+                  <EvalBadge value={evalMetrics?.domainAccuracyPct} pass={(v) => v >= 90} label="(&ge;90%)" />
                 </div>
                 <div className="eval-card-value">
-                  {evalMetrics?.domainPrecision
-                    ? `${(evalMetrics.domainPrecision * 100).toFixed(0)}%`
-                    : '100%'}
+                  {formatMetric(evalMetrics?.domainAccuracyPct, (v) => `${v}%`)}
                 </div>
                 <div className="eval-card-title">Domain Selection Accuracy</div>
                 <div className="eval-card-sub">Target SLA: &ge; 90% | Multi-Agent Supervisor</div>
@@ -2849,12 +2854,10 @@ function AdminPage({ onBackToChat }) {
               <div className="eval-card">
                 <div className="eval-card-top">
                   <span className="eval-card-icon">🎛️</span>
-                  <span className="eval-badge badge-pass">PASS (&ge;95%)</span>
+                  <EvalBadge value={evalMetrics?.toolGroundedPct} pass={(v) => v >= 95} label="(&ge;95%)" />
                 </div>
                 <div className="eval-card-value">
-                  {evalMetrics?.oneToolAdherence
-                    ? `${(evalMetrics.oneToolAdherence * 100).toFixed(0)}%`
-                    : '100%'}
+                  {formatMetric(evalMetrics?.toolGroundedPct, (v) => `${v}%`)}
                 </div>
                 <div className="eval-card-title">1-Tool Constraint Adherence</div>
                 <div className="eval-card-sub">Target SLA: &ge; 95% | DeepEval Trajectory</div>
@@ -2863,12 +2866,10 @@ function AdminPage({ onBackToChat }) {
               <div className="eval-card">
                 <div className="eval-card-top">
                   <span className="eval-card-icon">✨</span>
-                  <span className="eval-badge badge-pass">PASS (&ge;0.80)</span>
+                  <EvalBadge value={evalMetrics?.ragasFaithfulness} pass={(v) => v >= 0.8} label="(&ge;0.80)" />
                 </div>
                 <div className="eval-card-value">
-                  {evalMetrics?.ragasFaithfulness
-                    ? evalMetrics.ragasFaithfulness.toFixed(4)
-                    : '0.9650'}
+                  {formatMetric(evalMetrics?.ragasFaithfulness, (v) => v.toFixed(4))}
                 </div>
                 <div className="eval-card-title">Ragas Faithfulness Score</div>
                 <div className="eval-card-sub">Zero Hallucination | nomic-embed-text RRF</div>
@@ -2877,11 +2878,9 @@ function AdminPage({ onBackToChat }) {
               <div className="eval-card">
                 <div className="eval-card-top">
                   <span className="eval-card-icon">⚡</span>
-                  <span className={`eval-badge ${(evalMetrics?.fastPathAvgLatencyMs ?? 185) < 300 ? 'badge-pass' : 'badge-fail'}`}>
-                    &lt;300ms SLA
-                  </span>
+                  <EvalBadge value={evalMetrics?.fastPathAvgLatencyMs} pass={(v) => v < 300} label="&lt;300ms SLA" />
                 </div>
-                <div className="eval-card-value">{evalMetrics?.fastPathAvgLatencyMs ?? 185}ms</div>
+                <div className="eval-card-value">{formatMetric(evalMetrics?.fastPathAvgLatencyMs, (v) => `${v}ms`)}</div>
                 <div className="eval-card-title">Fast-Path Pre-Router Latency</div>
                 <div className="eval-card-sub">0-Tool Direct Inference Gate</div>
               </div>
