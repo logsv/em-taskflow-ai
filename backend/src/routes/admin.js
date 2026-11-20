@@ -679,36 +679,62 @@ function loadLatestCompositeReport() {
   }
 }
 
+// Returns the value only if it is a real measured number; otherwise null.
+// "Not measured" must never be turned into a fabricated default (Zero Misleading Fallbacks).
+function measuredNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function measuredPct(ratio) {
+  const v = measuredNumber(ratio);
+  return v == null ? null : Math.round(v * 100);
+}
+
+// Sample counts written by run-evaluation.js. When a count is present and zero,
+// the paired metric was not measured even if a stale numeric value is present.
+function sampleCount(composite, key) {
+  const v = composite?.[key];
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+export function buildEvalMetrics(latest, composite) {
+  const ragas = latest?.ragas_metrics || {};
+  const fastPathSamples = sampleCount(composite, 'fast_path_samples');
+  const ragSamples = sampleCount(composite, 'rag_samples');
+
+  const fastPathLatency = fastPathSamples === 0 ? null : measuredNumber(composite?.fast_path_latency_ms);
+  const compositeFaithfulness = ragSamples === 0 ? null : measuredNumber(composite?.rag_faithfulness);
+
+  return {
+    domainAccuracyPct: measuredPct(composite?.domain_selection_accuracy),
+    toolGroundedPct: measuredPct(composite?.tool_grounded_rate),
+    unwantedRagPct: measuredPct(composite?.unwanted_rag_rate),
+    ragasFaithfulness: measuredNumber(ragas.faithfulness) ?? compositeFaithfulness,
+    ragasAnswerRelevancy: measuredNumber(ragas.answer_relevancy),
+    ragasContextPrecision: measuredNumber(ragas.context_precision),
+    ragasContextRecall: measuredNumber(ragas.context_recall),
+    // No pipeline currently persists DeepEval scores or a measured shadow sampling rate.
+    deepevalSbiQualityScore: null,
+    deepevalToolAdherenceScore: null,
+    fastPathAvgLatencyMs: fastPathLatency,
+    fastPathSamples,
+    ragSamples,
+    shadowSamplingRatePct: null,
+    lastBenchmarkTimestamp: latest?.timestamp || composite?.timestamp || null,
+    lastBenchmarkDuration: measuredNumber(latest?.duration_seconds),
+  };
+}
+
 // Evaluation Aggregated Metrics
 router.get('/eval/metrics', async (req, res) => {
   try {
     const latest = loadLatestBenchmarkReport();
     const composite = loadLatestCompositeReport();
-    const ragas = latest?.ragas_metrics || {};
-
-    const domainAccuracy = composite?.domain_selection_accuracy != null ? Math.round(composite.domain_selection_accuracy * 100) : 100;
-    const toolGrounded = composite?.tool_grounded_rate != null ? Math.round(composite.tool_grounded_rate * 100) : 100;
-    const unwantedRag = composite?.unwanted_rag_rate != null ? Math.round(composite.unwanted_rag_rate * 100) : 0;
-    const fastPathLatency = composite?.fast_path_latency_ms != null ? composite.fast_path_latency_ms : 185;
 
     res.json({
       success: true,
       model: config.llm?.defaultModel || config.llm?.providers?.ollama?.model || process.env.LLM_DEFAULT_MODEL || 'hermes3:8b',
-      metrics: {
-        domainAccuracyPct: domainAccuracy,
-        toolGroundedPct: toolGrounded,
-        unwantedRagPct: unwantedRag,
-        ragasFaithfulness: ragas.faithfulness ?? (composite?.rag_faithfulness ?? 0.965),
-        ragasAnswerRelevancy: ragas.answer_relevancy ?? 0.892,
-        ragasContextPrecision: ragas.context_precision ?? 0.950,
-        ragasContextRecall: ragas.context_recall ?? 0.925,
-        deepevalSbiQualityScore: 0.95,
-        deepevalToolAdherenceScore: 1.0,
-        fastPathAvgLatencyMs: fastPathLatency,
-        shadowSamplingRatePct: 5,
-        lastBenchmarkTimestamp: latest?.timestamp || composite?.timestamp || null,
-        lastBenchmarkDuration: latest?.duration_seconds || null,
-      },
+      metrics: buildEvalMetrics(latest, composite),
       requestId: req.requestId,
     });
   } catch (error) {
