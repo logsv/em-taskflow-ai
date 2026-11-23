@@ -309,3 +309,7 @@ docs/node_modules/
 .ruff_cache/
 .mypy_cache/
 .coverage.*
+
+# Personal AI agent settings (shared settings live in .claude/settings.json)
+CLAUDE.local.md
+.claude/settings.local.json

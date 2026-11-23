@@ -40,7 +40,7 @@
   npm run docs:build   # Build static documentation bundle
   ```
 - **⚡ Interactive Swagger API Explorer**: Test Express REST endpoints interactively at [`http://localhost:4000/api/docs`](http://localhost:4000/api/docs) (OpenAPI 3.1 schema at `/api/docs/openapi.json`).
-- **🧰 Agent Skills Directory**: Full sitemap of 17 operational skills located in [`SKILLS.md`](SKILLS.md) and [`.agents/skills/`](.agents/skills).
+- **🤖 AI Agent Setup**: Shared rules in [`AGENTS.md`](AGENTS.md) (plus one per service) and workflow skills in [`.agents/skills/`](.agents/skills). See [Agent Setup](docs/operations/agent-skills.md).
 
 ---
 
@@ -345,7 +345,7 @@ docker compose down -v
 
 ```
 em-taskflow-ai/
-├── .agents/skills/     # 13 specialized operational skills for AI agents
+├── .agents/skills/     # Workflow skills for AI agents (also linked as .claude/skills)
 ├── backend/            # Express API, LangGraph supervisor, Admin routes, Jasmine tests (240 specs)
 │   └── README.md       # Backend internal docs & API endpoints
 ├── docs/               # Full VitePress developer documentation & architecture portal
@@ -355,15 +355,13 @@ em-taskflow-ai/
 ├── docker/             # Postgres init-databases.sql and container assets
 ├── data/               # Vector storage & database seeds
 ├── docker-compose.yml  # Production multi-container composition
-├── SKILLS.md           # Agent skills sitemap and directory
 └── README.md           # Primary repository landing page
 ```
 
 - **Backend Internals**: See [`backend/README.md`](backend/README.md)
 - **Frontend Internals**: See [`frontend/README.md`](frontend/README.md)
 - **Python AI Service Internals**: See [`services/python-ai-service/README.md`](services/python-ai-service/README.md)
-- **Agent Guidelines**: See [`AGENTS.md`](AGENTS.md), [`GEMINI.md`](GEMINI.md), and [`CLAUDE.md`](CLAUDE.md)
-- **Skills Index**: See [`SKILLS.md`](SKILLS.md)
+- **Agent Guidelines**: See [`AGENTS.md`](AGENTS.md) (`CLAUDE.md` and `GEMINI.md` import it)
 
 ---
 
