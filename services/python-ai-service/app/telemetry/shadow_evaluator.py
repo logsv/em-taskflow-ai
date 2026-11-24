@@ -4,6 +4,7 @@ import logging
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 from evaluation.llm_judge import LLMJudgeFactory
+from app.model_config import DEFAULT_LLM_MODEL
 
 load_dotenv()
 
@@ -18,7 +19,7 @@ class ShadowEvaluatorWorker:
     Uses official DeepEval G-Eval metric and syncs scores to Langfuse.
     """
 
-    def __init__(self, sampling_rate: float = SAMPLING_RATE, model_name: str = "hermes3:8b"):
+    def __init__(self, sampling_rate: float = SAMPLING_RATE, model_name: str = DEFAULT_LLM_MODEL):
         self.sampling_rate = sampling_rate
         self.model_name = model_name
         self.judge = LLMJudgeFactory.create_judge("geval", model_name=model_name)

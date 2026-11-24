@@ -3,6 +3,7 @@ import { apiUrl } from '../services/apiClient.js';
 import logger from '../utils/logger.js';
 import AdminShell from './admin/AdminShell.jsx';
 import './AdminPage.css';
+import { DEFAULT_CHAT_MODEL } from '../constants/models';
 
 function formatUptime(totalSeconds) {
   if (typeof totalSeconds !== 'number' || totalSeconds <= 0) return 'Just started (< 1m)';
@@ -301,7 +302,7 @@ function AdminPage({ onBackToChat }) {
       const res = await fetch(apiUrl('/admin/eval/prompt-matrix'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ modelTarget: 'hermes3:8b', limit: 10, batchSize: 5 }),
+        body: JSON.stringify({ modelTarget: adminSettings?.llm?.defaultModel || DEFAULT_CHAT_MODEL, limit: 10, batchSize: 5 }),
       });
       const data = await res.json();
       if (data.success) {
@@ -318,7 +319,7 @@ function AdminPage({ onBackToChat }) {
 
   const handleRunDeepBenchmark = async () => {
     setIsRunningBenchmark(true);
-    setEvalActionMsg('🌙 Starting Deep Evaluation Benchmark (Ragas + DeepEval + Arena) against local Ollama hermes3:8b...');
+    setEvalActionMsg(`🌙 Starting Deep Evaluation Benchmark (Ragas + DeepEval + Arena) against local Ollama ${adminSettings?.llm?.defaultModel || DEFAULT_CHAT_MODEL}...`);
     try {
       const res = await fetch(apiUrl('/admin/eval/run-deep-benchmark'), { method: 'POST' });
       const data = await res.json();
@@ -1038,7 +1039,7 @@ function AdminPage({ onBackToChat }) {
               </div>
               <div className="section-header-actions">
                 <span className={`pill-badge badge-${(doraMetrics?.rating || 'ELITE').toLowerCase()}`}>
-                  ⭐ {doraMetrics?.rating || 'ELITE'} TIER ({doraMetrics?.overall_score ?? 96.5}%)
+                  ⭐ {doraMetrics?.rating || 'n/a'} TIER ({doraMetrics?.overall_score ?? 'n/a'}%)
                 </span>
               </div>
             </div>
@@ -1065,7 +1066,7 @@ function AdminPage({ onBackToChat }) {
                   <span className="metric-tier-badge tier-elite">ELITE</span>
                 </div>
                 <div className="dora-num">
-                  {doraMetrics?.metrics?.lead_time?.value || `${doraMetrics?.lead_time_hours || 18.5}h`}
+                  {doraMetrics?.metrics?.lead_time?.value || (doraMetrics?.lead_time_hours ? `${doraMetrics.lead_time_hours}h` : 'n/a')}
                 </div>
                 <div className="dora-label">Lead Time for Changes</div>
                 <div className="dora-sub">&lt; 24h Commit-to-Prod</div>
@@ -1211,11 +1212,11 @@ function AdminPage({ onBackToChat }) {
                 <div className="eval-card">
                   <div className="eval-card-top">
                     <span className="eval-card-icon">⚡</span>
-                    <span className={`eval-badge ${(evalMetrics?.fastPathAvgLatencyMs ?? 185) < 300 ? 'badge-pass' : 'badge-fail'}`}>
+                    <span className={`eval-badge ${evalMetrics?.fastPathAvgLatencyMs == null ? '' : evalMetrics.fastPathAvgLatencyMs < 300 ? 'badge-pass' : 'badge-fail'}`}>
                       &lt;300ms SLA
                     </span>
                   </div>
-                  <div className="eval-card-value">{evalMetrics?.fastPathAvgLatencyMs ?? 185}ms</div>
+                  <div className="eval-card-value">{evalMetrics?.fastPathAvgLatencyMs ?? 'n/a'}ms</div>
                   <div className="eval-card-title">Fast-Path Pre-Router Latency</div>
                   <div className="eval-card-sub">0-Tool Direct Inference Gate</div>
                 </div>
@@ -1271,11 +1272,11 @@ function AdminPage({ onBackToChat }) {
                   <div className="eval-card-top">
                     <span className="eval-card-icon">💚</span>
                     <span className="eval-badge badge-pass">
-                      {auditStatus?.latestAudit?.healthScore ?? 92}/100
+                      {auditStatus?.latestAudit?.healthScore ?? 'n/a'}/100
                     </span>
                   </div>
                   <div className="eval-card-value">
-                    {auditStatus?.latestAudit?.healthScore ?? 92}%
+                    {auditStatus?.latestAudit?.healthScore ?? 'n/a'}%
                   </div>
                   <div className="eval-card-title">Engineering Health Score</div>
                   <div className="eval-card-sub">Weighted multi-tool health rating</div>
@@ -1295,11 +1296,11 @@ function AdminPage({ onBackToChat }) {
                   <div className="eval-card-top">
                     <span className="eval-card-icon">🚨</span>
                     <span className="eval-badge badge-warning">
-                      {auditStatus?.summary?.pending ?? 3} Pending
+                      {auditStatus?.summary?.pending ?? 'n/a'} Pending
                     </span>
                   </div>
                   <div className="eval-card-value">
-                    {auditStatus?.summary?.criticalPending ?? 1} Critical
+                    {auditStatus?.summary?.criticalPending ?? 'n/a'} Critical
                   </div>
                   <div className="eval-card-title">Pending Action Items</div>
                   <div className="eval-card-sub">Triage in EM Action Hub</div>
@@ -1786,19 +1787,14 @@ function AdminPage({ onBackToChat }) {
                         className="settings-input"
                         value={adminSettings?.llm?.defaultModel || ''}
                         onChange={(e) => updateLlmField('defaultModel', e.target.value)}
-                        placeholder="hermes3:8b, qwen2.5:14b, mistral-small:24b, qwen2.5:32b, command-r:35b, llama3.3:70b"
+                        placeholder={DEFAULT_CHAT_MODEL}
                       />
                       <div style={{ marginTop: '0.4rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #888)' }}>Presets:</span>
-                        {[
-                          'hermes3:8b',
-                          'qwen2.5:14b',
-                          'mistral-small:24b',
-                          'qwen2.5:32b',
-                          'command-r:35b',
-                          'llama3.3:70b',
-                          'gpt-oss:20b',
-                        ].map((m) => (
+                        {(adminSettings?.llm?.availableModels?.length
+                          ? adminSettings.llm.availableModels
+                          : [DEFAULT_CHAT_MODEL]
+                        ).map((m) => (
                           <button
                             key={m}
                             type="button"
@@ -1818,7 +1814,7 @@ function AdminPage({ onBackToChat }) {
                         ))}
                       </div>
                       <span className="input-hint" style={{ marginTop: '0.3rem', display: 'block', fontSize: '0.75rem' }}>
-                        Manual pull required before first use: <code>ollama pull {adminSettings?.llm?.defaultModel || 'hermes3:8b'}</code>
+                        Manual pull required before first use: <code>ollama pull {adminSettings?.llm?.defaultModel || DEFAULT_CHAT_MODEL}</code>
                       </span>
                     </div>
                     <div className="form-group flex-1">
@@ -2718,7 +2714,7 @@ function AdminPage({ onBackToChat }) {
                   </div>
                   <div className="bench-detail-item">
                     <span className="bench-label">RECORDS EVALUATED</span>
-                    <span className="bench-val highlight-green">{promptMatrixStatus?.recordsEvaluated || 10} / 10 Queries</span>
+                    <span className="bench-val highlight-green">{promptMatrixStatus?.recordsEvaluated ?? 0} / 10 Queries</span>
                   </div>
                   <div className="bench-detail-item">
                     <span className="bench-label">DURATION</span>
@@ -2750,7 +2746,7 @@ function AdminPage({ onBackToChat }) {
               <div className="benchmark-details-grid">
                 <div className="bench-detail-item">
                   <span className="bench-label">MODEL TARGET</span>
-                  <span className="bench-val highlight-cyan">{benchmarkStatus?.model || 'hermes3:8b'}</span>
+                  <span className="bench-val highlight-cyan">{benchmarkStatus?.model || adminSettings?.llm?.defaultModel || DEFAULT_CHAT_MODEL}</span>
                 </div>
                 <div className="bench-detail-item">
                   <span className="bench-label">LAST EXECUTION</span>
@@ -2777,25 +2773,25 @@ function AdminPage({ onBackToChat }) {
                 <div className="ragas-pill">
                   <span className="ragas-pill-name">Faithfulness:</span>
                   <span className="ragas-pill-score">
-                    {(benchmarkStatus?.latestReport?.ragas_metrics?.faithfulness ?? 1.0).toFixed(4)}
+                    {(typeof benchmarkStatus?.latestReport?.ragas_metrics?.faithfulness === 'number' ? benchmarkStatus.latestReport.ragas_metrics.faithfulness.toFixed(4) : 'n/a')}
                   </span>
                 </div>
                 <div className="ragas-pill">
                   <span className="ragas-pill-name">Answer Relevancy:</span>
                   <span className="ragas-pill-score">
-                    {(benchmarkStatus?.latestReport?.ragas_metrics?.answer_relevancy ?? 1.0).toFixed(4)}
+                    {(typeof benchmarkStatus?.latestReport?.ragas_metrics?.answer_relevancy === 'number' ? benchmarkStatus.latestReport.ragas_metrics.answer_relevancy.toFixed(4) : 'n/a')}
                   </span>
                 </div>
                 <div className="ragas-pill">
                   <span className="ragas-pill-name">Context Precision:</span>
                   <span className="ragas-pill-score">
-                    {(benchmarkStatus?.latestReport?.ragas_metrics?.context_precision ?? 1.0).toFixed(4)}
+                    {(typeof benchmarkStatus?.latestReport?.ragas_metrics?.context_precision === 'number' ? benchmarkStatus.latestReport.ragas_metrics.context_precision.toFixed(4) : 'n/a')}
                   </span>
                 </div>
                 <div className="ragas-pill">
                   <span className="ragas-pill-name">Context Recall:</span>
                   <span className="ragas-pill-score">
-                    {(benchmarkStatus?.latestReport?.ragas_metrics?.context_recall ?? 1.0).toFixed(4)}
+                    {(typeof benchmarkStatus?.latestReport?.ragas_metrics?.context_recall === 'number' ? benchmarkStatus.latestReport.ragas_metrics.context_recall.toFixed(4) : 'n/a')}
                   </span>
                 </div>
               </div>
@@ -2877,11 +2873,11 @@ function AdminPage({ onBackToChat }) {
               <div className="eval-card">
                 <div className="eval-card-top">
                   <span className="eval-card-icon">⚡</span>
-                  <span className={`eval-badge ${(evalMetrics?.fastPathAvgLatencyMs ?? 185) < 300 ? 'badge-pass' : 'badge-fail'}`}>
+                  <span className={`eval-badge ${evalMetrics?.fastPathAvgLatencyMs == null ? '' : evalMetrics.fastPathAvgLatencyMs < 300 ? 'badge-pass' : 'badge-fail'}`}>
                     &lt;300ms SLA
                   </span>
                 </div>
-                <div className="eval-card-value">{evalMetrics?.fastPathAvgLatencyMs ?? 185}ms</div>
+                <div className="eval-card-value">{evalMetrics?.fastPathAvgLatencyMs ?? 'n/a'}ms</div>
                 <div className="eval-card-title">Fast-Path Pre-Router Latency</div>
                 <div className="eval-card-sub">0-Tool Direct Inference Gate</div>
               </div>
@@ -3088,7 +3084,7 @@ function AdminPage({ onBackToChat }) {
                   <div className="status-item">
                     <span className="status-label">Ollama Provider</span>
                     <span className="status-val">
-                      {systemStatus?.ollama?.defaultModel || 'hermes3:8b'} (Port 11434)
+                      {systemStatus?.ollama?.defaultModel || DEFAULT_CHAT_MODEL} (Port 11434)
                     </span>
                   </div>
                   <div className="status-item">

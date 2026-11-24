@@ -1,13 +1,14 @@
 """
 Python-Native RAG Retrieval Evaluator (Option C: Hybrid Architecture)
 Directly accesses taskflow_ai PostgreSQL database (pdf_chunks table)
-and evaluates HyDE query transformation, RRF synergy lift, and chunk recall using hermes3:8b via Ollama.
+and evaluates HyDE query transformation, RRF synergy lift, and chunk recall using the local Ollama chat model.
 """
 
 import math
 import logging
 import os
 from typing import Dict, Any, List, Optional
+from app.model_config import DEFAULT_LLM_MODEL
 try:
     import ollama
     HAS_OLLAMA = True
@@ -17,7 +18,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 DEFAULT_OLLAMA_HOST = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-DEFAULT_MODEL = os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b")
+DEFAULT_MODEL = DEFAULT_LLM_MODEL
 
 
 class PythonRAGEvaluator:
@@ -40,7 +41,7 @@ class PythonRAGEvaluator:
 
     def generate_hyde_document(self, query: str) -> str:
         """
-        Generates a hypothetical candidate document answer using hermes3:8b to expand RAG retrieval context.
+        Generates a hypothetical candidate document answer using the local chat model to expand RAG retrieval context.
         """
         prompt = f"Write a hypothetical document passage that directly answers this engineering query: '{query}'"
         try:

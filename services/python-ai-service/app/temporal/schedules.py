@@ -12,6 +12,7 @@ from temporalio.client import (
 )
 
 from app.temporal.workflow import DeepEvaluationBenchmarkWorkflow
+from app.model_config import DEFAULT_LLM_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ TASK_QUEUE = "rag-ingest-queue"
 async def ensure_nightly_benchmark_schedule(
     client: Client,
     cron_expression: str = "0 2 * * *",
-    model_name: str = "hermes3:8b",
+    model_name: str = DEFAULT_LLM_MODEL,
 ) -> Dict[str, Any]:
     """
     Idempotently creates or verifies the nightly deep evaluation benchmark schedule.

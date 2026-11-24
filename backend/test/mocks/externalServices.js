@@ -63,7 +63,7 @@ export const mockHttp = (sandbox) => {
       id: 'chatcmpl-mock',
       object: 'chat.completion',
       created: Date.now(),
-      model: 'hermes3:8b',
+      model: 'qwen3:8b-q8_0',
       choices: [{ index: 0, message: { role: 'assistant', content: 'Mocked response' }, finish_reason: 'stop' }],
       data: 'mocked response',
     }),

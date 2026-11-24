@@ -54,9 +54,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ollama
-          key: ollama-hermes3-8b-v1
+          key: ollama-qwen3-8b-q8_0-v1
           restore-keys: |
-            ollama-hermes3-8b-
+            ollama-qwen3-8b-q8_0-
       - name: Install & Start Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
@@ -66,7 +66,7 @@ jobs:
             sleep 1
           done
           echo "✅ Ollama is ready!"
-          ollama pull hermes3:8b
+          ollama pull qwen3:8b-q8_0 && ollama pull nomic-embed-text
       - name: Run Evaluation Suite Gate
         run: npm run evaluate
         env:
@@ -99,9 +99,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ollama
-          key: ollama-hermes3-8b-v1
+          key: ollama-qwen3-8b-q8_0-v1
           restore-keys: |
-            ollama-hermes3-8b-
+            ollama-qwen3-8b-q8_0-
       - name: Install & Start Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
@@ -111,7 +111,7 @@ jobs:
             sleep 1
           done
           echo "✅ Ollama is ready!"
-          ollama pull hermes3:8b
+          ollama pull qwen3:8b-q8_0 && ollama pull nomic-embed-text
       - name: Run Python Pytest Specs (32 Specs)
         run: $HOME/.local/bin/uv run pytest
         env:

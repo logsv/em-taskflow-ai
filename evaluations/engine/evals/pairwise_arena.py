@@ -1,16 +1,17 @@
 """
 Pairwise Arena Judge with Dual-Pass Position Bias Mitigation
-Compares Candidate A and Candidate B using hermes3:8b, mitigating first-order positional bias.
+Compares Candidate A and Candidate B using the local chat model, mitigating first-order positional bias.
 """
 
 import logging
 from typing import Dict, Any
+from evals.model_config import DEFAULT_LLM_MODEL
 
 logger = logging.getLogger("pairwise_arena")
 
 
 class PairwiseArenaJudge:
-    def __init__(self, model_name: str = "hermes3:8b"):
+    def __init__(self, model_name: str = DEFAULT_LLM_MODEL):
         self.model_name = model_name
 
     def evaluate(self, input_context: Dict[str, Any]) -> Dict[str, Any]:

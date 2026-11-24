@@ -1,6 +1,6 @@
 """
 LLM-as-a-Judge Evaluation Engine (Factory Pattern)
-Standardized on local SLM inference (hermes3:8b via Ollama)
+Standardized on local SLM inference (the local Ollama chat model)
 """
 
 import json
@@ -8,10 +8,11 @@ import logging
 import os
 from typing import Dict, Any, List, Optional
 from scipy.stats import kendalltau
+from app.model_config import DEFAULT_LLM_MODEL
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_JUDGE_MODEL = os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b")
+DEFAULT_JUDGE_MODEL = DEFAULT_LLM_MODEL
 
 
 class BaseLLMJudge:
@@ -107,7 +108,7 @@ class PairwiseArenaJudge(BaseLLMJudge):
 
 class LLMJudgeFactory:
     """
-    Factory Pattern for initializing LLM Judges with hermes3:8b.
+    Factory Pattern for initializing LLM Judges with the local chat model.
     """
 
     @staticmethod

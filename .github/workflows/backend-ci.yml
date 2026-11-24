@@ -60,9 +60,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.ollama
-        key: ollama-hermes3-8b-v1
+        key: ollama-qwen3-8b-q8_0-v1
         restore-keys: |
-          ollama-hermes3-8b-
+          ollama-qwen3-8b-q8_0-
 
     - name: Install & Start Ollama
       run: |
@@ -73,7 +73,7 @@ jobs:
           sleep 1
         done
         echo "✅ Ollama is ready!"
-        ollama pull hermes3:8b
+        ollama pull qwen3:8b-q8_0 && ollama pull nomic-embed-text
 
     - name: Run Evaluation Suite Gate
       run: npm run evaluate
@@ -95,7 +95,7 @@ jobs:
         echo "| **Fast-Path Pre-Router Latency** | $< 300\text{ms}$ | ~185ms | 🟢 PASS |" >> $GITHUB_STEP_SUMMARY
         echo "| **Ragas Faithfulness** | $\ge 0.90$ | 1.0000 | 🟢 PASS |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "*Model Evaluator Target: \`hermes3:8b\` on Local Ollama Infrastructure.*" >> $GITHUB_STEP_SUMMARY
+        echo "*Model Evaluator Target: \`qwen3:8b-q8_0\` on Local Ollama Infrastructure.*" >> $GITHUB_STEP_SUMMARY
 
   python-ai-test:
     name: Python AI Service Specs & Trajectories
@@ -124,9 +124,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.ollama
-        key: ollama-hermes3-8b-v1
+        key: ollama-qwen3-8b-q8_0-v1
         restore-keys: |
-          ollama-hermes3-8b-
+          ollama-qwen3-8b-q8_0-
 
     - name: Install & Start Ollama
       run: |
@@ -137,7 +137,7 @@ jobs:
           sleep 1
         done
         echo "✅ Ollama is ready!"
-        ollama pull hermes3:8b
+        ollama pull qwen3:8b-q8_0 && ollama pull nomic-embed-text
 
     - name: Run Python Pytest Specs (32 Specs)
       run: $HOME/.local/bin/uv run pytest

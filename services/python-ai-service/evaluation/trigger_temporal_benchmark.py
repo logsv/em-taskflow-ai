@@ -12,6 +12,7 @@ from temporalio.client import Client
 
 from app.temporal.schedules import trigger_schedule_now, ensure_nightly_benchmark_schedule, NIGHTLY_BENCHMARK_SCHEDULE_ID
 from app.temporal.workflow import DeepEvaluationBenchmarkWorkflow
+from app.model_config import DEFAULT_LLM_MODEL
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("temporal_benchmark_trigger")
@@ -38,7 +39,7 @@ async def main():
         logger.info("⚠️ Starting DeepEvaluationBenchmarkWorkflow directly on Temporal...")
         handle = await client.start_workflow(
             DeepEvaluationBenchmarkWorkflow.run,
-            {"model_name": "hermes3:8b", "sync_to_langfuse": True, "trulens_limit": 5},
+            {"model_name": DEFAULT_LLM_MODEL, "sync_to_langfuse": True, "trulens_limit": 5},
             id=f"manual-deep-benchmark-{int(time.time())}",
             task_queue="rag-ingest-queue",
         )

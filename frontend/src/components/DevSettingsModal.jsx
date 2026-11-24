@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useGithubSync } from '../hooks/useGithubSync.js';
 import './DevSettingsModal.css';
+import { DEFAULT_CHAT_MODEL } from '../constants/models';
 
 export default function DevSettingsModal({
   isOpen,
@@ -73,7 +74,7 @@ export default function DevSettingsModal({
                   <span className="dev-setting-label">Primary LLM Provider</span>
                   <span className="dev-setting-desc">100% Local SLM Inference (Ollama)</span>
                 </div>
-                <span className="dev-badge dev-badge-purple">hermes3:8b (Ollama)</span>
+                <span className="dev-badge dev-badge-purple">{DEFAULT_CHAT_MODEL} (Ollama)</span>
               </div>
             </div>
           </div>

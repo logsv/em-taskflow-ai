@@ -9,6 +9,7 @@ import argparse
 from evals.ragas_triad import run_ragas_evaluation
 from evals.pairwise_arena import PairwiseArenaJudge
 from evals.dataset_loader import load_prompt_matrix_cases, load_golden_dataset
+from evals.model_config import DEFAULT_LLM_MODEL
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("eval_cli")
@@ -18,7 +19,7 @@ def main():
     parser = argparse.ArgumentParser(description="EM TaskFlow AI Modular Evaluation Engine")
     parser.add_argument("--mode", choices=["ragas", "arena", "matrix", "full"], default="full", help="Evaluation mode to run")
     parser.add_argument("--limit", type=int, default=10, help="Number of queries to evaluate")
-    parser.add_argument("--model", type=str, default="hermes3:8b", help="Target model name")
+    parser.add_argument("--model", type=str, default=DEFAULT_LLM_MODEL, help="Target model name")
     args = parser.parse_args()
 
     logger.info(f"🧪 Running evaluation mode: '{args.mode}' on model '{args.model}' (limit: {args.limit})")

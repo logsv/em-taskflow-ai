@@ -14,6 +14,7 @@ import { RAGPipelineStrategy } from './evaluators/rag-eval.js';
 import { PreLLMProcessorChain } from './evaluators/pre-llm-eval.js';
 import { ContextualResolutionStrategy } from './evaluators/context-eval.js';
 import preRouterRewriter from '../src/services/preRouterRewriter.js';
+import { DEFAULT_CHAT_MODEL } from '../src/llm/models.js';
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
@@ -47,7 +48,7 @@ async function runEvaluation() {
     process.env.LLM_DEFAULT_MODEL = overrideModel;
   }
 
-  const activeModel = config.llm?.defaultModel || getLlmConfig().defaultModel || process.env.LLM_DEFAULT_MODEL || 'hermes3:8b';
+  const activeModel = config.llm?.defaultModel || getLlmConfig().defaultModel || process.env.LLM_DEFAULT_MODEL || DEFAULT_CHAT_MODEL;
   console.log(`🧪 Initializing Evaluation Suite (Model: ${activeModel})...`);
 
   // If in CI or Ollama is disabled, check if local Ollama server is reachable

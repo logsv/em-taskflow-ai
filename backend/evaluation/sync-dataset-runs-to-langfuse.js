@@ -2,6 +2,9 @@ import dotenv from 'dotenv';
 import { Langfuse } from 'langfuse';
 import fs from 'fs';
 import path from 'path';
+import { DEFAULT_CHAT_MODEL } from '../src/llm/models.js';
+
+const ACTIVE_MODEL = process.env.LLM_DEFAULT_MODEL || DEFAULT_CHAT_MODEL;
 
 dotenv.config();
 
@@ -29,7 +32,7 @@ async function syncDatasetRuns() {
   // 1. Link experiment run for golden-dataset
   try {
     const goldenDs = await langfuse.getDataset('golden-dataset');
-    const runName = 'hermes3:8b-baseline-benchmark';
+    const runName = `${ACTIVE_MODEL}-baseline-benchmark`;
     console.log(`📊 Linking experiment run '${runName}' for golden-dataset (${goldenDs.items.length} items)...`);
 
     for (const item of goldenDs.items) {
@@ -39,7 +42,7 @@ async function syncDatasetRuns() {
         userId: 'evaluation_engine',
         metadata: {
           eval_id: evalId,
-          model: 'hermes3:8b',
+          model: ACTIVE_MODEL,
           category: item.metadata?.domain_category || 'general',
         },
       });
@@ -72,7 +75,7 @@ async function syncDatasetRuns() {
   // 2. Link experiment run for prompt-matrix-cases
   try {
     const matrixDs = await langfuse.getDataset('prompt-matrix-cases');
-    const matrixRunName = 'hermes3:8b-prompt-matrix-run';
+    const matrixRunName = `${ACTIVE_MODEL}-prompt-matrix-run`;
     console.log(`📊 Linking experiment run '${matrixRunName}' for prompt-matrix-cases (${matrixDs.items.length} items)...`);
 
     for (const item of matrixDs.items) {
@@ -83,7 +86,7 @@ async function syncDatasetRuns() {
         metadata: {
           case_id: caseId,
           domain: item.metadata?.domain || 'dora',
-          model: 'hermes3:8b',
+          model: ACTIVE_MODEL,
         },
       });
 

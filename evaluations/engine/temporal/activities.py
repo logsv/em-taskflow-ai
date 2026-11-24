@@ -15,6 +15,7 @@ from evals.dataset_loader import load_prompt_matrix_cases, load_golden_dataset
 from evals.ragas_triad import run_ragas_evaluation
 from evals.pairwise_arena import PairwiseArenaJudge
 from evals.langfuse_exporter import export_scores_to_langfuse
+from evals.model_config import DEFAULT_LLM_MODEL
 
 logger = logging.getLogger("eval_activities")
 
@@ -53,7 +54,7 @@ async def fetch_evaluation_queries_activity(params: Dict[str, Any]) -> Dict[str,
 async def evaluate_prompt_batch_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     """Activity: Evaluates a micro-batch of prompts (5-10 items) with heartbeats & Langfuse score flusher."""
     queries = params.get("queries", [])
-    model_name = params.get("model_name", "hermes3:8b")
+    model_name = params.get("model_name", DEFAULT_LLM_MODEL)
     batch_index = params.get("batch_index", 1)
     total_batches = params.get("total_batches", 1)
 
@@ -113,7 +114,7 @@ async def run_pairwise_arena_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     except Exception:
         pass
 
-    model_name = params.get("model_name", "hermes3:8b")
+    model_name = params.get("model_name", DEFAULT_LLM_MODEL)
     judge = PairwiseArenaJudge(model_name=model_name)
     arena_test_context = {
         "candidate_a": params.get(
@@ -133,7 +134,7 @@ async def run_pairwise_arena_activity(params: Dict[str, Any]) -> Dict[str, Any]:
 async def sync_evaluation_leaderboard_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     """Activity: Aggregates evaluation metrics and flushes leaderboard summary."""
     results = params.get("results", [])
-    model_name = params.get("model_name", "hermes3:8b")
+    model_name = params.get("model_name", DEFAULT_LLM_MODEL)
 
     try:
         activity.heartbeat("Aggregating metrics & syncing Langfuse leaderboard")
@@ -160,7 +161,7 @@ async def sync_evaluation_leaderboard_activity(params: Dict[str, Any]) -> Dict[s
 @activity.defn
 async def export_benchmark_report_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     """Activity: Generates JSON/Markdown benchmark reports and syncs to Langfuse."""
-    model_name = params.get("model_name", "hermes3:8b")
+    model_name = params.get("model_name", DEFAULT_LLM_MODEL)
     ragas_scores = params.get("ragas_scores", {})
     arena_res = params.get("arena_res", {})
     duration_seconds = params.get("duration_seconds", 0)

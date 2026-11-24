@@ -28,13 +28,14 @@ if service_dir not in sys.path:
 # Import evaluation engines
 from evaluation.ragas_runner import run_ragas_evaluation
 from evaluation.llm_judge import LLMJudgeFactory
+from app.model_config import DEFAULT_LLM_MODEL
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("scheduled_deep_benchmark")
 
 
 def run_scheduled_deep_benchmark(
-    model_name: str = "hermes3:8b",
+    model_name: str = DEFAULT_LLM_MODEL,
     reports_dir: str = None,
 ) -> Dict[str, Any]:
     start_time = time.time()

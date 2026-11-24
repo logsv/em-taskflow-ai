@@ -1,6 +1,6 @@
 """
 Official Ragas Evaluation Runner for EM TaskFlow AI
-Evaluates RAG retrieval pipelines against local hermes3:8b and nomic-embed-text,
+Evaluates RAG retrieval pipelines against the local chat model and nomic-embed-text,
 syncing results into Langfuse analytics.
 """
 
@@ -11,6 +11,7 @@ import json
 import logging
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
+from app.model_config import DEFAULT_LLM_MODEL
 
 load_dotenv()
 
@@ -77,7 +78,7 @@ def get_ragas_evaluators(
     base_url: str = "http://localhost:11434",
 ):
     """Initializes Ragas LLM and Embeddings wrappers for local Ollama."""
-    active_model = model_name or os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b")
+    active_model = model_name or DEFAULT_LLM_MODEL
     llm = ChatOllama(model=active_model, base_url=base_url, temperature=0.0)
     embeddings = OllamaEmbeddings(model=embedding_model, base_url=base_url)
 
@@ -96,7 +97,7 @@ def run_ragas_evaluation(
     Executes Ragas evaluation across Faithfulness, Answer Relevancy,
     Context Precision, and Context Recall.
     """
-    active_model = model_name or os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b")
+    active_model = model_name or DEFAULT_LLM_MODEL
     if not dataset_records:
         dataset_records = [
             {
@@ -183,7 +184,7 @@ def run_ragas_evaluation(
                     langfuse.score(
                         name=f"ragas_{metric_name}",
                         value=float(score),
-                        comment="Official Ragas SDK evaluation run (hermes3:8b)",
+                        comment="Official Ragas SDK evaluation run (local Ollama)",
                     )
                 langfuse.flush()
                 logger.info("📊 Synced Ragas scores to Langfuse!")

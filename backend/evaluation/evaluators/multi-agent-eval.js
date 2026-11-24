@@ -3,7 +3,7 @@ import _ from 'lodash';
 /**
  * MultiAgentTrajectoryStrategy
  * Strategy Pattern implementation for evaluating supervisor domain routing,
- * trajectory step efficiency, and 1-tool SLM constraint adherence on hermes3:8b.
+ * trajectory step efficiency, and 1-tool SLM constraint adherence on the local chat model.
  */
 export class MultiAgentTrajectoryStrategy {
   constructor(name = 'MultiAgentTrajectoryStrategy') {
@@ -39,7 +39,7 @@ export class MultiAgentTrajectoryStrategy {
 
     const is_unnecessary_rag = !is_rag_appropriate && predicted_domains.includes('rag');
     
-    // 1-Tool constraint check for local SLM accuracy on hermes3:8b
+    // 1-Tool constraint check for local SLM accuracy on the local chat model
     const mustUseTools = plan?.must_use_tools === true;
     const predictedToolGrounded = expectedWorkspace ? mustUseTools : true;
 

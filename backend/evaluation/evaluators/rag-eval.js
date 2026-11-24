@@ -3,7 +3,7 @@ import pythonAIServiceClient from '../../src/grpc/client.js';
 /**
  * RAGPipelineStrategy (Option C: Hybrid Architecture)
  * Strategy Pattern implementation for evaluating Node.js gRPC transport (pythonAIServiceClient.searchRAG)
- * and hermes3:8b single-pass Markdown synthesis formatting.
+ * and the local chat model single-pass Markdown synthesis formatting.
  */
 export class RAGPipelineStrategy {
   constructor(name = 'RAGPipelineStrategy', grpcClient = pythonAIServiceClient) {
@@ -20,7 +20,7 @@ export class RAGPipelineStrategy {
   async evaluate(testCase, response) {
     const textResponse = typeof response === 'string' ? response : (response?.text || response?.content || '');
 
-    // 1. Mandatory section structural compliance check for hermes3:8b single-pass output
+    // 1. Mandatory section structural compliance check for the local chat model single-pass output
     const hasExecSummary = textResponse.includes('### 📄 Executive Summary') || textResponse.includes('Executive Summary');
     const hasAnalysis = textResponse.includes('### 🔍 Key Document Analysis') || textResponse.includes('Key Document Analysis');
     const hasCitations = textResponse.includes('### 📌 Source Citations') || textResponse.includes('Source Citations');

@@ -1,5 +1,8 @@
 import dotenv from 'dotenv';
 import { Langfuse } from 'langfuse';
+import { DEFAULT_CHAT_MODEL } from '../src/llm/models.js';
+
+const ACTIVE_MODEL = process.env.LLM_DEFAULT_MODEL || DEFAULT_CHAT_MODEL;
 
 dotenv.config();
 
@@ -7,9 +10,9 @@ export const PROMPTS_REGISTRY = [
   {
     name: 'router-system-template',
     type: 'text',
-    tags: ['routing', 'supervisor', 'hermes3'],
+    tags: ['routing', 'supervisor', 'local-ollama'],
     labels: ['production', 'latest'],
-    config: { model: 'hermes3:8b', temperature: 0.0 },
+    config: { model: ACTIVE_MODEL, temperature: 0.0 },
     prompt: `You are an expert routing assistant for an Engineering Management (EM) AI platform. Your task is to analyze user queries and determine the most relevant domain and routing plan.
 
 Active workspace domains:
@@ -28,9 +31,9 @@ Active workspace domains:
   {
     name: 'rag-single-pass-synthesis',
     type: 'text',
-    tags: ['rag', 'hybrid-search', 'hermes3'],
+    tags: ['rag', 'hybrid-search', 'local-ollama'],
     labels: ['production', 'latest'],
-    config: { model: 'hermes3:8b', temperature: 0.0 },
+    config: { model: ACTIVE_MODEL, temperature: 0.0 },
     prompt: `You are an expert Technical Document Analyst and Engineering Management Assistant.
 Synthesize the retrieved context chunks to directly answer the user query in structured Markdown:
 ### 📄 Executive Summary
@@ -42,7 +45,7 @@ Synthesize the retrieved context chunks to directly answer the user query in str
     type: 'text',
     tags: ['supervisor', 'multi-agent', 'langgraph'],
     labels: ['production', 'latest'],
-    config: { model: 'hermes3:8b', temperature: 0.0 },
+    config: { model: ACTIVE_MODEL, temperature: 0.0 },
     prompt: `You are a supervisor agent that orchestrates DORA, SBI, People, Delivery, Retro, Sprint, SOP, Roadmap, and OKR specialists.
 Routing and evidence rules:
 - Follow the routing plan embedded in the query instructions.
@@ -56,7 +59,7 @@ Routing and evidence rules:
     type: 'text',
     tags: ['micro-agent', 'dora', 'devops'],
     labels: ['production', 'latest'],
-    config: { model: 'hermes3:8b', temperature: 0.0 },
+    config: { model: ACTIVE_MODEL, temperature: 0.0 },
     prompt: `You are a DORA Metrics Specialist and DevOps Intelligence Analyst for Engineering Managers.
 Core Operational Rules:
 1. Always invoke your 'calculate_dora_metrics' tool to obtain verified telemetry data.
@@ -72,7 +75,7 @@ Core Operational Rules:
     type: 'text',
     tags: ['micro-agent', 'sbi', 'coaching'],
     labels: ['production', 'latest'],
-    config: { model: 'hermes3:8b', temperature: 0.0 },
+    config: { model: ACTIVE_MODEL, temperature: 0.0 },
     prompt: `You are an Executive Talent Coach and SBI Coaching & Feedback Specialist for Engineering Managers.
 Core Operational Rules:
 1. Always invoke your 'format_sbi_feedback' tool to transform raw manager notes into objective SBI feedback.
@@ -88,7 +91,7 @@ Core Operational Rules:
     type: 'text',
     tags: ['micro-agent', 'people', 'career'],
     labels: ['production', 'latest'],
-    config: { model: 'hermes3:8b', temperature: 0.0 },
+    config: { model: ACTIVE_MODEL, temperature: 0.0 },
     prompt: `You are a Senior Engineering Career Advisor and People Management Specialist.
 Core Operational Rules:
 1. Always invoke your 'analyze_personnel_growth' tool.
@@ -104,7 +107,7 @@ Core Operational Rules:
     type: 'text',
     tags: ['micro-agent', 'delivery', 'kanban'],
     labels: ['production', 'latest'],
-    config: { model: 'hermes3:8b', temperature: 0.0 },
+    config: { model: ACTIVE_MODEL, temperature: 0.0 },
     prompt: `You are a Delivery & Bottleneck Specialist and Lean Delivery Coach for Engineering Managers.
 Core Operational Rules:
 1. Always invoke your 'analyze_delivery_bottlenecks' tool to retrieve verified sprint flow, WIP limits, and PR review queues.
@@ -121,7 +124,7 @@ Core Operational Rules:
     type: 'text',
     tags: ['micro-agent', 'sprint', 'agile'],
     labels: ['production', 'latest'],
-    config: { model: 'hermes3:8b', temperature: 0.0 },
+    config: { model: ACTIVE_MODEL, temperature: 0.0 },
     prompt: `You are an expert Agile Coach, Scrum Master, and Sprint Planning Specialist. You calculate realistic sprint capacity, balance feature velocity against technical debt repayment budgets, and optimize ticket distribution. Always use your sprint planning tool to generate capacity forecasts, apply the 70/20/10 capacity allocation rule, and audit developer concentration risks.`,
   },
   {
@@ -129,7 +132,7 @@ Core Operational Rules:
     type: 'text',
     tags: ['micro-agent', 'retro', 'post-mortem'],
     labels: ['production', 'latest'],
-    config: { model: 'hermes3:8b', temperature: 0.0 },
+    config: { model: ACTIVE_MODEL, temperature: 0.0 },
     prompt: `You are an expert Blameless Agile Facilitator and Project Retrospective Specialist. You synthesize team retro inputs, detect recurring patterns across sprints, and enforce blameless continuous improvement loops with SMART action items assigned to real team owners. Always use your retro tool.`,
   },
   {
@@ -137,7 +140,7 @@ Core Operational Rules:
     type: 'text',
     tags: ['micro-agent', 'roadmap', 'milestones'],
     labels: ['production', 'latest'],
-    config: { model: 'hermes3:8b', temperature: 0.15 },
+    config: { model: ACTIVE_MODEL, temperature: 0.15 },
     prompt: `You are an expert Technical Product & Program Director and Strategic Roadmap Specialist. You track engineering deliverables against high-level product goals, epic completion percentages, cross-team dependencies, and target release quarters. Always invoke your get_roadmap_alignment tool to calculate epic progress, milestone drift days, scope creep %, and dependency blockers.`,
   },
   {
@@ -145,7 +148,7 @@ Core Operational Rules:
     type: 'text',
     tags: ['micro-agent', 'okr', 'kpi'],
     labels: ['production', 'latest'],
-    config: { model: 'hermes3:8b', temperature: 0.1 },
+    config: { model: ACTIVE_MODEL, temperature: 0.1 },
     prompt: `You are an expert Strategic Operations Analyst and OKR & KPI Tracking Specialist. You evaluate quarterly engineering Objectives and Key Results, scoring progress, pacing, leading vs lagging indicators, and gap remediations. Always invoke your evaluate_okr_progress tool to calculate objective completion rates, confidence pacing scores (0.0 to 1.0), and indicator disaggregation.`,
   },
   {
@@ -153,7 +156,7 @@ Core Operational Rules:
     type: 'text',
     tags: ['micro-agent', 'sop', 'governance'],
     labels: ['production', 'latest'],
-    config: { model: 'hermes3:8b', temperature: 0.1 },
+    config: { model: ACTIVE_MODEL, temperature: 0.1 },
     prompt: `You are an expert Principal Architect & Governance Lead and SOP & Governance Specialist. You validate architectural proposals, release workflows, and code review practices against internal Engineering Standard Operating Procedures (SOPs) and Architecture Decision Records (ADRs). Always invoke your query_sop_compliance tool to retrieve relevant ADRs, security policies, and engineering guidelines.`,
   },
   {
@@ -161,7 +164,7 @@ Core Operational Rules:
     type: 'text',
     tags: ['micro-agent', 'critic', 'deep-agent'],
     labels: ['production', 'latest'],
-    config: { model: 'hermes3:8b', temperature: 0.05 },
+    config: { model: ACTIVE_MODEL, temperature: 0.05 },
     prompt: `You are an expert Chief of Staff, Quality Inspector, and Reflective Critic Agent for Engineering Management reporting. You review raw evidence and draft responses from domain micro-agents, auditing for tone neutrality, empathy in feedback, mathematical correctness in metrics, Markdown link integrity, absence of vanity metrics, and actionable next steps. Always invoke your audit_em_report tool to audit draft responses across the 5 core EM guardrail dimensions.`,
   },
   {
@@ -169,7 +172,7 @@ Core Operational Rules:
     type: 'text',
     tags: ['evaluation', 'judge', 'geval'],
     labels: ['production', 'latest'],
-    config: { model: 'hermes3:8b', temperature: 0.0 },
+    config: { model: ACTIVE_MODEL, temperature: 0.0 },
     prompt: `You are an expert Engineering Manager evaluation judge.
 Evaluate the candidate response based on the query and ground truth context on a 1-5 Likert scale across four core dimensions:
 1. Faithfulness & Empirical Grounding: Absence of hallucinations and accurate metric grounding.
@@ -189,7 +192,7 @@ Criteria:
     type: 'text',
     tags: ['evaluation', 'judge', 'arena'],
     labels: ['production', 'latest'],
-    config: { model: 'hermes3:8b', temperature: 0.0 },
+    config: { model: ACTIVE_MODEL, temperature: 0.0 },
     prompt: `You are an expert Pairwise Arena Judge for Engineering Management SLMs.
 Compare Candidate A and Candidate B. Evaluate factual groundedness, formatting adherence, and conciseness with position-bias mitigation.`,
   },

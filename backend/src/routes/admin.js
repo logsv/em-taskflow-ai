@@ -27,6 +27,7 @@ import { l1ExactCache } from '../cache/l1ExactCache.js';
 import { getSemanticCacheStats } from '../cache/semanticCache.js';
 import { toolCache } from '../cache/toolCache.js';
 import { cacheInvalidator } from '../cache/cacheInvalidator.js';
+import { DEFAULT_CHAT_MODEL } from '../llm/models.js';
 
 const router = express.Router();
 
@@ -99,7 +100,7 @@ router.get('/system-status', async (req, res) => {
       health,
       ollama: {
         baseUrl: config.llm?.providers?.ollama?.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
-        defaultModel: config.llm?.defaultModel || process.env.LLM_DEFAULT_MODEL || 'hermes3:8b',
+        defaultModel: config.llm?.defaultModel || process.env.LLM_DEFAULT_MODEL || DEFAULT_CHAT_MODEL,
         enabled: config.llm?.providers?.ollama?.enabled ?? true,
       },
       services,
@@ -183,7 +184,7 @@ router.post('/eval/prompt-matrix', async (req, res) => {
       });
     }
 
-    const { modelTarget = 'hermes3:8b', limit = 10, batchSize = 5 } = req.body || {};
+    const { modelTarget = config.llm?.defaultModel || DEFAULT_CHAT_MODEL, limit = 10, batchSize = 5 } = req.body || {};
 
     promptMatrixState = {
       status: 'running',
@@ -404,7 +405,7 @@ router.post('/eval/run-deep-benchmark', async (req, res) => {
       });
     }
 
-    const { modelTarget = 'hermes3:8b', trulensLimit = 5 } = req.body || {};
+    const { modelTarget = config.llm?.defaultModel || DEFAULT_CHAT_MODEL, trulensLimit = 5 } = req.body || {};
 
     deepBenchmarkState = {
       status: 'running',
@@ -554,7 +555,7 @@ router.post('/eval/replay-traces', async (req, res) => {
       });
     }
 
-    const { baselineModel = 'hermes3:8b', candidateModel = 'hermes3:8b' } = req.body || {};
+    const { baselineModel = config.llm?.defaultModel || DEFAULT_CHAT_MODEL, candidateModel = config.llm?.defaultModel || DEFAULT_CHAT_MODEL } = req.body || {};
 
     replayState = {
       status: 'running',
@@ -693,7 +694,7 @@ router.get('/eval/metrics', async (req, res) => {
 
     res.json({
       success: true,
-      model: config.llm?.defaultModel || config.llm?.providers?.ollama?.model || process.env.LLM_DEFAULT_MODEL || 'hermes3:8b',
+      model: config.llm?.defaultModel || process.env.LLM_DEFAULT_MODEL || DEFAULT_CHAT_MODEL,
       metrics: {
         domainAccuracyPct: domainAccuracy,
         toolGroundedPct: toolGrounded,

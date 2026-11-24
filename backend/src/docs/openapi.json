@@ -3,7 +3,7 @@
   "info": {
     "title": "EM TaskFlow AI - API Reference (v1)",
     "version": "1.0.0",
-    "description": "Interactive REST API specification for the EM TaskFlow AI platform (v1). Powers local multi-agent supervisor reasoning (Ollama hermes3:8b), Hybrid RAG (HyDE + RRF), multi-source MCP integrations (Jira OAuth PKCE, Notion, GitHub, Slack, Google Calendar), Action Hub triage, and multi-session persistence."
+    "description": "Interactive REST API specification for the EM TaskFlow AI platform (v1). Powers local multi-agent supervisor reasoning (local Ollama, default qwen3:8b-q8_0), Hybrid RAG (HyDE + RRF), multi-source MCP integrations (Jira OAuth PKCE, Notion, GitHub, Slack, Google Calendar), Action Hub triage, and multi-session persistence."
   },
   "servers": [
     {

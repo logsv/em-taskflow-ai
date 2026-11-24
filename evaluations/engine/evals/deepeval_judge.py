@@ -8,6 +8,7 @@ import json
 import logging
 from typing import Optional, Any, Dict
 from deepeval.models.base_model import DeepEvalBaseLLM
+from evals.model_config import DEFAULT_LLM_MODEL
 
 logger = logging.getLogger("deepeval_judge")
 
@@ -21,9 +22,9 @@ except ImportError:
 
 
 class Hermes3Judge(DeepEvalBaseLLM):
-    """Custom DeepEval LLM driver wrapping local Ollama hermes3:8b model."""
+    """Custom DeepEval LLM driver wrapping local Ollama chat model."""
 
-    def __init__(self, model: str = "hermes3:8b", base_url: Optional[str] = None):
+    def __init__(self, model: str = DEFAULT_LLM_MODEL, base_url: Optional[str] = None):
         self.model_name = model
         self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         if ChatOllama:

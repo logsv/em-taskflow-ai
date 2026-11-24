@@ -7,6 +7,7 @@ import os
 import sys
 import logging
 from dotenv import load_dotenv
+from app.model_config import DEFAULT_LLM_MODEL
 
 # Load local environment
 load_dotenv()
@@ -41,7 +42,7 @@ def test_langfuse_sync():
         # 2. Attach a generation span
         generation = trace.generation(
             name="test_synthesis",
-            model="hermes3:8b",
+            model=DEFAULT_LLM_MODEL,
             input="What is DORA deployment frequency?",
             output="DORA deployment frequency measures how often an organization successfully releases to production.",
         )

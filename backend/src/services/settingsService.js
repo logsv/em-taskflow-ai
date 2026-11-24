@@ -11,6 +11,7 @@ import { closeGithubMcp } from '../mcp/github.js';
 import { closeSlackMcp } from '../mcp/slack.js';
 import { closeGoogleMcp } from '../mcp/google.js';
 import { resetChatModel } from '../llm/index.js';
+import { DEFAULT_CHAT_MODEL, DEFAULT_AVAILABLE_CHAT_MODELS, DEFAULT_EMBEDDING_MODEL, isLegacyDefaultChatModel, isRetiredChatModel } from '../llm/models.js';
 import { cacheInvalidator } from '../cache/cacheInvalidator.js';
 
 export function maskSecret(secret) {
@@ -51,6 +52,33 @@ class SettingsService {
   constructor() {
     this.cachedRawSettings = null;
     this.initialized = false;
+  }
+
+  /**
+   * Load-time migration: a stored default that is still the old shipped default
+   * (never chosen by the owner) moves to the current default, and dropdown entries
+   * for models that are no longer installed are dropped.
+   */
+  migrateLegacyModelSettings(rawSettings) {
+    const llm = rawSettings?.llm;
+    if (!llm) return false;
+    let changed = false;
+    const envDefault = this.getDefaultEnvSettings().llm.defaultModel;
+    const target = isLegacyDefaultChatModel(envDefault) ? DEFAULT_CHAT_MODEL : envDefault;
+    if (isLegacyDefaultChatModel(llm.defaultModel) && llm.defaultModel !== target) {
+      info('Migrating legacy default chat model in stored settings', { from: llm.defaultModel, to: target });
+      llm.defaultModel = target;
+      changed = true;
+    }
+    if (Array.isArray(llm.availableModels)) {
+      const kept = llm.availableModels.filter((m) => !isRetiredChatModel(m) && m !== DEFAULT_EMBEDDING_MODEL);
+      if (!kept.includes(llm.defaultModel)) kept.unshift(llm.defaultModel);
+      if (kept.length !== llm.availableModels.length || kept.some((m, i) => m !== llm.availableModels[i])) {
+        llm.availableModels = kept;
+        changed = true;
+      }
+    }
+    return changed;
   }
 
   sanitizeSettings(rawSettings) {
@@ -211,6 +239,7 @@ class SettingsService {
           }
         }
 
+        this.migrateLegacyModelSettings(this.cachedRawSettings);
         this.sanitizeSettings(this.cachedRawSettings);
         // Persist sanitized clean values back to PostgreSQL
         await databaseService.setAppSetting('llm', this.cachedRawSettings.llm, this.cachedRawSettings.metadata.llmSource).catch(() => {});
@@ -257,19 +286,8 @@ class SettingsService {
     return {
       llm: {
         defaultProvider: process.env.LLM_DEFAULT_PROVIDER || process.env.LLM_PROVIDER || 'ollama',
-        defaultModel: process.env.LLM_DEFAULT_MODEL || process.env.OLLAMA_MODEL || process.env.DEFAULT_LLM_MODEL || 'hermes3:8b',
-        availableModels: [
-          'hermes3:8b',
-          'qwen2.5:14b',
-          'mistral-small:24b',
-          'qwen2.5:32b',
-          'command-r:35b',
-          'llama3.3:70b',
-          'gpt-oss:20b',
-          'mistral:latest',
-          'llama3.1:8b',
-          'nomic-embed-text',
-        ],
+        defaultModel: process.env.LLM_DEFAULT_MODEL || process.env.OLLAMA_MODEL || process.env.DEFAULT_LLM_MODEL || DEFAULT_CHAT_MODEL,
+        availableModels: [...DEFAULT_AVAILABLE_CHAT_MODELS],
         temperature: process.env.LLM_TEMPERATURE !== undefined ? Number(process.env.LLM_TEMPERATURE) : 0.2,
         ollama: {
           baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
@@ -428,19 +446,8 @@ class SettingsService {
     return {
       llm: {
         defaultProvider: raw.llm.defaultProvider || 'ollama',
-        defaultModel: raw.llm.defaultModel || 'hermes3:8b',
-        availableModels: raw.llm.availableModels || [
-          'hermes3:8b',
-          'qwen2.5:14b',
-          'mistral-small:24b',
-          'qwen2.5:32b',
-          'command-r:35b',
-          'llama3.3:70b',
-          'gpt-oss:20b',
-          'mistral:latest',
-          'llama3.1:8b',
-          'nomic-embed-text',
-        ],
+        defaultModel: raw.llm.defaultModel || DEFAULT_CHAT_MODEL,
+        availableModels: raw.llm.availableModels || [...DEFAULT_AVAILABLE_CHAT_MODELS],
         temperature: raw.llm.temperature ?? 0.2,
         ollama: {
           baseUrl: raw.llm.ollama?.baseUrl || 'http://localhost:11434',
@@ -523,8 +530,8 @@ class SettingsService {
     // Merge LLM Settings
     const updatedLlm = {
       defaultProvider: incoming.llm?.defaultProvider || current.llm.defaultProvider || 'ollama',
-      defaultModel: incoming.llm?.defaultModel || current.llm.defaultModel || 'hermes3:8b',
-      availableModels: incoming.llm?.availableModels || current.llm.availableModels || ['hermes3:8b', 'mistral:latest'],
+      defaultModel: incoming.llm?.defaultModel || current.llm.defaultModel || DEFAULT_CHAT_MODEL,
+      availableModels: incoming.llm?.availableModels || current.llm.availableModels || [...DEFAULT_AVAILABLE_CHAT_MODELS],
       temperature: incoming.llm?.temperature ?? current.llm.temperature ?? 0.2,
       ollama: {
         baseUrl: incoming.llm?.ollama?.baseUrl || current.llm.ollama?.baseUrl || 'http://localhost:11434',

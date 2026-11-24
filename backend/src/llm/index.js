@@ -4,6 +4,7 @@ import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { getLlmConfig } from '../config.js';
 import { bgeEmbeddingsClient } from './bgeEmbeddingsClient.js';
 import { info, warn } from '../utils/logger.js';
+import { DEFAULT_CHAT_MODEL } from './models.js';
 
 let chatModel = null;
 let initialized = false;
@@ -109,7 +110,7 @@ export async function initializeLLM(force = false) {
 
   const llmConfig = getLlmConfig();
   const providerKey = llmConfig.defaultProvider || 'ollama';
-  const modelName = llmConfig.defaultModel || 'hermes3:8b';
+  const modelName = llmConfig.defaultModel || DEFAULT_CHAT_MODEL;
 
   info({ module: 'llm', action: 'initializeLLM', provider: providerKey, model: modelName }, `Initializing LLM client (Provider: ${providerKey}, Model: ${modelName})`);
 
@@ -121,7 +122,7 @@ export async function initializeLLM(force = false) {
   } catch (err) {
     warn({ module: 'llm', action: 'initializeLLMFallback', provider: providerKey, err }, `Primary LLM provider "${providerKey}" failed. Falling back to local Ollama`);
     chatModel = createChatModelForProvider('ollama', {
-      model: modelName || 'hermes3:8b',
+      model: modelName || DEFAULT_CHAT_MODEL,
       temperature: 0.1,
     });
   }
@@ -157,7 +158,7 @@ export function getChatModel(options = null) {
     const llmConfig = getLlmConfig();
     const providerKey = llmConfig.defaultProvider || 'ollama';
     chatModel = createChatModelForProvider(providerKey, {
-      model: llmConfig.defaultModel || 'hermes3:8b',
+      model: llmConfig.defaultModel || DEFAULT_CHAT_MODEL,
       temperature: 0.1,
     });
     initialized = true;

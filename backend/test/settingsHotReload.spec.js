@@ -2,13 +2,14 @@ import settingsService from '../src/services/settingsService.js';
 import { getChatModel, resetChatModel } from '../src/llm/index.js';
 import { config } from '../src/config.js';
 import databaseService from '../src/db/postgres.js';
+import { DEFAULT_CHAT_MODEL } from '../src/llm/models.js';
 
 describe('SettingsService & LLM Model Hot-Reload Contract', () => {
   let initialModel;
   let savedEnv;
 
   beforeAll(async () => {
-    initialModel = config.llm.defaultModel || 'hermes3:8b';
+    initialModel = config.llm.defaultModel || DEFAULT_CHAT_MODEL;
   });
 
   beforeEach(() => {
@@ -93,9 +94,9 @@ describe('SettingsService & LLM Model Hot-Reload Contract', () => {
     expect(config.llm.defaultModel).toBe('llama3.3:70b');
 
     await settingsService.resetToEnvDefaults();
-    expect(config.llm.defaultModel).toBe('hermes3:8b');
+    expect(config.llm.defaultModel).toBe(DEFAULT_CHAT_MODEL);
     const restoredLLM = getChatModel();
-    expect(restoredLLM.modelName || restoredLLM.model).toBe('hermes3:8b');
+    expect(restoredLLM.modelName || restoredLLM.model).toBe(DEFAULT_CHAT_MODEL);
   });
 
   it('should hot-reload GitHub, Jira, and Notion target configuration settings dynamically', async () => {
