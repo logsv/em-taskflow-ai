@@ -41,14 +41,14 @@ Goal: safe to run, honest output, correct configuration, new model.
 
 | # | Item | Status |
 |---|---|---|
-| 1.1 | `Result` and `Evidence` JSDoc typedefs + zod schemas (`backend/src/core/`) | ⬜ |
-| 1.2 | Error taxonomy (`INTEGRATION_UNAUTHORIZED`, `INTEGRATION_UNAVAILABLE`, `LLM_UNAVAILABLE`, `LLM_TIMEOUT`, `RETRIEVAL_EMPTY`, `VALIDATION`, `INTERNAL`) + one Express error middleware; no raw `err.message` to clients | ⬜ |
-| 1.3 | Tool harness returns `ok \| degraded \| failed` with provenance (`source`, `mode`, `asOf`, `url`); UI renders a source/freshness strip on every answer | ⬜ |
-| 1.4 | ESLint + Prettier; ban empty catch blocks and `.catch(() => {})`; `background(task, name)` helper with failure counter; ruff `S110`/`BLE001` for Python | ⬜ |
-| 1.5 | Fallback and tool-status metrics (OTel counters); `/api/v1/health/ready` with per-dependency status, including "model loaded" | ⬜ |
-| 1.6 | Node↔Python contract tests (pydantic JSON Schema checked against the Node client; zod validation of Python responses) | ⬜ |
-| 1.7 | LLM gateway (`llm/gateway.js`): per-task model routing (Ollama default), constrained JSON output via Ollama `format`, Qwen3 thinking toggle per task, concurrency limiter, model warm-up; cloud as an off-by-default plug-in | ⬜ |
-| 1.8 | One CI workflow with Postgres (pgvector) and Redis service containers; spec counts reported from the run, not echoed | ⬜ |
+| 1.1 | `Result` and `Evidence` JSDoc typedefs + zod schemas (`backend/src/core/`) | ✅ |
+| 1.2 | Error taxonomy (`INTEGRATION_UNAUTHORIZED`, `INTEGRATION_UNAVAILABLE`, `LLM_UNAVAILABLE`, `LLM_TIMEOUT`, `RETRIEVAL_EMPTY`, `VALIDATION`, `INTERNAL`) + one Express error middleware; no raw `err.message` to clients | ✅ |
+| 1.3 | Tool harness returns `ok \| degraded \| failed` with provenance (`source`, `mode`, `asOf`, `url`); UI renders a source/freshness strip on every answer | ✅ |
+| 1.4 | ESLint + Prettier; ban empty catch blocks and `.catch(() => {})`; `background(task, name)` helper with failure counter; ruff `S110`/`BLE001` for Python | ✅ |
+| 1.5 | Fallback and tool-status metrics (OTel counters); `/api/v1/health/ready` with per-dependency status, including "model loaded" | ✅ |
+| 1.6 | Node↔Python contract tests (pydantic JSON Schema checked against the Node client; zod validation of Python responses) | ✅ |
+| 1.7 | LLM gateway (`llm/gateway.js`): per-task model routing (Ollama default), constrained JSON output via Ollama `format`, Qwen3 thinking toggle per task, concurrency limiter, model warm-up; cloud as an off-by-default plug-in | ✅ |
+| 1.8 | One CI workflow with Postgres (pgvector) and Redis service containers; spec counts reported from the run, not echoed | ✅ |
 
 **Exit criteria.** Zero unannotated swallowed errors. Every degraded answer shows its source and age. Contract tests in CI.
 
@@ -109,4 +109,5 @@ Goal: safe to run, honest output, correct configuration, new model.
 | Date | Phase | Change |
 |---|---|---|
 | 2026-11-24 | — | Plan written |
+| 2026-11-24 | 1 | Phase 1 implemented: error taxonomy + error middleware (71 routes), 113 swallowed handlers made visible (+29 in Python), ESLint/ruff (found 4 latent ReferenceError bugs), provenance on every tool answer + UI strip, /health/ready + /metrics, Python response validation, LLM gateway (constrained JSON, repair turn, limiter, thinking toggle), one CI workflow with real Postgres/Redis, frontend Vitest. Backend 459 specs / 0 failures; Python 47 passed / 12 skipped; frontend 7 passed |
 | 2026-11-24 | 0 | Phase 0 implemented. Backend 430 specs / 0 failures (was 394 / 2), coverage now measured (52% lines, was reported 0%). Python service 47 passed / 12 skipped (live-judge tests need Ollama). Eval engine 4 passed. Frontend builds |
