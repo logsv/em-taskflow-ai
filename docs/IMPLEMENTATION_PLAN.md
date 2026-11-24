@@ -79,7 +79,7 @@ Goal: safe to run, honest output, correct configuration, new model.
 | 3.1 | Planner: embedding-similarity shortlist (3–5 capabilities) → `qwen3:8b-q8_0` with JSON schema, temperature 0, one repair turn on validation error, then fail loudly | ⬜ |
 | 3.2 | Entity resolution (engineer, repo, sprint, window) against the roster before execution; ask when ambiguous | ⬜ |
 | 3.3 | Knowledge capability returns `Evidence[]` (chunk IDs, page numbers, rerank scores); abstain below threshold τ; remove RAG/tool exclusivity; hybrid answers | ⬜ |
-| 3.4 | Verifier: numbers, entities and citations (`[E#]`/`[D#]`) checked against evidence; deterministic sections only when verification fails | ⬜ |
+| 3.4 | Verifier: numbers, entities and citations (`[E#]`/`[D#]`) checked against evidence; deterministic sections only when verification fails | 🟡 Figures: every number in an LLM-written answer (RAG answers, integration-supervisor answers) must appear in the retrieved chunks / tool outputs / question; otherwise the answer carries a visible "Unverified figures" note, `decision.verification.figures` lists them and `verifier_answers_total` counts it. Capability answers are deterministic (no LLM). Still to do: entities, citation markers |
 | 3.5 | Composer: templated numbers and tables; constrained narrative; streaming | ⬜ |
 | 3.6 | RAG: one embedding model (`nomic-embed-text`), one rerank, document versioning by content hash, structure-aware chunking with page numbers, retrieval-result cache keyed by corpus version | ⬜ |
 | 3.6b | Score the system's real answers: the default Ragas dataset contains hard-coded `answer` strings, so it never measured this system. Generate answers through the real pipeline before scoring | ⬜ |

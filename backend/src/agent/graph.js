@@ -558,6 +558,7 @@ export async function executeAgentQuery(query, options = {}) {
     return {
       response: responseText,
       toolsUsed,
+      toolOutputs: collectToolOutputs(messages),
       messageCount: messages.length,
       evidence: result.evidence || {},
     };
@@ -581,6 +582,14 @@ function extractMessageText(message) {
       .join("\n");
   }
   return String(message.content);
+}
+
+/** Text of every tool result in the run (evidence for the verifier). */
+function collectToolOutputs(messages) {
+  return (messages || [])
+    .filter((m) => m && (m._getType?.() === 'tool' || m.constructor?.name === 'ToolMessage' || m.tool_call_id))
+    .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '')))
+    .filter(Boolean);
 }
 
 function collectToolsUsed(messages) {

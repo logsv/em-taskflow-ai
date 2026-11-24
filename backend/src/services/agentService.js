@@ -8,6 +8,7 @@ import { getGithubMCPTools, getGoogleMCPTools, getJiraMCPTools, getNotionMCPTool
 import { buildEmResponse } from "../utils/responseFormatter.js";
 import { runCapabilityPipeline } from "../pipeline/capabilityPipeline.js";
 import { listCapabilities } from "../capabilities/registry.js";
+import { applyFigureCheck, evidenceTextsFromDocs } from "../pipeline/verifier.js";
 import { getTracerCallbacks, createEndToEndTrace, createSpan } from "../utils/tracer.js";
 import { info, warn, error } from "../utils/logger.js";
 import { hasKeyword } from "../utils/keywords.js";
@@ -292,7 +293,7 @@ export class LangGraphAgentService {
     decision.ragHit = ragHit;
     if (ragHit) {
       decision.selectedPath = "rag+llm";
-      return this.formatRagResult(ragResult);
+      return this.verifiedRagResult(query, ragResult, decision);
     }
     decision.selectedPath = "llm-only";
     decision.reasons.push("rag_only_mode_no_hits");
@@ -335,7 +336,7 @@ export class LangGraphAgentService {
         if (decision.ragHit) {
           decision.selectedPath = "rag+llm";
           info({ module: "agentService", action: "ragHit", sourceCount: ragResult.sources.length }, `RAG hit: returning ${ragResult.sources.length} document source(s)`);
-          return this.formatRagResult(ragResult);
+          return this.verifiedRagResult(query, ragResult, decision);
         }
       }
       if (ragResult?.error || !this.ragEnabled) {
@@ -379,7 +380,7 @@ export class LangGraphAgentService {
         decision.selectedPath = "integration-supervisor";
         this.updateUnwantedRagMetric(routingPlan, policy.invokedDomains);
         return {
-          answer: supervisorResult.response || "No response generated.",
+          answer: applyFigureCheck("integration", supervisorResult.response || "No response generated.", toArray(supervisorResult.toolOutputs), decision, { query }),
           sources: [],
         };
       }
@@ -397,7 +398,7 @@ export class LangGraphAgentService {
       if (decision.ragHit) {
         decision.selectedPath = "rag+llm";
         info({ module: "agentService", action: "ragHit", sourceCount: ragResult.sources.length }, `RAG hit: returning ${ragResult.sources.length} document source(s)`);
-        return this.formatRagResult(ragResult);
+        return this.verifiedRagResult(query, ragResult, decision);
       }
     }
 
@@ -861,6 +862,13 @@ export class LangGraphAgentService {
       recordHandledError('services.agentService.tryRag', err);
       return { answer: "", sources: [], error: code };
     }
+  }
+
+  /** RAG answer with every figure checked against the retrieved chunks. */
+  verifiedRagResult(query, ragResult, decision) {
+    const formatted = this.formatRagResult(ragResult);
+    formatted.answer = applyFigureCheck("rag", formatted.answer, evidenceTextsFromDocs(formatted.sources), decision, { query });
+    return formatted;
   }
 
   formatRagResult(ragResult) {
