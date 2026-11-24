@@ -8,6 +8,7 @@ import { getLlmConfig } from '../../config.js';
 import { resolveOllamaBaseUrl } from '../../llm/index.js';
 import { isSemanticCacheRedisConnected } from '../../cache/semanticCache.js';
 import { setGauge } from '../../core/metrics.js';
+import { swallow } from '../../core/safe.js';
 
 const TIMEOUT_MS = 2500;
 
@@ -24,7 +25,8 @@ async function timed(fn) {
 async function fetchJson(url) {
   const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json().catch(() => ({}));
+  // A 200 with a non-JSON body still means the dependency answered.
+  return res.json().catch(swallow('health.readiness.parseBody', {}));
 }
 
 export async function checkDatabase(db = databaseService) {
