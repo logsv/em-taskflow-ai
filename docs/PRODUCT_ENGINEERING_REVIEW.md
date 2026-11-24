@@ -119,7 +119,7 @@ The critic stops being a domain the user routes to. It becomes a **verification 
 | Fabricated-entity rate (person, ticket or number not in the evidence) | 0 in evals; < 0.5% in sampled production |
 | Weekly active EMs opening the Action Hub | Leading indicator of the proactive value |
 | Action items resolved vs dismissed | Measures audit precision |
-| p95 answer latency | < 8s for tool answers, < 12s for RAG on local hardware **(inferred budget)** |
+| Latency on the Mac mini M4 (local 8B) | Time to first streamed token < 3 s; p95 full answer < 15 s for tool answers and < 20 s for RAG/hybrid **(inferred budget; see §C.5)** |
 
 ---
 
@@ -512,7 +512,7 @@ export const EvidenceSchema = z.object({ /* same shape, validated at runtime */ 
 | 9 | One embedding model (nomic); remove the e5 semantic-cache embedder | 1 |
 | 10 | Update `CLAUDE.md`/`AGENTS.md`/`GEMINI.md` architecture rules to match these decisions | 1 |
 
-## C.5 Local model choice for the target hardware (Mac mini, 16 GB unified memory, 256 GB disk)
+## C.5 Local model choice for the target hardware (Mac mini M4, 16 GB unified memory, 256 GB disk)
 
 **Memory budget (inferred, verify with Activity Monitor).**
 
@@ -523,6 +523,20 @@ export const EvidenceSchema = z.object({ /* same shape, validated at runtime */ 
 | **Left for Ollama** (model weights + KV cache) | **≈ 6–8 GB** |
 
 That rules out ~14 GB models such as `gpt-oss:20b` and 20B+ models while the stack is running. An **8B model at Q4 (~5 GB) plus `nomic-embed-text`** is the realistic ceiling.
+
+**Expected speed on the base M4 (≈120 GB/s memory bandwidth) (inferred estimates; measure with `ollama run <model> --verbose`).**
+
+| Model (Q4) | Generation | Prompt processing | A 250-token answer |
+|---|---|---|---|
+| 8B (`qwen3:8b`, `hermes3:8b`) | ~18–25 tokens/s | a few hundred tokens/s | ~10–14 s plus prefill |
+| 4B (`qwen3:4b`) | ~35–45 tokens/s | roughly double the 8B | ~6–8 s plus prefill |
+
+Generation speed is bounded by memory bandwidth ÷ model size, so an 8B model can't get much faster on this machine. Latency has to come from **fewer and shorter generations**:
+- Route most queries with the embedding classifier (no LLM call). Use `qwen3:4b` for `plan`/`verify` when a model call is needed, and `qwen3:8b` only for `compose` and `rag_answer`. Both fit together (~2.5 GB + ~5 GB) only if the rest of the stack stays lean, so benchmark loading both against `OLLAMA_MAX_LOADED_MODELS=3` vs swapping.
+- Cap narrative length (e.g. `num_predict` 300). Tables and numbers come from templates at zero LLM cost (B.6).
+- Keep prompts small. A 6k-token prompt costs many seconds of prefill before the first token. Keep the system prompt fixed, at the start of the prompt, so Ollama can reuse its cached prefix between requests **(inferred)**.
+- **Stream** `compose` output to the UI (A.5), so the first words appear in ~1–3 s even when the full answer takes 10+ s.
+- Ollama's MLX backend for Apple Silicon is in preview (see Ollama's blog). Benchmark it once it's stable; it may improve throughput, but it is unverified here.
 
 **Recommendation: switch the default from `hermes3:8b` to `qwen3:8b`, after it wins the nightly eval.**
 - Qwen3 has tool calling in its chat template and is Ollama's own example model for tool calls. It is the most commonly recommended 8B-class model for tool use and JSON output on 16 GB Macs **(per third-party guides; verify on our golden set)**.
@@ -559,5 +573,4 @@ That rules out ~14 GB models such as `gpt-oss:20b` and 20B+ models while the sta
 
 ## Remaining open questions
 
-1. **Which Mac mini chip** (M2 or M4)? This affects tokens per second, not which models fit. See §C.5.
-2. **If cloud is ever enabled:** which provider, and may people data be sent (never, pseudonymised, or raw)?
+1. **If cloud is ever enabled:** which provider, and may people data be sent (never, pseudonymised, or raw)?
