@@ -10,6 +10,11 @@ import os
 # Add service root directory to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+# deepeval sends usage telemetry to its cloud Sentry project on import (not allowed: local-only
+# rule), and that init crashes with sentry-sdk 3.x ("Unknown option 'profiles_sample_rate'").
+# Must be set before any test module imports deepeval.
+os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
+
 
 @pytest.fixture(autouse=True, scope="session")
 def override_test_database():

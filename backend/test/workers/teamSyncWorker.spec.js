@@ -39,6 +39,8 @@ describe('TeamSyncWorker (Node.js Background Parallel Worker)', () => {
   });
 
   it('should execute parallel sync and update lastRunStatus', async () => {
+    // Provide a primary admin explicitly so the result does not depend on the machine's env/settings.
+    process.env.PRIMARY_ADMIN_EMAIL = 'team.lead@teamsync-spec.dev';
     const res = await teamSyncWorker.executeParallelSync();
     expect(res.status).toBe('SUCCESS');
     expect(res.syncedCount).toBeGreaterThanOrEqual(1);

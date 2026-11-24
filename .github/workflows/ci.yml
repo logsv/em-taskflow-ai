@@ -1,91 +1,139 @@
-name: Main CI Orchestrator
+name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  check-changes:
-    name: Detect Changed Paths
+  changes:
+    name: Detect changed paths
     runs-on: ubuntu-latest
     outputs:
-      backend: ${{ steps.changes.outputs.backend }}
-      python_ai: ${{ steps.changes.outputs.python_ai }}
+      backend: ${{ steps.filter.outputs.backend }}
+      python_ai: ${{ steps.filter.outputs.python_ai }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
-        id: changes
+        id: filter
         with:
           filters: |
             backend:
               - 'backend/**'
+              - 'proto/**'
+              - '.github/workflows/ci.yml'
             python_ai:
               - 'services/python-ai-service/**'
+              - 'proto/**'
+              - '.github/workflows/ci.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/ci.yml'
+            docs:
+              - 'docs/**'
 
-  backend-ci:
-    needs: check-changes
-    if: needs.check-changes.outputs.backend == 'true' || needs.check-changes.outputs.python_ai == 'true'
+  backend-test:
+    name: Backend unit tests
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: taskflow
+          POSTGRES_PASSWORD: taskflow
+          POSTGRES_DB: taskflow_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U taskflow"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     defaults:
       run:
-        working-directory: ./backend
+        working-directory: backend
     env:
       CI: true
       NODE_ENV: test
       CI_MODE: true
       OLLAMA_AVAILABLE: false
-      CHROMA_AVAILABLE: false
-      GOOGLE_OAUTH_AVAILABLE: false
-      MCP_CALENDAR_AVAILABLE: false
-      MCP_NOTION_AVAILABLE: false
-      MCP_JIRA_AVAILABLE: false
+      # onnxruntime-node (via @huggingface/transformers) otherwise tries to download a CUDA build and 404s.
+      npm_config_onnxruntime_node_install_cuda: skip
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
+          cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci --legacy-peer-deps
       - run: npm test
-      - name: Cache Ollama Models
+
+  backend-eval:
+    name: Backend evaluation gates (Ollama)
+    needs: [changes, backend-test]
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: taskflow
+          POSTGRES_PASSWORD: taskflow
+          POSTGRES_DB: taskflow_eval
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U taskflow"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      CI: true
+      OLLAMA_AVAILABLE: true
+      npm_config_onnxruntime_node_install_cuda: skip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci --legacy-peer-deps
+      - name: Cache Ollama models
         uses: actions/cache@v4
         with:
           path: ~/.ollama
           key: ollama-hermes3-8b-v1
-          restore-keys: |
-            ollama-hermes3-8b-
-      - name: Install & Start Ollama
+      - name: Install and start Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve &
-          echo "Waiting for Ollama daemon to initialize..."
-          while ! curl -s http://localhost:11434/api/tags > /dev/null; do
-            sleep 1
-          done
-          echo "✅ Ollama is ready!"
+          timeout 120 bash -c 'until curl -sf http://localhost:11434/api/tags > /dev/null; do sleep 1; done'
           ollama pull hermes3:8b
-      - name: Run Evaluation Suite Gate
-        run: npm run evaluate
-        env:
-          OLLAMA_AVAILABLE: true
-          CI_MODE: false
-      - name: Display CI Summary
-        if: always()
-        run: |
-          echo "## 🚀 Pull Request CI & Evaluation Report" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **All 155 Node.js Unit Specs Passed**" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **All Evaluation Success Gates Passed (Domain Accuracy: 100%, Tool Grounded: 100%)**" >> $GITHUB_STEP_SUMMARY
+      - run: npm run evaluate
 
-  python-ai-ci:
-    needs: check-changes
-    if: needs.check-changes.outputs.python_ai == 'true' || needs.check-changes.outputs.backend == 'true'
+  python-ai-test:
+    name: Python AI service tests
+    needs: changes
+    if: needs.changes.outputs.python_ai == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./services/python-ai-service
+        working-directory: services/python-ai-service
+    env:
+      # deepeval phones home to its cloud Sentry on import; also crashes with sentry-sdk 3.x.
+      DEEPEVAL_TELEMETRY_OPT_OUT: 'YES'
+      OLLAMA_BASE_URL: http://localhost:11434
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -93,31 +141,50 @@ jobs:
           python-version: '3.12'
       - name: Install uv
         run: curl -fsSL https://astral.sh/uv/install.sh | sh
-      - name: Install Python dependencies
-        run: $HOME/.local/bin/uv sync
-      - name: Cache Ollama Models
+      - run: $HOME/.local/bin/uv sync
+      - name: Cache Ollama models
         uses: actions/cache@v4
         with:
           path: ~/.ollama
           key: ollama-hermes3-8b-v1
-          restore-keys: |
-            ollama-hermes3-8b-
-      - name: Install & Start Ollama
+      - name: Install and start Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve &
-          echo "Waiting for Ollama daemon to initialize..."
-          while ! curl -s http://localhost:11434/api/tags > /dev/null; do
-            sleep 1
-          done
-          echo "✅ Ollama is ready!"
+          timeout 120 bash -c 'until curl -sf http://localhost:11434/api/tags > /dev/null; do sleep 1; done'
           ollama pull hermes3:8b
-      - name: Run Python Pytest Specs (32 Specs)
-        run: $HOME/.local/bin/uv run pytest
-        env:
-          OLLAMA_BASE_URL: http://localhost:11434
-      - name: Display Python AI Test Summary
-        if: always()
-        run: |
-          echo "### 🐍 Python AI Service Test Suite Summary" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **32 Python AI Pytest specs passed with 0 failures** (including DeepEval agent trajectories, LLM-as-a-Judge Arena, Ragas metrics, and Temporal workflows)." >> $GITHUB_STEP_SUMMARY
+      - run: $HOME/.local/bin/uv run pytest
+
+  frontend-build:
+    name: Frontend build
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --legacy-peer-deps
+      - run: npm run build
+
+  docs-build:
+    name: Docs build
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npm run docs:build

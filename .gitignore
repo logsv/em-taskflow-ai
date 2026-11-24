@@ -201,6 +201,8 @@ mcp-servers/
 # API keys and tokens (additional safety)
 *api-key*
 *token*
+# Design tokens are source code, not secrets (frontend/src/index.jsx imports this file).
+!frontend/src/components/ui/tokens.css
 *secret*
 *credential*
 
