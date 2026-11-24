@@ -157,6 +157,29 @@ describe('PostgreSQL migrations and transactions (integration)', () => {
     expect(rows[0].value).toEqual({ a: 1 });
   });
 
+  it('runs the action item lifecycle: owner, due date, dismiss with reason, snooze and wake', async () => {
+    useDb();
+    await db.recordAuditRun({ triggeredBy: 'TEST' }, [
+      { id: 'act_life_1', title: 'Stalled PR', category: 'DELIVERY', severity: 'WARNING' },
+      { id: 'act_life_2', title: 'Overdue 1-on-1', category: 'PEOPLE', severity: 'WARNING' },
+    ]);
+    const owned = await db.updateActionItem('act_life_1', { assigneeName: 'Priya', dueDate: '2026-12-05' });
+    expect(owned).toEqual(jasmine.objectContaining({ assigneeName: 'Priya', dueDate: '2026-12-05', status: 'PENDING' }));
+
+    const dismissed = await db.updateActionItem('act_life_1', { status: 'DISMISSED', dismissedReason: 'Owned by platform team' });
+    expect(dismissed.dismissedReason).toBe('Owned by platform team');
+
+    // A re-run of the audit must not reopen a dismissed item.
+    await db.recordAuditRun({ triggeredBy: 'TEST' }, [{ id: 'act_life_1', title: 'Stalled PR', category: 'DELIVERY', severity: 'WARNING' }]);
+    expect((await db.getActionItemsByIds(['act_life_1']))[0].status).toBe('DISMISSED');
+
+    await db.updateActionItem('act_life_2', { status: 'SNOOZED', snoozedUntil: new Date(Date.now() + 60_000) });
+    expect(await db.wakeSnoozedActionItems()).toBe(0);
+    await pool.query("UPDATE em_action_items SET snoozed_until = NOW() - INTERVAL '1 minute' WHERE id = 'act_life_2'");
+    const listed = await db.listActionItems({ status: 'PENDING' });
+    expect(listed.items ? listed.items.map((i) => i.id) : listed.map((i) => i.id)).toContain('act_life_2');
+  });
+
   it('batch-upserts GitHub issues and reports rows actually written', async () => {
     useDb();
     const issues = Array.from({ length: 50 }, (_, i) => ({ number: i + 1, repo: 'o/r', title: `Issue ${i + 1}`, labels: ['bug'] }));

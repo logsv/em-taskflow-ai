@@ -355,6 +355,7 @@ export class AuditRepository {
   async listActionItems({ status, category, severity, assignee, limit = 50, offset = 0 } = {}) {
     try {
       await this.ensureInitialized();
+      if (this.pool) await this.wakeSnoozedActionItems();
       const whereClauses = [];
       const values = [];
       let valIdx = 1;
@@ -453,6 +454,53 @@ export class AuditRepository {
     } catch (_e) { recordHandledError('db.postgres.getActionItemById', _e); }
 
     return this.inMemoryActionItems.find((i) => i.id === id) || null;
+  }
+
+  /**
+   * Apply a validated lifecycle patch (see domain/actionItems.js). Returns the item or null.
+   * Completing sets completed_at/by; dismissing stores the reason; snoozing stores the wake time;
+   * any other status clears the snooze.
+   */
+  async updateActionItem(id, patch) {
+    await this.ensureInitialized();
+    const sets = [];
+    const values = [];
+    const add = (column, v) => {
+      values.push(v);
+      sets.push(column + ' = $' + values.length);
+    };
+    if (patch.status) {
+      add('status', patch.status);
+      add('completed_at', patch.status === 'COMPLETED' ? new Date() : null);
+      add('completed_by', patch.status === 'COMPLETED' ? (patch.completedBy || 'Engineering Manager') : null);
+      add('dismissed_reason', patch.status === 'DISMISSED' ? patch.dismissedReason : null);
+      add('snoozed_until', patch.status === 'SNOOZED' ? patch.snoozedUntil : null);
+    }
+    if (patch.resolutionNotes !== undefined) add('resolution_notes', patch.resolutionNotes);
+    if (patch.dueDate !== undefined) add('due_date', patch.dueDate);
+    if (patch.assigneeName !== undefined) add('assignee_name', patch.assigneeName);
+    if (patch.assigneeEmail !== undefined) add('assignee_email', patch.assigneeEmail);
+    values.push(id);
+    const sql = 'UPDATE em_action_items SET ' + sets.join(', ') + ', updated_at = NOW() WHERE id = $' + values.length + ' RETURNING *';
+    const res = await this.pool.query(sql, values);
+    return res.rows[0] ? mapActionItemRow(res.rows[0]) : null;
+  }
+
+  /** Return snoozed items whose time has come to PENDING. */
+  async wakeSnoozedActionItems() {
+    await this.ensureInitialized();
+    const res = await this.pool.query(
+      "UPDATE em_action_items SET status = 'PENDING', snoozed_until = NULL, updated_at = NOW() WHERE status = 'SNOOZED' AND snoozed_until <= NOW()",
+    );
+    return res.rowCount || 0;
+  }
+
+  /** Current state of the given items (used by the audit to respect dismiss/snooze). */
+  async getActionItemsByIds(ids = []) {
+    if (!Array.isArray(ids) || ids.length === 0) return [];
+    await this.ensureInitialized();
+    const res = await this.pool.query('SELECT * FROM em_action_items WHERE id = ANY($1::text[])', [ids]);
+    return res.rows.map(mapActionItemRow);
   }
 
   async updateActionItemStatus(id, { status = 'COMPLETED', resolutionNotes = '', completedBy = 'EM' } = {}) {

@@ -7,6 +7,7 @@ import {
 } from '../temporal/client.js';
 import { info, warn } from '../utils/logger.js';
 import { sendError } from '../middleware/errorHandler.js';
+import { validateActionItemUpdate } from '../domain/actionItems.js';
 
 const router = express.Router();
 
@@ -140,12 +141,10 @@ router.get('/sop/compliance', async (_req, res) => {
 router.patch('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, resolutionNotes, completedBy } = req.body;
-    const updated = await databaseService.updateActionItemStatus(id, {
-      status,
-      resolutionNotes,
-      completedBy: completedBy || 'Engineering Manager',
-    });
+    // Lifecycle: status, dueDate, owner (assigneeName/Email), snoozedUntil, dismissedReason.
+    const patch = validateActionItemUpdate(req.body || {});
+    const updated = await databaseService.updateActionItem(id, patch);
+    const status = patch.status;
 
     if (!updated) {
       return res.status(404).json({ success: false, error: 'Action item not found' });

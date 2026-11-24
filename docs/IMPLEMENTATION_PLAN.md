@@ -96,7 +96,7 @@ Goal: safe to run, honest output, correct configuration, new model.
 | # | Item | Status |
 |---|---|---|
 | 4.1 | Weekly EM brief built from the audit | ⬜ |
-| 4.2 | Action item lifecycle: owner, due date, snooze, dismiss-with-reason feeding audit scoring | ⬜ |
+| 4.2 | Action item lifecycle: owner, due date, snooze, dismiss-with-reason feeding audit scoring | ✅ backend: migration 004 (`due_date`, `snoozed_until`, `dismissed_reason`), `domain/actionItems.js` rules (dismiss needs a reason, snooze needs a future time, strict fields), `PATCH /api/actions/:id` validated (400 `VALIDATION`), snoozed items wake to PENDING, dismissed/snoozed items no longer cost health-score points and the audit summary says how many were set aside. UI controls for snooze/due date still to add |
 | 4.3 | Health score trend view | ⬜ |
 | 4.4 | Setup wizard and connection health page | ⬜ |
 | 4.5 | Notion/Confluence knowledge sync into the document index | ⬜ |
@@ -109,6 +109,7 @@ Goal: safe to run, honest output, correct configuration, new model.
 | Date | Phase | Change |
 |---|---|---|
 | 2026-11-24 | — | Plan written |
+| 2026-11-24 | 3–4 | 3.6b Ragas scores real system answers; 4.2 action item lifecycle; CLAUDE.md brought up to date. Backend 498 / 0; Python 47 / 12 skipped |
 | 2026-11-24 | 3 | 3.4 figure verifier for LLM-written answers; 3.2 engineer resolution without substring matches, asks when ambiguous. Backend 492 / 0 |
 | 2026-11-24 | 3 | 3.8 HITL: closed two bypasses in the Slack post tool (LLM-settable approval flag; fail-open when Temporal was down); scheduled audit Slack posts opt-in. Backend 483 / 0 |
 | 2026-11-24 | 2 | 2.1–2.3 capability registry (5 capabilities) + deterministic pipeline; supervisor limited to integration-only plans; RAG outage distinguished from zero hits; `postgres.js` split. Backend 482 / 0; Python 44 passed / 12 skipped |

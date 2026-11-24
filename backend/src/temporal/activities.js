@@ -9,6 +9,7 @@ import settingsService from '../services/settingsService.js';
 import { info, warn } from '../utils/logger.js';
 import { swallow, recordHandledError } from '../core/safe.js';
 import { buildDoraResponse } from '../domain/dora.js';
+import { isSuppressed } from '../domain/actionItems.js';
 
 /**
  * Activity 1: Harvest GitHub contributors & commit authors
@@ -793,6 +794,14 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
     }
   }
 
+  // Items the owner dismissed (with a reason) or snoozed do not count against the score.
+  // Each finding above cost 5 points; give those back for suppressed items.
+  const existing = databaseService.getActionItemsByIds
+    ? await databaseService.getActionItemsByIds(actionItems.map((i) => i.id)).catch(swallow('temporal.activities.suppressedActionItems', []))
+    : [];
+  const suppressedIds = new Set(existing.filter((i) => isSuppressed(i)).map((i) => i.id));
+  score += 5 * suppressedIds.size;
+
   // Clamp health score between 20 and 100
   const finalHealthScore = Math.max(20, Math.min(100, score));
 
@@ -805,6 +814,7 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
     `- **Active Sprint Velocity:** \`${shown(sprintOkr.completedPoints)}/${shown(sprintOkr.totalPoints)} SP\` (${shown(sprintOkr.sprintPacingPct, '%')})`,
     `- **SOP Compliance Score:** \`${sop.complianceScore === null || sop.complianceScore === undefined ? "not checked" : `${sop.complianceScore}%`}\``,
     `- **Pending Action Items:** \`${actionItems.length}\` items require engineering manager review.`,
+    ...(suppressedIds.size ? [`- **Set aside by you:** \`${suppressedIds.size}\` dismissed or snoozed item(s) are not counted in the score.`] : []),
   ].join('\n');
 
   // Persist the audit run and its action items in one transaction.

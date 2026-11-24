@@ -152,13 +152,23 @@ describe('EM Action Hub & Audit REST API Routes', () => {
       expect(res.body.item.completedBy).toBe('Sarah Chen (EM)');
     });
 
-    it('should update status to DISMISSED', async () => {
+    it('should update status to DISMISSED with a reason', async () => {
+      const res = await request
+        .patch('/api/actions/act_test_1on1_sarah')
+        .send({ status: 'DISMISSED', dismissedReason: 'Covered in skip-level this week' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.item.status).toBe('DISMISSED');
+      expect(res.body.item.dismissedReason).toBe('Covered in skip-level this week');
+    });
+
+    it('should refuse to dismiss without a reason (400 VALIDATION)', async () => {
       const res = await request
         .patch('/api/actions/act_test_1on1_sarah')
         .send({ status: 'DISMISSED' });
 
-      expect(res.status).toBe(200);
-      expect(res.body.item.status).toBe('DISMISSED');
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('VALIDATION');
     });
 
     it('should return 404 when action item is missing', async () => {

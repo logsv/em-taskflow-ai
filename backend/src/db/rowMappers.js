@@ -33,6 +33,9 @@ export function mapActionItemRow(row) {
     resolutionNotes: row.resolution_notes,
     completedAt: row.completed_at,
     completedBy: row.completed_by,
+    dueDate: row.due_date ? new Date(row.due_date).toISOString().slice(0, 10) : null,
+    snoozedUntil: row.snoozed_until ?? null,
+    dismissedReason: row.dismissed_reason ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
