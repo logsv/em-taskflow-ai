@@ -653,28 +653,38 @@ export async function harvestSprintAndOkrActivity(params = {}) {
  */
 export async function harvestSopAndGovernanceActivity(params = {}) {
   try {
+    // Only rules that can be checked from harvested data are scored. The rest are reported as
+    // NOT_CHECKED instead of being marked PASS without evidence.
+    const stalled = Number.isFinite(Number(params.stalledPrsCount)) ? Number(params.stalledPrsCount) : null;
     const checks = [
-      { id: 'ADR-008', title: 'Database Per-Service Isolation', status: 'PASS', details: 'All 4 services isolated (taskflow_backend, taskflow_ai, temporal, langfuse_db)' },
-      { id: 'SOP-01', title: 'PR Code Review Turnaround SLA (<24h)', status: params.stalledPrsCount > 0 ? 'WARN' : 'PASS', details: params.stalledPrsCount > 0 ? `${params.stalledPrsCount} stalled PR(s) exceeding 24h SLA` : 'All open PRs within review SLA' },
-      { id: 'SOP-04', title: 'Zero Cloud Key & Secret Masking', status: 'PASS', details: '100% Ollama local inference; secrets masked in API & UI' },
-      { id: 'SOP-09', title: 'Zero-Downtime Telemetry Non-Blocking', status: 'PASS', details: 'Langfuse tracing operates in async background' },
+      {
+        id: 'BASELINE-REVIEW-SLA',
+        title: 'PR review turnaround SLA (<24h)',
+        status: stalled === null ? 'NOT_CHECKED' : stalled > 0 ? 'WARN' : 'PASS',
+        details: stalled === null ? 'No pull request data harvested' : stalled > 0 ? `${stalled} stalled PR(s) exceeding the 24h SLA` : 'All open PRs within the review SLA',
+      },
+      { id: 'BASELINE-DB-ISOLATION', title: 'Database per-service isolation', status: 'NOT_CHECKED', details: 'Not automatically verifiable from harvested data' },
+      { id: 'BASELINE-SECURITY', title: 'Secret masking policy', status: 'NOT_CHECKED', details: 'Not automatically verifiable from harvested data' },
+      { id: 'BASELINE-OBSERVABILITY', title: 'Non-blocking telemetry', status: 'NOT_CHECKED', details: 'Not automatically verifiable from harvested data' },
     ];
 
-    const passCount = checks.filter((c) => c.status === 'PASS').length;
-    const complianceScore = Math.round((passCount / checks.length) * 100);
+    const scored = checks.filter((c) => c.status !== 'NOT_CHECKED');
+    const passCount = scored.filter((c) => c.status === 'PASS').length;
+    const complianceScore = scored.length > 0 ? Math.round((passCount / scored.length) * 100) : null;
 
     return {
       source: 'sop_and_governance',
       complianceScore,
       checks,
-      activeViolations: checks.filter((c) => c.status !== 'PASS'),
+      activeViolations: checks.filter((c) => c.status === 'WARN' || c.status === 'FAIL'),
     };
   } catch (err) {
     return {
       source: 'sop_and_governance',
-      complianceScore: 100,
+      complianceScore: null,
       checks: [],
       activeViolations: [],
+      error: err.message,
     };
   }
 }
@@ -786,7 +796,7 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
     `- **Overall Health Score:** \`${finalHealthScore}/100\``,
     `- **DORA Metrics Tier:** \`${delivery.doraSummary?.tier || 'Elite'}\` (Deploy: ${delivery.doraSummary?.deploymentFrequency || 2.4}/d, MTTR: ${delivery.doraSummary?.mttrHours || 0.8}h)`,
     `- **Active Sprint Velocity:** \`${sprintOkr.completedPoints || 38}/${sprintOkr.totalPoints || 48} SP\` (${sprintOkr.sprintPacingPct || 79}%)`,
-    `- **SOP Compliance Score:** \`${sop.complianceScore || 100}%\``,
+    `- **SOP Compliance Score:** \`${sop.complianceScore === null || sop.complianceScore === undefined ? "not checked" : `${sop.complianceScore}%`}\``,
     `- **Pending Action Items:** \`${actionItems.length}\` items require engineering manager review.`,
   ].join('\n');
 
@@ -814,7 +824,7 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
       wipViolations: sprintOkr.wipViolations || 0,
     },
     sopSummary: {
-      complianceScore: sop.complianceScore || 100,
+      complianceScore: sop.complianceScore ?? null,
       activeViolationsCount: sop.activeViolations?.length || 0,
     },
     slackStatus: { status: 'PENDING' },

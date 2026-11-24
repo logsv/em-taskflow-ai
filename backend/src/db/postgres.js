@@ -3,6 +3,14 @@ import { getDatabaseConfig } from '../config.js';
 import pythonAIServiceClient from '../grpc/client.js';
 import { info, warn, error } from '../utils/logger.js';
 
+export const SEEDED_PLACEHOLDER_KEY_RESULTS = [
+  'KR1: Maintain >99.9% API uptime across core gateway services',
+  'KR2: Reduce P95 API response latency to <150ms under peak load',
+  'KR3: Achieve >=85% unit and integration test coverage across all microservices',
+  'KR4: Decrease PR code review turnaround time to <12 hours',
+  'KR5: Complete 100% of bi-weekly 1-on-1 career progression check-ins',
+];
+
 class DatabaseService {
   constructor() {
     this.pool = null;
@@ -52,6 +60,7 @@ class DatabaseService {
 
       await this.pool.query('SELECT 1');
       await this.createTables();
+      await this.purgeSeededPlaceholderOkrs().catch((err) => warn('Placeholder OKR cleanup failed', { err: err.message }));
       this.initialized = true;
       this.initializing = null;
     })().catch((error) => {
@@ -2414,6 +2423,23 @@ class DatabaseService {
     this.pool = null;
     this.initialized = false;
     this.initializing = null;
+  }
+
+  /**
+   * Earlier versions of the OKR agent inserted five invented key results into okr_tracker when
+   * the table was empty. Remove exactly those rows (matched on their full key_result text) so
+   * they can no longer be mistaken for real OKRs.
+   */
+  async purgeSeededPlaceholderOkrs() {
+    if (!this.pool) return 0;
+    const res = await this.pool.query(
+      'DELETE FROM okr_tracker WHERE key_result = ANY($1::text[])',
+      [SEEDED_PLACEHOLDER_KEY_RESULTS],
+    );
+    if (res.rowCount > 0) {
+      warn('Removed placeholder OKR rows that were seeded by an earlier version', { removed: res.rowCount });
+    }
+    return res.rowCount || 0;
   }
 
   async ensurePool() {

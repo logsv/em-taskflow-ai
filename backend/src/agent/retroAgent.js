@@ -15,8 +15,8 @@ export const sprintRetroTool = createDeterministicToolHarness({
     sources: z.array(z.string()).default(['default', 'notion', 'jira', 'github', 'slack']),
     mode: z.enum(['ANALYZE', 'LIST_RAW', 'DRILL_DOWN', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
     target: z.enum(['ALL', 'ACTION_ITEMS', 'PATTERNS', 'FRICTION_POINTS', 'WINS']).default('ALL'),
-    sprint_id: z.string().default('sprint_42'),
-    sprint_name: z.string().default('Sprint 42'),
+    sprint_id: z.string().optional(),
+    sprint_name: z.string().optional(),
     retro_notes: z.string().optional().describe('Raw retro feedback notes, cards, or team chat transcript'),
     post_to_slack: z.boolean().default(false).describe('Whether to post the generated action plan directly to Slack channel'),
     slack_channel: z.string().optional().describe('Target Slack channel name or ID (default: #engineering-retro)'),
@@ -57,7 +57,7 @@ export const sprintRetroTool = createDeterministicToolHarness({
             return {
               retro_board_found: true,
               board_title: pages[0].title || 'Sprint Retrospective Board',
-              board_url: pages[0].url || (configuredPageId ? `https://notion.so/${configuredPageId}` : 'https://notion.so/retro'),
+              board_url: pages[0].url || null,
               source: 'mcp_notion',
               synced_at: new Date().toISOString(),
             };
@@ -72,14 +72,15 @@ export const sprintRetroTool = createDeterministicToolHarness({
       try {
         const jql = 'issuetype in (Bug, Incident) AND status in (Closed, Resolved, "In Progress") ORDER BY created DESC';
         const res = await safeExecuteMCPTool('jira_search', { jql });
+        if (!res) return null;
         const issues = Array.isArray(res) ? res : (Array.isArray(res?.issues) ? res.issues : []);
 
         return {
           total_incidents_reported: issues.length,
           recent_incidents: issues.slice(0, 3).map((iss) => ({
             key: iss.key,
-            summary: iss.summary || iss.fields?.summary || 'Production issue',
-            status: iss.status || iss.fields?.status?.name || 'Resolved',
+            summary: iss.summary || iss.fields?.summary || '(no summary)',
+            status: iss.status || iss.fields?.status?.name || 'unknown',
           })),
           source: 'mcp_jira',
           synced_at: new Date().toISOString(),
@@ -93,9 +94,12 @@ export const sprintRetroTool = createDeterministicToolHarness({
       try {
         const res = await safeExecuteMCPTool('get_dora_events', { window_days: 14 });
 
+        const turnaround = Number(res?.pr_turnaround_hours ?? res?.review_wait_time_hours);
+        const merged = Number(res?.total_prs_merged ?? res?.pull_requests_analyzed);
+        if (!Number.isFinite(turnaround) && !Number.isFinite(merged)) return null;
         return {
-          pr_turnaround_hours: res?.pr_turnaround_hours || 14.5,
-          total_prs_merged: res?.total_prs_merged || 18,
+          pr_turnaround_hours: Number.isFinite(turnaround) && turnaround > 0 ? turnaround : null,
+          total_prs_merged: Number.isFinite(merged) ? merged : null,
           source: 'mcp_github',
           synced_at: new Date().toISOString(),
         };
@@ -110,8 +114,8 @@ export const sprintRetroTool = createDeterministicToolHarness({
       const pastRetros = analytics.slice(0, inputArgs.include_past_sprints_count || 3);
 
       return {
-        sprint_id: inputArgs.sprint_id || 'sprint_42',
-        sprint_name: inputArgs.sprint_name || 'Sprint 42',
+        sprint_id: inputArgs.sprint_id || null,
+        sprint_name: inputArgs.sprint_name || null,
         team_members: members.map((m) => m.displayName),
         historical_retros_count: pastRetros.length,
         past_retro_items: pastRetros.flatMap((r) => r.retro_action_items || []),
@@ -127,8 +131,8 @@ export const sprintRetroTool = createDeterministicToolHarness({
       const pastRetros = analytics.slice(0, inputArgs?.include_past_sprints_count || 3);
 
       return {
-        sprint_id: inputArgs?.sprint_id || 'sprint_42',
-        sprint_name: inputArgs?.sprint_name || 'Sprint 42',
+        sprint_id: inputArgs?.sprint_id || null,
+        sprint_name: inputArgs?.sprint_name || null,
         team_members: members.map((m) => m.displayName),
         past_retro_items: pastRetros.flatMap((r) => r.retro_action_items || []),
         is_cached: true,
@@ -147,230 +151,161 @@ export const sprintRetroTool = createDeterministicToolHarness({
       };
     }
   },
-  // Tier 3: Thematic Clustering, Chronic Pattern Detection & SMART Action Plan Engine
+  // Tier 3: Thematic clustering over real inputs only (notes, Slack, Jira incidents, GitHub PR stats).
   computeMath: async (sourceResults, inputArgs) => {
     const defaultData = sourceResults.default?.data || {};
-    const mode = inputArgs.mode || 'ANALYZE';
-    const sprintId = inputArgs.sprint_id || defaultData.sprint_id || 'sprint_42';
-    const sprintName = inputArgs.sprint_name || defaultData.sprint_name || 'Sprint 42';
-    const rawNotes = inputArgs.retro_notes || '';
-
-    const members = defaultData.team_members && defaultData.team_members.length > 0
-      ? defaultData.team_members
-      : [];
-
-    // Dynamic Thematic Parsing
-    const whatWentWell = [
-      '🚀 **High Engineering Velocity**: 36 of 40 committed story points delivered with 0 production outages.',
-      '🧪 **Robust Test Coverage**: Maintained 100% pass rate across 232 test specs with automated regression validation.',
-      '🤝 **Cross-Functional Pairing**: Smooth pairing sessions on complex PostgreSQL vector index tuning.',
-    ];
-
-    const whatNeedsImprovement = [
-      '⏳ **PR Review Queue Bottleneck**: Average PR review turnaround time stalled at 14.5 hours, delaying deployment batches.',
-      '🧪 **CI Flaky Test Suites**: Integration tests failed intermittently on end-to-end auth flows (18% rerun rate).',
-      '🔀 **Mid-Sprint Scope Churn**: Context switching occurred on 2 urgent customer escalations without planned buffer allocation.',
-    ];
-
-    // Append user's custom raw notes if provided
-    if (rawNotes.trim()) {
-      const lines = rawNotes.split('\n').map((l) => l.trim()).filter(Boolean);
-      lines.forEach((l) => {
-        if (/good|win|well|proud|great|kudos|celebrate/i.test(l)) {
-          whatWentWell.push(`✨ ${l.replace(/^[-*•]\s*/, '')}`);
-        } else if (/slow|stuck|friction|bad|improve|flaky|hard|block/i.test(l)) {
-          whatNeedsImprovement.push(`⚠️ ${l.replace(/^[-*•]\s*/, '')}`);
-        }
-      });
-    }
-
-    // Ingest feedback from Slack messages if present
     const slackData = sourceResults.slack?.data || {};
-    const slackMessages = Array.isArray(slackData.messages) ? slackData.messages : [];
-    if (slackMessages.length > 0) {
-      slackMessages.forEach((m) => {
-        const text = (m.text || '').trim();
-        if (!text) return;
-        if (/good|win|well|proud|great|kudos|celebrate|thank|shoutout/i.test(text)) {
-          whatWentWell.push(`💬 **Slack (${m.user || 'Team'})**: ${text.replace(/^[-*•]\s*/, '')}`);
-        } else if (/slow|stuck|friction|bad|improve|flaky|hard|block|bug|issue|delay/i.test(text)) {
-          whatNeedsImprovement.push(`💬 **Slack (${m.user || 'Team'})**: ${text.replace(/^[-*•]\s*/, '')}`);
-        }
-      });
-    }
+    const jiraData = sourceResults.jira?.data || {};
+    const githubData = sourceResults.github?.data || {};
+    const mode = inputArgs.mode || 'ANALYZE';
+    const sprintId = inputArgs.sprint_id || null;
+    const sprintName = inputArgs.sprint_name || inputArgs.sprint_id || 'the sprint';
+    const rawNotes = String(inputArgs.retro_notes || '');
 
-    // Chronic Multi-Sprint Pattern Detection
-    const pastItems = defaultData.past_retro_items || [];
-    const recurringPatterns = [];
-
-    const ciMentionCount = pastItems.filter((it) => /ci|test|flaky|pipeline/i.test(typeof it === 'string' ? it : it.task || '')).length;
-    if (ciMentionCount >= 1 || /flaky/i.test(rawNotes)) {
-      recurringPatterns.push('🔁 **Chronic CI Flakiness**: End-to-end integration test flakiness has appeared across **3 consecutive sprints**. Root cause: Async race condition in token refresh fixtures.');
-    }
-
-    const prLatencyMention = pastItems.filter((it) => /review|pr|turnaround|latency/i.test(typeof it === 'string' ? it : it.task || '')).length;
-    if (prLatencyMention >= 1 || /review/i.test(rawNotes)) {
-      recurringPatterns.push('🔁 **Recurring PR Review Latency**: Review turnaround SLA exceeded in **2 of the last 3 sprints**. Root cause: Large mega-PRs (>400 lines) causing review fatigue.');
-    }
-
-    if (recurringPatterns.length === 0) {
-      recurringPatterns.push('✅ **Zero Chronic Regressions**: Prior sprint action items were resolved successfully without recurrence.');
-    }
-
-    // SMART Action Items Formulation with Dynamic Real Assignees
-    const smartActionItems = [
-      {
-        task: 'Implement automated CI flaky test quarantine and retry isolation',
-        owner: members[1] || members[0] || 'DevOps / Tooling Lead',
-        category: 'CI_CD_TOOLING',
-        target_sprint: 'Sprint 43 (Day 3 Checkpoint)',
-        success_metric: 'Reduce CI rerun rate from 18% to <2%',
-        status: 'OPEN',
-      },
-      {
-        task: 'Establish team pairing protocol and WIP limit (<1.5) for mega-PRs >400 lines',
-        owner: members[0] || 'Engineering Team',
-        category: 'WORKING_AGREEMENTS',
-        target_sprint: 'Sprint 43 (Day 5 Checkpoint)',
-        success_metric: 'Achieve PR review turnaround P80 < 4 hours',
-        status: 'OPEN',
-      },
-      {
-        task: 'Allocate 10% explicit buffer for unplanned customer triage in Sprint 43 planning',
-        owner: members[2] || members[0] || 'Capacity Planner',
-        category: 'CAPACITY_PLANNING',
-        target_sprint: 'Sprint 43 (Planning Ceremony)',
-        success_metric: 'Zero mid-sprint context switching on core deliverables',
-        status: 'OPEN',
-      },
+    const POSITIVE = /\b(good|win|wins|well|proud|great|kudos|celebrate|thank|thanks|shoutout|smooth)\b/i;
+    const NEGATIVE = /\b(slow|stuck|friction|bad|improve|flaky|hard|block|blocked|blocker|bug|issue|delay|delayed|outage|incident)\b/i;
+    const THEMES = [
+      { key: 'CI_RELIABILITY', label: 'CI / test reliability', re: /\b(ci|flaky|pipeline|build|test)\b/i },
+      { key: 'CODE_REVIEW', label: 'Code review flow', re: /\b(review|pr|prs|turnaround|merge)\b/i },
+      { key: 'SCOPE_CHURN', label: 'Scope churn / interruptions', re: /\b(scope|churn|interrupt|escalation|context switch|unplanned)\b/i },
+      { key: 'INCIDENTS', label: 'Production incidents', re: /\b(incident|outage|sev|hotfix|rollback)\b/i },
+      { key: 'COMMUNICATION', label: 'Communication & alignment', re: /\b(communication|alignment|unclear|requirements|handoff)\b/i },
     ];
 
-    if (mode === 'LIST_RAW') {
-      const actionRows = smartActionItems.map((a) => {
-        return `| **${a.task}** | \`@${a.owner}\` | \`${a.target_sprint}\` | \`${a.success_metric}\` | 🟢 ${a.status} |`;
-      });
-      const listSummary = `### 📋 Retrospective Action Items: ${sprintName} (${smartActionItems.length} SMART Actions)\n\n` +
-        `| Action Item Task | Owner | Target Milestone | Success Metric | Status |\n| :--- | :--- | :--- | :--- | :---: |\n` +
-        (actionRows.length > 0 ? actionRows.join('\n') : '| *No action items recorded* | - | - | - | - |') +
-        `\n\n> 💡 **Follow-Up Cadence**: Review action item completion during the mid-sprint checkpoint.`;
+    const whatWentWell = [];
+    const whatNeedsImprovement = [];
+    const addItem = (text, origin) => {
+      const clean = text.replace(/^[-*•]\s*/, '').trim();
+      if (!clean) return;
+      if (POSITIVE.test(clean) && !NEGATIVE.test(clean)) whatWentWell.push({ text: clean, origin });
+      else if (NEGATIVE.test(clean)) whatNeedsImprovement.push({ text: clean, origin });
+    };
 
+    rawNotes.split('\n').forEach((l) => addItem(l, 'retro notes'));
+    const slackMessages = Array.isArray(slackData.messages) ? slackData.messages : [];
+    slackMessages.forEach((m) => addItem(String(m.text || ''), `Slack${m.user ? ` (${m.user})` : ''}`));
+
+    // Measured signals.
+    const incidents = Array.isArray(jiraData.recent_incidents) ? jiraData.recent_incidents : [];
+    if (Number.isFinite(jiraData.total_incidents_reported) && jiraData.total_incidents_reported > 0) {
+      whatNeedsImprovement.push({ text: `${jiraData.total_incidents_reported} bug/incident ticket(s) in Jira this period${incidents.length ? ` (e.g. ${incidents.map((i) => i.key).filter(Boolean).join(', ')})` : ''}`, origin: 'Jira' });
+    }
+    if (githubData.pr_turnaround_hours !== null && githubData.pr_turnaround_hours !== undefined) {
+      const line = `Average PR turnaround ${githubData.pr_turnaround_hours}h${githubData.total_prs_merged !== null && githubData.total_prs_merged !== undefined ? ` across ${githubData.total_prs_merged} PRs` : ''}`;
+      (githubData.pr_turnaround_hours > 24 ? whatNeedsImprovement : whatWentWell).push({ text: line, origin: 'GitHub' });
+    }
+
+    const hasInput = whatWentWell.length + whatNeedsImprovement.length > 0;
+    if (!hasInput && mode !== 'LIST_RAW') {
       return {
-        mode: 'LIST_RAW',
+        mode,
         target: inputArgs.target || 'ALL',
         sprint_id: sprintId,
-        total_items: smartActionItems.length,
-        items: smartActionItems,
-        summary: listSummary,
+        status: 'NEEDS_INPUT',
+        data_availability: 'no_retro_input',
+        what_went_well: [],
+        what_needs_improvement: [],
+        recurring_patterns: [],
+        extracted_action_items: [],
+        summary: `### 🔁 Sprint Retrospective: ${sprintName}\n\n> There is no retrospective input yet. Paste the team's retro notes, or connect Slack (retro channel), Jira or GitHub in **Admin → Settings**, and I will cluster the themes and draft action items.`,
       };
+    }
+
+    // Themes and recurring patterns (a theme is "recurring" only if a past action item matches it).
+    const pastItems = (defaultData.past_retro_items || []).map((it) => (typeof it === 'string' ? it : it?.task || '')).filter(Boolean);
+    const themeCounts = THEMES.map((t) => ({
+      ...t,
+      current: whatNeedsImprovement.filter((i) => t.re.test(i.text)).length,
+      past: pastItems.filter((it) => t.re.test(it)).length,
+    }));
+    const recurringPatterns = themeCounts
+      .filter((t) => t.current > 0 && t.past > 0)
+      .map((t) => `🔁 **${t.label}**: raised ${t.current} time(s) this sprint and matches ${t.past} earlier action item(s).`);
+
+    // Action items: one per theme raised this sprint; the team assigns owners in the retro.
+    const actionItems = themeCounts
+      .filter((t) => t.current > 0)
+      .map((t) => ({
+        task: `Agree a concrete fix for: ${t.label.toLowerCase()} (${t.current} item(s) raised)`,
+        owner: 'Unassigned',
+        category: t.key,
+        evidence: whatNeedsImprovement.filter((i) => t.re.test(i.text)).map((i) => `${i.origin}: ${i.text}`).slice(0, 3),
+        status: 'OPEN',
+      }));
+    const uncategorised = whatNeedsImprovement.filter((i) => !THEMES.some((t) => t.re.test(i.text)));
+    if (uncategorised.length > 0) {
+      actionItems.push({ task: `Discuss ${uncategorised.length} other improvement point(s)`, owner: 'Unassigned', category: 'OTHER', evidence: uncategorised.map((i) => `${i.origin}: ${i.text}`).slice(0, 3), status: 'OPEN' });
+    }
+
+    const fmtItem = (i) => `${i.text} _(${i.origin})_`;
+
+    if (mode === 'LIST_RAW') {
+      const listSummary = `### 📋 Retrospective Action Items: ${sprintName} (${actionItems.length})\n\n` +
+        (actionItems.length > 0
+          ? `| Action Item | Owner | Evidence | Status |\n| :--- | :--- | :--- | :---: |\n${actionItems.map((a) => `| **${a.task}** | ${a.owner} | ${a.evidence.join('<br>')} | ${a.status} |`).join('\n')}`
+          : '> No action items: no improvement points were found in the available input.');
+      return { mode: 'LIST_RAW', target: inputArgs.target || 'ALL', sprint_id: sprintId, total_items: actionItems.length, items: actionItems, summary: listSummary };
     }
 
     if (mode === 'DRILL_DOWN') {
-      let drillSummary = '';
+      let drillSummary;
       if (inputArgs.target === 'PATTERNS') {
-        drillSummary = `### 🔁 Chronic Multi-Sprint Recurring Patterns: ${sprintName}\n\n` +
-          recurringPatterns.map((p) => `- ${p}`).join('\n\n') +
-          `\n\n> 💡 **Systemic Root Cause**: Recurring friction requires structural process changes rather than individual effort.`;
+        drillSummary = `### 🔁 Recurring Patterns: ${sprintName}\n\n` + (recurringPatterns.length > 0 ? recurringPatterns.map((p) => `- ${p}`).join('\n') : '- No theme from this sprint matches an earlier action item.');
       } else if (inputArgs.target === 'FRICTION_POINTS') {
-        drillSummary = `### ⚠️ Sprint Friction Points & Root Causes: ${sprintName}\n\n` +
-          whatNeedsImprovement.map((f) => `- ${f}`).join('\n') +
-          `\n\n> 💡 **Remediation**: Track resolution in the SMART action items.`;
+        drillSummary = `### ⚠️ Sprint Friction Points: ${sprintName}\n\n` + (whatNeedsImprovement.length > 0 ? whatNeedsImprovement.map((f) => `- ${fmtItem(f)}`).join('\n') : '- No friction points in the available input.');
       } else {
-        const actionRows = smartActionItems.map((a) => `- **${a.task}** (Owner: \`@${a.owner}\`, Target: \`${a.target_sprint}\`)\n  *Success Metric*: ${a.success_metric}`);
-        drillSummary = `### 🎯 Targeted Retrospective Action Plan: ${sprintName}\n\n` +
-          actionRows.join('\n\n') +
-          `\n\n> 💡 **Accountability**: Each action item is explicitly owned by a team member with a verifiable target milestone.`;
+        drillSummary = `### 🎯 Retrospective Action Plan: ${sprintName}\n\n` + (actionItems.length > 0 ? actionItems.map((a) => `- **${a.task}** (owner: ${a.owner})\n  - Evidence: ${a.evidence.join('; ')}`).join('\n') : '- No action items.');
       }
-
-      return {
-        mode: 'DRILL_DOWN',
-        target: inputArgs.target || 'ALL',
-        sprint_id: sprintId,
-        sprint_name: sprintName,
-        recurring_patterns: recurringPatterns,
-        action_items: smartActionItems,
-        summary: drillSummary,
-      };
+      return { mode: 'DRILL_DOWN', target: inputArgs.target || 'ALL', sprint_id: sprintId, sprint_name: inputArgs.sprint_name || null, recurring_patterns: recurringPatterns, action_items: actionItems, summary: drillSummary };
     }
 
-    // Persist retrospective action items to PostgreSQL sprint_analytics
-    try {
-      await databaseService.saveSprintAnalytics({
-        sprint_id: sprintId,
-        total_points: 40,
-        completed_points: 36,
-        wip_violations: 1,
-        retro_action_items: smartActionItems,
-      });
-    } catch (_e) {}
-
-    // Optional: Post Action Plan to Slack channel if requested
+    // Optional Slack post (goes through the Slack tool's human-approval workflow).
     let slackPostStatus = null;
-    if (inputArgs.post_to_slack) {
+    if (inputArgs.post_to_slack && actionItems.length > 0) {
       try {
         const { executeMCPTool } = await import('../mcp/index.js');
         const channel = inputArgs.slack_channel || settingsService.getCachedSettings()?.mcp?.slack?.defaultChannel || '#engineering-retro';
-        const postLines = smartActionItems.map((a) => `• *${a.task}* — <@${a.owner}> (${a.target_sprint}) [Metric: ${a.success_metric}]`);
-        const postMessage = `🚀 *Sprint Retrospective Action Plan: ${sprintName}*\n\n` +
-          `*Key Focus*: CI/CD Reliability & PR Review Turnaround\n\n` +
-          `*SMART Action Items*:\n${postLines.join('\n')}\n\n` +
-          `_Generated by EM TaskFlow AI Retro Specialist_`;
-
-        const postRes = await executeMCPTool('slack_post_message', {
-          message: postMessage,
-          channel,
-          sprint_name: sprintName,
-        });
+        const postMessage = `🚀 *Retrospective action plan: ${sprintName}*\n\n${actionItems.map((a) => `• *${a.task}*`).join('\n')}\n\n_Owners to be agreed by the team._`;
+        const postRes = await executeMCPTool('slack_post_message', { message: postMessage, channel, sprint_name: sprintName });
         let parsedPost = postRes;
         if (typeof postRes === 'string') {
-          try { parsedPost = JSON.parse(postRes); } catch (_) {}
+          try { parsedPost = JSON.parse(postRes); } catch (_) { /* keep raw */ }
         }
-
         if (parsedPost?.status === 'PENDING_HUMAN_APPROVAL') {
-          slackPostStatus = `⏳ **Temporal HITL Approval Pending**: Draft retrospective action plan created for \`${channel}\` (Workflow ID: \`${parsedPost.workflowId}\`). Requires human confirmation before posting.`;
+          slackPostStatus = `⏳ Draft for \`${channel}\` is waiting for your approval (workflow \`${parsedPost.workflowId}\`).`;
         } else if (parsedPost?.status === 'SUCCESS') {
-          slackPostStatus = `✅ Successfully posted retrospective action plan to Slack channel \`${channel}\``;
-        } else if (parsedPost?.status === 'SIMULATED') {
-          slackPostStatus = `ℹ️ Simulated post to Slack channel \`${channel}\` (Slack token unconfigured)`;
+          slackPostStatus = `✅ Posted to \`${channel}\`.`;
         } else {
-          slackPostStatus = `⚠️ Slack post notice: ${parsedPost?.error || parsedPost?.message || 'Unable to post'}`;
+          slackPostStatus = `⚠️ Not posted: ${parsedPost?.error || parsedPost?.message || parsedPost?.status || 'unknown result'}`;
         }
       } catch (err) {
         slackPostStatus = `⚠️ Slack post failed: ${err.message}`;
       }
+    } else if (inputArgs.post_to_slack) {
+      slackPostStatus = 'ℹ️ Nothing posted: there are no action items.';
     }
 
-    const slackNotice = slackPostStatus ? `\n\n> 💬 **Slack Integration**: ${slackPostStatus}` : '';
+    const summaryText = `### 🏆 What Went Well: ${sprintName}
 
-    const summaryText = `### 🏆 Sprint Achievements & Team Kudos (What Went Well): ${sprintName}
+${whatWentWell.length > 0 ? whatWentWell.map((w) => `- ${fmtItem(w)}`).join('\n') : '- No positive items in the available input.'}
 
-${whatWentWell.map((w) => `- ${w}`).join('\n')}
+### ⚠️ What Needs Improvement (${whatNeedsImprovement.length})
 
-> 💡 **Executive Bottom Line**: Sprint concluded with strong feature completion. Top continuous improvement focus: **CI/CD Flakiness & PR Review Turnaround**.
+${whatNeedsImprovement.length > 0 ? whatNeedsImprovement.map((w) => `- ${fmtItem(w)}`).join('\n') : '- No improvement points in the available input.'}
 
 <details>
-<summary><b>🔍 Friction Points & Thematic Clustering (${whatNeedsImprovement.length} Areas)</b></summary>
+<summary><b>🔍 Themes & Recurring Patterns</b></summary>
 
-| Friction Theme | Root Cause Analysis | Systemic Impact | Blameless Severity |
-| :--- | :--- | :--- | :---: |
-| **CI/CD Reliability** | Flaky auth integration tests | Slows merge pipeline, induces developer fatigue | ⚠️ High |
-| **Code Review Flow** | Batched PR reviews & mega-PRs | PR turnaround averaged 14.5 hours | ⚠️ High |
-| **Mid-Sprint Churn** | Unplanned escalations without buffer | Interrupted core focus time for 2 developers | ℹ️ Medium |
-
-${whatNeedsImprovement.map((w) => `- ${w}`).join('\n')}
-
-- **Recurring Multi-Sprint Patterns**:
-${recurringPatterns.map((p) => `  * ${p}`).join('\n')}
+${themeCounts.filter((t) => t.current > 0).map((t) => `- **${t.label}**: ${t.current} item(s) this sprint${t.past > 0 ? `, ${t.past} matching earlier action item(s)` : ''}`).join('\n') || '- No themes detected.'}
+${recurringPatterns.length > 0 ? `\n${recurringPatterns.map((p) => `- ${p}`).join('\n')}` : ''}
 
 </details>
 
 <details>
-<summary><b>🎯 SMART Continuous Improvement Action Plan (${smartActionItems.length} Deliverables)</b></summary>
+<summary><b>🎯 Draft Action Items (${actionItems.length})</b></summary>
 
-| Action Item | Owner | Target Checkpoint | Success Metric |
-| :--- | :---: | :---: | :--- |
-${smartActionItems.map((a) => `| **${a.task}** | \`${a.owner}\` | ${a.target_sprint} | ${a.success_metric} |`).join('\n')}
-
-- **Facilitation Tone**: Strictly blameless Nonviolent Communication (NVC) anchored in systemic process enhancements.${slackNotice}
+${actionItems.length > 0 ? actionItems.map((a) => `- **${a.task}** — owner: ${a.owner}`).join('\n') : '- No action items.'}
+${slackPostStatus ? `\n> 💬 **Slack**: ${slackPostStatus}` : ''}
 
 </details>
 `;
@@ -378,11 +313,11 @@ ${smartActionItems.map((a) => `| **${a.task}** | \`${a.owner}\` | ${a.target_spr
     return {
       mode: 'ANALYZE',
       sprint_id: sprintId,
-      sprint_name: sprintName,
+      sprint_name: inputArgs.sprint_name || null,
       what_went_well: whatWentWell,
       what_needs_improvement: whatNeedsImprovement,
       recurring_patterns: recurringPatterns,
-      extracted_action_items: smartActionItems,
+      extracted_action_items: actionItems,
       slack_post_status: slackPostStatus,
       summary: summaryText,
     };

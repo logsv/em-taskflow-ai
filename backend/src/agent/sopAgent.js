@@ -35,8 +35,8 @@ export const sopComplianceTool = createDeterministicToolHarness({
             rag_hit: true,
             retrieved_chunks_count: ragRes.sources.length,
             top_sources: ragRes.sources.map((s) => ({
-              title: s.metadata?.title || s.metadata?.document_name || 'Engineering Standard Operating Procedure',
-              citation: s.metadata?.citation || `[Doc: ${s.metadata?.title || 'SOP Handbook'}, Section 3]`,
+              title: s.metadata?.title || s.metadata?.document_name || s.metadata?.filename || 'Uploaded document',
+              citation: `[Doc: ${s.metadata?.filename || s.metadata?.title || 'uploaded document'}${Number.isFinite(s.metadata?.chunkIndex) ? `, chunk ${s.metadata.chunkIndex}` : ''}]`,
               content_snippet: (s.pageContent || s.text || '').slice(0, 200),
             })),
             source: 'mcp_rag_hybrid',
@@ -75,7 +75,7 @@ export const sopComplianceTool = createDeterministicToolHarness({
       
       const internalStandards = [
         {
-          id: 'ADR-008',
+          id: 'BASELINE-DB-ISOLATION',
           title: 'Database Per-Service Isolation Architecture',
           category: 'database_isolation',
           rules: [
@@ -83,10 +83,10 @@ export const sopComplianceTool = createDeterministicToolHarness({
             'Cross-service database joins, direct table queries, or cross-database foreign keys are STRICTLY PROHIBITED.',
             'Data synchronization between domains MUST occur via gRPC APIs, Temporal durable workflows, or event buses.',
           ],
-          citation: '[ADR-008: Database Per-Service Isolation Architecture, Section 2]',
+          citation: '[Built-in baseline BASELINE-DB-ISOLATION (EM TaskFlow default guidance, not a company document)]',
         },
         {
-          id: 'SOP-01',
+          id: 'BASELINE-CODE-REVIEW',
           title: 'Code Review & Pull Request Governance Checklist',
           category: 'code_review',
           rules: [
@@ -95,10 +95,10 @@ export const sopComplianceTool = createDeterministicToolHarness({
             'Code review turnaround SLA is <12 hours for blockers and <24 hours for standard feature PRs.',
             'All CI automated checks (unit tests, linter, SAST) must pass with 0 errors.',
           ],
-          citation: '[SOP-01: Engineering Handbook, PR Code Review Guidelines, Section 1.4]',
+          citation: '[Built-in baseline BASELINE-CODE-REVIEW (EM TaskFlow default guidance, not a company document)]',
         },
         {
-          id: 'SOP-04',
+          id: 'BASELINE-SECURITY',
           title: 'Production Security Incident Escalation & Secrets Policy',
           category: 'security',
           rules: [
@@ -106,10 +106,10 @@ export const sopComplianceTool = createDeterministicToolHarness({
             'Zero plaintext API keys, passwords, or tokens in source code, configuration files, or logs.',
             'All secrets in user-facing APIs and admin UIs MUST be masked with SHA-256 or prefix/suffix masking.',
           ],
-          citation: '[SOP-04: Security Incident Escalation Matrix and Secrets Policy v3, Section 2]',
+          citation: '[Built-in baseline BASELINE-SECURITY (EM TaskFlow default guidance, not a company document)]',
         },
         {
-          id: 'SOP-09',
+          id: 'BASELINE-OBSERVABILITY',
           title: 'Zero-Downtime Observability & Non-Blocking Tracing',
           category: 'telemetry',
           rules: [
@@ -117,10 +117,10 @@ export const sopComplianceTool = createDeterministicToolHarness({
             'An error in telemetry or trace logging must NEVER fail an API request or crash a server endpoint.',
             'Telemetry metrics must be written to isolated analytics databases on dedicated ports.',
           ],
-          citation: '[SOP-09: Telemetry & Observability Architecture Standards, Section 4.1]',
+          citation: '[Built-in baseline BASELINE-OBSERVABILITY (EM TaskFlow default guidance, not a company document)]',
         },
         {
-          id: 'SOP-12',
+          id: 'BASELINE-RELEASE',
           title: 'Production Release Workflow & Rollback Readiness',
           category: 'release',
           rules: [
@@ -128,7 +128,7 @@ export const sopComplianceTool = createDeterministicToolHarness({
             'Every deployment must include a documented, verified rollback procedure and health check probe.',
             'Deployments during peak business hours require explicit approval from the Engineering Manager.',
           ],
-          citation: '[SOP-12: Production Deployment and Rollback Procedures, Section 3.2]',
+          citation: '[Built-in baseline BASELINE-RELEASE (EM TaskFlow default guidance, not a company document)]',
         },
       ];
 
@@ -146,20 +146,20 @@ export const sopComplianceTool = createDeterministicToolHarness({
       topic: inputArgs.topic || 'general',
       standards: [
         {
-          id: 'ADR-008',
-          title: 'Database Per-Service Isolation Architecture (Cached)',
+          id: 'BASELINE-DB-ISOLATION',
+          title: 'Database Per-Service Isolation Architecture',
           rules: ['Dedicated isolated database per service. Cross-service joins prohibited.'],
-          citation: '[ADR-008: Database Per-Service Isolation, Section 2]',
+          citation: '[Built-in baseline BASELINE-DB-ISOLATION (EM TaskFlow default guidance, not a company document)]',
         },
         {
-          id: 'SOP-01',
-          title: 'Code Review Guidelines (Cached)',
+          id: 'BASELINE-CODE-REVIEW',
+          title: 'Code Review Guidelines',
           rules: ['Minimum 2 peer approvals, PR size <300 lines, CI green.'],
-          citation: '[SOP-01: Engineering Handbook, Section 1.4]',
+          citation: '[Built-in baseline BASELINE-CODE-REVIEW (EM TaskFlow default guidance, not a company document)]',
         },
       ],
-      source: 'postgres_knowledge_snapshot',
-      staleDataWarning: true,
+      source: 'builtin_baseline',
+      is_builtin_baseline: true,
       synced_at: new Date().toISOString(),
     };
   },
@@ -213,57 +213,70 @@ export const sopComplianceTool = createDeterministicToolHarness({
     let violationsCount = 0;
     let advisoryCount = 0;
 
-    // Check 1: Code Review Checklist
+    // Rubric checks run against the text the user supplied (task_context). Without text there is
+    // nothing to verify, so checks are NOT_EVALUATED; absence of a detected violation is reported as
+    // NO_VIOLATION_FOUND, never as proof of compliance.
+    const hasContext = taskContext.trim().length > 0;
+    const evaluate = (violation, advisory = false) => {
+      if (!hasContext) return 'NOT_EVALUATED';
+      if (violation) return advisory ? 'NEEDS_REVIEW' : 'NON_COMPLIANT';
+      return 'NO_VIOLATION_FOUND';
+    };
+    const baselineCitation = (id) => `[Built-in baseline ${id} (EM TaskFlow default guidance, not a company document)]`;
+
     if (topic.includes('review') || topic.includes('pr') || topic === 'general') {
-      const hasTwoApprovals = taskContext.includes('2 approvals') || taskContext.includes('two approvals') || !taskContext.includes('1 approval');
+      const singleApproval = /\b(1|one|single) approval\b/.test(taskContext);
+      const status = evaluate(singleApproval, true);
       rubricChecks.push({
-        dimension: 'Code Review & PR Governance (SOP-01)',
-        requirement: 'Mandatory >=2 peer approvals; PR diff size <300 lines; review SLA <12h',
-        observed: taskContext ? (hasTwoApprovals ? '2 peer approvals documented' : 'Single approval detected') : 'Standard policy requirements active',
-        status: hasTwoApprovals ? 'COMPLIANT' : 'NEEDS_REVIEW',
-        citation: '[SOP-01: Engineering Handbook, Section 1.4]',
+        dimension: 'Code Review & PR Governance (BASELINE-CODE-REVIEW)',
+        requirement: '>=2 peer approvals; PR diff <300 lines; review SLA <12h',
+        observed: !hasContext ? 'No evidence provided' : singleApproval ? 'Single approval mentioned' : 'No single-approval case found in the provided text',
+        status,
+        citation: baselineCitation('BASELINE-CODE-REVIEW'),
       });
-      if (!hasTwoApprovals) advisoryCount++;
+      if (status === 'NEEDS_REVIEW') advisoryCount++;
     }
 
-    // Check 2: Database Isolation (ADR-008)
     if (topic.includes('database') || topic.includes('db') || topic.includes('isolation') || topic.includes('adr') || topic === 'general') {
-      const crossDbViolation = taskContext.includes('cross-service join') || taskContext.includes('direct table access');
+      const crossDbViolation = /cross-service join|direct table access/.test(taskContext);
+      const status = evaluate(crossDbViolation);
       rubricChecks.push({
-        dimension: 'Database Per-Service Isolation (ADR-008)',
-        requirement: 'Dedicated databases (taskflow_backend, taskflow_ai, temporal, langfuse_db); 0 cross-service joins',
-        observed: crossDbViolation ? 'Cross-service join proposed (Violation)' : 'Isolated per-service databases enforced',
-        status: crossDbViolation ? 'NON_COMPLIANT' : 'COMPLIANT',
-        citation: '[ADR-008: Database Per-Service Isolation Architecture, Section 2]',
+        dimension: 'Database Per-Service Isolation (BASELINE-DB-ISOLATION)',
+        requirement: 'One database per service; no cross-service joins',
+        observed: !hasContext ? 'No evidence provided' : crossDbViolation ? 'Cross-service join or direct table access mentioned' : 'No cross-service access found in the provided text',
+        status,
+        citation: baselineCitation('BASELINE-DB-ISOLATION'),
       });
-      if (crossDbViolation) violationsCount++;
+      if (status === 'NON_COMPLIANT') violationsCount++;
     }
 
-    // Check 3: Security Incident & Secrets (SOP-04)
     if (topic.includes('security') || topic.includes('incident') || topic === 'general') {
-      const hasSecretLeak = taskContext.includes('plaintext secret') || taskContext.includes('unmasked token');
+      const hasSecretLeak = /plaintext secret|unmasked token|hard-?coded (key|secret|token|password)/.test(taskContext);
+      const status = evaluate(hasSecretLeak);
       rubricChecks.push({
-        dimension: 'Security Incident Escalation & Secrets (SOP-04)',
-        requirement: 'Notify on-call lead within 15 min for P1; zero plaintext secrets; token masking',
-        observed: hasSecretLeak ? 'Unmasked credentials in configuration' : 'P1 escalation matrix and secret masking verified',
-        status: hasSecretLeak ? 'NON_COMPLIANT' : 'COMPLIANT',
-        citation: '[SOP-04: Security Incident Escalation Matrix, Section 2]',
+        dimension: 'Security Incident Escalation & Secrets (BASELINE-SECURITY)',
+        requirement: 'P1 escalation within 15 min; no plaintext secrets; token masking',
+        observed: !hasContext ? 'No evidence provided' : hasSecretLeak ? 'Plaintext or unmasked secret mentioned' : 'No secret exposure found in the provided text',
+        status,
+        citation: baselineCitation('BASELINE-SECURITY'),
       });
-      if (hasSecretLeak) violationsCount++;
+      if (status === 'NON_COMPLIANT') violationsCount++;
     }
 
-    // Check 4: Zero-Downtime Telemetry (SOP-09)
     if (topic.includes('telemetry') || topic.includes('trace') || topic.includes('observability') || topic === 'general') {
+      const blocking = /blocking (trace|telemetry)|await(ed)? (langfuse|trace)|telemetry (failure|error) (fails|crash)/.test(taskContext);
+      const status = evaluate(blocking);
       rubricChecks.push({
-        dimension: 'Zero-Downtime Telemetry (SOP-09)',
-        requirement: 'Telemetry callbacks MUST be non-blocking; trace errors must never fail API endpoints',
-        observed: 'Non-blocking Langfuse telemetry handlers active',
-        status: 'COMPLIANT',
-        citation: '[SOP-09: Telemetry & Observability Architecture, Section 4.1]',
+        dimension: 'Non-Blocking Telemetry (BASELINE-OBSERVABILITY)',
+        requirement: 'Telemetry must be non-blocking; trace errors must never fail requests',
+        observed: !hasContext ? 'No evidence provided' : blocking ? 'Blocking telemetry pattern mentioned' : 'No blocking telemetry found in the provided text',
+        status,
+        citation: baselineCitation('BASELINE-OBSERVABILITY'),
       });
+      if (status === 'NON_COMPLIANT') violationsCount++;
     }
 
-    let overallCompliance = 'COMPLIANT';
+    let overallCompliance = hasContext ? 'NO_VIOLATIONS_FOUND' : 'NOT_EVALUATED';
     if (violationsCount > 0) {
       overallCompliance = 'NON_COMPLIANT';
     } else if (advisoryCount > 0) {
@@ -273,7 +286,7 @@ export const sopComplianceTool = createDeterministicToolHarness({
     if (mode === 'DRILL_DOWN') {
       let drillSummary = '';
       if (inputArgs.target === 'VIOLATIONS') {
-        const failingChecks = rubricChecks.filter((c) => c.status !== 'COMPLIANT');
+        const failingChecks = rubricChecks.filter((c) => c.status === 'NON_COMPLIANT' || c.status === 'NEEDS_REVIEW');
         drillSummary = `### 🚨 SOP / ADR Non-Compliance Violations\n\n` +
           (failingChecks.length > 0
             ? failingChecks.map((c) => `#### ⚠️ ${c.dimension}\n- **Requirement**: ${c.requirement}\n- **Observed**: ${c.observed}\n- **Citation**: ${c.citation}`).join('\n\n')
@@ -304,9 +317,9 @@ export const sopComplianceTool = createDeterministicToolHarness({
     const markdownSummary = `
 ### 📄 Executive Summary
 - **Governance Audit Scope**: **${topic.toUpperCase()} Governance Standards** (${matchedStandards.map((s) => s.id).join(', ')})
-- **Compliance Verdict**: **${overallCompliance === 'COMPLIANT' ? '🟢 COMPLIANT' : overallCompliance === 'NEEDS_REVIEW' ? '🟡 NEEDS REVIEW' : '🔴 NON-COMPLIANT'}**
-- **Audited Standards Count**: **${matchedStandards.length} Standard Operating Procedures / ADRs**
-- **Summary**: All evaluated engineering procedures strictly adhere to internal architectural governance policies, with zero-hallucination compliance verification.
+- **Compliance Verdict**: **${{ NO_VIOLATIONS_FOUND: '🟢 NO VIOLATIONS FOUND', NOT_EVALUATED: '⚪ NOT EVALUATED', NEEDS_REVIEW: '🟡 NEEDS REVIEW', NON_COMPLIANT: '🔴 NON-COMPLIANT' }[overallCompliance] || overallCompliance}**
+- **Standards Source**: ${ragData?.rag_hit ? `your uploaded documents (${ragData.retrieved_chunks_count} passage(s)) plus built-in baseline guidance` : 'built-in baseline guidance only. No SOP documents were found in your knowledge base; upload your SOPs/ADRs to check against them'}
+- **Summary**: ${overallCompliance === 'NOT_EVALUATED' ? 'No change description or evidence was provided, so nothing was checked. Paste the PR, design or process description to evaluate it.' : `${violationsCount} violation(s) and ${advisoryCount} item(s) needing review in the provided text.`}
 
 ---
 
@@ -318,7 +331,8 @@ ${matchedStandards.map((s) => `#### 📘 ${s.id}: ${s.title}\n${s.rules.map((r) 
 ### 🛡️ Compliance Gap & Remediation Audit
 | Governance Dimension | Mandatory Requirement | Observed Implementation | Status |
 | :--- | :--- | :--- | :---: |
-${rubricChecks.map((r) => `| **${r.dimension}** | ${r.requirement} | ${r.observed} | ${r.status === 'COMPLIANT' ? '🟢 Compliant' : r.status === 'NEEDS_REVIEW' ? '🟡 Needs Review' : '🔴 Non-Compliant'} |`).join('\n')}
+${rubricChecks.map((r) => `| **${r.dimension}** | ${r.requirement} | ${r.observed} | ${{ NO_VIOLATION_FOUND: '🟢 No violation found', NOT_EVALUATED: '⚪ Not evaluated', NEEDS_REVIEW: '🟡 Needs review', NON_COMPLIANT: '🔴 Non-compliant' }[r.status] || r.status} |`).join('\n')}
+${ragData?.rag_hit ? `\n**From your documents**:\n${(ragData.top_sources || []).map((d) => `- ${d.citation}: ${d.content_snippet}`).join('\n')}` : ''}
 
 ---
 

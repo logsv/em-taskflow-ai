@@ -9,6 +9,11 @@ import slackClient from '../integrations/clients/SlackClient.js';
 import { info, warn, debug } from '../utils/logger.js';
 import settingsService from '../services/settingsService.js';
 
+/** Format a possibly-missing value for a Slack message without inventing one. */
+function na(value, suffix = '') {
+  return value === null || value === undefined || value === '' ? 'n/a' : `${value}${suffix}`;
+}
+
 export async function testSlackConnection(credentials = {}) {
   return slackClient.testConnection(credentials);
 }
@@ -217,12 +222,13 @@ export async function sendAuditOverviewMessage({
   const { defaultChannel, token } = slackClient.getCredentials();
   const targetChannel = channel || defaultChannel;
 
-  const healthScore = auditRun.healthScore ?? 100;
-  const healthEmoji = healthScore >= 85 ? '🟢' : healthScore >= 65 ? '🟡' : '🔴';
-  const doraTier = auditRun.doraSummary?.tier || 'Elite';
-  const sprintPacing = auditRun.sprintOkrSummary?.sprintPacingPct ?? 82;
-  const overdue1on1s = auditRun.peopleSummary?.overdue1on1sCount ?? 0;
-  const sopScore = auditRun.sopSummary?.complianceScore ?? 100;
+  // Missing values are shown as n/a: a Slack post must never contain invented numbers.
+  const healthScore = auditRun.healthScore ?? null;
+  const healthEmoji = healthScore === null ? '⚪' : healthScore >= 85 ? '🟢' : healthScore >= 65 ? '🟡' : '🔴';
+  const doraTier = auditRun.doraSummary?.tier || 'n/a';
+  const sprintPacing = auditRun.sprintOkrSummary?.sprintPacingPct;
+  const overdue1on1s = auditRun.peopleSummary?.overdue1on1sCount;
+  const sopScore = auditRun.sopSummary?.complianceScore;
 
   const actionLines = topActions.length > 0
     ? topActions.slice(0, 4).map((a) => {
@@ -234,8 +240,8 @@ export async function sendAuditOverviewMessage({
 
   const messageText = [
     `*${healthEmoji} EM TaskFlow AI — Autonomous Engineering Health Audit*`,
-    `*Overall Health Score:* \`${healthScore}/100\` | *DORA Tier:* \`${doraTier}\` | *Sprint Pacing:* \`${sprintPacing}%\` | *SOP Compliance:* \`${sopScore}%\``,
-    `*Overdue 1-on-1s:* \`${overdue1on1s}\` | *Pending Actions:* \`${topActions.length}\``,
+    `*Overall Health Score:* \`${na(healthScore, '/100')}\` | *DORA Tier:* \`${doraTier}\` | *Sprint Pacing:* \`${na(sprintPacing, '%')}\` | *SOP Compliance:* \`${na(sopScore, '%')}\``,
+    `*Overdue 1-on-1s:* \`${na(overdue1on1s)}\` | *Pending Actions:* \`${topActions.length}\``,
     '',
     '*📌 Action Items & Bottlenecks:*',
     actionLines,
@@ -308,19 +314,19 @@ export async function sendAuditSubsectionThread({
   const subsections = [
     {
       title: '🚀 *Delivery & DORA Metrics*',
-      content: `• *Open PRs:* ${delivery.openPrsCount ?? 4} | *Stalled PRs (>24h):* ${delivery.stalledPrsCount ?? 1}\n• *Avg PR Review Latency:* ${delivery.avgPrReviewWaitHours ?? '14.2'}h\n• *DORA Deployment Frequency:* ${auditRun.doraSummary?.deploymentFrequency ?? '2.4'}/day | *MTTR:* ${auditRun.doraSummary?.mttrHours ?? '0.8'}h`,
+      content: `• *Open PRs:* ${na(delivery.openPrsCount)} | *Stalled PRs (>24h):* ${na(delivery.stalledPrsCount)}\n• *Avg PR Review Latency:* ${na(delivery.avgPrReviewWaitHours, 'h')}\n• *DORA Deployment Frequency:* ${na(auditRun.doraSummary?.deploymentFrequency, '/day')} | *MTTR:* ${na(auditRun.doraSummary?.mttrHours, 'h')}`,
     },
     {
       title: '👥 *People, 1-on-1s & Growth*',
-      content: `• *1-on-1 Cadence Health:* ${people.cadenceHealth ?? '92%'}\n• *Overdue 1-on-1s (>14d):* ${people.overdue1on1sCount ?? 0}\n• *Upcoming Milestones:* ${people.upcomingMilestones ?? 'Alex Williams (L4 -> L5 Target Mid-Year)'}`,
+      content: `• *1-on-1 Cadence Health:* ${na(people.cadenceHealth)}\n• *Overdue 1-on-1s (>14d):* ${na(people.overdue1on1sCount)}\n• *Upcoming Milestones:* ${na(people.upcomingMilestones)}`,
     },
     {
       title: '🎯 *Sprint Velocity & OKR Pacing*',
-      content: `• *Sprint Completion:* ${sprintOkr.completedPoints ?? 38}/${sprintOkr.totalPoints ?? 48} SP (${sprintOkr.sprintPacingPct ?? 79}%)\n• *WIP Limit Violations:* ${sprintOkr.wipViolations ?? 0}\n• *OKR Health:* ${sprintOkr.onTrackOkrs ?? 3}/${sprintOkr.totalOkrs ?? 4} Objectives on track`,
+      content: `• *Sprint Completion:* ${na(sprintOkr.completedPoints)}/${na(sprintOkr.totalPoints)} SP (${na(sprintOkr.sprintPacingPct, '%')})\n• *WIP Limit Violations:* ${na(sprintOkr.wipViolations)}\n• *OKR Health:* ${na(sprintOkr.onTrackOkrs)}/${na(sprintOkr.totalOkrs)} objectives on track`,
     },
     {
       title: '🛡️ *SOP, ADR & Governance Compliance*',
-      content: `• *ADR-008 Database Per-Service Isolation:* 🟢 PASS\n• *PR Size SLA (<300 lines):* 🟢 PASS\n• *Secrets Masking & Zero Cloud Keys:* 🟢 PASS (100% Ollama Local)\n• *Overall SOP Score:* ${sop.complianceScore ?? 100}%`,
+      content: `${(sop.checks || []).map((c) => `• *${c.title}:* ${c.status === 'PASS' ? '🟢 PASS' : c.status === 'WARN' ? '🟡 WARN' : c.status === 'FAIL' ? '🔴 FAIL' : '⚪ not checked'}`).join('\n') || '• No governance checks recorded'}\n• *Overall SOP Score:* ${na(sop.complianceScore, '%')}`,
     },
   ];
 
@@ -424,28 +430,31 @@ export async function sendActionItemNudge({
   }
 }
 
-export async function getAvailableSlackChannels() {
-  const defaultList = [
-    { id: 'C_LEADERSHIP', name: 'engineering-leadership', is_default: true },
-    { id: 'C_DEV_STANDUP', name: 'dev-standup', is_default: false },
-    { id: 'C_ALERTS', name: 'em-taskflow-alerts', is_default: false },
-    { id: 'C_RETRO', name: 'engineering-retro', is_default: false },
-  ];
-
+/**
+ * Lists real Slack channels. When Slack is not configured or the API fails, returns an empty
+ * list with the reason (it used to return four invented channel IDs).
+ * @returns {Promise<{ channels: Array<{id: string, name: string, is_default: boolean}>, available: boolean, reason?: string }>}
+ */
+export async function listSlackChannelsWithStatus() {
   try {
     const channels = await slackClient.listChannels({ limit: 50 });
     const { defaultChannel } = slackClient.getCredentials();
-    if (channels && channels.length > 0) {
-      return channels.map((c) => ({
-        id: c.id,
-        name: c.name,
-        is_default: `#${c.name}` === defaultChannel,
-      }));
+    if (Array.isArray(channels) && channels.length > 0) {
+      return {
+        available: true,
+        channels: channels.map((c) => ({ id: c.id, name: c.name, is_default: `#${c.name}` === defaultChannel })),
+      };
     }
-    return defaultList;
-  } catch {
-    return defaultList;
+    return { available: false, channels: [], reason: 'Slack returned no channels (check the bot token and its channel scopes).' };
+  } catch (err) {
+    warn({ module: 'slackMcp', action: 'listChannels', err: err.message }, 'Slack channel listing failed');
+    return { available: false, channels: [], reason: `Slack is not reachable: ${err.message}` };
   }
+}
+
+export async function getAvailableSlackChannels() {
+  const { channels } = await listSlackChannelsWithStatus();
+  return channels;
 }
 
 export async function closeSlackMcp() {}

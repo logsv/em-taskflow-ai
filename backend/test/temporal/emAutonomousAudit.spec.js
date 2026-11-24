@@ -73,9 +73,12 @@ describe('Autonomous EM Task & Health Audit Engine Specs', () => {
     it('harvestSopAndGovernanceActivity should evaluate ADR compliance and return checklist', async () => {
       const res = await harvestSopAndGovernanceActivity({ stalledPrsCount: 1 });
       expect(res.source).toBe('sop_and_governance');
-      expect(res.complianceScore).toBeGreaterThanOrEqual(50);
-      expect(Array.isArray(res.checks)).toBe(true);
-      expect(res.checks.some((c) => c.id === 'ADR-008')).toBe(true);
+      expect(res.checks.find((c) => c.id === 'BASELINE-REVIEW-SLA').status).toBe('WARN');
+      expect(res.complianceScore).toBe(0); // only the measured rule is scored
+      expect(res.checks.filter((c) => c.status === 'NOT_CHECKED').length).toBe(3);
+
+      const unknown = await harvestSopAndGovernanceActivity({});
+      expect(unknown.complianceScore).toBeNull();
     });
   });
 
@@ -223,8 +226,8 @@ describe('Autonomous EM Task & Health Audit Engine Specs', () => {
     it('getAvailableSlackChannels should return list of accessible Slack channels', async () => {
       const channels = await getAvailableSlackChannels();
       expect(Array.isArray(channels)).toBe(true);
-      expect(channels.length).toBeGreaterThanOrEqual(2);
-      expect(channels.some((c) => c.name === 'engineering-leadership' || c.name === 'engineering-retro')).toBe(true);
+      // No configured Slack bot in tests: no invented placeholder channels.
+      expect(channels.some((c) => c.id === 'C_LEADERSHIP' || c.id === 'C_RETRO')).toBe(false);
     });
   });
 

@@ -54,8 +54,8 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
           if (pages.length > 0) {
             return {
               strategy_doc_found: true,
-              title: pages[0].title || 'Q4 Product Roadmap & Strategic Deliverables',
-              url: pages[0].url || 'https://notion.so/roadmap-q4',
+              title: pages[0].title || 'Untitled roadmap page',
+              url: pages[0].url || null,
               source: 'mcp_notion',
               synced_at: new Date().toISOString(),
             };
@@ -91,46 +91,11 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
     return {
       initiative_id: inputArgs.initiative_id || 'q4_roadmap',
       quarter,
-      epics: [
-        {
-          key: 'ENG-201',
-          summary: 'Core Auth v2 & OAuth SSO Migration',
-          quarter,
-          status: 'IN_PROGRESS',
-          progress_pct: 65,
-          baseline_points: 40,
-          current_points: 48,
-          target_date: '2026-11-15',
-          owner: 'Identity Team',
-          blockers: [],
-        },
-        {
-          key: 'ENG-205',
-          summary: 'Mobile Biometrics & Passkey Integration',
-          quarter,
-          status: 'AT_RISK',
-          progress_pct: 35,
-          baseline_points: 30,
-          current_points: 42,
-          target_date: '2026-11-30',
-          owner: 'Mobile Client Team',
-          blockers: ['Blocked by ENG-201 (Core Auth v2 API token exchange endpoint)'],
-        },
-        {
-          key: 'ENG-210',
-          summary: 'Zero-Downtime Database Partitioning & Vector Scaling',
-          quarter,
-          status: 'ON_TRACK',
-          progress_pct: 80,
-          baseline_points: 35,
-          current_points: 35,
-          target_date: '2026-10-31',
-          owner: 'Infrastructure Team',
-          blockers: [],
-        },
-      ],
+      // Roadmap epics come from Jira only; there is no roadmap snapshot table to fall back to.
+      epics: [],
       okr_count: okrs.length,
-      drift_days: 4,
+      drift_days: null,
+      data_availability: 'no_roadmap_data',
       source: 'postgres_okr_snapshot',
       staleDataWarning: true,
       synced_at: new Date().toISOString(),
@@ -144,44 +109,21 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
     const mode = inputArgs.mode || 'ANALYZE';
     const quarter = inputArgs.quarter || 'Q4';
 
-    const epics = jiraData?.epics || dbFallbackData?.epics || [
-      {
-        key: 'ENG-201',
-        summary: 'Core Auth v2 & OAuth SSO Migration',
+    const epics = (Array.isArray(jiraData?.epics) && jiraData.epics.length > 0)
+      ? jiraData.epics
+      : (Array.isArray(dbFallbackData?.epics) ? dbFallbackData.epics : []);
+
+    if (epics.length === 0) {
+      return {
+        mode,
+        target: inputArgs.target || 'ALL',
         quarter,
-        status: 'IN_PROGRESS',
-        progress_pct: 68,
-        baseline_points: 40,
-        current_points: 48,
-        target_date: '2026-11-15',
-        owner: 'Identity Team',
-        blockers: [],
-      },
-      {
-        key: 'ENG-205',
-        summary: 'Mobile Biometrics & Passkey Integration',
-        quarter,
-        status: 'BLOCKED',
-        progress_pct: 35,
-        baseline_points: 30,
-        current_points: 42,
-        target_date: '2026-11-30',
-        owner: 'Mobile Client Team',
-        blockers: ['Blocked by ENG-201 (Core Auth v2 API token exchange endpoint)'],
-      },
-      {
-        key: 'ENG-210',
-        summary: 'Zero-Downtime Database Partitioning & Vector Scaling',
-        quarter,
-        status: 'IN_PROGRESS',
-        progress_pct: 82,
-        baseline_points: 35,
-        current_points: 35,
-        target_date: '2026-10-31',
-        owner: 'Infrastructure Team',
-        blockers: [],
-      },
-    ];
+        items: [],
+        epics: [],
+        data_availability: 'no_roadmap_data',
+        summary: `### 🗺️ Roadmap Alignment: ${quarter}\n\n> No roadmap epics are available. Connect Jira in **Admin → Settings** (epics with target dates) to analyse milestone drift and dependencies.`,
+      };
+    }
 
     if (mode === 'LIST_RAW') {
       const epicRows = epics.map((e) => {
@@ -259,27 +201,20 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
 
       if (epic.blockers && epic.blockers.length > 0) {
         health = 'BLOCKED / AT_RISK';
-        driftDays = 8;
         blockersList.push({
           epic: epic.key,
           summary: epic.summary,
           owner: epic.owner,
           blocker_description: epic.blockers.join('; '),
-          critical_path_impact: 'High (Blocks Mobile Client Milestone)',
         });
       } else if (scopeCreepPct > 20 || progress < 50) {
         health = 'AT_RISK';
-        driftDays = 5;
       } else if (progress >= 75) {
         health = 'ON_TRACK';
-        driftDays = 0;
       }
-
-      if (driftDays > 0 && epic.target_date) {
-        const target = new Date(epic.target_date);
-        target.setDate(target.getDate() + driftDays);
-        projectedSlipDate = target.toISOString().split('T')[0];
-      }
+      // Slip is not projected: that needs velocity per epic, which this data does not have.
+      driftDays = null;
+      projectedSlipDate = null;
 
       analyzedEpics.push({
         ...epic,
@@ -297,9 +232,16 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
     if (blockersList.length > 0 || totalScopeCreepPct > 25) {
       overallHealth = 'AT_RISK';
     }
-    if (analyzedEpics.some((e) => e.drift_days > 10)) {
+    const today = new Date().toISOString().split('T')[0];
+    const overdue = analyzedEpics.filter((e) => e.target_date && e.target_date < today && (Number(e.progress_pct) || 0) < 100);
+    if (overdue.length > 0) {
       overallHealth = 'DELAYED';
     }
+    const topCreep = [...analyzedEpics].sort((a, b) => (b.scope_creep_pct || 0) - (a.scope_creep_pct || 0))[0];
+    const actions = [];
+    blockersList.forEach((b) => actions.push(`**Resolve blocker on \`${b.epic}\`** (${b.owner || 'owner unknown'}): ${b.blocker_description}`));
+    overdue.forEach((e) => actions.push(`**Re-plan \`${e.key}\`**: target date ${e.target_date} has passed at ${e.progress_pct}% complete.`));
+    analyzedEpics.filter((e) => (e.scope_creep_pct || 0) > 20).forEach((e) => actions.push(`**Review scope of \`${e.key}\`**: +${e.scope_creep_pct}% points since baseline.`));
 
     // Build Executive Markdown Report
     const markdownSummary = `
@@ -313,28 +255,26 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
 ---
 
 ### 📊 Epic Progress & Timeline Breakdown
-| Epic Key | Strategic Epic Summary | Owner / Pod | Progress | Scope Creep | Target Date | Projected Slip | Status |
-| :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-${analyzedEpics.map((e) => `| **${e.key}** | ${e.summary} | ${e.owner} | ${e.progress_pct}% | +${e.scope_creep_pct}% | \`${e.target_date}\` | \`${e.projected_slip_date}\` | ${e.health_status.includes('ON_TRACK') ? '🟢 On Track' : e.health_status.includes('BLOCKED') ? '🔴 Blocked' : '🟡 At Risk'} |`).join('\n')}
+| Epic Key | Strategic Epic Summary | Owner / Pod | Progress | Scope Creep | Target Date | Status |
+| :--- | :--- | :--- | :---: | :---: | :---: | :---: |
+${analyzedEpics.map((e) => `| **${e.key}** | ${e.summary} | ${e.owner || '—'} | ${e.progress_pct ?? '—'}% | +${e.scope_creep_pct}% | \`${e.target_date || 'no date'}\` | ${e.health_status.includes('ON_TRACK') ? '🟢 On Track' : e.health_status.includes('BLOCKED') ? '🔴 Blocked' : '🟡 At Risk'} |`).join('\n')}
 
 ---
 
 ### 🔗 Cross-Team Technical Dependencies & Critical Path Blockers
-${blockersList.length > 0 ? blockersList.map((b) => `- ⚠️ **[${b.epic}] ${b.summary}** (${b.owner}):\n  - **Upstream Blocker**: ${b.blocker_description}\n  - **Critical Path Impact**: \`${b.critical_path_impact}\``).join('\n') : '- ✅ No cross-team blocking dependencies identified on the critical path.'}
+${blockersList.length > 0 ? blockersList.map((b) => `- ⚠️ **[${b.epic}] ${b.summary}** (${b.owner || 'owner unknown'}):\n  - **Upstream Blocker**: ${b.blocker_description}`).join('\n') : '- ✅ No blockers recorded on these epics.'}
 
 ---
 
 ### 📈 Scope Creep & Velocity Risk Audit
 - **Injected Story Points**: **+${totalCurrentPoints - totalBaselinePoints} pts** added post-planning across active epics.
-- **Top Scope Expansion**: \`ENG-205\` (+40% points) due to unestimated passkey browser fallback polyfills.
-- **Delivery Velocity Risk**: At current rolling sprint velocity, \`ENG-205\` risks a **~8-day slip** into early December unless blocker on \`ENG-201\` is resolved by Nov 10.
+- **Top Scope Expansion**: ${topCreep && topCreep.scope_creep_pct > 0 ? `\`${topCreep.key}\` (+${topCreep.scope_creep_pct}% points)` : 'none recorded'}.
+- **Overdue Epics**: ${overdue.length > 0 ? overdue.map((e) => `\`${e.key}\` (target ${e.target_date})`).join(', ') : 'none'}.
 
 ---
 
 ### 🛠️ Recommended De-risking & Re-alignment Actions
-1. **Unblock Auth Service v2 API Contract (P0)**: Expedite \`ENG-201\` token exchange endpoint by assigning Identity Team dedicated focus to unblock Mobile passkeys.
-2. **De-scope Non-Core Passkey Fallbacks (P1)**: Move desktop Safari legacy biometric fallback to Q1 milestone to recover ~6 story points on \`ENG-205\`.
-3. **Database Migration Buffer (P2)**: Maintain \`ENG-210\` schedule on track for Oct 31, freeing up Infrastructure Team to assist Identity pod in mid-November.
+${actions.length > 0 ? actions.map((a, i) => `${i + 1}. ${a}`).join('\n') : '- No de-risking actions indicated by the current epic data.'}
 
 ---
 

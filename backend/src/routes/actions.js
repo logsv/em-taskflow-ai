@@ -43,8 +43,25 @@ router.get('/summary', async (req, res) => {
     res.json({
       success: true,
       summary,
-      healthScore: latestAudit?.healthScore ?? 100,
+      // No audit yet means no score, not a perfect one.
+      healthScore: latestAudit?.healthScore ?? null,
       lastAuditAt: latestAudit?.createdAt || null,
+      metrics: latestAudit
+        ? {
+            doraTier: latestAudit.doraSummary?.tier ?? null,
+            deploymentFrequency: latestAudit.doraSummary?.deploymentFrequency ?? null,
+            mttrHours: latestAudit.doraSummary?.mttrHours ?? null,
+            openPrsCount: latestAudit.deliverySummary?.openPrsCount ?? null,
+            stalledPrsCount: latestAudit.deliverySummary?.stalledPrsCount ?? null,
+            avgPrReviewWaitHours: latestAudit.deliverySummary?.avgPrReviewWaitHours ?? null,
+            overdue1on1sCount: latestAudit.peopleSummary?.overdue1on1sCount ?? null,
+            sprintPacingPct: latestAudit.sprintOkrSummary?.sprintPacingPct ?? null,
+            completedPoints: latestAudit.sprintOkrSummary?.completedPoints ?? null,
+            totalPoints: latestAudit.sprintOkrSummary?.totalPoints ?? null,
+            wipViolations: latestAudit.sprintOkrSummary?.wipViolations ?? null,
+            sopComplianceScore: latestAudit.sopSummary?.complianceScore ?? null,
+          }
+        : null,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -82,52 +99,35 @@ router.get('/audit-runs/:id', async (req, res) => {
 router.get('/sop/compliance', async (_req, res) => {
   try {
     const latestAudit = await databaseService.getLatestAuditRun();
+    const stalledRaw = latestAudit?.deliverySummary?.stalledPrsCount;
+    const stalled = Number.isFinite(Number(stalledRaw)) && stalledRaw !== null ? Number(stalledRaw) : null;
+    const lastChecked = latestAudit?.createdAt || null;
+    // Only the review SLA is measured (from the last audit's PR harvest). The other baseline rules
+    // cannot be verified automatically and are reported as NOT_CHECKED, never as PASS.
     const rules = [
       {
-        id: 'ADR-008',
-        category: 'Architecture',
-        title: 'Database Per-Service Isolation Architecture',
-        description: 'Dedicated isolated PostgreSQL databases for backend, AI vector store, temporal, and analytics.',
-        status: 'PASS',
-        impact: 'High',
-        lastChecked: latestAudit?.createdAt || new Date().toISOString(),
-      },
-      {
-        id: 'SOP-01',
+        id: 'BASELINE-REVIEW-SLA',
         category: 'Code Review',
-        title: 'PR Code Review Turnaround SLA (<24h)',
-        description: 'Pull requests must receive review and feedback within 24 hours of submission.',
-        status: (latestAudit?.deliverySummary?.stalledPrsCount || 0) > 0 ? 'WARN' : 'PASS',
+        title: 'PR code review turnaround SLA (<24h)',
+        description: 'Pull requests receive review within 24 hours.',
+        status: stalled === null ? 'NOT_CHECKED' : stalled > 0 ? 'WARN' : 'PASS',
+        details: stalled === null ? 'No audit with pull request data yet' : `${stalled} stalled PR(s) in the last audit`,
         impact: 'Medium',
-        lastChecked: latestAudit?.createdAt || new Date().toISOString(),
+        lastChecked,
       },
-      {
-        id: 'SOP-04',
-        category: 'Security',
-        title: 'Zero Cloud Key & Secret Masking Policy',
-        description: '100% Local SLM inference with Ollama; zero third-party cloud LLM API dependencies.',
-        status: 'PASS',
-        impact: 'Critical',
-        lastChecked: latestAudit?.createdAt || new Date().toISOString(),
-      },
-      {
-        id: 'SOP-09',
-        category: 'Observability',
-        title: 'Zero-Downtime Telemetry Non-Blocking Execution',
-        description: 'Trace logging, feedback, and telemetry must never block or crash user requests.',
-        status: 'PASS',
-        impact: 'High',
-        lastChecked: latestAudit?.createdAt || new Date().toISOString(),
-      },
+      { id: 'BASELINE-DB-ISOLATION', category: 'Architecture', title: 'Database per-service isolation', description: 'One database per service; no cross-service joins.', status: 'NOT_CHECKED', details: 'Not automatically verifiable', impact: 'High', lastChecked: null },
+      { id: 'BASELINE-SECURITY', category: 'Security', title: 'Secret masking policy', description: 'No plaintext secrets in code, logs or UI.', status: 'NOT_CHECKED', details: 'Not automatically verifiable', impact: 'Critical', lastChecked: null },
+      { id: 'BASELINE-OBSERVABILITY', category: 'Observability', title: 'Non-blocking telemetry', description: 'Telemetry never blocks or fails user requests.', status: 'NOT_CHECKED', details: 'Not automatically verifiable', impact: 'High', lastChecked: null },
     ];
 
-    const passCount = rules.filter((r) => r.status === 'PASS').length;
-    const score = Math.round((passCount / rules.length) * 100);
+    const scored = rules.filter((r) => r.status !== 'NOT_CHECKED');
+    const score = scored.length > 0 ? Math.round((scored.filter((r) => r.status === 'PASS').length / scored.length) * 100) : null;
 
     res.json({
       success: true,
       complianceScore: score,
       totalRules: rules.length,
+      checkedRules: scored.length,
       rules,
     });
   } catch (err) {
@@ -235,9 +235,9 @@ router.get('/audit/status/:workflowId', async (req, res) => {
 // GET /api/actions/slack/channels - List available Slack channels
 router.get('/slack/channels', async (_req, res) => {
   try {
-    const { getAvailableSlackChannels } = await import('../mcp/slack.js');
-    const channels = await getAvailableSlackChannels();
-    res.json({ success: true, channels });
+    const { listSlackChannelsWithStatus } = await import('../mcp/slack.js');
+    const { channels, available, reason } = await listSlackChannelsWithStatus();
+    res.json({ success: true, available, channels, ...(reason ? { reason } : {}) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message, channels: [] });
   }

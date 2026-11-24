@@ -31,7 +31,7 @@ export const okrProgressTool = createDeterministicToolHarness({
             return {
               okr_hub_found: true,
               hub_title: pages[0].title || 'Engineering OKRs & KPI Hub',
-              hub_url: pages[0].url || (configuredPageId ? `https://notion.so/${configuredPageId}` : 'https://notion.so/okrs'),
+              hub_url: pages[0].url || null,
               source: 'mcp_notion',
               synced_at: new Date().toISOString(),
             };
@@ -46,10 +46,11 @@ export const okrProgressTool = createDeterministicToolHarness({
       try {
         const jql = 'issuetype in (Bug, Incident) AND status in (Closed, Resolved) AND resolved >= -90d';
         const res = await safeExecuteMCPTool('jira_search', { jql });
+        if (!res) return null;
         const issues = Array.isArray(res) ? res : (Array.isArray(res?.issues) ? res.issues : []);
 
         return {
-          total_resolved_bugs: issues.length || 14,
+          total_resolved_bugs: issues.length,
           source: 'mcp_jira',
           synced_at: new Date().toISOString(),
         };
@@ -78,74 +79,11 @@ export const okrProgressTool = createDeterministicToolHarness({
         };
       }
 
-      // Seed realistic engineering OKR tree if table is empty
-      const defaultKrs = [
-        {
-          objective: 'O1: Elevate System Reliability & Operational Excellence',
-          kr: 'KR1: Maintain >99.9% API uptime across core gateway services',
-          target_value: 99.9,
-          current_value: 99.95,
-          unit: '%',
-          direction: 'HIGHER_IS_BETTER',
-          type: 'LAGGING',
-          quarter,
-        },
-        {
-          objective: 'O1: Elevate System Reliability & Operational Excellence',
-          kr: 'KR2: Reduce P95 API response latency to <150ms under peak load',
-          target_value: 150,
-          current_value: 138,
-          unit: 'ms',
-          direction: 'LOWER_IS_BETTER',
-          type: 'LEADING',
-          quarter,
-        },
-        {
-          objective: 'O2: Accelerate Engineering Delivery Velocity & Quality',
-          kr: 'KR3: Achieve >=85% unit and integration test coverage across all microservices',
-          target_value: 85,
-          current_value: 78,
-          unit: '%',
-          direction: 'HIGHER_IS_BETTER',
-          type: 'LEADING',
-          quarter,
-        },
-        {
-          objective: 'O2: Accelerate Engineering Delivery Velocity & Quality',
-          kr: 'KR4: Decrease PR code review turnaround time to <12 hours',
-          target_value: 12,
-          current_value: 14.5,
-          unit: 'hours',
-          direction: 'LOWER_IS_BETTER',
-          type: 'LEADING',
-          quarter,
-        },
-        {
-          objective: 'O3: Foster High-Performance Engineering Culture',
-          kr: 'KR5: Complete 100% of bi-weekly 1-on-1 career progression check-ins',
-          target_value: 100,
-          current_value: 92,
-          unit: '%',
-          direction: 'HIGHER_IS_BETTER',
-          type: 'LEADING',
-          quarter,
-        },
-      ];
-
-      for (const kr of defaultKrs) {
-        await databaseService.saveOkrRecord({
-          objective: kr.objective,
-          key_result: kr.kr,
-          target_value: kr.target_value,
-          current_value: kr.current_value,
-          status: 'ON_TRACK',
-          quarter,
-        }).catch(() => {});
-      }
-
+      // No OKRs recorded: report that. (This used to seed invented OKRs into the database.)
       return {
         quarter,
-        okrs: defaultKrs,
+        okrs: [],
+        data_availability: 'no_okrs',
         synced_at: new Date().toISOString(),
       };
     },
@@ -178,44 +116,21 @@ export const okrProgressTool = createDeterministicToolHarness({
     const mode = inputArgs.mode || 'ANALYZE';
     const quarter = inputArgs.quarter || 'Q4';
 
-    const rawKrs = defaultData?.okrs || dbFallbackData?.okrs || [
-      {
-        objective: 'O1: Elevate System Reliability & Operational Excellence',
-        kr: 'KR1: Maintain >99.9% API uptime across core gateway services',
-        target_value: 99.9,
-        current_value: 99.95,
-        unit: '%',
-        direction: 'HIGHER_IS_BETTER',
-        type: 'LAGGING',
-      },
-      {
-        objective: 'O1: Elevate System Reliability & Operational Excellence',
-        kr: 'KR2: Reduce P95 API response latency to <150ms under peak load',
-        target_value: 150,
-        current_value: 138,
-        unit: 'ms',
-        direction: 'LOWER_IS_BETTER',
-        type: 'LEADING',
-      },
-      {
-        objective: 'O2: Accelerate Engineering Delivery Velocity & Quality',
-        kr: 'KR3: Achieve >=85% unit and integration test coverage across all microservices',
-        target_value: 85,
-        current_value: 78,
-        unit: '%',
-        direction: 'HIGHER_IS_BETTER',
-        type: 'LEADING',
-      },
-      {
-        objective: 'O2: Accelerate Engineering Delivery Velocity & Quality',
-        kr: 'KR4: Decrease PR code review turnaround time to <12 hours',
-        target_value: 12,
-        current_value: 14.5,
-        unit: 'hours',
-        direction: 'LOWER_IS_BETTER',
-        type: 'LEADING',
-      },
-    ];
+    const rawKrs = (Array.isArray(defaultData?.okrs) && defaultData.okrs.length > 0)
+      ? defaultData.okrs
+      : (Array.isArray(dbFallbackData?.okrs) ? dbFallbackData.okrs : []);
+
+    if (rawKrs.length === 0) {
+      return {
+        mode,
+        target: inputArgs.target || 'ALL',
+        quarter,
+        total_krs: 0,
+        items: [],
+        data_availability: 'no_okrs',
+        summary: `### 🎯 OKR Progress: ${quarter}\n\n> No OKRs are recorded for ${quarter}. Add objectives and key results (target and current values) to track pacing; nothing is estimated without them.`,
+      };
+    }
 
     if (mode === 'LIST_RAW') {
       const krRows = rawKrs.map((item) => {
@@ -285,8 +200,8 @@ export const okrProgressTool = createDeterministicToolHarness({
           target: `${target} ${item.unit || ''}`.trim(),
           progress_pct: progressPct,
           confidence_score: confidenceScore,
-          root_cause: isInverse ? 'Review bottlenecks & large PR batch sizing' : 'Coverage gap in legacy auth/payment modules',
-          remediation: isInverse ? 'Enforce PR size limit <300 lines & daily review SLAs' : 'Dedicate 20% sprint capacity budget to integration tests',
+          root_cause: item.root_cause || 'Not recorded (needs owner input)',
+          remediation: item.remediation || 'Owner to propose a recovery plan at the next OKR check-in',
         });
       } else {
         status = 'OFF_TRACK';
@@ -298,8 +213,8 @@ export const okrProgressTool = createDeterministicToolHarness({
           target: `${target} ${item.unit || ''}`.trim(),
           progress_pct: progressPct,
           confidence_score: confidenceScore,
-          root_cause: 'Critical timeline friction & unmet prerequisite milestones',
-          remediation: 'Escalate to Engineering Director & re-scope secondary deliverables',
+          root_cause: item.root_cause || 'Not recorded (needs owner input)',
+          remediation: item.remediation || 'Off track: review scope or target with the objective owner',
         });
       }
 
@@ -386,7 +301,7 @@ ${analyzedKrs.map((k) => `| ${k.objective.replace(/O\d+:\s*/, '')} | **${k.kr.re
 ### 🔄 Leading vs Lagging Indicator Divergence Analysis
 - **Leading Indicators Average**: **${leadingAvgProgress}%** (Reflects daily review responsiveness, test velocity, and 1-on-1 rhythm).
 - **Lagging Outcomes Average**: **${laggingAvgProgress}%** (Reflects production SLA uptime and incident escapement).
-- **Divergence Warning**: ${leadingAvgProgress < laggingAvgProgress ? '⚠️ **Leading metrics are lagging behind historical uptime outcomes** (e.g. PR turnaround time is 14.5h vs 12h target). If code review friction continues, delivery slippage will impact future quarterly milestones.' : '✅ Leading behavioral indicators are in alignment with production outcome goals.'}
+- **Divergence**: ${leadingAvgProgress < laggingAvgProgress ? `⚠️ Leading indicators (${leadingAvgProgress}%) trail lagging outcomes (${laggingAvgProgress}%), which usually precedes slippage on the outcome KRs.` : '✅ Leading indicators are not trailing lagging outcomes.'}
 
 ---
 
@@ -396,14 +311,12 @@ ${laggingKrs.length > 0 ? laggingKrs.map((l) => `- 🟡 **${l.kr}** (${l.progres
 ---
 
 ### 🛠️ Actionable Gap Remediation Proposals
-1. **Accelerate Code Review Turnaround (P0)**: Institute async review blocks and enforce PR size thresholds (<300 lines) to compress review latency from 14.5h back under the 12.0h target.
-2. **Close Integration Test Coverage Gap (P1)**: Direct 20% sprint debt budget toward authentication and billing service test suites to elevate coverage from 78% to >=85%.
-3. **Weekly OKR Checkpoint Sync (P2)**: Maintain bi-weekly 1-on-1 cadence to ensure engineer personal growth goals directly align with Q4 engineering milestones.
+${laggingKrs.length > 0 ? laggingKrs.map((l, i) => `${i + 1}. **${l.kr}**: ${l.current} vs target ${l.target} (${l.progress_pct}%). ${l.remediation}.`).join('\n') : '- No key result needs remediation.'}
 
 ---
 
 ### 📌 Data Provenance
-- **Telemetry Sources**: ${defaultData?.okrs ? '🟢 Live Notion OKR Hub & Jira Delivery Metrics' : '🟡 PostgreSQL okr_tracker cached snapshot'}
+- **Telemetry Sources**: PostgreSQL okr_tracker (recorded OKRs)
 - **Generated At**: \`${new Date().toISOString()}\`
 `.trim();
 

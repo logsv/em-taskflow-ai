@@ -90,7 +90,28 @@ describe('sbiAgent & format_sbi_feedback Tool Harness', () => {
     expect(Array.isArray(listRes.data.items)).toBe(true);
   });
 
+  it('renders PR and ticket references as plain codes when no repo or Jira URL is configured', async () => {
+    const saved = { repo: process.env.GITHUB_REPO, jira: process.env.JIRA_BASE_URL };
+    delete process.env.GITHUB_REPO;
+    delete process.env.JIRA_BASE_URL;
+    try {
+      const res = await sbiFeedbackTool.invoke({
+        sources: ['default'],
+        engineer_id: 'Alex Williams',
+        raw_draft: 'Alex turned around PR reviews quickly on PR #402 and resolved incident ENG-104',
+        feedback_type: 'POSITIVE_PRAISE',
+      });
+      expect(res.data.summary).not.toContain('company/repo');
+      expect(res.data.summary).not.toContain('your-company.atlassian.net');
+    } finally {
+      if (saved.repo !== undefined) process.env.GITHUB_REPO = saved.repo;
+      if (saved.jira !== undefined) process.env.JIRA_BASE_URL = saved.jira;
+    }
+  });
+
   it('should execute multi-source executors including GitHub, Jira, and Notion context', async () => {
+    process.env.GITHUB_REPO = process.env.GITHUB_REPO || 'acme/payments';
+    process.env.JIRA_BASE_URL = process.env.JIRA_BASE_URL || 'https://acme.atlassian.net';
     const res = await sbiFeedbackTool.invoke({
       sources: ['default', 'github', 'jira', 'notion'],
       engineer_id: 'Alex Williams',

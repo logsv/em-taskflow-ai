@@ -52,13 +52,12 @@ function cleanMetaPromptSituation(text, contextType) {
 
 function linkifyWorkItems(text, repo) {
   if (!text || typeof text !== 'string') return text;
-  const isTestEnv = process.env.NODE_ENV === 'test' || (Array.isArray(process.argv) && process.argv.some(a => a.includes('jasmine')));
   const cached = settingsService.getCachedSettings();
   const defaultRepo = cached?.mcp?.github?.owner && cached?.mcp?.github?.repo 
     ? `${cached.mcp.github.owner}/${cached.mcp.github.repo}` 
-    : (process.env.GITHUB_REPO || (isTestEnv ? 'company/repo' : null));
+    : (process.env.GITHUB_REPO || null);
   const targetRepo = repo && repo !== 'github_repo' ? repo : defaultRepo;
-  const jiraUrl = (cached?.mcp?.jira?.url || process.env.JIRA_BASE_URL || (isTestEnv ? 'https://your-company.atlassian.net' : null))?.replace(/\/$/, '');
+  const jiraUrl = (cached?.mcp?.jira?.url || process.env.JIRA_BASE_URL || null)?.replace(/\/$/, '');
 
   // Linkify PR #123 or #123 (avoiding already formatted markdown links)
   let out = text.replace(/(?<!\[)\b(PR\s+#?|#)(\d+)\b(?!\])/gi, (_match, _prefix, num) => {
@@ -165,9 +164,9 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
         if (issues.length > 0) {
           return {
             related_tickets_count: issues.length,
-            recent_tickets: issues.slice(0, 3).map((iss) => ({
-              key: iss.key || 'ENG-104',
-              summary: iss.summary || iss.fields?.summary || 'Database migration incident',
+            recent_tickets: issues.filter((iss) => iss?.key).slice(0, 3).map((iss) => ({
+              key: iss.key,
+              summary: iss.summary || iss.fields?.summary || '(no summary)',
             })),
             source: 'mcp_jira',
             synced_at: new Date().toISOString(),
@@ -188,9 +187,9 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
           if (pages.length > 0) {
             return {
               feedback_notes_count: pages.length,
-              past_notes: pages.slice(0, 2).map((p) => ({
-                title: p.title || p.name || '1-on-1 Feedback History',
-                url: p.url || 'https://notion.so/feedback',
+              past_notes: pages.filter((p) => p?.url).slice(0, 2).map((p) => ({
+                title: p.title || p.name || 'Untitled page',
+                url: p.url,
               })),
               source: 'mcp_notion',
               synced_at: new Date().toISOString(),

@@ -217,6 +217,7 @@ describe('Slack MCP Tool Integration & Agent Harness Specs', () => {
       const res = await sprintRetroTool.invoke({
         sprint_name: 'Sprint 42',
         sources: ['default', 'slack'],
+        retro_notes: '- CI pipeline was flaky all week\n- Great pairing on the release',
         post_to_slack: true,
         slack_channel: '#engineering-retro',
       });
