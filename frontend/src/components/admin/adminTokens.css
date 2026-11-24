@@ -1,0 +1,57 @@
+/*
+ * Admin Portal design tokens (--admin-*), aliasing the base palette in src/index.css.
+ */
+:root {
+  /* ---------- Admin Portal ---------- */
+  --admin-bg: var(--bg-canvas);
+  --admin-bg-subtle: var(--bg-surface);
+  --admin-surface: var(--bg-surface);
+  --admin-surface-elevated: var(--bg-elevated);
+  --admin-surface-hover: var(--bg-hover);
+  --admin-surface-subtle: var(--bg-subtle);
+  --admin-border: var(--border-medium);
+  --admin-border-subtle: var(--border-subtle);
+  --admin-border-focus: var(--accent-border);
+  --admin-text-primary: var(--text-primary);
+  --admin-text-secondary: var(--text-secondary);
+  --admin-text-muted: var(--text-muted);
+  --admin-text-subtle: var(--text-subtle);
+  --admin-text-disabled: #3f4a5c;
+  --admin-primary: var(--accent-primary);
+  --admin-primary-hover: var(--accent-hover);
+  --admin-primary-bg: var(--accent-surface);
+  --admin-primary-border: var(--accent-border);
+  --admin-success: var(--status-success);
+  --admin-success-bg: var(--status-success-bg);
+  --admin-success-border: rgba(16, 185, 129, 0.35);
+  --admin-warning: var(--status-warning);
+  --admin-warning-bg: var(--status-warning-bg);
+  --admin-warning-border: rgba(245, 158, 11, 0.35);
+  --admin-danger: var(--status-danger);
+  --admin-danger-bg: var(--status-danger-bg);
+  --admin-danger-border: rgba(239, 68, 68, 0.35);
+  --admin-neutral-bg: rgba(148, 163, 184, 0.1);
+  --admin-neutral-border: rgba(148, 163, 184, 0.25);
+  --admin-font-sans: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --admin-font-mono: var(--font-mono);
+  --admin-font-size-xs: var(--font-size-xs);
+  --admin-font-size-sm: var(--font-size-sm);
+  --admin-font-size-base: var(--font-size-base);
+  --admin-font-size-md: var(--font-size-md);
+  --admin-font-size-lg: var(--font-size-lg);
+  --admin-radius-sm: var(--radius-sm);
+  --admin-radius-md: var(--radius-md);
+  --admin-radius-lg: var(--radius-lg);
+  --admin-radius-full: var(--radius-full);
+  --admin-shadow-sm: var(--shadow-sm);
+  --admin-shadow-md: var(--shadow-md);
+  --admin-shadow-xl: 0 20px 40px -8px rgba(0, 0, 0, 0.55);
+  --admin-shadow-drawer: -12px 0 32px rgba(0, 0, 0, 0.5);
+  --admin-transition-fast: var(--transition-fast);
+  --admin-transition-normal: var(--transition-normal);
+  --admin-btn-height-sm: 28px;
+  --admin-btn-height-md: 34px;
+  --admin-btn-height-lg: 40px;
+  --admin-input-height: 36px;
+
+}

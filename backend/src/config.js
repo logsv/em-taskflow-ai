@@ -4,6 +4,7 @@ import { info, warn, error, debug } from './utils/logger.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL, isLegacyDefaultChatModel } from './llm/models.js';
 
 dotenv.config();
 
@@ -15,10 +16,14 @@ const boolSchema = (defaultVal = false) =>
     if (typeof val === 'boolean') return val;
     if (typeof val === 'string') {
       const lower = val.toLowerCase().trim();
-      if (lower === 'true' || lower === '1') return true;
-      if (lower === 'false' || lower === '0') return false;
+      if (['true', '1', 'yes', 'on'].includes(lower)) return true;
+      if (['false', '0', 'no', 'off'].includes(lower)) return false;
+      if (lower === '') return defaultVal;
+      // Unrecognised value: fail validation loudly instead of silently picking a default.
+      return val;
     }
-    return defaultVal;
+    if (val === undefined || val === null) return defaultVal;
+    return val;
   }, z.boolean());
 
 const envSchema = z.object({
@@ -38,34 +43,34 @@ const envSchema = z.object({
   LANGFUSE_SECRET_KEY: z.string().optional(),
   LANGFUSE_HOST: z.string().optional(),
   RAG_ENABLED: boolSchema(true),
-  RAG_EMBEDDING_MODEL: z.string().default('nomic-embed-text'),
+  RAG_EMBEDDING_MODEL: z.string().default(DEFAULT_EMBEDDING_MODEL),
   RAG_EMBEDDING_PROVIDER: z.string().default('qwen3-vl'),
   RAG_DEFAULT_COLLECTION: z.string().default('pdf_chunks'),
   RAG_MAX_CHUNK_SIZE: z.coerce.number().int().min(100).default(1000),
   RAG_TOP_K: z.coerce.number().int().min(1).default(6),
-  RAG_ADVANCED_ENABLED: z.coerce.boolean().default(false),
-  RAG_ADVANCED_QUERY_REWRITE: z.coerce.boolean().default(true),
+  RAG_ADVANCED_ENABLED: boolSchema(false),
+  RAG_ADVANCED_QUERY_REWRITE: boolSchema(true),
   RAG_ADVANCED_MAX_QUERIES: z.coerce.number().int().min(1).default(3),
   RAG_ADVANCED_INITIAL_K: z.coerce.number().int().min(1).default(30),
   RAG_ADVANCED_RETRIEVAL_STRATEGY: z.enum(['similarity', 'mmr']).default('mmr'),
   RAG_ADVANCED_MMR_LAMBDA: z.coerce.number().min(0).max(1).default(0.7),
-  RAG_ADVANCED_COMPRESSION_ENABLED: z.coerce.boolean().default(true),
+  RAG_ADVANCED_COMPRESSION_ENABLED: boolSchema(true),
   LLM_DEFAULT_PROVIDER: z.string().default('ollama'),
-  LLM_DEFAULT_MODEL: z.string().default('hermes3:8b'),
+  LLM_DEFAULT_MODEL: z.string().default(DEFAULT_CHAT_MODEL),
   LLM_LOAD_BALANCING: z.enum(['round_robin', 'cost_priority_round_robin']).default('round_robin'),
-  LLM_OPENAI_ENABLED: z.coerce.boolean().default(false),
+  LLM_OPENAI_ENABLED: boolSchema(false),
   OPENAI_API_KEY: z.string().optional(),
   LLM_OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
   LLM_OPENAI_PRIORITY: z.coerce.number().int().min(0).default(1),
-  LLM_ANTHROPIC_ENABLED: z.coerce.boolean().default(false),
+  LLM_ANTHROPIC_ENABLED: boolSchema(false),
   ANTHROPIC_API_KEY: z.string().optional(),
   LLM_ANTHROPIC_BASE_URL: z.string().url().default('https://api.anthropic.com/v1'),
   LLM_ANTHROPIC_PRIORITY: z.coerce.number().int().min(0).default(2),
-  LLM_GOOGLE_ENABLED: z.coerce.boolean().default(false),
+  LLM_GOOGLE_ENABLED: boolSchema(false),
   GOOGLE_API_KEY: z.string().optional(),
   LLM_GOOGLE_BASE_URL: z.string().url().default('https://generativelanguage.googleapis.com/v1beta/openai'),
   LLM_GOOGLE_PRIORITY: z.coerce.number().int().min(0).default(3),
-  LLM_OLLAMA_ENABLED: z.coerce.boolean().default(true),
+  LLM_OLLAMA_ENABLED: boolSchema(true),
   OLLAMA_BASE_URL: z.string().url().default('http://localhost:11434'),
   LLM_OLLAMA_PRIORITY: z.coerce.number().int().min(0).default(1),
   MCP_NOTION_ENABLED: boolSchema(true),
@@ -77,6 +82,13 @@ const envSchema = z.object({
   JIRA_PROJECT_KEY: z.string().default(''),
   MCP_GITHUB_ENABLED: boolSchema(true),
   GITHUB_TOKEN: z.string().optional(),
+  GITHUB_OWNER: z.string().optional(),
+  GITHUB_USERNAME: z.string().optional(),
+  GITHUB_REPO: z.string().optional(),
+  FRONTEND_URL: z.string().url().default('http://localhost:3000'),
+  // Single-owner auth (Phase 0). Required when NODE_ENV=production.
+  AUTH_TOKEN: z.string().min(24, 'AUTH_TOKEN must be at least 24 characters').optional(),
+  AUTH_SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 90).default(24 * 14),
   MCP_GOOGLE_ENABLED: boolSchema(false),
   GOOGLE_OAUTH_CREDENTIALS: z.string().optional(),
   PYTHON_AI_SERVICE_URL: z.string().default('http://localhost:8000'),
@@ -91,11 +103,11 @@ const envSchema = z.object({
   ENABLE_OKR_AGENT: boolSchema(true),
   ENABLE_CRITIC_AGENT: boolSchema(true),
   GOOGLE_CALENDAR_ID: z.string().default('primary'),
-  LEGACY_QUERY_API_ENABLED: z.coerce.boolean().default(true),
-  LEGACY_RAG_INGEST_API_ENABLED: z.coerce.boolean().default(true),
-  LEGACY_THREAD_API_ENABLED: z.coerce.boolean().default(true),
-  LEGACY_RAG_DOCUMENT_API_ENABLED: z.coerce.boolean().default(true),
-  LEGACY_ROUTER_METRICS_API_ENABLED: z.coerce.boolean().default(true),
+  LEGACY_QUERY_API_ENABLED: boolSchema(true),
+  LEGACY_RAG_INGEST_API_ENABLED: boolSchema(true),
+  LEGACY_THREAD_API_ENABLED: boolSchema(true),
+  LEGACY_RAG_DOCUMENT_API_ENABLED: boolSchema(true),
+  LEGACY_ROUTER_METRICS_API_ENABLED: boolSchema(true),
   SESSION_INACTIVITY_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(7),
   SESSION_CLEANUP_ENABLED: boolSchema(true),
   SESSION_CLEANUP_CRON_SCHEDULE: z.string().default('0 3 * * *'),
@@ -145,6 +157,16 @@ const configSchema = z.object({
   server: z.object({
     port: z.number().int().min(1).max(65535),
     host: z.string().ip(),
+    frontendUrl: z.string().url(),
+  }),
+  auth: z.object({
+    token: z.string().optional(),
+    sessionTtlHours: z.number().int().min(1),
+  }),
+  sessions: z.object({
+    inactivityTtlDays: z.number().int().min(1),
+    cleanupEnabled: z.boolean(),
+    cleanupBatchSize: z.number().int().min(10),
   }),
   database: z.object({
     url: z.string().url(),
@@ -199,6 +221,7 @@ const configSchema = z.object({
       enabled: z.boolean(),
       token: z.string().optional(),
       owner: z.string().optional(),
+      repo: z.string().optional(),
     }),
     google: z.object({
       enabled: z.boolean(),
@@ -300,22 +323,10 @@ const getDefaultModels = (providerType) => {
     case 'ollama':
       return [
         {
-          name: 'hermes3:8b',
+          name: DEFAULT_CHAT_MODEL,
           costPer1kInputTokens: 0,
           costPer1kOutputTokens: 0,
           maxTokens: 8192,
-        },
-        {
-          name: 'gpt-oss:latest',
-          costPer1kInputTokens: 0,
-          costPer1kOutputTokens: 0,
-          maxTokens: 4096,
-        },
-        {
-          name: 'llama2',
-          costPer1kInputTokens: 0,
-          costPer1kOutputTokens: 0,
-          maxTokens: 4096,
         },
       ];
     default:
@@ -359,6 +370,16 @@ function loadConfig() {
     server: {
       port: env.PORT,
       host: env.HOST,
+      frontendUrl: env.FRONTEND_URL,
+    },
+    auth: {
+      token: env.AUTH_TOKEN,
+      sessionTtlHours: env.AUTH_SESSION_TTL_HOURS,
+    },
+    sessions: {
+      inactivityTtlDays: env.SESSION_INACTIVITY_TTL_DAYS,
+      cleanupEnabled: env.SESSION_CLEANUP_ENABLED,
+      cleanupBatchSize: env.SESSION_CLEANUP_BATCH_SIZE,
     },
     database: {
       url: env.DATABASE_URL,
@@ -448,6 +469,7 @@ function loadConfig() {
         enabled: env.MCP_GITHUB_ENABLED,
         token: env.GITHUB_TOKEN,
         owner: env.GITHUB_OWNER || env.GITHUB_USERNAME,
+        repo: env.GITHUB_REPO,
       },
       google: {
         enabled: env.MCP_GOOGLE_ENABLED,
@@ -513,6 +535,8 @@ export const config = loadConfig();
 export default config;
 
 export const getServerConfig = () => config.server;
+export const getAuthConfig = () => config.auth;
+export const getSessionsConfig = () => config.sessions;
 export const getRuntimeConfig = () => config.runtime;
 export const getDatabaseConfig = () => ({
   url: process.env.DATABASE_URL || config.database.url,
@@ -558,6 +582,10 @@ export function validateConfig() {
 
   if (config.llm.providers.google.enabled && !config.llm.providers.google.apiKey) {
     warnings.push('Google is enabled but GOOGLE_API_KEY is not set');
+  }
+
+  if (isLegacyDefaultChatModel(config.llm.defaultModel)) {
+    warnings.push(`LLM_DEFAULT_MODEL is set to the retired model "${config.llm.defaultModel}"; stored settings will be migrated to ${DEFAULT_CHAT_MODEL}. Update backend/.env (scripts/setup-ollama-models.sh does this).`);
   }
 
   if (config.mcp.notion.enabled && !config.mcp.notion.apiKey) {

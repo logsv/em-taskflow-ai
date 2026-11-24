@@ -10,14 +10,17 @@ services:
       POSTGRES_DB: taskflow_ai
       POSTGRES_USER: taskflow
       POSTGRES_PASSWORD: taskflow
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-qwen3:8b-q8_0}
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-nomic-embed-text}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       TEMPORAL_HOST: ${TEMPORAL_HOST:-em-taskflow-temporal:7233}
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-a4eeeb19-4a09-440b-a80e-4cc2d2b89c66}
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-11d33cb9-7d44-42d0-8087-deb3d7b81aac}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
-      SENTRY_DSN: ${SENTRY_DSN:-https://c9ea2673ec5424cfa2cffaf0cb4ab760@o4511882439819264.ingest.us.sentry.io/4511882443227136}
-      NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY:-b935e749c388e8fe66cc799e29e782bb73f7NRAL}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY:-}
       NEW_RELIC_APP_NAME: ${NEW_RELIC_APP_NAME:-em-taskflow-python-ai}
-      AXIOM_TOKEN: ${AXIOM_TOKEN:-xaat-8d0e2c12-a34d-4c18-89a6-2d7ec1ed8094}
+      AXIOM_TOKEN: ${AXIOM_TOKEN:-}
       AXIOM_DATASET: ${AXIOM_DATASET:-emtaskflowai}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       APP_VERSION: ${APP_VERSION:-em-taskflow-python-ai@1.0.0}
@@ -43,7 +46,9 @@ services:
       - ./backend/.env
     environment:
       NODE_ENV: production
-      NODE_OPTIONS: ${NODE_OPTIONS:---inspect=0.0.0.0:9229}
+      # Debugger is off by default. To debug locally: NODE_OPTIONS=--inspect=0.0.0.0:9229 and add a
+      # "127.0.0.1:9229:9229" port mapping (never expose the inspector on all interfaces).
+      NODE_OPTIONS: ${NODE_OPTIONS:-}
       RUNTIME_MODE: ${RUNTIME_MODE:-full}
       PORT: 4000
       HOST: 0.0.0.0
@@ -53,7 +58,7 @@ services:
       TEMPORAL_HOST: ${TEMPORAL_HOST:-temporal:7233}
       RAG_ENABLED: "true"
       LLM_DEFAULT_PROVIDER: ${LLM_DEFAULT_PROVIDER:-ollama}
-      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-hermes3:8b}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-qwen3:8b-q8_0}
       LLM_OLLAMA_ENABLED: "true"
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       MCP_JIRA_ENABLED: "false"
@@ -63,10 +68,10 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN}
       LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-false}
       LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-emtaskflow}
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-a4eeeb19-4a09-440b-a80e-4cc2d2b89c66}
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-11d33cb9-7d44-42d0-8087-deb3d7b81aac}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
-      NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY:-b935e749c388e8fe66cc799e29e782bb73f7NRAL}
+      NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY:-}
       NEW_RELIC_APP_NAME: ${NEW_RELIC_APP_NAME:-em-taskflow-backend}
       NEW_RELIC_LOG: stdout
       NEW_RELIC_LOG_LEVEL: ${NEW_RELIC_LOG_LEVEL:-info}
@@ -84,7 +89,6 @@ services:
       - backend_data:/app/data
     ports:
       - "4000:4000"
-      - "9229:9229"
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 15s
@@ -169,8 +173,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: "postgresql://langfuse:langfuse@analytics-db:5432/langfuse_db"
-      NEXTAUTH_SECRET: "my-secret-key-for-local-langfuse"
-      SALT: "my-salt-for-local-langfuse"
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-my-secret-key-for-local-langfuse}
+      SALT: ${LANGFUSE_SALT:-my-salt-for-local-langfuse}
       NEXTAUTH_URL: "http://localhost:3001"
       TELEMETRY_ENABLED: "false"
     ports:

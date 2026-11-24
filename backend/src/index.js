@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import apiRouter from './routes/api.js';
 import v1Router from './routes/v1/index.js';
-import { config, getServerConfig, getRuntimeConfig, getDatabaseConfig, getLlmConfig, getRagConfig, validateConfig } from './config.js';
+import { config, getServerConfig, getRuntimeConfig, getDatabaseConfig, getLlmConfig, getRagConfig, getAuthConfig, validateConfig } from './config.js';
 import dotenv from 'dotenv';
 import * as Sentry from '@sentry/node';
 import { initializeLLM } from './llm/index.js';
@@ -14,6 +14,21 @@ import db from './db/index.js';
 import { attachRequestContext, createRateLimiter } from './middleware/hardening.js';
 import { info, warn, error } from './utils/logger.js';
 import teamSyncWorker from './workers/teamSyncWorker.js';
+import sessionCleanupWorker from './services/SessionCleanupWorker.js';
+
+let httpServer = null;
+let temporalWorker = null;
+
+/** Remove the password from a connection URL before logging it. */
+export function redactDatabaseUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.password) parsed.password = '***';
+    return parsed.toString();
+  } catch {
+    return '[unparseable database url]';
+  }
+}
 
 dotenv.config();
 
@@ -60,7 +75,8 @@ if (process.env.SENTRY_DSN) {
   }
 }
 
-app.use(cors());
+// Only the owner's frontend may call the API from a browser.
+app.use(cors({ origin: serverConfig.frontendUrl, credentials: true }));
 app.use(attachRequestContext);
 app.use(createRateLimiter());
 app.use(express.json({ limit: '2mb' }));
@@ -96,6 +112,14 @@ async function startServer() {
   try {
     info('Validating configuration...');
     validateConfig();
+
+    if (config.env === 'production' && !getAuthConfig().token) {
+      error('AUTH_TOKEN is required in production. Set a random value of at least 24 characters in backend/.env (for example: openssl rand -hex 32).');
+      process.exit(1);
+    }
+    if (!getAuthConfig().token) {
+      warn('AUTH_TOKEN is not set: API authentication is DISABLED. Set AUTH_TOKEN in backend/.env before exposing this server.');
+    }
 
     try {
       await db.initialize();
@@ -156,8 +180,9 @@ async function startServer() {
     // Start Node.js background team sync worker & Temporal Node Worker
     try {
       teamSyncWorker.start();
+      sessionCleanupWorker.start();
       const { startTemporalNodeWorker } = await import('./temporal/worker.js');
-      await startTemporalNodeWorker();
+      temporalWorker = await startTemporalNodeWorker();
     } catch (workerErr) {
       warn('Background workers start warning', { err: workerErr.message });
     }
@@ -166,11 +191,12 @@ async function startServer() {
     const llmConfig = getLlmConfig();
     const ragConfig = getRagConfig();
 
-    app.listen(PORT, serverConfig.host, () => {
+    httpServer = app.listen(PORT, serverConfig.host, () => {
       info(`EM TaskFlow AI server listening on ${serverConfig.host}:${PORT}`, {
         env: config.env,
         runtimeMode: runtimeConfig.mode,
-        database: databaseConfig.url,
+        database: redactDatabaseUrl(databaseConfig.url),
+        authEnabled: !!getAuthConfig().token,
         llmProvider: llmConfig.defaultProvider,
         ragEnabled: ragConfig.enabled,
         healthCheckUrl: `http://${serverConfig.host}:${PORT}/api/v1/health`,
@@ -198,11 +224,35 @@ process.on('unhandledRejection', (reason) => {
   error('Unhandled Promise Rejection', { reason: String(reason) });
 });
 
-process.on('SIGINT', () => {
-  info('Shutting down gracefully...');
-  db.close();
-  info('Services shut down successfully');
-  process.exit(0);
-});
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  info(`Received ${signal}, shutting down gracefully...`);
+  const forceExit = setTimeout(() => {
+    warn('Graceful shutdown timed out after 10s, forcing exit');
+    process.exit(1);
+  }, 10_000);
+  forceExit.unref();
+  try {
+    if (httpServer) {
+      await new Promise((resolve) => httpServer.close(() => resolve()));
+    }
+    teamSyncWorker.stop?.();
+    if (temporalWorker && typeof temporalWorker.shutdown === 'function') {
+      await Promise.resolve(temporalWorker.shutdown()).catch((e) => warn('Temporal worker shutdown warning', { err: e.message }));
+    }
+    sessionCleanupWorker.stop();
+    await Promise.resolve(db.close());
+    info('Services shut down successfully');
+    process.exit(0);
+  } catch (e) {
+    error('Error during shutdown', { err: e.message });
+    process.exit(1);
+  }
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 startServer();

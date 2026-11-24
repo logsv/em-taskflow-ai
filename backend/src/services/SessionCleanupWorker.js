@@ -1,5 +1,5 @@
 import databaseService from '../db/postgres.js';
-import config, { getRuntimeConfig } from '../config.js';
+import { getSessionsConfig } from '../config.js';
 import { info, warn, error } from '../utils/logger.js';
 
 export class SessionCleanupWorker {
@@ -12,11 +12,12 @@ export class SessionCleanupWorker {
 
   getConfig() {
     if (this.cfg) return this.cfg;
-    try {
-      return getRuntimeConfig() || config;
-    } catch (e) {
-      return config;
-    }
+    const sessions = getSessionsConfig() || {};
+    return {
+      SESSION_INACTIVITY_TTL_DAYS: sessions.inactivityTtlDays,
+      SESSION_CLEANUP_BATCH_SIZE: sessions.cleanupBatchSize,
+      SESSION_CLEANUP_ENABLED: sessions.cleanupEnabled,
+    };
   }
 
   async runCleanup() {
@@ -66,6 +67,15 @@ export class SessionCleanupWorker {
         warn('Scheduled session cleanup error', { error: err.message });
       });
     }, intervalMs);
+    this.timer.unref?.();
+  }
+
+  start() {
+    this.startScheduledWorker();
+  }
+
+  stop() {
+    this.stopScheduledWorker();
   }
 
   stopScheduledWorker() {

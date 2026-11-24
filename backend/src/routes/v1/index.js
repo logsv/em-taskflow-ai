@@ -8,6 +8,8 @@ import adminRouter from '../admin.js';
 import ragRouter from '../rag.js';
 import uploadRouter from '../upload.js';
 import docsRouter from '../docs.js';
+import authRouter from './auth.js';
+import { requireOwner } from '../../middleware/auth.js';
 import {
   startJiraOAuthFlow,
   completeJiraOAuthFlow,
@@ -23,8 +25,29 @@ router.use((req, res, next) => {
   next();
 });
 
-// Mount domain sub-routers
+// ---- Public routes (no owner auth) ----
 router.use('/', healthRouter);
+router.use('/', authRouter);
+
+// The OAuth callback is a top-level redirect from Atlassian: SameSite=Strict cookies are
+// not sent on it, so it must stay public. It only accepts a one-time authorization code.
+router.get('/mcp/jira/oauth/callback', async (req, res) => {
+  const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
+  try {
+    const code = req.query.code;
+    if (!code) {
+      return res.status(400).send(`<h3>Error: Missing authorization code from Atlassian OAuth callback</h3><p><a href="${frontendBase}/admin?tab=settings">Back to Admin</a></p>`);
+    }
+    await completeJiraOAuthFlow(code);
+    res.redirect(`${frontendBase}/admin?tab=settings&jira_oauth=success`);
+  } catch (error) {
+    res.status(500).send(`<h3>Atlassian OAuth could not be completed.</h3><p><a href="${frontendBase}/admin?tab=settings">Back to Admin Settings</a></p>`);
+  }
+});
+
+// ---- Everything below requires the owner ----
+router.use(requireOwner);
+
 router.use('/', sessionsRouter);
 router.use('/', chatRouter);
 router.use('/', emRouter);
@@ -36,20 +59,6 @@ router.get('/mcp/jira/oauth/start', async (req, res) => {
     res.json({ success: true, ...result });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-router.get('/mcp/jira/oauth/callback', async (req, res) => {
-  const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
-  try {
-    const code = req.query.code;
-    if (!code) {
-      return res.status(400).send(`<h3>Error: Missing authorization code from Atlassian OAuth callback</h3><p><a href="${frontendBase}/admin?tab=settings">Back to Admin</a></p>`);
-    }
-    await completeJiraOAuthFlow(code);
-    res.redirect(`${frontendBase}/admin?tab=settings&jira_oauth=success`);
-  } catch (error) {
-    res.status(500).send(`<h3>Atlassian OAuth Notice: ${error.message}</h3><p><a href="${frontendBase}/admin?tab=settings">Back to Admin Settings</a></p>`);
   }
 });
 
