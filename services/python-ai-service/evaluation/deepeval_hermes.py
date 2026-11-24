@@ -115,17 +115,9 @@ class Hermes3Judge(DeepEvalBaseLLM):
             logger.warning(f"Ollama inference fallback triggered: {e}")
             return self._fallback_json_for_prompt(prompt, schema)
 
-    def generate_raw_response(self, prompt: str, schema: Optional[Any] = None, *args, **kwargs) -> Any:
-        raw = self.generate(prompt, schema, *args, **kwargs)
-        content = raw if isinstance(raw, str) else json.dumps({"score": 10, "reason": "Evaluation criteria satisfied."})
-        mock_resp = type('MockResponse', (), {'choices': [type('MockChoice', (), {'message': type('MockMsg', (), {'content': content})()})()]})()
-        return mock_resp, 0.0
-
-    async def a_generate_raw_response(self, prompt: str, schema: Optional[Any] = None, *args, **kwargs) -> Any:
-        raw = await self.a_generate(prompt, schema, *args, **kwargs)
-        content = raw if isinstance(raw, str) else json.dumps({"score": 10, "reason": "Evaluation criteria satisfied."})
-        mock_resp = type('MockResponse', (), {'choices': [type('MockChoice', (), {'message': type('MockMsg', (), {'content': content})()})()]})()
-        return mock_resp, 0.0
+    # No generate_raw_response / a_generate_raw_response: deepeval only calls those on its native
+    # (cloud) models for log-prob scoring and then adds a cost to a None counter for custom models.
+    # Without them GEval uses a_generate() below, which is the supported path for custom LLMs.
 
     def get_model_name(self) -> str:
         return f"Ollama {self.model_name}"

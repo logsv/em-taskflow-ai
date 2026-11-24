@@ -1,106 +1,48 @@
-# 🧰 Agent Skills & Operational Playbooks
+# 🤖 AI Agent Setup (Claude Code, Cursor, Codex, Copilot, Gemini)
 
-This guide provides documentation for the **14 Specialized Operational Skills** configured for autonomous AI agents (Codex, Claude Code, Gemini CLI, Antigravity) and human software engineers maintaining the EM TaskFlow AI platform.
+Any team member can work on any service, often with an AI agent. This page explains how the repo keeps that work consistent and in scope.
 
-All skills are maintained as standard Markdown operational playbooks under [`.agents/skills/`](https://github.com/logsv/em-taskflow-ai/tree/main/.agents/skills) with an index in [`SKILLS.md`](https://github.com/logsv/em-taskflow-ai/blob/main/SKILLS.md).
+## Files
 
----
+| File | Read by | Purpose |
+|---|---|---|
+| `AGENTS.md` (root) | All agents | Project map, commands, task workflow, scope rules, project-wide hard rules |
+| `backend/AGENTS.md`, `backend/src/agent/AGENTS.md`, `backend/src/mcp/AGENTS.md`, `services/python-ai-service/AGENTS.md`, `frontend/AGENTS.md` | All agents, when working in that folder | Local patterns and rules for that service |
+| `CLAUDE.md` / `GEMINI.md` (root and per service) | Claude Code / Gemini CLI | One-line `@AGENTS.md` import. Do not add rules here |
+| `.agents/skills/*/SKILL.md` | Codex, Cursor, Copilot; Claude Code via the `.claude/skills` symlink | Step-by-step workflows, loaded only when relevant |
+| `.claude/settings.json` | Claude Code | Shared deny rules (secrets, force-push, `rm -rf`) |
+| `CLAUDE.local.md`, `.claude/settings.local.json` | Claude Code | Personal preferences. Git-ignored |
 
-## 📑 Categorized Skills Directory
+## Skills
 
-### 1. 👑 Multi-Agent Orchestration & SLM Inference
+| Skill | Use when |
+|---|---|
+| `add-domain-agent` | Adding, renaming or removing a domain micro-agent, or changing routing |
+| `add-mcp-integration` | Adding an external integration, tool, or OAuth flow |
+| `db-schema-change` | Any table, column, index, new database, or data cleanup |
+| `run-evaluations` | Changes to prompts, routing, agent tools, or RAG quality |
 
-#### `domain-micro-agent-ops`
-- **Location**: `.agents/skills/domain-micro-agent-ops/SKILL.md`
-- **Purpose**: Operational procedures for managing, testing, and adding the 10 Engineering Manager domain micro-agents, deterministic 1-tool harnesses, and policy guardrail validation.
-- **Key Verification**:
-  ```bash
-  cd backend && npm test # Verifies all 240 unit test specs
-  ```
+Add a new skill only for a long, repeated workflow that people keep getting wrong. One-line rules go in the relevant `AGENTS.md`.
 
-#### `langgraph-slm-agent`
-- **Location**: `.agents/skills/langgraph-slm-agent/SKILL.md`
-- **Purpose**: Managing LangGraph supervisor routing, sub-agent tool bounding, loop prevention, and local Ollama SLM execution (`hermes3:8b`).
-- **Core Rule**: Limits specialized sub-agents to **at most 1 tool definition per call**, elevating tool execution accuracy above 95%.
+## Workflow
 
-#### `ollama-slm-ops`
-- **Location**: `.agents/skills/ollama-slm-ops/SKILL.md`
-- **Purpose**: Managing local Ollama SLM inference (`hermes3:8b`, `mistral`, `nomic-embed-text`), zero-cloud key policies, and model parameter tuning.
+1. The agent reads the ticket and code and writes a **scope note** (Goal, Not doing, `Scope:` paths, Assumptions/questions).
+2. The developer approves it before any code is written.
+3. The agent changes only the paths in scope; anything else goes under "Follow-ups" in the PR.
+4. The PR description includes the scope note. CI checks the diff against the `Scope:` line.
 
-#### `pre-llm-compression-ops`
-- **Location**: `.agents/skills/pre-llm-compression-ops/SKILL.md`
-- **Purpose**: Pre-LLM Preprocessing Suite, LangChain Map-Reduce file compression (>15k chars), Cross-Encoder reranking with MMR deduplication, and sliding window chat history state anchoring (>10 turns).
+## CI guardrails (`.github/workflows/pr-guardrails.yml`)
 
----
+| Check | Fails when | Override label |
+|---|---|---|
+| Scope | A changed file is outside the PR's `Scope:` paths, or `Scope:` is missing | `scope-expanded` |
+| Dependencies | A new npm package is added, or `pyproject.toml` / `requirements*.txt` changes | `deps-approved` |
+| Tests | A test file is deleted, or `xit`/`fit`/`.skip`/`.only`/`pytest.mark.skip` is added | `tests-removed` (deletions only) |
+| Size | More than 500 changed lines or 25 files (lockfiles excluded) | `large-pr` |
+| High-risk paths | DB schema, OAuth, settings, CI, or agent files change with fewer than 2 approvals | none |
 
-### 2. 🔌 MCP Integrations & Tool Ecosystem
+Labels are an explicit, visible decision, not a free pass: the reviewer checks the reason in the PR description.
 
-#### `mcp-integrations-ops`
-- **Location**: `.agents/skills/mcp-integrations-ops/SKILL.md`
-- **Purpose**: Operational management of Jira OAuth 2.0 PKCE, Notion REST API, GitHub PAT/OAuth with repository scoping, Slack Web API, and Google Calendar dynamic ID tools.
-- **Key Component**: Standardized `BaseToolHarness` circuit breaker with exponential backoff and PostgreSQL fallback schemas.
+## Keeping it current
 
-#### `github-sync-fallback`
-- **Location**: `.agents/skills/github-sync-fallback/SKILL.md`
-- **Purpose**: Testing live GitHub REST API sync, repo-scoped PAT authentication, dual DB cache snapshot fallback (`github_issues`), and manual UI refresh triggers.
-
----
-
-### 3. 🗄️ Database, Storage & Hybrid RAG
-
-#### `db-per-service-ops`
-- **Location**: `.agents/skills/db-per-service-ops/SKILL.md`
-- **Purpose**: Procedures for managing isolated PostgreSQL microservice databases:
-  - `taskflow_backend` (Port 5432) - Node.js Backend API
-  - `taskflow_ai` (Port 5432) - Python AI RAG & Vector Embeddings
-  - `temporal` & `temporal_visibility` (Port 5432) - Temporal Orchestration
-  - `langfuse_db` (Port 5433) - Telemetry & Tracing Database
-
-#### `rag-pdf-ingestion`
-- **Location**: `.agents/skills/rag-pdf-ingestion/SKILL.md`
-- **Purpose**: Testing multi-format document ingestion (PDF, CSV, Images OCR, Text), HyDE query transformation, CTE-based RRF hybrid search, Redis semantic caching, and single-pass RAG synthesis.
-
-#### `multi-tier-caching-ops`
-- **Location**: `.agents/skills/multi-tier-caching-ops/SKILL.md`
-- **Purpose**: Managing and testing the 5-Tier Production Caching Architecture, L1 In-Memory exact cache, L2 Redis vector semantic cache with Dual-Gate anti-hallucination verification, Tier 2 MCP tool cache, and Temporal durable event-driven invalidation workflows.
-
-#### `session-thread-management-ops`
-- **Location**: `.agents/skills/session-thread-management-ops/SKILL.md`
-- **Purpose**: Managing PostgreSQL multi-session persistence, chat threads, pagination, context menus, thread renaming, and dynamic title derivation.
-
-
----
-
-### 4. 📊 Observability, Evaluations & Operations
-
-#### `autonomous-em-audit-ops`
-- **Location**: `.agents/skills/autonomous-em-audit-ops/SKILL.md`
-- **Purpose**: Operational management of the Autonomous EM Task & Health Audit Engine, 4-hour background cron in Temporal, multi-channel Slack notifications, and the interactive EM Action Hub UI (`/actions`).
-
-#### `admin-portal-ops`
-- **Location**: `.agents/skills/admin-portal-ops/SKILL.md`
-- **Purpose**: Operational management of the Standalone Admin Portal (`/admin`), external service launchers (Langfuse, Promptfoo, Adminer, Temporal), DORA metrics tier ratings, vector chunk inspection, and Express admin APIs.
-
-#### `em-dora-productivity-ops`
-- **Location**: `.agents/skills/em-dora-productivity-ops/SKILL.md`
-- **Purpose**: Tracking, testing, and managing Engineering Manager (EM) DORA productivity metrics (tier ratings), Sprint health analytics, OKRs, and SBI feedback records.
-
-#### `enterprise-evaluation-framework-ops`
-- **Location**: `.agents/skills/enterprise-evaluation-framework-ops/SKILL.md`
-- **Purpose**: Managing, executing, and calibrating the 3-Phase Enterprise Evaluation Framework (`hermes3:8b`), strategy evaluators, DeepEval, Ragas, TruLens, and CI/CD pre-push verification gates.
-- **Key Command**:
-  ```bash
-  npm run eval:enterprise
-  ```
-
-#### `langfuse-analytics-migration`
-- **Location**: `.agents/skills/langfuse-analytics-migration/SKILL.md`
-- **Purpose**: Operational guidelines for self-hosted Langfuse telemetry (port 3001), non-blocking tracing, and isolated `analytics-db` (`langfuse_db` on port 5433).
-
----
-
-## 🛠️ How AI Agents Discover and Execute Skills
-
-1. **Autonomous Discovery**: Agents inspect `SKILLS.md` and match user requests to the appropriate operational skill.
-2. **Context Ingestion**: The agent loads the designated `SKILL.md` into context using file viewing tools before making source code edits.
-3. **Deterministic Verification**: Every skill defines exact CLI test commands that must be executed upon completing code changes, ensuring all **385 backend unit test specs** and **52 Python AI test specs** pass with 0 failures.
+When an agent makes the same mistake twice, add one line to the relevant `AGENTS.md` in a PR. Remove rules that are stale. Never put counts (tests, files) in these files.

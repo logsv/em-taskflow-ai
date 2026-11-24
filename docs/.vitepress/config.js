@@ -90,7 +90,7 @@ export default withMermaid(
         {
           text: 'Operations ▾',
           items: [
-            { text: '🧰 Agent Skills & Playbooks', link: '/operations/agent-skills' },
+            { text: '🤖 AI Agent Setup', link: '/operations/agent-skills' },
             { text: 'Production Docker Deployment', link: '/operations/deployment' },
             { text: 'Database Backup & Credential Immunity', link: '/operations/backup-recovery' },
             { text: 'Telemetry & Observability', link: '/operations/telemetry' },
@@ -187,7 +187,7 @@ export default withMermaid(
           {
             text: '🛠️ Operator & SRE Playbook',
             items: [
-              { text: '🧰 Agent Skills & Playbooks', link: '/operations/agent-skills' },
+              { text: '🤖 AI Agent Setup', link: '/operations/agent-skills' },
               { text: 'Production Docker Deployment', link: '/operations/deployment' },
               { text: 'Database Backup & Credential Immunity', link: '/operations/backup-recovery' },
               { text: 'Telemetry & Observability', link: '/operations/telemetry' },
