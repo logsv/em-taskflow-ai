@@ -851,7 +851,14 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
  * Audit Activity 6: Multi-Channel Slack Notification Dispatcher
  */
 export async function dispatchSlackAuditNotificationActivity(params = {}) {
-  const { auditRun = {}, topActions = [], mode = 'consolidated', channel = null } = params;
+  const { auditRun = {}, topActions = [], mode = 'consolidated', channel = null, notifySlack = false } = params;
+  // Scheduled audits only post to Slack when the owner opted in (AUDIT_SLACK_AUTO_POST=true);
+  // an owner-triggered run can ask for it explicitly with notifySlack.
+  const autoPost = String(process.env.AUDIT_SLACK_AUTO_POST || 'false').toLowerCase() === 'true';
+  if (!autoPost && !notifySlack) {
+    info({ module: 'temporalActivities', action: 'dispatchSlackAuditSkipped', auditId: auditRun.id }, 'Audit Slack post skipped (AUDIT_SLACK_AUTO_POST is off)');
+    return { status: 'SKIPPED', reason: 'AUDIT_SLACK_AUTO_POST is off; nothing was posted.' };
+  }
   try {
     const { sendAuditOverviewMessage, sendAuditSubsectionThread } = await import('../mcp/slack.js');
     const overviewRes = await sendAuditOverviewMessage({

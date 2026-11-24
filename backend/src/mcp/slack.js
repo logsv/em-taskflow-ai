@@ -7,6 +7,7 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import slackClient from '../integrations/clients/SlackClient.js';
 import { info, warn, debug } from '../utils/logger.js';
+import { recordHandledError } from '../core/safe.js';
 import settingsService from '../services/settingsService.js';
 
 /** Format a possibly-missing value for a Slack message without inventing one. */
@@ -80,88 +81,44 @@ export async function getSlackTools() {
 
   const postTool = new DynamicStructuredTool({
     name: 'slack_post_message',
-    description: 'Posts an executive summary, retrospective action plan, or notification to a Slack channel with Temporal Human-in-the-Loop (HITL) approval governance.',
+    description: 'Drafts a Slack post (summary, retro action plan, notification) and queues it for the owner to approve. It never posts directly.',
     schema: z.object({
       message: z.string().describe('Markdown formatted message or executive summary to post'),
       channel: z.string().optional().describe('Target channel name or ID'),
-      approved_by_human: z.boolean().default(false).describe('Set to true ONLY if this post has received explicit human manager confirmation'),
-      approver: z.string().optional().describe('Identity of human approver confirming the post'),
       sprint_name: z.string().optional().describe('Sprint or context name for retrospective posting'),
     }),
-    func: async ({ message, channel, approved_by_human, approver, sprint_name }) => {
-      const { token, defaultChannel } = slackClient.getCredentials();
+    // Write actions never run from the model: this tool can only *request* a post. The owner
+    // approves it (Admin, or POST /api/v1/admin/temporal/slack-post/approve) and the Temporal
+    // activity sends it. If the approval workflow cannot be started, nothing is posted.
+    func: async ({ message, channel, sprint_name }) => {
+      const { defaultChannel } = slackClient.getCredentials();
       const targetChannel = channel || defaultChannel;
-
-      // 1. Human-in-the-Loop (HITL) Gate via Temporal
-      if (!approved_by_human) {
-        try {
-          const { startSlackPostHITLWorkflow } = await import('../temporal/client.js');
-          const hitlRes = await startSlackPostHITLWorkflow({
-            channel: targetChannel,
-            message,
-            sprintName: sprint_name || 'Current Sprint',
-            requestedBy: 'EM TaskFlow Agent',
-          });
-
-          return JSON.stringify({
-            status: 'PENDING_HUMAN_APPROVAL',
-            workflowId: hitlRes?.workflowId || `slack-post-hitl-${Date.now()}`,
-            target_channel: targetChannel,
-            draft_message: message,
-            requires_approval: true,
-            approval_endpoint: '/api/v1/admin/temporal/slack-post/approve',
-            message: 'Draft post held in Temporal Human-in-the-Loop (HITL) queue. Awaiting human confirmation before dispatching to Slack.',
-          });
-        } catch (hitlErr) {
-          info({ module: 'slackMCP', action: 'hitlDispatchFallback', err: hitlErr.message }, 'HITL dispatch notice');
-        }
-      }
-
-      // 2. Direct Post Execution (Human Confirmed)
-      if (!token || token.includes('dummy') || token.includes('placeholder')) {
-        return JSON.stringify({
-          status: 'SIMULATED',
-          target_channel: targetChannel,
-          message: 'Slack token unconfigured. Simulated post to channel (Human Confirmed).',
-          approved_by: approver || 'Engineering Manager',
-        });
-      }
-
       try {
-        debug({ module: 'slackMCP', action: 'slack_post_message', targetChannel }, `Executing confirmed slack_post_message: to ${targetChannel}`);
-        const res = await slackClient.post(
-          'https://slack.com/api/chat.postMessage',
-          {
-            channel: targetChannel,
-            text: message,
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            timeout: 4500,
-          }
-        );
-
-        if (res.data?.ok) {
-          return JSON.stringify({
-            status: 'SUCCESS',
-            channel: targetChannel,
-            ts: res.data.ts,
-            approved_by: approver || 'Engineering Manager',
-            message: 'Successfully posted to Slack channel',
-          });
-        }
-        return JSON.stringify({
-          status: 'ERROR',
-          error: res.data?.error || 'Failed to post message',
+        const { startSlackPostHITLWorkflow } = await import('../temporal/client.js');
+        const hitlRes = await startSlackPostHITLWorkflow({
+          channel: targetChannel,
+          message,
+          sprintName: sprint_name || 'Current Sprint',
+          requestedBy: 'EM TaskFlow Agent',
         });
-      } catch (err) {
-        warn({ module: 'slackMCP', action: 'slack_post_message_error', targetChannel, err: err.message }, 'Slack message post failed');
+        if (!hitlRes?.workflowId) throw new Error('approval workflow did not return an id');
         return JSON.stringify({
-          status: 'ERROR',
-          error: err.message,
+          status: 'PENDING_HUMAN_APPROVAL',
+          workflowId: hitlRes.workflowId,
+          target_channel: targetChannel,
+          draft_message: message,
+          requires_approval: true,
+          approval_endpoint: '/api/v1/admin/temporal/slack-post/approve',
+          message: 'Draft held for your approval. Nothing has been posted yet.',
+        });
+      } catch (hitlErr) {
+        recordHandledError('mcp.slack.postApproval', hitlErr);
+        return JSON.stringify({
+          status: 'NOT_POSTED',
+          error: 'APPROVAL_UNAVAILABLE',
+          target_channel: targetChannel,
+          draft_message: message,
+          message: `Nothing was posted: the approval workflow could not be started (${hitlErr.message}). Copy the draft manually or retry when Temporal is running.`,
         });
       }
     },

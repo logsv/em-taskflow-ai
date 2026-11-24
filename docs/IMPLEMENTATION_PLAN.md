@@ -85,7 +85,7 @@ Goal: safe to run, honest output, correct configuration, new model.
 | 3.6b | Score the system's real answers: the default Ragas dataset contains hard-coded `answer` strings, so it never measured this system. Generate answers through the real pipeline before scoring | ⬜ |
 | 3.6c | Replace heuristic judges (string checks, longer-answer-wins) with a model-based judge on the local model; keep heuristics only as labelled format checks | ⬜ |
 | 3.7 | Model-comparison harness over the 138 golden cases with `expected_tool_calls`, using the real planner/executor and recorded tool responses; 20% injected tool failures; pass^k; replace the scripted EM-τ-Bench agent | ⬜ |
-| 3.8 | HITL for every write action (Slack, calendar, Jira) | ⬜ |
+| 3.8 | HITL for every write action (Slack, calendar, Jira) | ✅ The only external writes are Slack posts (no calendar/Jira writes exist). `slack_post_message` can only queue a draft for approval: the model-settable `approved_by_human` flag is gone, and a failure to start the approval workflow now fails closed (`NOT_POSTED`) instead of posting directly. Scheduled audits post to Slack only with `AUDIT_SLACK_AUTO_POST=true` (or `notifySlack` on an owner-triggered run). Owner clicks in Actions remain direct |
 
 **Exit criteria (nightly, on `qwen3:8b-q8_0`).** Tool selection ≥ 95%, argument accuracy ≥ 95%, no-call precision ≥ 95%, hallucinated tools = 0, fabrications under tool failure = 0, faithfulness ≥ 98%, citation precision ≥ 95%.
 
@@ -109,6 +109,7 @@ Goal: safe to run, honest output, correct configuration, new model.
 | Date | Phase | Change |
 |---|---|---|
 | 2026-11-24 | — | Plan written |
+| 2026-11-24 | 3 | 3.8 HITL: closed two bypasses in the Slack post tool (LLM-settable approval flag; fail-open when Temporal was down); scheduled audit Slack posts opt-in. Backend 483 / 0 |
 | 2026-11-24 | 2 | 2.1–2.3 capability registry (5 capabilities) + deterministic pipeline; supervisor limited to integration-only plans; RAG outage distinguished from zero hits; `postgres.js` split. Backend 482 / 0; Python 44 passed / 12 skipped |
 | 2026-11-24 | 2 | Fabrication sweep 2: `/em/okrs`, `/em/sbi`, `/em/sprints` returned invented records (fake OKRs + 78%, a fictional SBI record, 'Sprint 24' 28/35 SP); OKR quarter hard-coded (Q3 vs Q4); OKRs scored against an assumed target of 100; fake PR #402; retriever placeholder score 0.8. Audit bug: DORA read camelCase from snake_case rows for team 'main_team' (snapshots are 'default') so every audit recorded 0s with tier 'Elite'. Snapshots now store NULL, not 0, when unmeasured. Backend 471 / 0 |
 | 2026-11-24 | 2 | 2.8 eval tooling behind a dev flag; `admin.js` split. Found and removed fabricated data in `/em/dora` (invented DORA values when no snapshot, constant availability 99.95% / PR cycle 4.2h / sprint 91.4% / churn 6.8%, constant trends, score 96.5) and in the Admin overview (fallbacks, static PASS badges, fake '8 Services', health derived from the fake score). Backend 471 / 0; frontend 11 / 0 |

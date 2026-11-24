@@ -191,12 +191,19 @@ describe('Autonomous EM Task & Health Audit Engine Specs', () => {
       expect(results.some((r) => r.title.includes('SOP'))).toBe(true);
     });
 
-    it('dispatchSlackAuditNotificationActivity should orchestrate Slack dispatch seamlessly', async () => {
+    it('dispatchSlackAuditNotificationActivity does not post a scheduled audit unless the owner opted in', async () => {
+      delete process.env.AUDIT_SLACK_AUTO_POST;
+      const res = await dispatchSlackAuditNotificationActivity({ auditRun: { id: 1 }, topActions: [], channel: '#test-channel' });
+      expect(res.status).toBe('SKIPPED');
+    });
+
+    it('dispatchSlackAuditNotificationActivity should orchestrate Slack dispatch when asked', async () => {
       const res = await dispatchSlackAuditNotificationActivity({
         auditRun: { id: 1, healthScore: 92 },
         topActions: [],
         mode: 'threaded_subsections',
         channel: '#test-channel',
+        notifySlack: true,
       });
 
       expect(res.status).toBe('SUCCESS');

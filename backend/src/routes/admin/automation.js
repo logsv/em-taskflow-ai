@@ -111,12 +111,13 @@ router.get('/temporal/slack-post/status', async (req, res) => {
 
 // POST /api/admin/audit/trigger - 1-Click Trigger Autonomous EM Audit
 router.post('/audit/trigger', async (req, res) => {
-  const { mode = 'consolidated', channel = null } = req.body || {};
+  const { mode = 'consolidated', channel = null, notifySlack = false } = req.body || {};
   try {
     const temporalRes = await startEmAutonomousAuditWorkflow({
       triggeredBy: 'ADMIN_MANUAL',
       slackMode: mode,
       slackChannel: channel,
+      notifySlack: notifySlack === true, // the owner asked for a Slack post with this run
     });
 
     if (temporalRes && temporalRes.workflowId) {

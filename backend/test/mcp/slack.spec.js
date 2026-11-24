@@ -156,32 +156,16 @@ describe('Slack MCP Tool Integration & Agent Harness Specs', () => {
       expect(parsed.requires_approval).toBe(true);
     });
 
-    it('slack_post_message should post successfully when approved by human and token configured', async () => {
+    it('slack_post_message ignores a model-supplied approval flag and never posts directly', async () => {
       process.env.SLACK_BOT_TOKEN = 'xoxb-mock-token';
-      axios.post = jasmine.createSpy('axios.post').and.returnValue(
-        Promise.resolve({
-          data: {
-            ok: true,
-            ts: '1700000099.000100',
-            channel: 'C12345',
-          },
-        })
-      );
-
+      axios.post = jasmine.createSpy('axios.post').and.returnValue(Promise.resolve({ data: { ok: true, ts: '1' } }));
       const tools = await getSlackTools();
       const postTool = tools.find((t) => t.name === 'slack_post_message');
-      const raw = await postTool.invoke({
-        message: 'SMART Action Plan',
-        channel: '#engineering-retro',
-        approved_by_human: true,
-        approver: 'Sarah Chen (EM)',
-      });
+      expect(Object.keys(postTool.schema.shape)).not.toContain('approved_by_human');
+      const raw = await postTool.invoke({ message: 'x', channel: '#eng', approved_by_human: true });
       const parsed = JSON.parse(raw);
-
-      expect(parsed.status).toBe('SUCCESS');
-      expect(parsed.ts).toBe('1700000099.000100');
-      expect(parsed.approved_by).toBe('Sarah Chen (EM)');
-
+      expect(['PENDING_HUMAN_APPROVAL', 'NOT_POSTED']).toContain(parsed.status);
+      expect(axios.post.calls.allArgs().some((a) => String(a[0]).includes('chat.postMessage'))).toBeFalse();
       delete process.env.SLACK_BOT_TOKEN;
     });
 
