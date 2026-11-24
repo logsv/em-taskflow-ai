@@ -235,7 +235,7 @@ export async function simpleRetrieve(query, topK = 5) {
       chunks: docs.map(doc => ({
         content: doc.pageContent,
         metadata: doc.metadata,
-        score: 0.8, // Placeholder score
+        score: Number.isFinite(doc.metadata?.score) ? doc.metadata.score : null, // null = not scored
       })),
       sources: [...new Set(docs.map(doc => doc.metadata.filename || 'unknown'))],
       context: docs.map(doc => doc.pageContent).join('\n\n'),

@@ -109,6 +109,7 @@ Goal: safe to run, honest output, correct configuration, new model.
 | Date | Phase | Change |
 |---|---|---|
 | 2026-11-24 | — | Plan written |
+| 2026-11-24 | 2 | Fabrication sweep 2: `/em/okrs`, `/em/sbi`, `/em/sprints` returned invented records (fake OKRs + 78%, a fictional SBI record, 'Sprint 24' 28/35 SP); OKR quarter hard-coded (Q3 vs Q4); OKRs scored against an assumed target of 100; fake PR #402; retriever placeholder score 0.8. Audit bug: DORA read camelCase from snake_case rows for team 'main_team' (snapshots are 'default') so every audit recorded 0s with tier 'Elite'. Snapshots now store NULL, not 0, when unmeasured. Backend 471 / 0 |
 | 2026-11-24 | 2 | 2.8 eval tooling behind a dev flag; `admin.js` split. Found and removed fabricated data in `/em/dora` (invented DORA values when no snapshot, constant availability 99.95% / PR cycle 4.2h / sprint 91.4% / churn 6.8%, constant trends, score 96.5) and in the Admin overview (fallbacks, static PASS badges, fake '8 Services', health derived from the fake score). Backend 471 / 0; frontend 11 / 0 |
 | 2026-11-24 | 2 | 2.6 worker process split + lean compose (3 fewer containers by default). Backend 466 specs / 0 failures |
 | 2026-11-24 | 2 | 2.7 dead code / deps / gRPC removed (688 packages). 2.4 + 2.4b migrations, transactions, nullable roster levels; fixed roster re-sync overwriting entered levels and `''` emails colliding on UNIQUE; removed invented numbers from the audit summary. Backend 463 specs / 0 failures (9 on real Postgres) |

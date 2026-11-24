@@ -6,6 +6,14 @@ import settingsService from '../services/settingsService.js';
 import { info, warn, error } from '../utils/logger.js';
 import { createMicroAgent, safeExecuteMCPTool } from './baseAgent.js';
 import { swallow, recordHandledError } from '../core/safe.js';
+import { currentQuarter } from '../utils/quarter.js';
+
+const finiteOrNull = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+const positiveOrNull = (v) => {
+  const n = finiteOrNull(v);
+  return n !== null && n > 0 ? n : null;
+};
+
 
 export const okrProgressTool = createDeterministicToolHarness({
   name: 'evaluate_okr_progress',
@@ -15,7 +23,7 @@ export const okrProgressTool = createDeterministicToolHarness({
     sources: z.array(z.string()).default(['default', 'notion', 'jira']),
     mode: z.enum(['ANALYZE', 'LIST_RAW', 'DRILL_DOWN', 'CONCEPTUAL_ONLY']).default('ANALYZE'),
     target: z.enum(['ALL', 'AT_RISK', 'OBJECTIVES', 'GAP_REMEDIATION', 'KRS']).default('ALL'),
-    quarter: z.string().default('Q4'),
+    quarter: z.string().optional().describe('Quarter label, e.g. Q3. Defaults to the current calendar quarter.'),
     objective_id: z.string().default('all'),
     fetch_fresh_data: z.boolean().default(true),
   }),
@@ -61,7 +69,7 @@ export const okrProgressTool = createDeterministicToolHarness({
       return null;
     },
     default: async (inputArgs) => {
-      const quarter = inputArgs.quarter || 'Q4';
+      const quarter = inputArgs.quarter || currentQuarter();
       const dbRecords = await databaseService.getOkrRecords(quarter).catch(swallow('agent.okrAgent.default', []));
       
       if (dbRecords && dbRecords.length > 0) {
@@ -91,7 +99,7 @@ export const okrProgressTool = createDeterministicToolHarness({
   },
   // Tier 2: PostgreSQL Database Snapshot Fallback
   dbCacheFallback: async (source, inputArgs) => {
-    const quarter = inputArgs.quarter || 'Q4';
+    const quarter = inputArgs.quarter || currentQuarter();
     const records = await databaseService.getOkrRecords(quarter).catch(swallow('agent.okrAgent.dbCacheFallback', []));
     
     return {
@@ -115,7 +123,7 @@ export const okrProgressTool = createDeterministicToolHarness({
     const defaultData = sourceResults.default?.data;
     const dbFallbackData = sourceResults.dbCacheFallback?.data;
     const mode = inputArgs.mode || 'ANALYZE';
-    const quarter = inputArgs.quarter || 'Q4';
+    const quarter = inputArgs.quarter || currentQuarter();
 
     const rawKrs = (Array.isArray(defaultData?.okrs) && defaultData.okrs.length > 0)
       ? defaultData.okrs
@@ -135,8 +143,11 @@ export const okrProgressTool = createDeterministicToolHarness({
 
     if (mode === 'LIST_RAW') {
       const krRows = rawKrs.map((item) => {
-        const target = Number(item.target_value || item.target || 100);
-        const current = Number(item.current_value || item.current || 0);
+        const target = positiveOrNull(item.target_value ?? item.target);
+        const current = finiteOrNull(item.current_value ?? item.current);
+        if (target === null || current === null) {
+          return `| **${item.kr || item.key_result || 'Key Result'}** | \`${current ?? 'n/a'} ${item.unit || ''}\` | \`${target ?? 'not set'} ${item.unit || ''}\` | n/a | ⚪ Not scored (missing ${target === null ? 'target' : 'current value'}) |`;
+        }
         const isInverse = item.direction === 'LOWER_IS_BETTER' || /latency|turnaround|hours|ms|seconds|bugs|incidents|flakiness/i.test(item.kr || item.key_result || '');
         const score = isInverse ? (current > 0 ? Math.min(1.0, target / current) : 1.0) : (target > 0 ? Math.min(1.0, current / target) : 1.0);
         const progressPct = Math.round(score * 100);
@@ -170,8 +181,22 @@ export const okrProgressTool = createDeterministicToolHarness({
     let laggingProgressSum = 0;
 
     rawKrs.forEach((item) => {
-      const target = Number(item.target_value || item.target || 100);
-      const current = Number(item.current_value || item.current || 0);
+      const target = positiveOrNull(item.target_value ?? item.target);
+      const current = finiteOrNull(item.current_value ?? item.current);
+      if (target === null || current === null) {
+        // Never score against an assumed target (it used to default to 100) or an assumed 0.
+        analyzedKrs.push({
+          objective: item.objective || 'General Engineering Excellence',
+          kr: item.kr || item.key_result,
+          target: target === null ? 'not set' : `${target} ${item.unit || ''}`.trim(),
+          current: current === null ? 'not recorded' : `${current} ${item.unit || ''}`.trim(),
+          progress_pct: null,
+          confidence_score: null,
+          indicator_type: null,
+          status: 'NOT_SCORED',
+        });
+        return;
+      }
       const isInverse = item.direction === 'LOWER_IS_BETTER' || /latency|turnaround|hours|ms|seconds|bugs|incidents|flakiness/i.test(item.kr || item.key_result || '');
       const isLeading = item.type === 'LEADING' || /latency|turnaround|coverage|check-ins|review|prs|commit/i.test(item.kr || item.key_result || '');
 
@@ -242,7 +267,7 @@ export const okrProgressTool = createDeterministicToolHarness({
       });
     });
 
-    const totalKrsCount = Math.max(1, analyzedKrs.length);
+    const totalKrsCount = Math.max(1, analyzedKrs.filter((k) => k.progress_pct !== null).length);
     const overallProgressPct = Math.round(totalProgressSum / totalKrsCount);
     const overallConfidenceScore = Number((totalConfidenceSum / totalKrsCount).toFixed(2));
     const leadingAvgProgress = leadingCount > 0 ? Math.round(leadingProgressSum / leadingCount) : overallProgressPct;

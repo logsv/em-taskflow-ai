@@ -49,7 +49,11 @@ describe('Autonomous EM Task & Health Audit Engine Specs', () => {
       expect(res.source).toBe('dora_and_delivery');
       expect(res.openPrsCount).toBeGreaterThanOrEqual(1);
       expect(res.doraSummary).toBeDefined();
-      expect(res.doraSummary.tier).toBe('Elite');
+      // The tier is computed from the latest stored snapshot (which depends on what other specs
+      // wrote when a test database is present), never a hard-coded default.
+      const latest = (await databaseService.getDoraSnapshots())[0];
+      expect(res.doraSummary.leadTimeHours).toBe(Number(latest.lead_time_hours));
+      expect(['ELITE', 'HIGH', 'MEDIUM']).toContain(res.doraSummary.tier);
       expect(Array.isArray(res.openPrs)).toBe(true);
     });
 

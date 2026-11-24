@@ -8,6 +8,7 @@ import databaseService from '../db/postgres.js';
 import settingsService from '../services/settingsService.js';
 import { info, warn } from '../utils/logger.js';
 import { swallow, recordHandledError } from '../core/safe.js';
+import { buildDoraResponse } from '../domain/dora.js';
 
 /**
  * Activity 1: Harvest GitHub contributors & commit authors
@@ -522,14 +523,17 @@ export async function harvestDoraAndDeliveryActivity(params = {}) {
       if (openPrs.length > 0) avgWaitHours = Number((totalWait / openPrs.length).toFixed(1));
     }
 
-    const doraSnapshotsList = databaseService.getDoraSnapshots ? await databaseService.getDoraSnapshots('main_team').catch(swallow('temporal.activities.harvestDoraAndDeliveryActivity', [])) : [];
-    const doraSnapshots = Array.isArray(doraSnapshotsList) ? doraSnapshotsList[0] : doraSnapshotsList;
+    const doraSnapshotsList = databaseService.getDoraSnapshots ? await databaseService.getDoraSnapshots().catch(swallow('temporal.activities.harvestDoraAndDeliveryActivity', [])) : [];
+    // Rows are snake_case (deployment_frequency, ...). Reading camelCase used to yield 0 for every
+    // metric with a default 'Elite' tier. Missing values are null, the tier is computed or null.
+    const dora = buildDoraResponse(Array.isArray(doraSnapshotsList) ? doraSnapshotsList : [doraSnapshotsList].filter(Boolean));
     const doraSummary = {
-      tier: doraSnapshots?.tier || 'Elite',
-      deploymentFrequency: doraSnapshots?.deploymentFrequency ? Number(doraSnapshots.deploymentFrequency) : 0,
-      leadTimeHours: doraSnapshots?.leadTimeHours ? Number(doraSnapshots.leadTimeHours) : 0,
-      changeFailureRate: doraSnapshots?.changeFailureRate ? Number(doraSnapshots.changeFailureRate) : 0,
-      mttrHours: doraSnapshots?.mttrHours ? Number(doraSnapshots.mttrHours) : 0,
+      measured: dora.measured,
+      tier: dora.rating,
+      deploymentFrequency: dora.metrics.deployment_frequency.numeric,
+      leadTimeHours: dora.lead_time_hours,
+      changeFailureRate: dora.change_failure_rate_pct,
+      mttrHours: dora.mttr_hours,
     };
 
     const sprintAnalyticsList = databaseService.getSprintAnalytics ? await databaseService.getSprintAnalytics().catch(swallow('temporal.activities.harvestDoraAndDeliveryActivity', [])) : [];
@@ -797,7 +801,7 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
   const summaryMarkdown = [
     `### Autonomous EM Health Audit Summary`,
     `- **Overall Health Score:** \`${finalHealthScore}/100\``,
-    `- **DORA Metrics Tier:** \`${delivery.doraSummary?.tier || 'n/a'}\` (Deploy: ${shown(delivery.doraSummary?.deploymentFrequency, '/d')}, MTTR: ${shown(delivery.doraSummary?.mttrHours, 'h')})`,
+    `- **DORA Metrics Tier:** \`${delivery.doraSummary?.tier || 'n/a'}\` (Deploy: ${shown(delivery.doraSummary?.deploymentFrequency, '/wk')}, MTTR: ${shown(delivery.doraSummary?.mttrHours, 'h')})`,
     `- **Active Sprint Velocity:** \`${shown(sprintOkr.completedPoints)}/${shown(sprintOkr.totalPoints)} SP\` (${shown(sprintOkr.sprintPacingPct, '%')})`,
     `- **SOP Compliance Score:** \`${sop.complianceScore === null || sop.complianceScore === undefined ? "not checked" : `${sop.complianceScore}%`}\``,
     `- **Pending Action Items:** \`${actionItems.length}\` items require engineering manager review.`,

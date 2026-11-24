@@ -7,7 +7,24 @@ import pg from 'pg';
 import db from '../../src/db/postgres.js';
 import { runMigrations, loadMigrations } from '../../src/db/migrator.js';
 
-const url = process.env.TEST_DATABASE_URL;
+const baseUrl = process.env.TEST_DATABASE_URL;
+let url = null;
+
+/** Use a dedicated <db>_it database so dropping its schema never touches the suite's test DB. */
+async function ensureIsolatedDatabase() {
+  const parsed = new URL(baseUrl);
+  const name = `${parsed.pathname.replace(/^\//, '') || 'taskflow'}_it`.replace(/[^a-zA-Z0-9_]/g, '_');
+  const admin = new pg.Client({ connectionString: baseUrl });
+  await admin.connect();
+  try {
+    const exists = await admin.query('SELECT 1 FROM pg_database WHERE datname = $1', [name]);
+    if (exists.rowCount === 0) await admin.query(`CREATE DATABASE "${name}"`);
+  } finally {
+    await admin.end();
+  }
+  parsed.pathname = `/${name}`;
+  return parsed.toString();
+}
 
 async function resetSchema(pool) {
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
@@ -17,7 +34,8 @@ describe('PostgreSQL migrations and transactions (integration)', () => {
   let pool;
 
   beforeAll(async () => {
-    if (!url) return;
+    if (!baseUrl) return;
+    url = await ensureIsolatedDatabase();
     pool = new pg.Pool({ connectionString: url, max: 4 });
     await resetSchema(pool);
   });
@@ -29,7 +47,7 @@ describe('PostgreSQL migrations and transactions (integration)', () => {
   });
 
   beforeEach(function () {
-    if (!url) pending('TEST_DATABASE_URL not set');
+    if (!baseUrl) pending('TEST_DATABASE_URL not set');
   });
 
   const useDb = () => {

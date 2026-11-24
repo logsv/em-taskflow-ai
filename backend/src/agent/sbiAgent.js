@@ -140,9 +140,9 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
           return {
             related_prs_count: prs.length,
             recent_prs: prs.slice(0, 3).map((p) => ({
-              number: p.number || 402,
-              title: p.title || 'Feature implementation PR',
-              html_url: p.html_url || `https://github.com/${defaultRepo}/pull/${p.number || 402}`,
+              number: p.number ?? null,
+              title: p.title || '(untitled PR)',
+              html_url: p.html_url || (p.number ? `https://github.com/${defaultRepo}/pull/${p.number}` : null),
             })),
             source: 'mcp_github',
             synced_at: new Date().toISOString(),

@@ -1198,10 +1198,11 @@ class DatabaseService {
     const record = {
       id: this.inMemoryDoraSnapshots.length + 1,
       team_id: data.team_id || 'default',
-      deployment_frequency: data.deployment_frequency || 0,
-      lead_time_hours: data.lead_time_hours || 0,
-      change_failure_rate: data.change_failure_rate || 0,
-      mttr_hours: data.mttr_hours || 0,
+      // null = not measured; 0 would read as a real (and excellent) value.
+      deployment_frequency: measuredOrNull(data.deployment_frequency),
+      lead_time_hours: measuredOrNull(data.lead_time_hours),
+      change_failure_rate: measuredOrNull(data.change_failure_rate),
+      mttr_hours: measuredOrNull(data.mttr_hours),
       period_start: data.period_start || new Date(),
       period_end: data.period_end || new Date(),
       created_at: new Date(),
@@ -2314,6 +2315,10 @@ function mapActionItemRow(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function measuredOrNull(v) {
+  return v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v);
 }
 
 function safeJsonParse(value) {
