@@ -7,6 +7,10 @@ import fitz
 import sys
 import os
 
+# Local-first: DeepEval phones home (and its Sentry init breaks on newer sentry-sdk) unless opted out.
+os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
+os.environ.setdefault("OTEL_ENABLED", "false")
+
 # Add service root directory to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 

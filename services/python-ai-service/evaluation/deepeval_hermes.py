@@ -25,6 +25,19 @@ except ImportError:
             ChatOllama = None
 
 
+class JudgeUnavailableError(RuntimeError):
+    """The LLM judge could not produce a judgement. Evaluations must fail or skip, never pass."""
+
+
+def is_ollama_reachable(base_url: Optional[str] = None, timeout: float = 2.0) -> bool:
+    import httpx
+    url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
+    try:
+        return httpx.get(f"{url}/api/tags", timeout=timeout).status_code == 200
+    except Exception:
+        return False
+
+
 class Hermes3Judge(DeepEvalBaseLLM):
     """
     Custom DeepEval LLM driver wrapping local Ollama chat model.
@@ -49,84 +62,44 @@ class Hermes3Judge(DeepEvalBaseLLM):
     def load_model(self) -> Any:
         return self._client
 
-    def _fallback_json_for_prompt(self, prompt: str, schema: Optional[Any] = None) -> Any:
-        data = {
-            "score": 10,
-            "reason": "Evaluation criteria strictly satisfied.",
-            "steps": ["Evaluate input against criteria", "Verify output quality", "Generate final score"],
-            "statements": ["The candidate provided the required technical metrics.", "The candidate adhered to the specified output format."],
-            "verdicts": [{"verdict": "yes", "reason": "Relevant to input prompt."}],
-            "verdict": "yes",
-        }
-
-        if schema is not None and hasattr(schema, "model_validate"):
-            try:
-                return schema.model_validate(data)
-            except Exception:
-                pass
-        elif schema is not None and hasattr(schema, "parse_obj"):
-            try:
-                return schema.parse_obj(data)
-            except Exception:
-                pass
-
-        return json.dumps(data)
+    def _parse(self, content: str, schema: Optional[Any] = None) -> Any:
+        if schema is None:
+            return content
+        try:
+            parsed_json = json.loads(content)
+        except json.JSONDecodeError as e:
+            raise JudgeUnavailableError(f"Judge returned non-JSON output: {content[:120]}") from e
+        if hasattr(schema, "model_validate"):
+            return schema.model_validate(parsed_json)
+        if hasattr(schema, "parse_obj"):
+            return schema.parse_obj(parsed_json)
+        return parsed_json
 
     def generate(self, prompt: str, schema: Optional[Any] = None, *args, **kwargs) -> Any:
-        """Synchronously generates a response from local Ollama."""
+        """Synchronously generates a judgement from local Ollama. Never invents one."""
+        if not self._client:
+            raise JudgeUnavailableError(f"Ollama judge client for {self.model_name} is not available")
         try:
-            if self._client:
-                response = self._client.invoke(prompt)
-                content = str(response.content).strip()
-                if content:
-                    if schema is not None:
-                        try:
-                            parsed_json = json.loads(content)
-                            if hasattr(schema, "model_validate"):
-                                return schema.model_validate(parsed_json)
-                            if hasattr(schema, "parse_obj"):
-                                return schema.parse_obj(parsed_json)
-                        except Exception:
-                            pass
-                    return content
-            return self._fallback_json_for_prompt(prompt, schema)
+            response = self._client.invoke(prompt)
         except Exception as e:
-            logger.warning(f"Ollama inference fallback triggered: {e}")
-            return self._fallback_json_for_prompt(prompt, schema)
+            raise JudgeUnavailableError(f"Ollama judge call failed: {e}") from e
+        content = str(response.content).strip()
+        if not content:
+            raise JudgeUnavailableError("Ollama judge returned an empty response")
+        return self._parse(content, schema)
 
     async def a_generate(self, prompt: str, schema: Optional[Any] = None, *args, **kwargs) -> Any:
-        """Asynchronously generates a response from local Ollama."""
+        """Asynchronously generates a judgement from local Ollama. Never invents one."""
+        if not self._client:
+            raise JudgeUnavailableError(f"Ollama judge client for {self.model_name} is not available")
         try:
-            if self._client:
-                response = await self._client.ainvoke(prompt)
-                content = str(response.content).strip()
-                if content:
-                    if schema is not None:
-                        try:
-                            parsed_json = json.loads(content)
-                            if hasattr(schema, "model_validate"):
-                                return schema.model_validate(parsed_json)
-                            if hasattr(schema, "parse_obj"):
-                                return schema.parse_obj(parsed_json)
-                        except Exception:
-                            pass
-                    return content
-            return self._fallback_json_for_prompt(prompt, schema)
+            response = await self._client.ainvoke(prompt)
         except Exception as e:
-            logger.warning(f"Ollama inference fallback triggered: {e}")
-            return self._fallback_json_for_prompt(prompt, schema)
-
-    def generate_raw_response(self, prompt: str, schema: Optional[Any] = None, *args, **kwargs) -> Any:
-        raw = self.generate(prompt, schema, *args, **kwargs)
-        content = raw if isinstance(raw, str) else json.dumps({"score": 10, "reason": "Evaluation criteria satisfied."})
-        mock_resp = type('MockResponse', (), {'choices': [type('MockChoice', (), {'message': type('MockMsg', (), {'content': content})()})()]})()
-        return mock_resp, 0.0
-
-    async def a_generate_raw_response(self, prompt: str, schema: Optional[Any] = None, *args, **kwargs) -> Any:
-        raw = await self.a_generate(prompt, schema, *args, **kwargs)
-        content = raw if isinstance(raw, str) else json.dumps({"score": 10, "reason": "Evaluation criteria satisfied."})
-        mock_resp = type('MockResponse', (), {'choices': [type('MockChoice', (), {'message': type('MockMsg', (), {'content': content})()})()]})()
-        return mock_resp, 0.0
+            raise JudgeUnavailableError(f"Ollama judge call failed: {e}") from e
+        content = str(response.content).strip()
+        if not content:
+            raise JudgeUnavailableError("Ollama judge returned an empty response")
+        return self._parse(content, schema)
 
     def get_model_name(self) -> str:
         return f"Ollama {self.model_name}"

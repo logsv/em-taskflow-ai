@@ -9,7 +9,7 @@ import time
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, Optional, List
 from temporalio import activity
 
 from app.services.file_processor.pdf_extractor import FileUploadProcessor
@@ -22,6 +22,20 @@ logger = logging.getLogger(__name__)
 file_processor = FileUploadProcessor()
 rag_chunker = RAGChunker()
 db_service = RAGDatabaseService()
+
+
+def _score_or_none(scores: Dict[str, Any], key: str) -> Optional[float]:
+    """A metric value from an evaluation result, or None when it was not produced."""
+    value = (scores or {}).get(key)
+    try:
+        return None if value is None else float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _mean(values) -> Optional[float]:
+    nums = [float(v) for v in values if isinstance(v, (int, float))]
+    return round(sum(nums) / len(nums), 4) if nums else None
 
 
 @activity.defn
@@ -471,26 +485,23 @@ async def evaluate_single_rag_triad_query_activity(params: Dict[str, Any]) -> Di
             "status": "SUCCESS",
             "query": query,
             "feedbacks": {
-                "faithfulness": float(scores.get("faithfulness", 0.965)),
-                "answer_relevance": float(scores.get("answer_relevancy", 0.892)),
-                "context_precision": float(scores.get("context_precision", 0.950)),
-                "context_recall": float(scores.get("context_recall", 0.925)),
+                "faithfulness": _score_or_none(scores, "faithfulness"),
+                "answer_relevance": _score_or_none(scores, "answer_relevancy"),
+                "context_precision": _score_or_none(scores, "context_precision"),
+                "context_recall": _score_or_none(scores, "context_recall"),
             },
             "latency_seconds": latency,
             "model_name": model_name,
         }
     except Exception as e:
-        logger.warning(f"⚠️ Single query evaluation fallback: {e}")
+        # An evaluation that could not run is a failure, never a passing score.
+        logger.error(f"Single query evaluation failed: {e}")
         return {
-            "status": "SUCCESS",
+            "status": "FAILED",
             "query": query,
-            "feedbacks": {
-                "faithfulness": 0.965,
-                "answer_relevance": 0.892,
-                "context_precision": 0.950,
-                "context_recall": 0.925,
-            },
-            "latency_seconds": 1.5,
+            "error": str(e),
+            "feedbacks": {"faithfulness": None, "answer_relevance": None, "context_precision": None, "context_recall": None},
+            "latency_seconds": round(time.time() - start_time, 2),
             "model_name": model_name,
         }
     finally:
@@ -558,16 +569,17 @@ async def sync_evaluation_leaderboard_activity(params: Dict[str, Any]) -> Dict[s
     except Exception:
         pass
 
+    mean_scores = {
+        metric: _mean([((r or {}).get("feedbacks") or (r or {}).get("scores") or {}).get(metric) for r in results])
+        for metric in ("faithfulness", "answer_relevance", "context_precision", "context_recall")
+    }
+    failed = sum(1 for r in results if (r or {}).get("status") == "FAILED")
     return {
-        "status": "SUCCESS",
+        "status": "FAILED" if total_queries == 0 or failed == total_queries else ("PARTIAL" if failed else "SUCCESS"),
         "total_evaluated": total_queries,
+        "failed_count": failed,
         "model_name": model_name,
-        "mean_scores": {
-            "faithfulness": 0.9650,
-            "answer_relevance": 0.8920,
-            "context_precision": 0.9500,
-            "context_recall": 0.9250,
-        },
+        "mean_scores": mean_scores,
         "synced_at": datetime.now().isoformat(),
     }
 
@@ -597,12 +609,14 @@ async def run_ragas_evaluation_activity(params: Dict[str, Any]) -> Dict[str, Any
         scores = await asyncio.to_thread(run_ragas_evaluation, sync_to_langfuse=sync_to_langfuse)
         return scores
     except Exception as e:
-        logger.warning(f"⚠️ Ragas activity non-blocking fallback: {e}")
+        logger.error(f"Ragas evaluation failed: {e}")
         return {
-            "faithfulness": 0.9650,
-            "answer_relevancy": 0.8920,
-            "context_precision": 0.9500,
-            "context_recall": 0.9250,
+            "status": "FAILED",
+            "error": str(e),
+            "faithfulness": None,
+            "answer_relevancy": None,
+            "context_precision": None,
+            "context_recall": None,
         }
     finally:
         stop_event.set()

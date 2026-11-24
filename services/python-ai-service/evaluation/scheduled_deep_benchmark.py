@@ -34,6 +34,18 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("scheduled_deep_benchmark")
 
 
+
+def _fmt_score(value) -> str:
+    return f"{float(value):.4f}" if isinstance(value, (int, float)) else "n/a"
+
+
+def _gate(value, threshold: float = 0.9) -> str:
+    """PASS/FAIL from the real score; a missing score is NOT RUN, never PASS."""
+    if not isinstance(value, (int, float)):
+        return "⚪ NOT RUN"
+    return "✅ PASS" if value >= threshold else "❌ FAIL"
+
+
 def run_scheduled_deep_benchmark(
     model_name: str = DEFAULT_LLM_MODEL,
     reports_dir: str = None,
@@ -153,10 +165,10 @@ def run_scheduled_deep_benchmark(
 ## 📊 Ragas Multi-Metric Scores (100% Local Inference & Langfuse Sync)
 | Metric | Score | SLA Target | Status |
 | :--- | :--- | :--- | :--- |
-| **Faithfulness** | `{ragas_scores.get('faithfulness', 1.0):.4f}` | &ge; 0.9000 | ✅ PASS |
-| **Answer Relevancy** | `{ragas_scores.get('answer_relevancy', 1.0):.4f}` | &ge; 0.9000 | ✅ PASS |
-| **Context Precision** | `{ragas_scores.get('context_precision', 1.0):.4f}` | &ge; 0.9000 | ✅ PASS |
-| **Context Recall** | `{ragas_scores.get('context_recall', 1.0):.4f}` | &ge; 0.9000 | ✅ PASS |
+| **Faithfulness** | `{_fmt_score(ragas_scores.get('faithfulness'))}` | &ge; 0.9000 | {_gate(ragas_scores.get('faithfulness'))} |
+| **Answer Relevancy** | `{_fmt_score(ragas_scores.get('answer_relevancy'))}` | &ge; 0.9000 | {_gate(ragas_scores.get('answer_relevancy'))} |
+| **Context Precision** | `{_fmt_score(ragas_scores.get('context_precision'))}` | &ge; 0.9000 | {_gate(ragas_scores.get('context_precision'))} |
+| **Context Recall** | `{_fmt_score(ragas_scores.get('context_recall'))}` | &ge; 0.9000 | {_gate(ragas_scores.get('context_recall'))} |
 
 ---
 

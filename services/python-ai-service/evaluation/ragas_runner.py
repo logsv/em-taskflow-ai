@@ -128,12 +128,14 @@ def run_ragas_evaluation(
         ]
 
     if not HAS_RAGAS:
-        logger.warning("⚠️ Ragas package not available or failed import, using default metrics.")
+        logger.error("Ragas is not installed or failed to import; no scores produced.")
         return {
-            "faithfulness": 0.9650,
-            "answer_relevancy": 0.8920,
-            "context_precision": 0.9500,
-            "context_recall": 0.9250,
+            "status": "FAILED",
+            "error": "ragas unavailable",
+            "faithfulness": None,
+            "answer_relevancy": None,
+            "context_precision": None,
+            "context_recall": None,
         }
 
     eval_dataset = Dataset.from_list(dataset_records)
@@ -164,12 +166,17 @@ def run_ragas_evaluation(
             try:
                 scores_dict = {str(k): round(float(v), 4) for k, v in dict(results).items()}
             except Exception:
-                scores_dict = {
-                    "faithfulness": 0.9650,
-                    "answer_relevancy": 0.8920,
-                    "context_precision": 0.9500,
-                    "context_recall": 0.9250,
-                }
+                scores_dict = {}
+        if not scores_dict:
+            logger.error("Ragas returned no parseable scores.")
+            return {
+            "status": "FAILED",
+            "error": "ragas returned no scores",
+            "faithfulness": None,
+            "answer_relevancy": None,
+            "context_precision": None,
+            "context_recall": None,
+        }
 
         if sync_to_langfuse:
             try:
@@ -193,12 +200,14 @@ def run_ragas_evaluation(
 
         return scores_dict
     except Exception as e:
-        logger.warning(f"⚠️ Ragas evaluation fallback: {e}")
+        logger.error(f"Ragas evaluation failed: {e}")
         return {
-            "faithfulness": 0.9650,
-            "answer_relevancy": 0.8920,
-            "context_precision": 0.9500,
-            "context_recall": 0.9250,
+            "status": "FAILED",
+            "error": str(e),
+            "faithfulness": None,
+            "answer_relevancy": None,
+            "context_precision": None,
+            "context_recall": None,
         }
 
 

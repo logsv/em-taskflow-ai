@@ -25,6 +25,7 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       APP_VERSION: ${APP_VERSION:-em-taskflow-python-ai@1.0.0}
       PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
+      DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
     volumes:
       - backend_data:/app/data
     ports:

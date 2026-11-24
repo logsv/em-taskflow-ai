@@ -39,8 +39,8 @@ class ShadowEvaluatorWorker:
         try:
             result = self.judge.evaluate(trace_context)
             trace_id = trace_context.get("trace_id")
-            score = result.get("score", 5)
-            faithfulness = result.get("faithfulness", 1.0)
+            score = result.get("score")
+            faithfulness = result.get("faithfulness")  # None when the judge did not measure it
 
             logger.info(f"📊 Shadow Evaluation completed for trace {trace_id or 'UNKNOWN'}: score={score}")
 
@@ -54,31 +54,35 @@ class ShadowEvaluatorWorker:
                         secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
                         host=host,
                     )
-                    langfuse.score(
-                        trace_id=trace_id,
-                        name="shadow_geval_score",
-                        value=float(score) / 5.0,
-                        comment=f"Shadow Evaluator G-Eval metric ({self.model_name})",
-                    )
-                    langfuse.score(
-                        trace_id=trace_id,
-                        name="shadow_faithfulness",
-                        value=float(faithfulness),
-                        comment=f"Shadow Evaluator Faithfulness metric ({self.model_name})",
-                    )
+                    judge_label = result.get("judge_type") or self.model_name
+                    if score is not None:
+                        langfuse.score(
+                            trace_id=trace_id,
+                            name="shadow_format_score",
+                            value=float(score) / 5.0,
+                            comment=f"Shadow evaluator format score ({judge_label})",
+                        )
+                    # Only a judge that actually measured faithfulness may report it.
+                    if faithfulness is not None:
+                        langfuse.score(
+                            trace_id=trace_id,
+                            name="shadow_faithfulness",
+                            value=float(faithfulness),
+                            comment=f"Shadow evaluator faithfulness ({judge_label})",
+                        )
                     if "blameless_tone" in result:
                         langfuse.score(
                             trace_id=trace_id,
                             name="shadow_blameless_tone",
                             value=float(result["blameless_tone"]),
-                            comment=f"Shadow Evaluator Blameless Tone metric ({self.model_name})",
+                            comment=f"Shadow evaluator blameless tone ({judge_label})",
                         )
                     if "smart_actionability" in result:
                         langfuse.score(
                             trace_id=trace_id,
                             name="shadow_smart_action_adherence",
                             value=float(result["smart_actionability"]),
-                            comment=f"Shadow Evaluator SMART Action Adherence ({self.model_name})",
+                            comment=f"Shadow evaluator action adherence ({judge_label})",
                         )
                     langfuse.flush()
                 except Exception as sync_err:
@@ -86,5 +90,5 @@ class ShadowEvaluatorWorker:
 
             return result
         except Exception as e:
-            logger.warning(f"⚠️ Shadow Evaluation non-blocking warning: {e}")
+            logger.error(f"Shadow evaluation failed: {e}")
             return None

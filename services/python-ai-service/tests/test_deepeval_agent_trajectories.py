@@ -21,7 +21,11 @@ except ImportError:
             RETRIEVAL_CONTEXT = "retrieval_context"
 
 from deepeval.metrics import GEval, AnswerRelevancyMetric
-from evaluation.deepeval_hermes import Hermes3Judge
+from evaluation.deepeval_hermes import Hermes3Judge, is_ollama_reachable
+
+# These tests score answers with a live LLM judge. Without Ollama they are skipped (with a
+# reason) rather than passing on invented scores, which is what the old fallback did.
+pytestmark = pytest.mark.skipif(not is_ollama_reachable(), reason="LLM judge needs a reachable Ollama (OLLAMA_BASE_URL)")
 
 judge = Hermes3Judge()
 
