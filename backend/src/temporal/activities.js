@@ -285,17 +285,18 @@ export async function reconcileAndPersistTeamActivity(params = {}) {
         mergedMap.set(key, {
           id: `mem_${key.replace(/[@.]/g, '_')}`,
           displayName: name || 'Team Member',
-          email: email || `${key}@company.internal`,
+          email: email || null,
           githubUsername: m.githubUsername,
           jiraEmail: m.jiraEmail || email,
           jiraAccountId: m.jiraAccountId,
           gcalEmail: m.gcalEmail || email,
           notionName: m.notionName || name,
           aliases: m.aliases || [name],
-          currentLevel: 'L4_MID',
-          targetLevel: 'L5_SENIOR',
+          // Levels and tenure are unknown until the owner enters them (no assumed defaults).
+          currentLevel: null,
+          targetLevel: null,
           track: 'INDIVIDUAL_CONTRIBUTOR',
-          tenureMonths: 18,
+          tenureMonths: null,
         });
       }
     }
@@ -733,7 +734,7 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
       actionItems.push({
         id: `act_jira_${keyClean}`,
         title: `Blocked Jira Ticket ${t.key}: ${t.summary || 'Blocked Issue'}`,
-        description: `Ticket has been blocked for ${t.daysBlocked || 1} days.`,
+        description: Number.isFinite(Number(t.daysBlocked)) ? `Ticket has been blocked for ${t.daysBlocked} days.` : 'Ticket is blocked (blocked duration unknown).',
         category: 'DELIVERY',
         severity: 'WARNING',
         suggestedAction: `Triage impediment in daily standup and review dependency chain.`,
@@ -753,9 +754,9 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
       actionItems.push({
         id: `act_1on1_${rawMember}`,
         title: `Overdue 1-on-1 Sync: ${o.name || 'Team Member'}`,
-        description: `Last 1-on-1 was ${o.daysSinceLast1on1 || 15} days ago (recommended cadence is <=14 days).`,
+        description: Number.isFinite(Number(o.daysSinceLast1on1)) ? `Last 1-on-1 was ${o.daysSinceLast1on1} days ago (recommended cadence is <=14 days).` : 'No 1-on-1 found in the calendar window (recommended cadence is <=14 days).',
         category: 'PEOPLE',
-        severity: (o.daysSinceLast1on1 || 15) > 20 ? 'CRITICAL' : 'WARNING',
+        severity: Number(o.daysSinceLast1on1) > 20 ? 'CRITICAL' : 'WARNING',
         suggestedAction: `Schedule 30-minute 1-on-1 check-in via Google Calendar.`,
         assigneeName: o.name || 'Team Member',
         assigneeEmail: o.email || null,
@@ -792,48 +793,45 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
   const finalHealthScore = Math.max(20, Math.min(100, score));
 
   // Build Markdown executive summary
+  const shown = (v, suffix = '') => (v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? 'n/a' : `${v}${suffix}`);
   const summaryMarkdown = [
-    `### 🛡️ Autonomous EM Health Audit Summary`,
+    `### Autonomous EM Health Audit Summary`,
     `- **Overall Health Score:** \`${finalHealthScore}/100\``,
-    `- **DORA Metrics Tier:** \`${delivery.doraSummary?.tier || 'Elite'}\` (Deploy: ${delivery.doraSummary?.deploymentFrequency || 2.4}/d, MTTR: ${delivery.doraSummary?.mttrHours || 0.8}h)`,
-    `- **Active Sprint Velocity:** \`${sprintOkr.completedPoints || 38}/${sprintOkr.totalPoints || 48} SP\` (${sprintOkr.sprintPacingPct || 79}%)`,
+    `- **DORA Metrics Tier:** \`${delivery.doraSummary?.tier || 'n/a'}\` (Deploy: ${shown(delivery.doraSummary?.deploymentFrequency, '/d')}, MTTR: ${shown(delivery.doraSummary?.mttrHours, 'h')})`,
+    `- **Active Sprint Velocity:** \`${shown(sprintOkr.completedPoints)}/${shown(sprintOkr.totalPoints)} SP\` (${shown(sprintOkr.sprintPacingPct, '%')})`,
     `- **SOP Compliance Score:** \`${sop.complianceScore === null || sop.complianceScore === undefined ? "not checked" : `${sop.complianceScore}%`}\``,
     `- **Pending Action Items:** \`${actionItems.length}\` items require engineering manager review.`,
   ].join('\n');
 
-  // Persist Audit Run
-  const auditRun = await databaseService.createAuditRun({
+  // Persist the audit run and its action items in one transaction.
+  const { auditRun, actionItems: persistedActions } = await databaseService.recordAuditRun({
     triggeredBy,
     status: 'COMPLETED',
     healthScore: finalHealthScore,
     summaryMarkdown,
     doraSummary: delivery.doraSummary || {},
     deliverySummary: {
-      openPrsCount: delivery.openPrsCount || 0,
-      stalledPrsCount: delivery.stalledPrsCount || 0,
-      avgPrReviewWaitHours: delivery.avgPrReviewWaitHours || 0,
+      openPrsCount: delivery.openPrsCount ?? null,
+      stalledPrsCount: delivery.stalledPrsCount ?? null,
+      avgPrReviewWaitHours: delivery.avgPrReviewWaitHours ?? null,
     },
     peopleSummary: {
-      cadenceHealth: people.cadenceHealth || '100%',
-      overdue1on1sCount: people.overdue1on1sCount || 0,
-      totalTeamMembers: people.totalTeamMembers || 0,
+      cadenceHealth: people.cadenceHealth ?? null,
+      overdue1on1sCount: people.overdue1on1sCount ?? null,
+      totalTeamMembers: people.totalTeamMembers ?? null,
     },
     sprintOkrSummary: {
-      sprintPacingPct: sprintOkr.sprintPacingPct || 100,
-      completedPoints: sprintOkr.completedPoints || 0,
-      totalPoints: sprintOkr.totalPoints || 0,
-      wipViolations: sprintOkr.wipViolations || 0,
+      sprintPacingPct: sprintOkr.sprintPacingPct ?? null,
+      completedPoints: sprintOkr.completedPoints ?? null,
+      totalPoints: sprintOkr.totalPoints ?? null,
+      wipViolations: sprintOkr.wipViolations ?? null,
     },
     sopSummary: {
       complianceScore: sop.complianceScore ?? null,
       activeViolationsCount: sop.activeViolations?.length || 0,
     },
     slackStatus: { status: 'PENDING' },
-  });
-
-  // Attach auditRunId to action items & upsert
-  const itemsWithAuditId = actionItems.map((item) => ({ ...item, auditRunId: auditRun.id }));
-  const persistedActions = await databaseService.upsertActionItems(itemsWithAuditId);
+  }, actionItems);
 
   info({ module: 'temporalActivities', action: 'synthesizeAuditAndActionItemsActivity', auditId: auditRun.id, healthScore: finalHealthScore, actionsCount: persistedActions.length }, 'Successfully synthesized and persisted autonomous audit run');
 

@@ -243,8 +243,10 @@ class SettingsService {
         this.migrateLegacyModelSettings(this.cachedRawSettings);
         this.sanitizeSettings(this.cachedRawSettings);
         // Persist sanitized clean values back to PostgreSQL
-        await databaseService.setAppSetting('llm', this.cachedRawSettings.llm, this.cachedRawSettings.metadata.llmSource).catch(swallow('services.settingsService.initialize'));
-        await databaseService.setAppSetting('mcp', this.cachedRawSettings.mcp, this.cachedRawSettings.metadata.mcpSource).catch(swallow('services.settingsService.initialize'));
+        await databaseService.setAppSettings([
+          { key: 'llm', value: this.cachedRawSettings.llm, source: this.cachedRawSettings.metadata.llmSource },
+          { key: 'mcp', value: this.cachedRawSettings.mcp, source: this.cachedRawSettings.metadata.mcpSource },
+        ]).catch(swallow('services.settingsService.initialize'));
       }
       this.applyToRuntimeConfig(this.cachedRawSettings);
       this.initialized = true;
@@ -367,8 +369,10 @@ class SettingsService {
 
   async seedInitialSettingsFromEnv() {
     const defaults = this.getDefaultEnvSettings();
-    await databaseService.setAppSetting('llm', defaults.llm, 'migrated_env');
-    await databaseService.setAppSetting('mcp', defaults.mcp, 'migrated_env');
+    await databaseService.setAppSettings([
+      { key: 'llm', value: defaults.llm, source: 'migrated_env' },
+      { key: 'mcp', value: defaults.mcp, source: 'migrated_env' },
+    ]);
     info('✅ Auto-migrated initial .env configuration into PostgreSQL app_settings table');
     return defaults;
   }
@@ -617,8 +621,10 @@ class SettingsService {
     this.cachedRawSettings = combined;
 
     // Save to Database
-    const llmRec = await databaseService.setAppSetting('llm', updatedLlm, 'database');
-    const mcpRec = await databaseService.setAppSetting('mcp', updatedMcp, 'database');
+    const { llm: llmRec, mcp: mcpRec } = await databaseService.setAppSettings([
+      { key: 'llm', value: updatedLlm, source: 'database' },
+      { key: 'mcp', value: updatedMcp, source: 'database' },
+    ]);
 
     this.cachedRawSettings = {
       llm: updatedLlm,
@@ -652,8 +658,10 @@ class SettingsService {
 
   async resetToEnvDefaults() {
     this.cachedRawSettings = this.getDefaultEnvSettings();
-    await databaseService.setAppSetting('llm', this.cachedRawSettings.llm, 'env_default');
-    await databaseService.setAppSetting('mcp', this.cachedRawSettings.mcp, 'env_default');
+    await databaseService.setAppSettings([
+      { key: 'llm', value: this.cachedRawSettings.llm, source: 'env_default' },
+      { key: 'mcp', value: this.cachedRawSettings.mcp, source: 'env_default' },
+    ]);
     this.applyToRuntimeConfig(this.cachedRawSettings);
     resetChatModel();
     cacheInvalidator.invalidateAll().catch(swallow('services.settingsService.resetToEnvDefaults'));

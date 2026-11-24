@@ -35,6 +35,8 @@ jobs:
     env:
       NODE_ENV: test
       npm_config_onnxruntime_node_install_cuda: skip
+      # Enables test/db/*.integration.spec.js (migrations + transactions on real Postgres).
+      TEST_DATABASE_URL: postgres://taskflow:taskflow@localhost:5432/taskflow_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

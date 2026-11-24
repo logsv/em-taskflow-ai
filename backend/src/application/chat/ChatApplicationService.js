@@ -136,7 +136,7 @@ export class ChatApplicationService {
         }))
       : [];
 
-    const userMessageRecord = await this.messageRepo.saveMessage({
+    const userMessageInput = {
       threadId: ensuredThread.id,
       role: 'user',
       content: query,
@@ -144,8 +144,8 @@ export class ChatApplicationService {
       executorPath: decision.selectedPath || null,
       traceId: result.meta?.traceId || null,
       metadata: decision,
-    });
-    const assistantMessageRecord = await this.messageRepo.saveMessage({
+    };
+    const assistantMessageInput = (userMessageId) => ({
       threadId: ensuredThread.id,
       role: 'assistant',
       content: result.answer,
@@ -155,10 +155,21 @@ export class ChatApplicationService {
       citations: sources,
       metadata: {
         ...decision,
-        userMessageId: userMessageRecord.id,
+        userMessageId,
         sourceCount: sources.length,
       },
     });
+    let userMessageRecord;
+    let assistantMessageRecord;
+    if (typeof this.messageRepo.saveMessagePair === 'function') {
+      // One transaction: a thread never shows a question without its answer.
+      const pair = await this.messageRepo.saveMessagePair(userMessageInput, assistantMessageInput);
+      userMessageRecord = pair.user;
+      assistantMessageRecord = pair.assistant;
+    } else {
+      userMessageRecord = await this.messageRepo.saveMessage(userMessageInput);
+      assistantMessageRecord = await this.messageRepo.saveMessage(assistantMessageInput(userMessageRecord.id));
+    }
 
     // Update thread title from default 'New Chat' to concise query-derived title
     const shortTitle = generateShortChatTitle(query, routedDomains);
@@ -322,6 +333,7 @@ function createMessageRepoAdapter(dbService) {
 
   return {
     saveMessage: (...args) => dbService.saveMessage(...args),
+    ...(typeof dbService.saveMessagePair === 'function' ? { saveMessagePair: (...args) => dbService.saveMessagePair(...args) } : {}),
     getThreadMessages: (...args) => (typeof dbService.getThreadMessages === 'function' ? dbService.getThreadMessages(...args) : []),
   };
 }

@@ -61,11 +61,11 @@ Goal: safe to run, honest output, correct configuration, new model.
 | 2.1 | Capability registry: one file per capability (description, examples, input schema, `execute`, `render`, flag) | ⬜ |
 | 2.2 | Merge 10 domains into 5 capabilities: Delivery Health, People & Coaching, Sprint, Planning & Goals, Knowledge & Review | ⬜ |
 | 2.3 | Pipeline replaces `agentService`, the supervisor and the three routing layers: ContextBuilder → Planner → Executor → Verifier → Composer | ⬜ |
-| 2.4 | Migrations (`node-pg-migrate` for `taskflow_backend`, numbered SQL for `taskflow_ai`); transactions for multi-write use cases; JSONB everywhere | ⬜ |
-| 2.4b | Team roster columns `current_level`/`target_level`/`tenure_months` default to L4_MID/L5_SENIOR/12 for every auto-discovered member; make them nullable in the first migration | ⬜ |
+| 2.4 | Migrations (`node-pg-migrate` for `taskflow_backend`, numbered SQL for `taskflow_ai`); transactions for multi-write use cases; JSONB everywhere | ✅ backend: numbered SQL in `src/db/migrations` + `src/db/migrator.js` (checksums, advisory lock, one transaction each; no new dependency). Transactions: message pair, audit run + action items, llm/mcp settings pair. GitHub issues batch upsert. Tested on real Postgres. Not done: `taskflow_ai` (Python) migrations; TEXT→JSONB for `chat_messages.metadata`/`citations_json` |
+| 2.4b | Team roster columns `current_level`/`target_level`/`tenure_months` default to L4_MID/L5_SENIOR/12 for every auto-discovered member; make them nullable in the first migration | ✅ migration 003 drops the defaults; sync no longer invents levels/tenure, and a re-sync keeps values the owner entered (it used to overwrite them) |
 | 2.5 | Split the god files (`postgres.js` → repositories, `admin.js`, `activities.js`, `AdminPage.jsx` → per-tab components + router) | ⬜ |
 | 2.6 | Temporal workers as separate processes (restart isolation); lean compose profile (observability optional) | ⬜ |
-| 2.7 | Delete dead code and unused dependencies; telemetry down to OTel + Langfuse; remove the unused gRPC path and the in-memory "fallback DB" | ⬜ |
+| 2.7 | Delete dead code and unused dependencies; telemetry down to OTel + Langfuse; remove the unused gRPC path and the in-memory "fallback DB" | ✅ dead code, 20 deps and gRPC removed. In-memory fallback DB still present (moves with the repository split, 2.5) |
 | 2.8 | Move evaluation tooling out of the end-user Admin Portal into developer CLI/scripts | ⬜ |
 
 **Exit criteria.** Adding a capability = one file plus tests. `agentService.js`, `graph.js` and `llmRouter.js` deleted. Lean stack leaves ≥ 9 GB for Ollama on the Mac mini.
@@ -109,5 +109,6 @@ Goal: safe to run, honest output, correct configuration, new model.
 | Date | Phase | Change |
 |---|---|---|
 | 2026-11-24 | — | Plan written |
+| 2026-11-24 | 2 | 2.7 dead code / deps / gRPC removed (688 packages). 2.4 + 2.4b migrations, transactions, nullable roster levels; fixed roster re-sync overwriting entered levels and `''` emails colliding on UNIQUE; removed invented numbers from the audit summary. Backend 463 specs / 0 failures (9 on real Postgres) |
 | 2026-11-24 | 1 | Phase 1 implemented: error taxonomy + error middleware (71 routes), 113 swallowed handlers made visible (+29 in Python), ESLint/ruff (found 4 latent ReferenceError bugs), provenance on every tool answer + UI strip, /health/ready + /metrics, Python response validation, LLM gateway (constrained JSON, repair turn, limiter, thinking toggle), one CI workflow with real Postgres/Redis, frontend Vitest. Backend 459 specs / 0 failures; Python 47 passed / 12 skipped; frontend 7 passed |
 | 2026-11-24 | 0 | Phase 0 implemented. Backend 430 specs / 0 failures (was 394 / 2), coverage now measured (52% lines, was reported 0%). Python service 47 passed / 12 skipped (live-judge tests need Ollama). Eval engine 4 passed. Frontend builds |

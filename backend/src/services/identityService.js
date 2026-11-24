@@ -158,8 +158,8 @@ class IdentityService {
           gcalEmail: existing.gcalEmail || entry.gcalEmail,
           notionName: existing.notionName || entry.notionName,
           track: entry.track || existing.track || 'INDIVIDUAL_CONTRIBUTOR',
-          currentLevel: entry.currentLevel || existing.currentLevel || 'L4_MID',
-          targetLevel: entry.targetLevel || existing.targetLevel || 'L5_SENIOR',
+          currentLevel: entry.currentLevel || existing.currentLevel || null,
+          targetLevel: entry.targetLevel || existing.targetLevel || null,
           aliases: Array.from(new Set([...(existing.aliases || []), ...(entry.aliases || [])])),
         });
       } else {
@@ -511,13 +511,8 @@ class IdentityService {
     // Upsert all discovered members into PostgreSQL
     const savedMembers = [];
     for (const [_, entry] of discovered) {
-      const saved = await databaseService.upsertTeamMember({
-        ...entry,
-        currentLevel: entry.currentLevel || 'L4_MID',
-        targetLevel: entry.targetLevel || 'L5_SENIOR',
-        track: entry.track || 'INDIVIDUAL_CONTRIBUTOR',
-        tenureMonths: entry.tenureMonths || 18,
-      });
+      // Levels and tenure pass through as given (null = unknown); the upsert keeps values the owner entered.
+      const saved = await databaseService.upsertTeamMember(entry);
       savedMembers.push(saved);
     }
 

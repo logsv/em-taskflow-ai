@@ -3,6 +3,7 @@ import { getDatabaseConfig } from '../config.js';
 import pythonAIServiceClient from '../pythonAi/client.js';
 import { info, warn, error } from '../utils/logger.js';
 import { swallow, recordHandledError } from '../core/safe.js';
+import { runMigrations } from './migrator.js';
 
 // In-memory stores used only when no pool exists (tests that pre-seed state). They were referenced
 // without being defined, so these paths threw ReferenceError. Phase 2 removes the in-memory mode.
@@ -86,276 +87,33 @@ class DatabaseService {
     await this.initialize();
   }
 
+  /** Apply schema migrations (src/db/migrations). Kept under this name for existing callers. */
   async createTables() {
     await this.ensurePool();
+    await this.pool.query('CREATE EXTENSION IF NOT EXISTS pg_stat_statements').catch(swallow('db.postgres.pgStatStatements'));
+    return runMigrations(this.pool);
+  }
 
-    await this.pool.query(`
-      CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
-    `).catch((err) => {
-      warn('Failed to enable pg_stat_statements extension', { err: err.message });
-    });
-
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        active_thread_id TEXT,
-        client_info TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW(),
-        last_active_at TIMESTAMPTZ DEFAULT NOW()
-      );
-    `);
-
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS chat_threads (
-        id TEXT PRIMARY KEY,
-        session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
-        title TEXT NOT NULL,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-    `);
-
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS chat_messages (
-        id BIGSERIAL PRIMARY KEY,
-        thread_id TEXT NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
-        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
-        content TEXT NOT NULL,
-        strategy TEXT,
-        executor_path TEXT,
-        trace_id TEXT,
-        citations_json TEXT,
-        metadata TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      );
-    `);
-
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS feedback (
-        id TEXT PRIMARY KEY,
-        session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
-        thread_id TEXT REFERENCES chat_threads(id) ON DELETE SET NULL,
-        message_id BIGINT REFERENCES chat_messages(id) ON DELETE SET NULL,
-        trace_id TEXT,
-        score TEXT NOT NULL,
-        comment TEXT,
-        metadata TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      );
-    `);
-
-    await this.pool.query(`
-      ALTER TABLE chat_threads
-      ADD COLUMN IF NOT EXISTS session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL;
-    `);
-
-    await this.pool.query(`
-      ALTER TABLE chat_threads
-      ADD COLUMN IF NOT EXISTS context_matrix JSONB DEFAULT '{}'::jsonb;
-    `);
-
-    await this.pool.query(`
-      ALTER TABLE chat_messages
-      ADD COLUMN IF NOT EXISTS trace_id TEXT;
-    `);
-
-    await this.pool.query(`
-      ALTER TABLE chat_messages
-      ADD COLUMN IF NOT EXISTS citations_json TEXT;
-    `);
-
-    await this.pool.query(`
-      ALTER TABLE sessions
-      ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ DEFAULT NOW();
-    `);
-
-    await this.pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_sessions_last_active_at ON sessions(last_active_at);
-    `);
-
-    await this.pool.query(`
-      ALTER TABLE sessions
-      ADD CONSTRAINT sessions_active_thread_fk
-      FOREIGN KEY (active_thread_id)
-      REFERENCES chat_threads(id)
-      ON DELETE SET NULL;
-    `).catch((error) => {
-      if (!String(error?.message || '').includes('already exists')) {
-        throw error;
-      }
-    });
-
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS chat_history (
-        id BIGSERIAL PRIMARY KEY,
-        user_message TEXT NOT NULL,
-        ai_response TEXT NOT NULL,
-        timestamp TIMESTAMPTZ DEFAULT NOW(),
-        session_id TEXT,
-        metadata TEXT
-      );
-    `);
-
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS user_preferences (
-        id BIGSERIAL PRIMARY KEY,
-        key TEXT UNIQUE NOT NULL,
-        value TEXT NOT NULL,
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-    `);
-
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS task_cache (
-        id BIGSERIAL PRIMARY KEY,
-        source TEXT NOT NULL,
-        task_id TEXT NOT NULL,
-        data TEXT NOT NULL,
-        last_updated TIMESTAMPTZ DEFAULT NOW(),
-        UNIQUE(source, task_id)
-      );
-    `);
-
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS github_issues (
-        id TEXT PRIMARY KEY,
-        issue_number INT NOT NULL,
-        repo TEXT NOT NULL,
-        title TEXT NOT NULL,
-        state TEXT NOT NULL,
-        assignee TEXT,
-        html_url TEXT,
-        labels_json JSONB,
-        data_json JSONB NOT NULL,
-        synced_at TIMESTAMPTZ DEFAULT NOW()
-      );
-      CREATE INDEX IF NOT EXISTS idx_github_issues_repo_state ON github_issues(repo, state);
-    `);
-
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS pdf_chunks (
-        id TEXT PRIMARY KEY,
-        document_id TEXT NOT NULL,
-        filename TEXT NOT NULL,
-        chunk_index INT NOT NULL,
-        content TEXT NOT NULL,
-        parent_content TEXT NOT NULL,
-        embedding_json TEXT,
-        tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content || ' ' || filename)) STORED,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      );
-      CREATE INDEX IF NOT EXISTS idx_pdf_chunks_filename ON pdf_chunks(filename);
-      CREATE INDEX IF NOT EXISTS idx_pdf_chunks_tsv ON pdf_chunks USING GIN(tsv);
-
-      CREATE TABLE IF NOT EXISTS dora_snapshots (
-        id SERIAL PRIMARY KEY,
-        team_id VARCHAR(64) NOT NULL,
-        deployment_frequency NUMERIC(5,2),
-        lead_time_hours NUMERIC(8,2),
-        change_failure_rate NUMERIC(5,2),
-        mttr_hours NUMERIC(8,2),
-        period_start TIMESTAMPTZ NOT NULL,
-        period_end TIMESTAMPTZ NOT NULL,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      );
-
-      CREATE TABLE IF NOT EXISTS sbi_feedback_records (
-        id SERIAL PRIMARY KEY,
-        engineer_id VARCHAR(64) NOT NULL,
-        situation TEXT NOT NULL,
-        behavior TEXT NOT NULL,
-        impact TEXT NOT NULL,
-        action_plan TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      );
-
-      CREATE TABLE IF NOT EXISTS sprint_analytics (
-        id SERIAL PRIMARY KEY,
-        sprint_id VARCHAR(64) UNIQUE NOT NULL,
-        total_points INT DEFAULT 0,
-        completed_points INT DEFAULT 0,
-        wip_violations INT DEFAULT 0,
-        retro_action_items JSONB DEFAULT '[]'::jsonb,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      );
-
-      CREATE TABLE IF NOT EXISTS okr_tracker (
-        id SERIAL PRIMARY KEY,
-        objective TEXT NOT NULL,
-        key_result TEXT NOT NULL,
-        target_value NUMERIC(10,2) NOT NULL,
-        current_value NUMERIC(10,2) DEFAULT 0,
-        status VARCHAR(32) DEFAULT 'ON_TRACK',
-        quarter VARCHAR(16) NOT NULL,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      );
-
-      CREATE TABLE IF NOT EXISTS app_settings (
-        key TEXT PRIMARY KEY,
-        value JSONB NOT NULL,
-        source TEXT DEFAULT 'database',
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-
-      CREATE TABLE IF NOT EXISTS team_members (
-        id TEXT PRIMARY KEY,
-        display_name TEXT NOT NULL,
-        email TEXT UNIQUE,
-        aliases JSONB DEFAULT '[]',
-        github_username TEXT,
-        jira_email TEXT,
-        jira_account_id TEXT,
-        gcal_email TEXT,
-        notion_name TEXT,
-        current_level TEXT DEFAULT 'L4_MID',
-        target_level TEXT DEFAULT 'L5_SENIOR',
-        track TEXT DEFAULT 'INDIVIDUAL_CONTRIBUTOR',
-        tenure_months INT DEFAULT 12,
-        skills JSONB DEFAULT '{}',
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-
-      CREATE TABLE IF NOT EXISTS em_audit_runs (
-        id BIGSERIAL PRIMARY KEY,
-        triggered_by VARCHAR(32) DEFAULT 'CRON_4H',
-        status VARCHAR(32) DEFAULT 'COMPLETED',
-        health_score INT DEFAULT 100,
-        summary_markdown TEXT,
-        dora_summary JSONB DEFAULT '{}'::jsonb,
-        delivery_summary JSONB DEFAULT '{}'::jsonb,
-        people_summary JSONB DEFAULT '{}'::jsonb,
-        sprint_okr_summary JSONB DEFAULT '{}'::jsonb,
-        sop_summary JSONB DEFAULT '{}'::jsonb,
-        slack_status JSONB DEFAULT '{}'::jsonb,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        completed_at TIMESTAMPTZ DEFAULT NOW()
-      );
-      CREATE INDEX IF NOT EXISTS idx_em_audit_runs_created_at ON em_audit_runs(created_at DESC);
-
-      CREATE TABLE IF NOT EXISTS em_action_items (
-        id VARCHAR(64) PRIMARY KEY,
-        audit_run_id BIGINT REFERENCES em_audit_runs(id) ON DELETE SET NULL,
-        title TEXT NOT NULL,
-        description TEXT,
-        category VARCHAR(32) NOT NULL,
-        severity VARCHAR(16) NOT NULL,
-        status VARCHAR(16) NOT NULL DEFAULT 'PENDING',
-        suggested_action TEXT,
-        assignee_name TEXT,
-        assignee_email TEXT,
-        external_reference JSONB DEFAULT '{}'::jsonb,
-        resolution_notes TEXT,
-        completed_at TIMESTAMPTZ,
-        completed_by TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-      CREATE INDEX IF NOT EXISTS idx_em_action_items_status ON em_action_items(status);
-      CREATE INDEX IF NOT EXISTS idx_em_action_items_category ON em_action_items(category);
-      CREATE INDEX IF NOT EXISTS idx_em_action_items_severity ON em_action_items(severity);
-    `);
+  /**
+   * Run fn(client) in one transaction. Rolls back and rethrows on any error.
+   * @template T
+   * @param {(client: import('pg').PoolClient) => Promise<T>} fn
+   * @returns {Promise<T>}
+   */
+  async withTransaction(fn) {
+    await this.ensureInitialized();
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await fn(client);
+      await client.query('COMMIT');
+      return result;
+    } catch (err) {
+      await client.query('ROLLBACK').catch(swallow('db.postgres.rollback'));
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   async createSession(clientInfo = null) {
@@ -653,10 +411,6 @@ class DatabaseService {
     }
 
     try {
-      // Add archived column if it doesn't exist (safe migration)
-      await this.pool.query(
-        `ALTER TABLE sessions ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE`,
-      ).catch(swallow('db.postgres.archiveSession'));
       await this.pool.query(
         `UPDATE sessions SET archived = TRUE, updated_at = NOW() WHERE id = $1`,
         [sessionId],
@@ -924,7 +678,8 @@ class DatabaseService {
     return this.createThreadForSession(session.id, title);
   }
 
-  async saveMessage({
+  /** Insert one chat message with `q` (the pool or a transaction client) and bump the thread. */
+  async insertMessageWith(q, {
     threadId,
     role,
     content,
@@ -934,17 +689,15 @@ class DatabaseService {
     citations = null,
     metadata = null,
   }) {
-    await this.ensureInitialized();
     if (!threadId) {
       throw new Error('threadId is required to save message');
     }
-
     const normalizedMetadata =
       metadata == null ? null : typeof metadata === 'string' ? metadata : JSON.stringify(metadata);
     const normalizedCitations =
       citations == null ? null : typeof citations === 'string' ? citations : JSON.stringify(citations);
 
-    const result = await this.pool.query(
+    const result = await q.query(
       `
         INSERT INTO chat_messages (thread_id, role, content, strategy, executor_path, trace_id, citations_json, metadata)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -953,7 +706,7 @@ class DatabaseService {
       [threadId, role, content, strategy, executorPath, traceId, normalizedCitations, normalizedMetadata],
     );
 
-    await this.pool.query(
+    await q.query(
       `
         UPDATE chat_threads
         SET updated_at = NOW()
@@ -963,6 +716,24 @@ class DatabaseService {
     );
 
     return { id: result.rows[0].id };
+  }
+
+  async saveMessage(input) {
+    await this.ensureInitialized();
+    return this.insertMessageWith(this.pool, input || {});
+  }
+
+  /**
+   * Save a user message and its assistant reply atomically: either both rows exist or neither.
+   * `assistant(userMessageId)` may be an object or a function of the saved user message id.
+   */
+  async saveMessagePair(user, assistant) {
+    return this.withTransaction(async (client) => {
+      const userRecord = await this.insertMessageWith(client, user);
+      const assistantInput = typeof assistant === 'function' ? assistant(userRecord.id) : assistant;
+      const assistantRecord = await this.insertMessageWith(client, assistantInput);
+      return { user: userRecord, assistant: assistantRecord };
+    });
   }
 
   async listThreads(limit = 50) {
@@ -1187,79 +958,79 @@ class DatabaseService {
     }
   }
 
+  /**
+   * Batch upsert GitHub issues in one statement (unnest arrays), inside a transaction.
+   * Returns the number of rows written to PostgreSQL: 0 when the database write failed
+   * (the in-memory cache still holds the issues for this process, and the failure is counted).
+   */
   async upsertGithubIssues(issues) {
     if (!Array.isArray(issues) || issues.length === 0) return 0;
 
-    if (!this.inMemoryGithubIssues) this.inMemoryGithubIssues = new Map();
-    const defaultRepo = process.env.GITHUB_REPO || 'github_repo';
-    for (const issue of issues) {
-      const num = issue.number || issue.id;
-      const targetRepo = issue.repo || defaultRepo;
-      if (num) {
-        this.inMemoryGithubIssues.set(String(num), {
-          id: `gh_${num}`,
-          number: num,
-          repo: targetRepo,
-          title: issue.title || 'Untitled Issue',
-          state: issue.state || 'open',
-          assignee: issue.assignee || 'unassigned',
-          html_url: issue.html_url || `https://github.com/${targetRepo}/issues/${num}`,
-          labels: issue.labels || [],
-          data: issue,
-          synced_at: issue.synced_at || new Date().toISOString(),
-        });
-      }
+    if (!(this.inMemoryGithubIssues instanceof Map)) {
+      const existing = Array.isArray(this.inMemoryGithubIssues) ? this.inMemoryGithubIssues : [];
+      this.inMemoryGithubIssues = new Map(existing.map((i) => [i.id, i]));
     }
+    const defaultRepo = process.env.GITHUB_REPO || 'github_repo';
+    const rows = [];
+    for (const issue of issues) {
+      const num = issue.number;
+      if (num === null || num === undefined) continue;
+      const targetRepo = issue.repo || defaultRepo;
+      const id = `gh_${targetRepo}_${num}`;
+      const htmlUrl = issue.html_url || `https://github.com/${targetRepo}/issues/${num}`;
+      rows.push({ id, number: Number(num), repo: targetRepo, title: issue.title || '', state: issue.state || 'open', assignee: issue.assignee || '', htmlUrl, labels: issue.labels || [], data: issue });
+      this.inMemoryGithubIssues.set(id, {
+        id,
+        number: num,
+        repo: targetRepo,
+        title: issue.title || '',
+        state: issue.state || 'open',
+        assignee: issue.assignee || null,
+        html_url: htmlUrl,
+        labels: issue.labels || [],
+        data: issue,
+        synced_at: issue.synced_at || new Date().toISOString(),
+      });
+    }
+    if (rows.length === 0) return 0;
 
     try {
-      await this.ensureInitialized();
-      const client = await this.pool.connect();
-      try {
-        await client.query('BEGIN');
-        for (const issue of issues) {
-          const targetRepo = issue.repo || defaultRepo;
-          const id = `gh_${targetRepo}_${issue.number}`;
-          const labelsJson = JSON.stringify(issue.labels || []);
-          const dataJson = JSON.stringify(issue);
-
-          await client.query(
-            `INSERT INTO github_issues (
-              id, issue_number, repo, title, state, assignee, html_url, labels_json, data_json, synced_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-            ON CONFLICT (id) DO UPDATE SET
-              issue_number = EXCLUDED.issue_number,
-              repo = EXCLUDED.repo,
-              title = EXCLUDED.title,
-              state = EXCLUDED.state,
-              assignee = EXCLUDED.assignee,
-              html_url = EXCLUDED.html_url,
-              labels_json = EXCLUDED.labels_json,
-              data_json = EXCLUDED.data_json,
-              synced_at = NOW()`,
-            [
-              id,
-              issue.number,
-              targetRepo,
-              issue.title || '',
-              issue.state || 'open',
-              issue.assignee || '',
-              issue.html_url || `https://github.com/${targetRepo}/issues/${issue.number}`,
-              labelsJson,
-              dataJson,
-            ]
-          );
-        }
-        await client.query('COMMIT');
-        return issues.length;
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
-      }
+      return await this.withTransaction(async (client) => {
+        const res = await client.query(
+          `INSERT INTO github_issues (
+            id, issue_number, repo, title, state, assignee, html_url, labels_json, data_json, synced_at
+          )
+          SELECT id, issue_number, repo, title, state, assignee, html_url, labels_json, data_json, NOW()
+          FROM unnest($1::text[], $2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::jsonb[], $9::jsonb[])
+            AS t(id, issue_number, repo, title, state, assignee, html_url, labels_json, data_json)
+          ON CONFLICT (id) DO UPDATE SET
+            issue_number = EXCLUDED.issue_number,
+            repo = EXCLUDED.repo,
+            title = EXCLUDED.title,
+            state = EXCLUDED.state,
+            assignee = EXCLUDED.assignee,
+            html_url = EXCLUDED.html_url,
+            labels_json = EXCLUDED.labels_json,
+            data_json = EXCLUDED.data_json,
+            synced_at = NOW()`,
+          [
+            rows.map((r) => r.id),
+            rows.map((r) => r.number),
+            rows.map((r) => r.repo),
+            rows.map((r) => r.title),
+            rows.map((r) => r.state),
+            rows.map((r) => r.assignee),
+            rows.map((r) => r.htmlUrl),
+            rows.map((r) => JSON.stringify(r.labels)),
+            rows.map((r) => JSON.stringify(r.data)),
+          ],
+        );
+        return res.rowCount ?? rows.length;
+      });
     } catch (dbErr) {
-      warn("PostgreSQL github_issues upsert failed, using in-memory GitHub cache", { count: issues.length, err: dbErr.message });
-      return issues.length;
+      recordHandledError('db.postgres.upsertGithubIssues', dbErr);
+      warn('PostgreSQL github_issues upsert failed; issues are cached in memory for this process only', { count: rows.length, err: dbErr.message });
+      return 0;
     }
   }
 
@@ -1643,6 +1414,34 @@ class DatabaseService {
     }
   }
 
+  /**
+   * Write several settings in one transaction (e.g. the llm + mcp pair), so a failure never leaves
+   * one half saved. Throws on failure: unlike setAppSetting there is no in-memory fallback,
+   * because the caller is an owner action that must not report "saved" when it was not.
+   * @param {Array<{key:string, value:any, source?:string}>} entries
+   */
+  async setAppSettings(entries) {
+    const rows = await this.withTransaction(async (client) => {
+      const saved = [];
+      for (const { key, value, source = 'database' } of entries) {
+        const res = await client.query(
+          `
+          INSERT INTO app_settings (key, value, source, updated_at)
+          VALUES ($1, $2, $3, NOW())
+          ON CONFLICT (key)
+          DO UPDATE SET value = $2, source = $3, updated_at = NOW()
+          RETURNING key, value, source, updated_at
+          `,
+          [key, JSON.stringify(value), source],
+        );
+        saved.push(res.rows[0]);
+      }
+      return saved;
+    });
+    for (const row of rows) this.inMemoryAppSettings[row.key] = row;
+    return Object.fromEntries(rows.map((r) => [r.key, r]));
+  }
+
   async setAppSetting(key, value, source = 'database') {
     try {
       await this.ensureInitialized();
@@ -1768,18 +1567,20 @@ class DatabaseService {
   async upsertTeamMember(memberData) {
     const id = memberData.id || createOpaqueId('mem');
     const displayName = memberData.displayName || memberData.display_name || 'Team Member';
-    const email = memberData.email || '';
+    const email = memberData.email || null; // '' would collide on the UNIQUE email column
     const aliases = JSON.stringify(memberData.aliases || [displayName]);
     const githubUsername = memberData.githubUsername || memberData.github_username || null;
     const jiraEmail = memberData.jiraEmail || memberData.jira_email || (email || null);
     const jiraAccountId = memberData.jiraAccountId || memberData.jira_account_id || null;
     const gcalEmail = memberData.gcalEmail || memberData.gcal_email || (email || null);
     const notionName = memberData.notionName || memberData.notion_name || displayName;
-    const currentLevel = memberData.currentLevel || memberData.current_level || 'L4_MID';
-    const targetLevel = memberData.targetLevel || memberData.target_level || 'L5_SENIOR';
-    const track = memberData.track || 'INDIVIDUAL_CONTRIBUTOR';
-    const tenureMonths = Number(memberData.tenureMonths || memberData.tenure_months || 12);
-    const skills = JSON.stringify(memberData.skills || {});
+    // Unknown until the owner enters them; never assumed. A sync with no value keeps the stored one.
+    const currentLevel = memberData.currentLevel || memberData.current_level || null;
+    const targetLevel = memberData.targetLevel || memberData.target_level || null;
+    const track = memberData.track || null;
+    const rawTenure = memberData.tenureMonths ?? memberData.tenure_months;
+    const tenureMonths = rawTenure === null || rawTenure === undefined || rawTenure === '' || !Number.isFinite(Number(rawTenure)) ? null : Number(rawTenure);
+    const skills = memberData.skills ? JSON.stringify(memberData.skills) : null;
 
     try {
       await this.ensureInitialized();
@@ -1792,25 +1593,25 @@ class DatabaseService {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
         ON CONFLICT (id) DO UPDATE SET
           display_name = EXCLUDED.display_name,
-          email = EXCLUDED.email,
+          email = COALESCE(EXCLUDED.email, team_members.email),
           aliases = EXCLUDED.aliases,
           github_username = COALESCE(EXCLUDED.github_username, team_members.github_username),
           jira_email = COALESCE(EXCLUDED.jira_email, team_members.jira_email),
           jira_account_id = COALESCE(EXCLUDED.jira_account_id, team_members.jira_account_id),
           gcal_email = COALESCE(EXCLUDED.gcal_email, team_members.gcal_email),
           notion_name = COALESCE(EXCLUDED.notion_name, team_members.notion_name),
-          current_level = EXCLUDED.current_level,
-          target_level = EXCLUDED.target_level,
-          track = EXCLUDED.track,
-          tenure_months = EXCLUDED.tenure_months,
-          skills = EXCLUDED.skills,
+          current_level = COALESCE(EXCLUDED.current_level, team_members.current_level),
+          target_level = COALESCE(EXCLUDED.target_level, team_members.target_level),
+          track = COALESCE(EXCLUDED.track, team_members.track),
+          tenure_months = COALESCE(EXCLUDED.tenure_months, team_members.tenure_months),
+          skills = COALESCE(EXCLUDED.skills, team_members.skills),
           updated_at = NOW()
         RETURNING *;
         `,
         [
           id, displayName, email, aliases, githubUsername, jiraEmail,
           jiraAccountId, gcalEmail, notionName, currentLevel, targetLevel,
-          track, tenureMonths, skills
+          track || 'INDIVIDUAL_CONTRIBUTOR', tenureMonths, skills ?? '{}'
         ]
       );
       const row = res.rows[0];
@@ -1843,7 +1644,7 @@ class DatabaseService {
         id, displayName, email, aliases: safeJsonParse(aliases),
         githubUsername, jiraEmail, jiraAccountId, gcalEmail,
         notionName, currentLevel, targetLevel, track,
-        tenureMonths, skills: safeJsonParse(skills),
+        tenureMonths, skills: skills ? safeJsonParse(skills) : {},
         updatedAt: new Date().toISOString(),
       };
       const idx = this.inMemoryTeamMembers.findIndex((m) => m.id === id);
@@ -1860,6 +1661,7 @@ class DatabaseService {
       this.inMemoryTeamMembers = this.inMemoryTeamMembers.filter((m) => m.id !== id);
       return true;
     } catch (err) {
+      recordHandledError('db.postgres.deleteTeamMember', err);
       this.inMemoryTeamMembers = this.inMemoryTeamMembers.filter((m) => m.id !== id);
       return true;
     }
@@ -1885,11 +1687,12 @@ class DatabaseService {
   // EM Autonomous Audit Runs & Action Items
   // ==========================================
 
-  async createAuditRun(data = {}) {
+  /** Insert an audit run row with `q` (pool or transaction client). */
+  async insertAuditRunWith(q, data = {}) {
     const {
       triggeredBy = 'CRON_4H',
       status = 'COMPLETED',
-      healthScore = 100,
+      healthScore = null,
       summaryMarkdown = '',
       doraSummary = {},
       deliverySummary = {},
@@ -1898,10 +1701,7 @@ class DatabaseService {
       sopSummary = {},
       slackStatus = {},
     } = data;
-
-    try {
-      await this.ensureInitialized();
-      const res = await this.pool.query(
+    const res = await q.query(
         `
         INSERT INTO em_audit_runs (
           triggered_by, status, health_score, summary_markdown,
@@ -1925,22 +1725,26 @@ class DatabaseService {
           JSON.stringify(slackStatus),
         ]
       );
-      const row = res.rows[0];
-      const audit = {
-        id: Number(row.id),
-        triggeredBy: row.triggered_by,
-        status: row.status,
-        healthScore: Number(row.health_score),
-        summaryMarkdown: row.summary_markdown,
-        doraSummary: safeJsonParse(row.dora_summary),
-        deliverySummary: safeJsonParse(row.delivery_summary),
-        peopleSummary: safeJsonParse(row.people_summary),
-        sprintOkrSummary: safeJsonParse(row.sprint_okr_summary),
-        sopSummary: safeJsonParse(row.sop_summary),
-        slackStatus: safeJsonParse(row.slack_status),
-        createdAt: row.created_at,
-        completedAt: row.completed_at,
-      };
+    return mapAuditRow(res.rows[0]);
+  }
+
+  async createAuditRun(data = {}) {
+    const {
+      triggeredBy = 'CRON_4H',
+      status = 'COMPLETED',
+      healthScore = 100,
+      summaryMarkdown = '',
+      doraSummary = {},
+      deliverySummary = {},
+      peopleSummary = {},
+      sprintOkrSummary = {},
+      sopSummary = {},
+      slackStatus = {},
+    } = data;
+
+    try {
+      await this.ensureInitialized();
+      const audit = await this.insertAuditRunWith(this.pool, data);
       this.inMemoryAuditRuns.unshift(audit);
       return audit;
     } catch (err) {
@@ -2111,6 +1915,71 @@ class DatabaseService {
     return this.inMemoryAuditRuns.slice(offset, offset + limit);
   }
 
+  /** Insert or update one action item with `q` (pool or transaction client). */
+  async upsertActionItemWith(q, item) {
+    const id = item.id || `act_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+    const title = item.title || 'Untitled Action Item';
+    const description = item.description || '';
+    const category = item.category || 'DELIVERY';
+    const severity = item.severity || 'WARNING';
+    const status = item.status || 'PENDING';
+    const suggestedAction = item.suggestedAction || item.suggested_action || '';
+    const assigneeName = item.assigneeName || item.assignee_name || null;
+    const assigneeEmail = item.assigneeEmail || item.assignee_email || null;
+    const externalReference = item.externalReference || item.external_reference || {};
+    const auditRunId = item.auditRunId || item.audit_run_id || null;
+    const query = `
+          INSERT INTO em_action_items (
+            id, audit_run_id, title, description, category, severity,
+            status, suggested_action, assignee_name, assignee_email,
+            external_reference, created_at, updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            title = EXCLUDED.title,
+            description = EXCLUDED.description,
+            category = EXCLUDED.category,
+            severity = EXCLUDED.severity,
+            suggested_action = EXCLUDED.suggested_action,
+            assignee_name = COALESCE(EXCLUDED.assignee_name, em_action_items.assignee_name),
+            assignee_email = COALESCE(EXCLUDED.assignee_email, em_action_items.assignee_email),
+            external_reference = EXCLUDED.external_reference,
+            updated_at = NOW()
+          RETURNING *
+        `;
+        const res = await q.query(query, [
+          id,
+          auditRunId,
+          title,
+          description,
+          category,
+          severity,
+          status,
+          suggestedAction,
+          assigneeName,
+          assigneeEmail,
+          JSON.stringify(externalReference),
+        ]);
+    return mapActionItemRow(res.rows[0]);
+  }
+
+  /**
+   * Persist an audit run and its action items in one transaction, so an audit never exists
+   * without its items (or items point at an audit that failed to save). Throws on failure.
+   */
+  async recordAuditRun(auditData, actionItems = []) {
+    const result = await this.withTransaction(async (client) => {
+      const audit = await this.insertAuditRunWith(client, auditData);
+      const items = [];
+      for (const item of actionItems) {
+        items.push(await this.upsertActionItemWith(client, { ...item, auditRunId: audit.id }));
+      }
+      return { auditRun: audit, actionItems: items };
+    });
+    this.inMemoryAuditRuns.unshift(result.auditRun);
+    return result;
+  }
+
   async upsertActionItems(items = []) {
     if (!Array.isArray(items) || items.length === 0) return [];
     const results = [];
@@ -2130,57 +1999,7 @@ class DatabaseService {
 
       try {
         await this.ensureInitialized();
-        const query = `
-          INSERT INTO em_action_items (
-            id, audit_run_id, title, description, category, severity,
-            status, suggested_action, assignee_name, assignee_email,
-            external_reference, created_at, updated_at
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
-          ON CONFLICT (id) DO UPDATE SET
-            title = EXCLUDED.title,
-            description = EXCLUDED.description,
-            category = EXCLUDED.category,
-            severity = EXCLUDED.severity,
-            suggested_action = EXCLUDED.suggested_action,
-            assignee_name = COALESCE(EXCLUDED.assignee_name, em_action_items.assignee_name),
-            assignee_email = COALESCE(EXCLUDED.assignee_email, em_action_items.assignee_email),
-            external_reference = EXCLUDED.external_reference,
-            updated_at = NOW()
-          RETURNING *
-        `;
-        const res = await this.pool.query(query, [
-          id,
-          auditRunId,
-          title,
-          description,
-          category,
-          severity,
-          status,
-          suggestedAction,
-          assigneeName,
-          assigneeEmail,
-          JSON.stringify(externalReference),
-        ]);
-        const row = res.rows[0];
-        results.push({
-          id: row.id,
-          auditRunId: row.audit_run_id ? Number(row.audit_run_id) : null,
-          title: row.title,
-          description: row.description,
-          category: row.category,
-          severity: row.severity,
-          status: row.status,
-          suggestedAction: row.suggested_action,
-          assigneeName: row.assignee_name,
-          assigneeEmail: row.assignee_email,
-          externalReference: safeJsonParse(row.external_reference),
-          resolutionNotes: row.resolution_notes,
-          completedAt: row.completed_at,
-          completedBy: row.completed_by,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-        });
+        results.push(await this.upsertActionItemWith(this.pool, { ...item, id }));
       } catch (err) {
         const itemObj = {
           id,
@@ -2457,6 +2276,45 @@ class DatabaseService {
 
 const databaseService = new DatabaseService();
 export default databaseService;
+
+function mapAuditRow(row) {
+  return {
+    id: Number(row.id),
+    triggeredBy: row.triggered_by,
+    status: row.status,
+    healthScore: row.health_score == null ? null : Number(row.health_score),
+    summaryMarkdown: row.summary_markdown,
+    doraSummary: safeJsonParse(row.dora_summary),
+    deliverySummary: safeJsonParse(row.delivery_summary),
+    peopleSummary: safeJsonParse(row.people_summary),
+    sprintOkrSummary: safeJsonParse(row.sprint_okr_summary),
+    sopSummary: safeJsonParse(row.sop_summary),
+    slackStatus: safeJsonParse(row.slack_status),
+    createdAt: row.created_at,
+    completedAt: row.completed_at,
+  };
+}
+
+function mapActionItemRow(row) {
+  return {
+    id: row.id,
+    auditRunId: row.audit_run_id ? Number(row.audit_run_id) : null,
+    title: row.title,
+    description: row.description,
+    category: row.category,
+    severity: row.severity,
+    status: row.status,
+    suggestedAction: row.suggested_action,
+    assigneeName: row.assignee_name,
+    assigneeEmail: row.assignee_email,
+    externalReference: safeJsonParse(row.external_reference),
+    resolutionNotes: row.resolution_notes,
+    completedAt: row.completed_at,
+    completedBy: row.completed_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
 
 function safeJsonParse(value) {
   try {
