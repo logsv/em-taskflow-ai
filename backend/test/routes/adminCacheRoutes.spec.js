@@ -1,6 +1,6 @@
 import express from 'express';
 import supertest from 'supertest';
-import adminRouter from '../../src/routes/admin.js';
+import adminRouter from '../../src/routes/admin/index.js';
 import { l1ExactCache } from '../../src/cache/l1ExactCache.js';
 import { cacheInvalidator } from '../../src/cache/cacheInvalidator.js';
 

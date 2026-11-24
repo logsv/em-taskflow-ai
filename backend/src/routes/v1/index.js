@@ -4,7 +4,7 @@ import sessionsRouter from './sessions.js';
 import chatRouter from './chat.js';
 import emRouter from './em.js';
 import actionsRouter from '../actions.js';
-import adminRouter from '../admin.js';
+import adminRouter from '../admin/index.js';
 import ragRouter from '../rag.js';
 import uploadRouter from '../upload.js';
 import docsRouter from '../docs.js';

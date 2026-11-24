@@ -29,9 +29,11 @@ export function AdminShell({
   const [statusDrawerOpen, setStatusDrawerOpen] = useState(false);
 
   // Derive system health status
-  const isHealthy =
-    (systemStatus?.health?.details?.database === 'up' || systemStatus?.status === 'online') &&
-    (doraMetrics?.overall_score ?? 96) >= 80;
+  // Healthy = the API answered and its database is up. (DORA scores are not system health.)
+  const isHealthy = systemStatus?.status === 'online' && systemStatus?.health?.details?.database !== 'down';
+  const serviceCount = systemStatus?.services ? Object.keys(systemStatus.services).length : null;
+  // Evaluation tooling is a developer feature (ENABLE_DEV_EVAL_ROUTES on the backend).
+  const showQuality = !!systemStatus?.features?.devEvalRoutes;
 
   // Resolve main tab ID for nav highlighting
   const currentMainTab =
@@ -54,8 +56,8 @@ export function AdminShell({
     { id: 'overview', label: 'Overview', icon: '📊' },
     { id: 'people', label: 'People', icon: '👥', badge: teamCount ? String(teamCount) : null },
     { id: 'ai-platform', label: 'AI Platform', icon: '🤖' },
-    { id: 'operations', label: 'Operations', icon: '🚀', badge: '8 Services' },
-    { id: 'quality', label: 'Quality', icon: '🧪' },
+    { id: 'operations', label: 'Operations', icon: '🚀', badge: serviceCount ? `${serviceCount} Services` : null },
+    ...(showQuality ? [{ id: 'quality', label: 'Quality', icon: '🧪' }] : []),
   ];
 
   const quickActionItems = [

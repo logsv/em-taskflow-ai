@@ -5,134 +5,100 @@ import { swallow, recordHandledError } from '../../core/safe.js';
 
 const router = express.Router();
 
-// GET /api/v1/em/dora - Returns DORA 4 metrics with tier ratings
+const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+
+function tierFor(value, eliteMax, highMax) {
+  if (value === null) return null;
+  if (value <= eliteMax) return 'ELITE';
+  if (value <= highMax) return 'HIGH';
+  return 'MEDIUM';
+}
+
+function deltaPct(current, previous) {
+  if (current === null || previous === null || previous === 0) return null;
+  const pct = ((current - previous) / Math.abs(previous)) * 100;
+  return `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+}
+
+/** Metrics this endpoint has no data source for. Reported as not measured, never as numbers. */
+const NOT_MEASURED_METRICS = {
+  availability_slo: { name: 'Operational Availability (SLO)', unit: '%', benchmark: 'Target ≥ 99.90%', description: 'Production uptime. Needs an uptime/SLO source, which is not connected.' },
+  pr_cycle_time: { name: 'PR Review Cycle Time', unit: 'hours', benchmark: '< 8 Hours SLA', description: 'Time pull requests spend in review. Ask the Delivery capability for measured values.' },
+  sprint_predictability: { name: 'Sprint Predictability & Velocity', unit: '%', benchmark: 'Target ≥ 85%', description: 'Committed vs completed points. Ask the Sprint capability for measured values.' },
+  code_churn_rate: { name: 'Code Churn / Rework Rate', unit: '%', benchmark: '< 10% Risk Limit', description: 'Code rewritten within 21 days of merge. No data source is connected.' },
+};
+
+/**
+ * Build the DORA response from stored snapshots (newest first). Only measured values are
+ * returned; anything without data is null with status NO_DATA / NOT_MEASURED. Trends compare
+ * the latest snapshot with the previous one and are null when there is no previous snapshot.
+ */
+export function buildDoraResponse(snapshots = [], teamId = null) {
+  const [latest, previous] = Array.isArray(snapshots) ? snapshots : [];
+  const cur = {
+    df: num(latest?.deployment_frequency),
+    lt: num(latest?.lead_time_hours),
+    cfr: num(latest?.change_failure_rate),
+    mttr: num(latest?.mttr_hours),
+  };
+  const prev = {
+    df: num(previous?.deployment_frequency),
+    lt: num(previous?.lead_time_hours),
+    cfr: num(previous?.change_failure_rate),
+    mttr: num(previous?.mttr_hours),
+  };
+  const measured = (v, render, status) => (v === null
+    ? { value: null, numeric: null, status: 'NO_DATA', tier: null, trend: null }
+    : { value: render(v), numeric: v, status, tier: status ? status[0] + status.slice(1).toLowerCase() : null });
+
+  const df = measured(cur.df, (v) => `${v} / week`, cur.df === null ? null : (cur.df >= 7 ? 'ELITE' : cur.df >= 1 ? 'HIGH' : 'MEDIUM'));
+  const lt = measured(cur.lt, (v) => `${v}h`, tierFor(cur.lt, 24, 168));
+  const cfr = measured(cur.cfr, (v) => `${v}%`, tierFor(cur.cfr, 5, 15));
+  const mttr = measured(cur.mttr, (v) => `${v}h`, tierFor(cur.mttr, 2, 24));
+  if (df.numeric !== null) df.trend = deltaPct(cur.df, prev.df);
+  if (lt.numeric !== null) lt.trend = deltaPct(cur.lt, prev.lt);
+  if (cfr.numeric !== null) cfr.trend = deltaPct(cur.cfr, prev.cfr);
+  if (mttr.numeric !== null) mttr.trend = deltaPct(cur.mttr, prev.mttr);
+
+  const allFour = [cur.lt, cur.cfr, cur.mttr].every((v) => v !== null);
+  const rating = !allFour
+    ? null
+    : (cur.lt <= 24 && cur.cfr <= 5 && cur.mttr <= 2) ? 'ELITE'
+      : (cur.lt <= 168 && cur.cfr <= 15 && cur.mttr <= 24) ? 'HIGH' : 'MEDIUM';
+
+  const metrics = {
+    deployment_frequency: { name: 'Deployment Frequency', unit: 'deploys/week', benchmark: 'Daily to Weekly', description: 'Frequency of successful production releases', ...df },
+    lead_time: { name: 'Lead Time for Changes', unit: 'hours', benchmark: '< 24 Hours SLA', description: 'Code commit to production delivery turnaround time', ...lt },
+    change_failure_rate: { name: 'Change Failure Rate', unit: '%', benchmark: '< 5% Target', description: 'Percentage of releases requiring hotfixes or rollbacks', ...cfr },
+    mttr: { name: 'Mean Time to Recovery (MTTR)', unit: 'hours', benchmark: '< 2 Hours SLA', description: 'Time elapsed to restore healthy state after an incident', ...mttr },
+  };
+  for (const [key, meta] of Object.entries(NOT_MEASURED_METRICS)) {
+    metrics[key] = { ...meta, value: null, numeric: null, status: 'NOT_MEASURED', tier: null, trend: null };
+  }
+
+  return {
+    measured: !!latest,
+    rating,
+    period: latest ? { start: latest.period_start ?? null, end: latest.period_end ?? null } : null,
+    team_id: teamId || latest?.team_id || null,
+    snapshot_at: latest?.created_at ?? null,
+    deployment_frequency: cur.df === null ? null : `${cur.df} deploys/week`,
+    lead_time_hours: cur.lt,
+    change_failure_rate_pct: cur.cfr,
+    mttr_hours: cur.mttr,
+    metrics,
+    benchmarks: { standard: 'Google Cloud DORA 2024 / Accelerate State of DevOps', maturity_tier: rating },
+    ...(latest ? {} : { message: 'No DORA snapshot stored yet. Run a team sync or ask the DORA capability to compute one.' }),
+  };
+}
+
+// GET /api/v1/em/dora - DORA metrics from stored snapshots (measured values only)
 router.get('/em/dora', async (req, res) => {
   try {
     const teamId = req.query.team_id || null;
-    const snapshots = await databaseService.getDoraSnapshots(teamId).catch(swallow('routes.v1.em.get /em/dora', []));
-
-    let deployFreq = 3.5;
-    let leadTime = 18.5;
-    let cfr = 4.2;
-    let mttr = 1.5;
-
-    if (snapshots && snapshots.length > 0) {
-      const latest = snapshots[0];
-      deployFreq = Number(latest.deployment_frequency) || deployFreq;
-      leadTime = Number(latest.lead_time_hours) || leadTime;
-      cfr = Number(latest.change_failure_rate) || cfr;
-      mttr = Number(latest.mttr_hours) || mttr;
-    }
-
-    const isElite = leadTime <= 24 && cfr <= 5 && mttr <= 2;
-    const isHigh = leadTime <= 168 && cfr <= 15 && mttr <= 24;
-    const rating = isElite ? 'ELITE' : (isHigh ? 'HIGH' : 'MEDIUM');
-
-    res.json({
-      rating,
-      overall_score: isElite ? 96.5 : (isHigh ? 88.0 : 74.0),
-      period: 'Last 30 Days (Rolling)',
-      team_id: teamId || 'Platform Core & Engineering Squad',
-      deployment_frequency: `${deployFreq} deploys/week`,
-      lead_time_hours: leadTime,
-      change_failure_rate_pct: cfr,
-      mttr_hours: mttr,
-      metrics: {
-        deployment_frequency: {
-          name: 'Deployment Frequency',
-          value: `${deployFreq} / week`,
-          numeric: deployFreq,
-          unit: 'deploys/week',
-          status: deployFreq >= 7 ? 'ELITE' : (deployFreq >= 1 ? 'HIGH' : 'MEDIUM'),
-          tier: deployFreq >= 7 ? 'Elite' : (deployFreq >= 1 ? 'High' : 'Medium'),
-          benchmark: 'Daily to Weekly',
-          trend: '+12.5%',
-          description: 'Frequency of successful production releases',
-        },
-        lead_time: {
-          name: 'Lead Time for Changes',
-          value: `${leadTime}h`,
-          numeric: leadTime,
-          unit: 'hours',
-          status: leadTime <= 24 ? 'ELITE' : (leadTime <= 168 ? 'HIGH' : 'MEDIUM'),
-          tier: leadTime <= 24 ? 'Elite' : (leadTime <= 168 ? 'High' : 'Medium'),
-          benchmark: '< 24 Hours SLA',
-          trend: '-15.0%',
-          description: 'Code commit to production delivery turnaround time',
-        },
-        change_failure_rate: {
-          name: 'Change Failure Rate',
-          value: `${cfr}%`,
-          numeric: cfr,
-          unit: '%',
-          status: cfr <= 5 ? 'ELITE' : (cfr <= 15 ? 'HIGH' : 'MEDIUM'),
-          tier: cfr <= 5 ? 'Elite' : (cfr <= 15 ? 'High' : 'Medium'),
-          benchmark: '< 5% Target',
-          trend: '-0.8%',
-          description: 'Percentage of releases requiring hotfixes or rollbacks',
-        },
-        mttr: {
-          name: 'Mean Time to Recovery (MTTR)',
-          value: `${mttr}h`,
-          numeric: mttr,
-          unit: 'hours',
-          status: mttr <= 2 ? 'ELITE' : (mttr <= 24 ? 'HIGH' : 'MEDIUM'),
-          tier: mttr <= 2 ? 'Elite' : (mttr <= 24 ? 'High' : 'Medium'),
-          benchmark: '< 2 Hours SLA',
-          trend: '-25.0%',
-          description: 'Time elapsed to restore healthy state after an incident',
-        },
-        availability_slo: {
-          name: 'Operational Availability (SLO)',
-          value: '99.95%',
-          numeric: 99.95,
-          unit: '%',
-          status: 'OPTIMAL',
-          tier: 'Optimal',
-          benchmark: 'Target ≥ 99.90%',
-          trend: '+0.02%',
-          description: 'Production service operational uptime & SLO reliability',
-        },
-        pr_cycle_time: {
-          name: 'PR Review Cycle Time',
-          value: '4.2h',
-          numeric: 4.2,
-          unit: 'hours',
-          status: 'HEALTHY',
-          tier: 'Healthy',
-          benchmark: '< 8 Hours SLA',
-          trend: '-1.1h',
-          description: 'Average duration pull requests spend in review before merge',
-        },
-        sprint_predictability: {
-          name: 'Sprint Predictability & Velocity',
-          value: '91.4%',
-          numeric: 91.4,
-          unit: '%',
-          status: 'ON_TRACK',
-          tier: 'On Track',
-          benchmark: 'Target ≥ 85%',
-          trend: '+4.2%',
-          description: 'Ratio of committed vs completed velocity points in active sprint',
-        },
-        code_churn_rate: {
-          name: 'Code Churn / Rework Rate',
-          value: '6.8%',
-          numeric: 6.8,
-          unit: '%',
-          status: 'LOW_RISK',
-          tier: 'Low Risk',
-          benchmark: '< 10% Risk Limit',
-          trend: '-1.4%',
-          description: 'Lines of code edited or rewritten within 21 days of merge',
-        },
-      },
-      benchmarks: {
-        standard: 'Google Cloud DORA 2024 / Accelerate State of DevOps',
-        maturity_tier: rating,
-        sla_compliance: '100%',
-      },
-    });
+    // A database failure is an error, not "no data".
+    const snapshots = await databaseService.getDoraSnapshots(teamId);
+    res.json({ ...buildDoraResponse(snapshots, teamId), requestId: req.requestId });
   } catch (error) {
     return sendError(req, res, error, 'em.js');
   }

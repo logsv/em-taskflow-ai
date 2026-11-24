@@ -121,6 +121,8 @@ const envSchema = z.object({
   // true: the API process also runs background workers (local `npm run dev`).
   // false: run them in their own process with `npm run worker` (docker compose does this).
   WORKERS_IN_PROCESS: boolSchema(true),
+  // Developer evaluation endpoints (/api/admin/eval/*): spawn long eval jobs. Off unless asked for.
+  ENABLE_DEV_EVAL_ROUTES: boolSchema(false),
   SESSION_CLEANUP_CRON_SCHEDULE: z.string().default('0 3 * * *'),
   SESSION_CLEANUP_BATCH_SIZE: z.coerce.number().int().min(10).max(5000).default(500),
 });
@@ -181,6 +183,9 @@ const configSchema = z.object({
   }),
   workers: z.object({
     inProcess: z.boolean(),
+  }),
+  features: z.object({
+    devEvalRoutes: z.boolean(),
   }),
   database: z.object({
     url: z.string().url(),
@@ -403,6 +408,9 @@ function loadConfig() {
     workers: {
       inProcess: env.WORKERS_IN_PROCESS,
     },
+    features: {
+      devEvalRoutes: env.ENABLE_DEV_EVAL_ROUTES,
+    },
     database: {
       url: env.DATABASE_URL,
     },
@@ -571,6 +579,7 @@ export const getServerConfig = () => config.server;
 export const getAuthConfig = () => config.auth;
 export const getSessionsConfig = () => config.sessions;
 export const getWorkersConfig = () => config.workers;
+export const getFeaturesConfig = () => config.features;
 export const getRuntimeConfig = () => config.runtime;
 export const getDatabaseConfig = () => ({
   url: process.env.DATABASE_URL || config.database.url,

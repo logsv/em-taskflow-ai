@@ -4,6 +4,8 @@ import logger from '../utils/logger.js';
 import AdminShell from './admin/AdminShell.jsx';
 import './AdminPage.css';
 import { DEFAULT_CHAT_MODEL } from '../constants/models';
+import { DoraTiles } from './admin/overview/DoraTiles.jsx';
+import { EvalGateCard } from './admin/overview/EvalGateCard.jsx';
 
 function formatUptime(totalSeconds) {
   if (typeof totalSeconds !== 'number' || totalSeconds <= 0) return 'Just started (< 1m)';
@@ -1038,176 +1040,30 @@ function AdminPage({ onBackToChat }) {
                 </p>
               </div>
               <div className="section-header-actions">
-                <span className={`pill-badge badge-${(doraMetrics?.rating || 'ELITE').toLowerCase()}`}>
-                  ⭐ {doraMetrics?.rating || 'n/a'} TIER ({doraMetrics?.overall_score ?? 'n/a'}%)
+                <span className={`pill-badge badge-${(doraMetrics?.rating || 'none').toLowerCase()}`}>
+                  {doraMetrics?.rating ? `${doraMetrics.rating} TIER` : 'TIER n/a'}
                 </span>
               </div>
             </div>
 
-            <div className="dora-metrics-grid">
-              {/* Metric 1: Deployment Frequency */}
-              <div className="dora-metric-box">
-                <div className="dora-metric-top">
-                  <span className="dora-metric-icon">🚀</span>
-                  <span className="metric-tier-badge tier-high">HIGH</span>
-                </div>
-                <div className="dora-num">
-                  {doraMetrics?.metrics?.deployment_frequency?.value || doraMetrics?.deployment_frequency || '3.5 / week'}
-                </div>
-                <div className="dora-label">Deployment Frequency</div>
-                <div className="dora-sub">Daily to Weekly SLA</div>
-                <div className="dora-trend trend-up">↑ +12.5% vs 30d</div>
-              </div>
-
-              {/* Metric 2: Lead Time for Changes */}
-              <div className="dora-metric-box">
-                <div className="dora-metric-top">
-                  <span className="dora-metric-icon">⏱️</span>
-                  <span className="metric-tier-badge tier-elite">ELITE</span>
-                </div>
-                <div className="dora-num">
-                  {doraMetrics?.metrics?.lead_time?.value || (doraMetrics?.lead_time_hours ? `${doraMetrics.lead_time_hours}h` : 'n/a')}
-                </div>
-                <div className="dora-label">Lead Time for Changes</div>
-                <div className="dora-sub">&lt; 24h Commit-to-Prod</div>
-                <div className="dora-trend trend-down">↓ -15.0% lead time</div>
-              </div>
-
-              {/* Metric 3: Change Failure Rate */}
-              <div className="dora-metric-box">
-                <div className="dora-metric-top">
-                  <span className="dora-metric-icon">🛡️</span>
-                  <span className="metric-tier-badge tier-elite">ELITE</span>
-                </div>
-                <div className="dora-num">
-                  {doraMetrics?.metrics?.change_failure_rate?.value || `${doraMetrics?.change_failure_rate_pct || 4.2}%`}
-                </div>
-                <div className="dora-label">Change Failure Rate</div>
-                <div className="dora-sub">&lt; 5.0% Failure Target</div>
-                <div className="dora-trend trend-down">↓ -0.8% defect rate</div>
-              </div>
-
-              {/* Metric 4: Mean Time to Recovery (MTTR) */}
-              <div className="dora-metric-box">
-                <div className="dora-metric-top">
-                  <span className="dora-metric-icon">⚡</span>
-                  <span className="metric-tier-badge tier-elite">ELITE</span>
-                </div>
-                <div className="dora-num">
-                  {doraMetrics?.metrics?.mttr?.value || `${doraMetrics?.mttr_hours || 1.5}h`}
-                </div>
-                <div className="dora-label">Time to Restore (MTTR)</div>
-                <div className="dora-sub">&lt; 2h Incident Recovery</div>
-                <div className="dora-trend trend-down">↓ -25.0% MTTR drop</div>
-              </div>
-
-              {/* Metric 5: Operational Availability (SLO) */}
-              <div className="dora-metric-box">
-                <div className="dora-metric-top">
-                  <span className="dora-metric-icon">🌐</span>
-                  <span className="metric-tier-badge tier-optimal">OPTIMAL</span>
-                </div>
-                <div className="dora-num">
-                  {doraMetrics?.metrics?.availability_slo?.value || '99.95%'}
-                </div>
-                <div className="dora-label">Availability (SLO)</div>
-                <div className="dora-sub">Target &ge; 99.90% Uptime</div>
-                <div className="dora-trend trend-up">↑ +0.02% reliability</div>
-              </div>
-
-              {/* Metric 6: PR Review Cycle Time */}
-              <div className="dora-metric-box">
-                <div className="dora-metric-top">
-                  <span className="dora-metric-icon">🔀</span>
-                  <span className="metric-tier-badge tier-healthy">HEALTHY</span>
-                </div>
-                <div className="dora-num">
-                  {doraMetrics?.metrics?.pr_cycle_time?.value || '4.2h'}
-                </div>
-                <div className="dora-label">PR Cycle Time</div>
-                <div className="dora-sub">&lt; 8h Merge SLA</div>
-                <div className="dora-trend trend-down">↓ -1.1h review speed</div>
-              </div>
-
-              {/* Metric 7: Sprint Predictability */}
-              <div className="dora-metric-box">
-                <div className="dora-metric-top">
-                  <span className="dora-metric-icon">🏃</span>
-                  <span className="metric-tier-badge tier-ontrack">ON TRACK</span>
-                </div>
-                <div className="dora-num">
-                  {doraMetrics?.metrics?.sprint_predictability?.value || '91.4%'}
-                </div>
-                <div className="dora-label">Sprint Predictability</div>
-                <div className="dora-sub">Sprint 24: 28/35 Pts</div>
-                <div className="dora-trend trend-up">↑ +4.2% velocity</div>
-              </div>
-
-              {/* Metric 8: Code Churn / Rework Rate */}
-              <div className="dora-metric-box">
-                <div className="dora-metric-top">
-                  <span className="dora-metric-icon">🔄</span>
-                  <span className="metric-tier-badge tier-lowrisk">LOW RISK</span>
-                </div>
-                <div className="dora-num">
-                  {doraMetrics?.metrics?.code_churn_rate?.value || '6.8%'}
-                </div>
-                <div className="dora-label">Code Churn Rate</div>
-                <div className="dora-sub">&lt; 10% Risk Limit (21d)</div>
-                <div className="dora-trend trend-down">↓ -1.4% rework</div>
-              </div>
-            </div>
+            <DoraTiles doraMetrics={doraMetrics} />
 
             {/* Evaluation Quality Overview Strip */}
             <div className="overview-subsections">
               <div className="section-header" style={{ marginTop: '1.5rem' }}>
                 <h2>🧪 Live Multi-Agent & RAG Quality Gates</h2>
-                <button className="view-more-link-btn" onClick={() => switchTab('evaluation')}>
-                  View Full Evaluation Suite →
-                </button>
+                {systemStatus?.features?.devEvalRoutes && (
+                  <button className="view-more-link-btn" onClick={() => switchTab('evaluation')}>
+                    View Full Evaluation Suite →
+                  </button>
+                )}
               </div>
               <div className="eval-metrics-grid">
-                <div className="eval-card">
-                  <div className="eval-card-top">
-                    <span className="eval-card-icon">🎯</span>
-                    <span className="eval-badge badge-pass">PASS (&ge;90%)</span>
-                  </div>
-                  <div className="eval-card-value">
-                    {evalMetrics?.domainPrecision
-                      ? `${(evalMetrics.domainPrecision * 100).toFixed(0)}%`
-                      : '100%'}
-                  </div>
-                  <div className="eval-card-title">Domain Selection Accuracy</div>
-                  <div className="eval-card-sub">Target SLA: &ge; 90% | Multi-Agent Supervisor</div>
-                </div>
+                <EvalGateCard icon="🎯" title="Domain Selection Accuracy" sub="Target SLA: &ge; 90% | Multi-Agent Supervisor" value={evalMetrics?.domainPrecision} threshold={0.9} format="pct" />
 
-                <div className="eval-card">
-                  <div className="eval-card-top">
-                    <span className="eval-card-icon">🎛️</span>
-                    <span className="eval-badge badge-pass">PASS (&ge;95%)</span>
-                  </div>
-                  <div className="eval-card-value">
-                    {evalMetrics?.oneToolAdherence
-                      ? `${(evalMetrics.oneToolAdherence * 100).toFixed(0)}%`
-                      : '100%'}
-                  </div>
-                  <div className="eval-card-title">1-Tool Constraint Adherence</div>
-                  <div className="eval-card-sub">Target SLA: &ge; 95% | DeepEval Trajectory</div>
-                </div>
+                <EvalGateCard icon="🎛️" title="1-Tool Constraint Adherence" sub="Target SLA: &ge; 95% | DeepEval Trajectory" value={evalMetrics?.oneToolAdherence} threshold={0.95} format="pct" />
 
-                <div className="eval-card">
-                  <div className="eval-card-top">
-                    <span className="eval-card-icon">✨</span>
-                    <span className="eval-badge badge-pass">PASS (&ge;0.80)</span>
-                  </div>
-                  <div className="eval-card-value">
-                    {evalMetrics?.ragasFaithfulness
-                      ? evalMetrics.ragasFaithfulness.toFixed(4)
-                      : '0.9650'}
-                  </div>
-                  <div className="eval-card-title">Ragas Faithfulness Score</div>
-                  <div className="eval-card-sub">Zero Hallucination | nomic-embed-text RRF</div>
-                </div>
+                <EvalGateCard icon="✨" title="Ragas Faithfulness Score" sub="Zero Hallucination | nomic-embed-text RRF" value={evalMetrics?.ragasFaithfulness} threshold={0.8} format="dec" />
 
                 <div className="eval-card">
                   <div className="eval-card-top">
@@ -1216,7 +1072,7 @@ function AdminPage({ onBackToChat }) {
                       &lt;300ms SLA
                     </span>
                   </div>
-                  <div className="eval-card-value">{evalMetrics?.fastPathAvgLatencyMs ?? 'n/a'}ms</div>
+                  <div className="eval-card-value">{evalMetrics?.fastPathAvgLatencyMs == null ? 'n/a' : `${evalMetrics.fastPathAvgLatencyMs}ms`}</div>
                   <div className="eval-card-title">Fast-Path Pre-Router Latency</div>
                   <div className="eval-card-sub">0-Tool Direct Inference Gate</div>
                 </div>
@@ -2550,7 +2406,7 @@ function AdminPage({ onBackToChat }) {
         )}
 
         {/* TAB 4: ENTERPRISE EVALUATION & QUALITY GATES */}
-        {activeTab === 'evaluation' && (
+        {activeTab === 'evaluation' && systemStatus?.features?.devEvalRoutes && (
           <section className="admin-section">
             <div className="section-header">
               <div>
@@ -2828,47 +2684,11 @@ function AdminPage({ onBackToChat }) {
             )}
 
             <div className="eval-metrics-grid">
-              <div className="eval-card">
-                <div className="eval-card-top">
-                  <span className="eval-card-icon">🎯</span>
-                  <span className="eval-badge badge-pass">PASS (&ge;90%)</span>
-                </div>
-                <div className="eval-card-value">
-                  {evalMetrics?.domainPrecision
-                    ? `${(evalMetrics.domainPrecision * 100).toFixed(0)}%`
-                    : '100%'}
-                </div>
-                <div className="eval-card-title">Domain Selection Accuracy</div>
-                <div className="eval-card-sub">Target SLA: &ge; 90% | Multi-Agent Supervisor</div>
-              </div>
+              <EvalGateCard icon="🎯" title="Domain Selection Accuracy" sub="Target SLA: &ge; 90% | Multi-Agent Supervisor" value={evalMetrics?.domainPrecision} threshold={0.9} format="pct" />
 
-              <div className="eval-card">
-                <div className="eval-card-top">
-                  <span className="eval-card-icon">🎛️</span>
-                  <span className="eval-badge badge-pass">PASS (&ge;95%)</span>
-                </div>
-                <div className="eval-card-value">
-                  {evalMetrics?.oneToolAdherence
-                    ? `${(evalMetrics.oneToolAdherence * 100).toFixed(0)}%`
-                    : '100%'}
-                </div>
-                <div className="eval-card-title">1-Tool Constraint Adherence</div>
-                <div className="eval-card-sub">Target SLA: &ge; 95% | DeepEval Trajectory</div>
-              </div>
+              <EvalGateCard icon="🎛️" title="1-Tool Constraint Adherence" sub="Target SLA: &ge; 95% | DeepEval Trajectory" value={evalMetrics?.oneToolAdherence} threshold={0.95} format="pct" />
 
-              <div className="eval-card">
-                <div className="eval-card-top">
-                  <span className="eval-card-icon">✨</span>
-                  <span className="eval-badge badge-pass">PASS (&ge;0.80)</span>
-                </div>
-                <div className="eval-card-value">
-                  {evalMetrics?.ragasFaithfulness
-                    ? evalMetrics.ragasFaithfulness.toFixed(4)
-                    : '0.9650'}
-                </div>
-                <div className="eval-card-title">Ragas Faithfulness Score</div>
-                <div className="eval-card-sub">Zero Hallucination | nomic-embed-text RRF</div>
-              </div>
+              <EvalGateCard icon="✨" title="Ragas Faithfulness Score" sub="Zero Hallucination | nomic-embed-text RRF" value={evalMetrics?.ragasFaithfulness} threshold={0.8} format="dec" />
 
               <div className="eval-card">
                 <div className="eval-card-top">
@@ -2877,7 +2697,7 @@ function AdminPage({ onBackToChat }) {
                     &lt;300ms SLA
                   </span>
                 </div>
-                <div className="eval-card-value">{evalMetrics?.fastPathAvgLatencyMs ?? 'n/a'}ms</div>
+                <div className="eval-card-value">{evalMetrics?.fastPathAvgLatencyMs == null ? 'n/a' : `${evalMetrics.fastPathAvgLatencyMs}ms`}</div>
                 <div className="eval-card-title">Fast-Path Pre-Router Latency</div>
                 <div className="eval-card-sub">0-Tool Direct Inference Gate</div>
               </div>
