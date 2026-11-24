@@ -28,6 +28,8 @@ import { getSemanticCacheStats } from '../cache/semanticCache.js';
 import { toolCache } from '../cache/toolCache.js';
 import { cacheInvalidator } from '../cache/cacheInvalidator.js';
 import { DEFAULT_CHAT_MODEL } from '../llm/models.js';
+import { sendError } from '../middleware/errorHandler.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 const router = express.Router();
 
@@ -109,11 +111,7 @@ router.get('/system-status', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to fetch system status',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to fetch system status');
   }
 });
 
@@ -128,7 +126,7 @@ router.post('/eval/promptfoo/start', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to access Promptfoo Cloud', details: error.message });
+    return sendError(req, res, error, 'Failed to access Promptfoo Cloud');
   }
 });
 
@@ -247,7 +245,7 @@ router.post('/eval/prompt-matrix', async (req, res) => {
   } catch (error) {
     promptMatrixState.status = 'failed';
     promptMatrixState.error = error.message;
-    res.status(500).json({ error: 'Failed to trigger prompt matrix evaluation', details: error.message });
+    return sendError(req, res, error, 'Failed to trigger prompt matrix evaluation');
   }
 });
 
@@ -275,7 +273,7 @@ router.get('/eval/prompt-matrix/status', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to query prompt matrix status', details: error.message });
+    return sendError(req, res, error, 'Failed to query prompt matrix status');
   }
 });
 
@@ -307,7 +305,7 @@ router.post('/eval/sync-datasets', async (req, res) => {
           description: 'EM TaskFlow AI Golden Evaluation Benchmark Dataset across 10 Domain Micro-Agents, RAG, and Fast-Path.',
           metadata: { version: '1.0.0', total_cases: items.length, system: 'EM TaskFlow AI' },
         });
-      } catch (_) {}
+      } catch (_) { recordHandledError('routes.admin.post /eval/sync-datasets', _); }
 
       for (const item of items) {
         try {
@@ -318,7 +316,7 @@ router.post('/eval/sync-datasets', async (req, res) => {
             metadata: { eval_id: item.eval_id || '', domain_category: item.domain_category || '', is_rag_appropriate: item.is_rag_appropriate || false },
           });
           goldenCount++;
-        } catch (_) {}
+        } catch (_) { recordHandledError('routes.admin.post /eval/sync-datasets', _); }
       }
     }
 
@@ -332,7 +330,7 @@ router.post('/eval/sync-datasets', async (req, res) => {
           description: 'Multi-Turn Prompt Matrix Benchmark Cases for Durable Temporal Batch Evaluations.',
           metadata: { version: '1.0.0', total_cases: cases.length, system: 'EM TaskFlow AI' },
         });
-      } catch (_) {}
+      } catch (_) { recordHandledError('routes.admin.post /eval/sync-datasets', _); }
 
       for (const item of cases) {
         try {
@@ -343,7 +341,7 @@ router.post('/eval/sync-datasets', async (req, res) => {
             metadata: { case_id: item.id || '', domain: item.domain || '' },
           });
           matrixCount++;
-        } catch (_) {}
+        } catch (_) { recordHandledError('routes.admin.post /eval/sync-datasets', _); }
       }
     }
 
@@ -358,7 +356,7 @@ router.post('/eval/sync-datasets', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to sync datasets to Langfuse', details: error.message, requestId: req.requestId });
+    return sendError(req, res, error, 'Failed to sync datasets to Langfuse');
   }
 });
 
@@ -375,7 +373,7 @@ router.post('/eval/sync-prompts', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to sync prompts to Langfuse', details: error.message, requestId: req.requestId });
+    return sendError(req, res, error, 'Failed to sync prompts to Langfuse');
   }
 });
 
@@ -478,7 +476,7 @@ router.post('/eval/run-deep-benchmark', async (req, res) => {
   } catch (error) {
     deepBenchmarkState.status = 'failed';
     deepBenchmarkState.error = error.message;
-    res.status(500).json({ error: 'Failed to trigger deep benchmark', details: error.message });
+    return sendError(req, res, error, 'Failed to trigger deep benchmark');
   }
 });
 
@@ -509,7 +507,7 @@ router.get('/eval/benchmark-status', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch benchmark status', details: error.message });
+    return sendError(req, res, error, 'Failed to fetch benchmark status');
   }
 });
 
@@ -626,7 +624,7 @@ router.post('/eval/replay-traces', async (req, res) => {
   } catch (error) {
     replayState.status = 'failed';
     replayState.error = error.message;
-    res.status(500).json({ error: 'Failed to trigger trace replay', details: error.message });
+    return sendError(req, res, error, 'Failed to trigger trace replay');
   }
 });
 
@@ -657,7 +655,7 @@ router.get('/eval/replay-status', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch replay status', details: error.message });
+    return sendError(req, res, error, 'Failed to fetch replay status');
   }
 });
 
@@ -713,7 +711,7 @@ router.get('/eval/metrics', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch evaluation metrics', details: error.message });
+    return sendError(req, res, error, 'Failed to fetch evaluation metrics');
   }
 });
 
@@ -727,11 +725,7 @@ router.get('/documents', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to list RAG documents',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to list RAG documents');
   }
 });
 
@@ -747,11 +741,7 @@ router.delete('/documents/:filename', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to delete document chunks',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to delete document chunks');
   }
 });
 
@@ -767,11 +757,7 @@ router.get('/documents/:filename/chunks', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to fetch document chunks',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to fetch document chunks');
   }
 });
 
@@ -789,11 +775,7 @@ router.get('/settings', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({
-      error: 'Failed to fetch admin settings',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'Failed to fetch admin settings');
   }
 });
 
@@ -809,11 +791,7 @@ router.put('/settings', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({
-      error: 'Failed to update admin settings',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'Failed to update admin settings');
   }
 });
 
@@ -831,11 +809,7 @@ router.post('/settings/test-connection', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({
-      error: 'Failed to run connection test',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'Failed to run connection test');
   }
 });
 
@@ -850,11 +824,7 @@ router.post('/settings/reset', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({
-      error: 'Failed to reset admin settings',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'Failed to reset admin settings');
   }
 });
 
@@ -878,11 +848,7 @@ router.get('/team', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({
-      error: 'Failed to retrieve team members',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'Failed to retrieve team members');
   }
 });
 
@@ -942,11 +908,7 @@ router.post('/team/sync', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({
-      error: 'Failed to auto-discover team members',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'Failed to auto-discover team members');
   }
 });
 
@@ -962,11 +924,7 @@ router.post('/team', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({
-      error: 'Failed to add team member',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'Failed to add team member');
   }
 });
 
@@ -985,11 +943,7 @@ router.put('/team/:id', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({
-      error: 'Failed to update team member',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'Failed to update team member');
   }
 });
 
@@ -1004,11 +958,7 @@ router.delete('/team/:id', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({
-      error: 'Failed to delete team member',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'Failed to delete team member');
   }
 });
 
@@ -1037,11 +987,7 @@ router.post('/temporal/slack-post/request', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({
-      error: 'Failed to initiate Temporal Slack post workflow',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'Failed to initiate Temporal Slack post workflow');
   }
 });
 
@@ -1068,11 +1014,7 @@ router.post('/temporal/slack-post/approve', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({
-      error: 'Failed to send approval signal to Temporal workflow',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'Failed to send approval signal to Temporal workflow');
   }
 });
 
@@ -1099,11 +1041,7 @@ router.post('/temporal/slack-post/reject', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({
-      error: 'Failed to send rejection signal to Temporal workflow',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'Failed to send rejection signal to Temporal workflow');
   }
 });
 
@@ -1122,11 +1060,7 @@ router.get('/temporal/slack-post/status', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({
-      error: 'Failed to query Temporal Slack post workflow status',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'Failed to query Temporal Slack post workflow status');
   }
 });
 
@@ -1189,7 +1123,7 @@ router.post('/audit/trigger', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to trigger audit', details: err.message, requestId: req.requestId });
+    return sendError(req, res, err, 'Failed to trigger audit');
   }
 });
 
@@ -1209,7 +1143,7 @@ router.get('/audit/status', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch audit status', details: err.message, requestId: req.requestId });
+    return sendError(req, res, err, 'Failed to fetch audit status');
   }
 });
 
@@ -1228,11 +1162,7 @@ router.post('/system/reset-data', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({
-      error: 'Failed to reset database tables',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'Failed to reset database tables');
   }
 });
 
@@ -1254,11 +1184,7 @@ router.get('/cache/stats', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (err) {
-    res.status(500).json({
-      error: 'Failed to fetch cache statistics',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'Failed to fetch cache statistics');
   }
 });
 
@@ -1297,11 +1223,7 @@ router.post('/cache/flush', async (req, res) => {
       });
     }
   } catch (err) {
-    res.status(500).json({
-      error: 'Failed to flush cache',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'Failed to flush cache');
   }
 });
 

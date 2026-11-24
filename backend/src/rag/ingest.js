@@ -12,6 +12,7 @@ import { BGEEmbeddingsAdapter } from '../llm/bgeEmbeddingsAdapter.js';
 import databaseService from '../db/postgres.js';
 import pythonAIServiceClient from '../grpc/client.js';
 import { info, warn, error, debug } from '../utils/logger.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 // Dependencies for injection
 let fsModule = fs;
@@ -352,7 +353,7 @@ export async function getIngestStatus() {
   try {
     const docs = await databaseService.listPdfDocuments();
     docCount = docs.reduce((acc, d) => acc + (d.chunkCount || 0), 0);
-  } catch (e) {}
+  } catch (e) { recordHandledError('rag.ingest.getIngestStatus', e); }
 
   return {
     initialized,

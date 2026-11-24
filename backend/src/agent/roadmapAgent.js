@@ -6,6 +6,7 @@ import identityService from '../services/identityService.js';
 import { getDirectOrFormattedJiraUrl, formatMarkdownLinkOrCode } from '../utils/urlHelper.js';
 import { info, warn, error } from '../utils/logger.js';
 import { createMicroAgent, safeExecuteMCPTool } from './baseAgent.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 export const roadmapAlignmentTool = createDeterministicToolHarness({
   name: 'get_roadmap_alignment',
@@ -71,8 +72,8 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
     },
     default: async (inputArgs) => {
       const q = inputArgs.quarter || 'Q4';
-      const okrs = (databaseService.getOkrsByQuarter ? await databaseService.getOkrsByQuarter(q).catch(() => []) : await databaseService.getOkrRecords(q).catch(() => [])) || [];
-      const members = await identityService.getTeamMembers().catch(() => []);
+      const okrs = (databaseService.getOkrsByQuarter ? await databaseService.getOkrsByQuarter(q).catch(swallow('agent.roadmapAgent.default', [])) : await databaseService.getOkrRecords(q).catch(swallow('agent.roadmapAgent.default', []))) || [];
+      const members = await identityService.getTeamMembers().catch(swallow('agent.roadmapAgent.default', []));
 
       return {
         initiative_id: inputArgs.initiative_id || 'q4_roadmap',
@@ -86,7 +87,7 @@ export const roadmapAlignmentTool = createDeterministicToolHarness({
   // Tier 2: PostgreSQL Database Snapshot Fallback
   dbCacheFallback: async (source, inputArgs) => {
     const quarter = inputArgs.quarter || 'Q4';
-    const okrs = (databaseService.getOkrsByQuarter ? await databaseService.getOkrsByQuarter(quarter).catch(() => []) : await databaseService.getOkrRecords(quarter).catch(() => [])) || [];
+    const okrs = (databaseService.getOkrsByQuarter ? await databaseService.getOkrsByQuarter(quarter).catch(swallow('agent.roadmapAgent.dbCacheFallback', [])) : await databaseService.getOkrRecords(quarter).catch(swallow('agent.roadmapAgent.dbCacheFallback', []))) || [];
     
     return {
       initiative_id: inputArgs.initiative_id || 'q4_roadmap',

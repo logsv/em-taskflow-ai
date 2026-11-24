@@ -19,6 +19,7 @@ import { buildEmResponse } from "../utils/responseFormatter.js";
 import { getTracerCallbacks, createEndToEndTrace, createSpan } from "../utils/tracer.js";
 import { info, warn, error } from "../utils/logger.js";
 import { hasKeyword } from "../utils/keywords.js";
+import { swallow, recordHandledError } from '../core/safe.js';
 
 const VALID_DOMAINS = new Set([
   "dora", "delivery", "sbi", "people", "sprint", "retro", "roadmap", "okr", "sop", "critic",
@@ -84,7 +85,7 @@ export class LangGraphAgentService {
     await ensureLLMReady();
 
     const runtime = getRuntimeConfig();
-    const ragStatus = await ragService.getStatus().catch(() => ({ ready: false }));
+    const ragStatus = await ragService.getStatus().catch(swallow('services.agentService', { ready: false }));
     this.ragEnabled = !!ragStatus.ready;
 
     if (runtime.mode === "full") {
@@ -203,7 +204,7 @@ export class LangGraphAgentService {
                         clarificationStrategy: true,
                       },
                     });
-                  } catch (_) {}
+                  } catch (_) { recordHandledError('services.agentService.processQuery', _); }
                 }
               }
             }
@@ -251,7 +252,7 @@ export class LangGraphAgentService {
             decision,
           },
         });
-      } catch (_err) {}
+      } catch (_err) { recordHandledError('services.agentService.processQuery', _err); }
     }
 
     // Finalize Arize Phoenix OpenInference root span
@@ -265,14 +266,14 @@ export class LangGraphAgentService {
           decision,
         }));
         options.otelSpan.end();
-      } catch (_err) {}
+      } catch (_err) { recordHandledError('services.agentService.processQuery', _err); }
     }
 
     const tracerCallbacks = getTracerCallbacks(options);
     if (Array.isArray(tracerCallbacks)) {
       for (const cb of tracerCallbacks) {
         if (typeof cb.flushAsync === "function") {
-          cb.flushAsync().catch(() => {});
+          cb.flushAsync().catch(swallow('services.agentService.processQuery'));
         }
       }
     }
@@ -1004,11 +1005,11 @@ export class LangGraphAgentService {
   async getStatus() {
     const runtimeConfig = getRuntimeConfig();
     const runtimeMode = runtimeConfig.mode;
-    const llmStatus = await getLLMStatus().catch(() => ({ initialized: false }));
+    const llmStatus = await getLLMStatus().catch(swallow('services.agentService', { initialized: false }));
     const readiness = this.initialized
       ? { ready: true, toolCount: this.tools.length }
       : (runtimeMode === "full"
-          ? await checkAgentReadiness().catch(() => ({ ready: false, toolCount: 0 }))
+          ? await checkAgentReadiness().catch(swallow('services.agentService', { ready: false, toolCount: 0 }))
           : { ready: false, toolCount: 0 });
     return {
       ready: this.initialized,

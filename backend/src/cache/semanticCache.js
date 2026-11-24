@@ -3,6 +3,7 @@ import { getBgeEmbeddings } from '../llm/index.js';
 import { cacheInvalidator } from './cacheInvalidator.js';
 import { info, warn, debug } from '../utils/logger.js';
 import crypto from 'crypto';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 let redisClient = null;
 let isRedisAvailable = false;
@@ -179,7 +180,7 @@ export async function initSemanticCache() {
         try {
           const keys = await redisClient.keys('semcache:*');
           if (keys.length > 0) await redisClient.del(...keys);
-        } catch (_e) {}
+        } catch (_e) { recordHandledError('cache.semanticCache.retryStrategy', _e); }
       }
     } else if (type === 'domain' && domain) {
       invalidateL2Domain(domain);
@@ -343,8 +344,8 @@ export function invalidateL2Domain(domain) {
   }
   if (isRedisAvailable && redisClient) {
     redisClient.keys(`${prefix}*`).then((keys) => {
-      if (keys && keys.length > 0) redisClient.del(...keys).catch(() => {});
-    }).catch(() => {});
+      if (keys && keys.length > 0) redisClient.del(...keys).catch(swallow('cache.semanticCache.invalidateL2Domain'));
+    }).catch(swallow('cache.semanticCache.invalidateL2Domain'));
   }
   return count;
 }

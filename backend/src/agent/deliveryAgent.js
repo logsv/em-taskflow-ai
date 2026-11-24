@@ -6,6 +6,7 @@ import settingsService from '../services/settingsService.js';
 import { getDirectOrFormattedGithubUrl, getDirectOrFormattedJiraUrl, formatMarkdownLinkOrCode } from '../utils/urlHelper.js';
 import { info, warn, error } from '../utils/logger.js';
 import { createMicroAgent, safeExecuteMCPTool, resolveGithubTarget, resolveMemberTarget } from './baseAgent.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 export const deliveryBottlenecksTool = createDeterministicToolHarness({
   name: 'analyze_delivery_bottlenecks',
@@ -150,7 +151,7 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
   // Tier 2: PostgreSQL Database Cache Snapshot
   dbCacheFallback: async (source) => {
     if (source === 'jira' || source === 'notion') {
-      const analytics = await databaseService.getSprintAnalytics().catch(() => []);
+      const analytics = await databaseService.getSprintAnalytics().catch(swallow('agent.deliveryAgent.dbCacheFallback', []));
       return {
         wip_count: analytics[0]?.wip_count ?? null,
         wip_limit: analytics[0]?.wip_limit ?? 5,
@@ -165,7 +166,7 @@ export const deliveryBottlenecksTool = createDeterministicToolHarness({
       };
     }
     try {
-      const issues = await databaseService.getGithubIssues({}).catch(() => []);
+      const issues = await databaseService.getGithubIssues({}).catch(swallow('agent.deliveryAgent.dbCacheFallback', []));
       const cachedPrs = (issues || []).filter((i) => i.item_type === 'pr' || i.is_pr || String(i.html_url || '').includes('/pull/'));
       const cachedGithub = settingsService.getCachedSettings()?.mcp?.github || {};
       const defaultRepo = cachedGithub.owner && cachedGithub.repo ? `${cachedGithub.owner}/${cachedGithub.repo}` : (cachedGithub.repo || 'github_repo');

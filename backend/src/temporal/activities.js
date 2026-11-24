@@ -7,6 +7,7 @@ import axios from 'axios';
 import databaseService from '../db/postgres.js';
 import settingsService from '../services/settingsService.js';
 import { info, warn } from '../utils/logger.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 /**
  * Activity 1: Harvest GitHub contributors & commit authors
@@ -473,7 +474,7 @@ export async function harvestDoraAndDeliveryActivity(params = {}) {
         Accept: 'application/vnd.github.v3+json',
         'User-Agent': 'EM-TaskFlow-AI',
       };
-      const prRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}/pulls?state=open&per_page=20`, { headers, timeout: 4500 }).catch(() => null);
+      const prRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}/pulls?state=open&per_page=20`, { headers, timeout: 4500 }).catch(swallow('temporal.activities.harvestDoraAndDeliveryActivity', null));
       if (Array.isArray(prRes?.data)) {
         const now = Date.now();
         let totalWait = 0;
@@ -497,7 +498,7 @@ export async function harvestDoraAndDeliveryActivity(params = {}) {
     }
 
     if (openPrs.length === 0) {
-      const cachedIssues = databaseService.getGithubIssues ? await databaseService.getGithubIssues({ state: 'open' }).catch(() => []) : [];
+      const cachedIssues = databaseService.getGithubIssues ? await databaseService.getGithubIssues({ state: 'open' }).catch(swallow('temporal.activities.harvestDoraAndDeliveryActivity', [])) : [];
       const now = Date.now();
       let totalWait = 0;
       openPrs = cachedIssues
@@ -520,7 +521,7 @@ export async function harvestDoraAndDeliveryActivity(params = {}) {
       if (openPrs.length > 0) avgWaitHours = Number((totalWait / openPrs.length).toFixed(1));
     }
 
-    const doraSnapshotsList = databaseService.getDoraSnapshots ? await databaseService.getDoraSnapshots('main_team').catch(() => []) : [];
+    const doraSnapshotsList = databaseService.getDoraSnapshots ? await databaseService.getDoraSnapshots('main_team').catch(swallow('temporal.activities.harvestDoraAndDeliveryActivity', [])) : [];
     const doraSnapshots = Array.isArray(doraSnapshotsList) ? doraSnapshotsList[0] : doraSnapshotsList;
     const doraSummary = {
       tier: doraSnapshots?.tier || 'Elite',
@@ -530,7 +531,7 @@ export async function harvestDoraAndDeliveryActivity(params = {}) {
       mttrHours: doraSnapshots?.mttrHours ? Number(doraSnapshots.mttrHours) : 0,
     };
 
-    const sprintAnalyticsList = databaseService.getSprintAnalytics ? await databaseService.getSprintAnalytics().catch(() => []) : [];
+    const sprintAnalyticsList = databaseService.getSprintAnalytics ? await databaseService.getSprintAnalytics().catch(swallow('temporal.activities.harvestDoraAndDeliveryActivity', [])) : [];
     const blockedTickets = Array.isArray(sprintAnalyticsList) && sprintAnalyticsList[0]?.blocked_tickets
       ? sprintAnalyticsList[0].blocked_tickets.map((t) => ({
           key: t.key,
@@ -568,7 +569,7 @@ export async function harvestDoraAndDeliveryActivity(params = {}) {
  */
 export async function harvestPeopleAndCadenceActivity(params = {}) {
   try {
-    const teamMembers = databaseService.getTeamMembers ? await databaseService.getTeamMembers().catch(() => []) : [];
+    const teamMembers = databaseService.getTeamMembers ? await databaseService.getTeamMembers().catch(swallow('temporal.activities.harvestPeopleAndCadenceActivity', [])) : [];
     const overdue1on1s = [];
 
     for (const m of teamMembers) {
@@ -612,14 +613,14 @@ export async function harvestPeopleAndCadenceActivity(params = {}) {
  */
 export async function harvestSprintAndOkrActivity(params = {}) {
   try {
-    const sprintAnalyticsList = databaseService.getSprintAnalytics ? await databaseService.getSprintAnalytics().catch(() => []) : [];
+    const sprintAnalyticsList = databaseService.getSprintAnalytics ? await databaseService.getSprintAnalytics().catch(swallow('temporal.activities.harvestSprintAndOkrActivity', [])) : [];
     const sprintAnalytics = Array.isArray(sprintAnalyticsList) ? (sprintAnalyticsList[0] || null) : sprintAnalyticsList;
     const totalPoints = sprintAnalytics?.totalPoints ?? (sprintAnalytics?.total_points ?? 0);
     const completedPoints = sprintAnalytics?.completedPoints ?? (sprintAnalytics?.completed_points ?? 0);
     const wipViolations = sprintAnalytics?.wipViolations ?? 0;
     const sprintPacingPct = totalPoints > 0 ? Math.round((completedPoints / totalPoints) * 100) : 100;
 
-    const okrs = databaseService.getOkrRecords ? await databaseService.getOkrRecords().catch(() => []) : [];
+    const okrs = databaseService.getOkrRecords ? await databaseService.getOkrRecords().catch(swallow('temporal.activities.harvestSprintAndOkrActivity', [])) : [];
     const okrsList = Array.isArray(okrs) ? okrs : [];
     const atRiskOkrs = okrsList.filter((o) => o.status === 'AT_RISK' || o.status === 'OFF_TRACK');
 
@@ -873,7 +874,7 @@ export async function dispatchSlackAuditNotificationActivity(params = {}) {
         threadsCount: threadResults.length,
         dispatchedAt: new Date().toISOString(),
       },
-    }).catch(() => null);
+    }).catch(swallow('temporal.activities.dispatchSlackAuditNotificationActivity', null));
 
     return {
       status: 'SUCCESS',

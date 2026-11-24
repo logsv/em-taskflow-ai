@@ -3,6 +3,7 @@ import { Langfuse } from 'langfuse';
 import { CallbackHandler as LangfuseCallbackHandler } from 'langfuse-langchain';
 import { trace as otelTrace, context as otelContext } from '@opentelemetry/api';
 import { warn } from './logger.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 let langfuseClientInstance = null;
 
@@ -106,7 +107,7 @@ export function createSpan(parent, name, input = {}) {
   if (parent && typeof parent.span === 'function') {
     try {
       langfuseSpan = parent.span({ name, input });
-    } catch (_err) {}
+    } catch (_err) { recordHandledError('utils.tracer.createSpan', _err); }
   }
 
   return {
@@ -116,7 +117,7 @@ export function createSpan(parent, name, input = {}) {
         if (langfuseSpan && typeof langfuseSpan.end === 'function') {
           langfuseSpan.end({ output: data.output, metadata: data.metadata });
         }
-      } catch (_err) {}
+      } catch (_err) { recordHandledError('utils.tracer.createSpan', _err); }
     },
   };
 }
@@ -137,7 +138,7 @@ export function getTracerCallbacks(options = {}) {
       const res = [handler];
       options.tracerCallbacks = res;
       return res;
-    } catch (_err) {}
+    } catch (_err) { recordHandledError('utils.tracer.getTracerCallbacks', _err); }
   }
 
   const callbacks = [];

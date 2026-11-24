@@ -12,9 +12,11 @@ import { initSemanticCache } from './cache/semanticCache.js';
 import { initFactMatrixRedis } from './services/sessionFactMatrix.js';
 import db from './db/index.js';
 import { attachRequestContext, createRateLimiter } from './middleware/hardening.js';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { info, warn, error } from './utils/logger.js';
 import teamSyncWorker from './workers/teamSyncWorker.js';
 import sessionCleanupWorker from './services/SessionCleanupWorker.js';
+import { swallow, recordHandledError } from './core/safe.js';
 
 let httpServer = null;
 let temporalWorker = null;
@@ -107,6 +109,10 @@ if (process.env.SENTRY_DSN) {
     app.use(Sentry.Handlers.errorHandler());
   }
 }
+
+// Unknown /api routes get a JSON 404; every error that reaches Express gets a coded JSON body.
+app.use('/api', notFoundHandler);
+app.use(errorHandler);
 
 async function startServer() {
   try {
@@ -212,14 +218,14 @@ async function startServer() {
 
 process.on('uncaughtException', (err) => {
   if (process.env.SENTRY_DSN) {
-    try { Sentry.captureException(err); } catch (_) {}
+    try { Sentry.captureException(err); } catch (_) { recordHandledError('index.startServer', _); }
   }
   error('Uncaught Exception', { err: err?.message || String(err), stack: err?.stack });
 });
 
 process.on('unhandledRejection', (reason) => {
   if (process.env.SENTRY_DSN) {
-    try { Sentry.captureException(reason instanceof Error ? reason : new Error(String(reason))); } catch (_) {}
+    try { Sentry.captureException(reason instanceof Error ? reason : new Error(String(reason))); } catch (_) { recordHandledError('index.startServer', _); }
   }
   error('Unhandled Promise Rejection', { reason: String(reason) });
 });

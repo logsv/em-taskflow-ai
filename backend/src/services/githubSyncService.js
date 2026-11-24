@@ -2,6 +2,7 @@ import databaseService from '../db/postgres.js';
 import config from '../config.js';
 import settingsService from './settingsService.js';
 import { info, warn, debug } from '../utils/logger.js';
+import { swallow } from '../core/safe.js';
 
 class GithubSyncService {
   /**
@@ -48,7 +49,7 @@ class GithubSyncService {
         }
       } catch (fallbackError) {
         warn({ module: 'githubSyncService', action: 'searchFallbackError', err: fallbackError }, 'All live API attempts failed. Using PostgreSQL cache fallback');
-        const meta = await databaseService.getGithubSyncMetadata().catch(() => ({ total: 0, last_synced_at: null }));
+        const meta = await databaseService.getGithubSyncMetadata().catch(swallow('services.githubSync', { total: 0, last_synced_at: null }));
         return {
           success: true,
           count: meta.total || 0,

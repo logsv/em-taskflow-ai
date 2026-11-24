@@ -6,6 +6,7 @@ import settingsService from '../services/settingsService.js';
 import { evaluateDoraTier, identifyDoraBottlenecks } from '../utils/doraMetrics.js';
 import { createMicroAgent, safeExecuteMCPTool, resolveGithubTarget, createProvenanceNotice } from './baseAgent.js';
 import { warn } from '../utils/logger.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 /** A positive measured number, or null when the value was not measured. */
 function measuredOrNull(value) {
@@ -68,11 +69,11 @@ export const doraMetricsTool = createDeterministicToolHarness({
   },
   // Tier 2 Fallback: PostgreSQL Database Cache Snapshot
   dbCacheFallback: async (source, inputArgs) => {
-    const snapshots = await databaseService.getDoraSnapshots(inputArgs.team_id || null).catch(() => []);
+    const snapshots = await databaseService.getDoraSnapshots(inputArgs.team_id || null).catch(swallow('agent.doraAgent.dbCacheFallback', []));
     const issues = await databaseService.getGithubIssues({
       ...(inputArgs.repo_id ? { repo: inputArgs.repo_id } : {}),
       state: 'open',
-    }).catch(() => []);
+    }).catch(swallow('agent.doraAgent.dbCacheFallback', []));
 
     const activeIssues = (issues || []).map((i) => ({
       number: i.number,

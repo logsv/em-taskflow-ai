@@ -9,6 +9,7 @@ import logging
 import httpx
 from functools import wraps
 from typing import Dict, Any, Optional
+from app.telemetry.safe import log_handled
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +88,8 @@ def trace_observation(name: str):
                             "input.value": input_val,
                         },
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    log_handled("app.telemetry.tracer.wrapper", exc)
 
             try:
                 result = func(*args, **kwargs)
@@ -97,8 +98,8 @@ def trace_observation(name: str):
                 if span:
                     try:
                         span.end(output={"success": True})
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log_handled("app.telemetry.tracer.wrapper", exc)
 
                 # End OpenTelemetry span
                 if otel_span:
@@ -106,24 +107,24 @@ def trace_observation(name: str):
                         out_val = f"Returned {len(result)} items" if isinstance(result, list) else "Success"
                         otel_span.set_attribute("output.value", out_val)
                         otel_span.end()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log_handled("app.telemetry.tracer.wrapper", exc)
 
                 return result
             except Exception as err:
                 if span:
                     try:
                         span.end(output={"success": False, "error": str(err)})
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log_handled("app.telemetry.tracer.wrapper", exc)
 
                 if otel_span:
                     try:
                         otel_span.set_attribute("error", True)
                         otel_span.set_attribute("output.value", str(err))
                         otel_span.end()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log_handled("app.telemetry.tracer.wrapper", exc)
 
                 raise err
         return wrapper
@@ -180,7 +181,7 @@ def log_rag_activity_telemetry(
                 },
             )
             span.end()
-        except Exception:
-            pass
+        except Exception as exc:
+            log_handled("app.telemetry.tracer.log_rag_activity_telemetry", exc)
 
 

@@ -3,8 +3,10 @@ import { sbiAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import settingsService from '../services/settingsService.js';
+import identityService from '../services/identityService.js';
 import { info, warn, error } from '../utils/logger.js';
 import { createMicroAgent, safeExecuteMCPTool, resolveMemberTarget } from './baseAgent.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 // Dictionary of subjective/emotional terms mapped to objective behavioral anchors
 const DE_BIASING_RULES = [
@@ -273,7 +275,7 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
   // Tier 2: PostgreSQL Database Snapshot Fallback
   dbCacheFallback: async (source, inputArgs = {}) => {
     try {
-      const records = await databaseService.getSbiRecords(inputArgs?.engineer_id || 'eng_alex').catch(() => []);
+      const records = await databaseService.getSbiRecords(inputArgs?.engineer_id || 'eng_alex').catch(swallow('agent.sbiAgent.dbCacheFallback', []));
       if (records && records.length > 0) {
         return {
           ...records[0],
@@ -312,7 +314,7 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
     const feedbackType = inputArgs.feedback_type || 'CONSTRUCTIVE_COACHING';
 
     if (mode === 'LIST_RAW') {
-      const historyRecords = await databaseService.getSbiRecords(engineerId).catch(() => []);
+      const historyRecords = await databaseService.getSbiRecords(engineerId).catch(swallow('agent.sbiAgent.computeMath', []));
       const recordRows = historyRecords.map((r) => {
         return `| \`${r.created_at ? new Date(r.created_at).toLocaleDateString() : 'Recent'}\` | **${r.feedback_type || 'COACHING'}** | *${(r.situation || '').slice(0, 45)}...* | 🟢 Recorded |`;
       });

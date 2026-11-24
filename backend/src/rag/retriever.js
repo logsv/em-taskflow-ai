@@ -14,6 +14,9 @@ import { debug, info, warn, error } from '../utils/logger.js';
 import { l1ExactCache } from '../cache/l1ExactCache.js';
 import { checkSemanticCache, setSemanticCache } from '../cache/semanticCache.js';
 
+/** Upper bound on candidates per query when RAG_ADVANCED_INITIAL_K is not set. */
+const MAX_RETRIEVAL_K = 30;
+
 /**
  * Baseline retrieval: vector search + answer generation
  */

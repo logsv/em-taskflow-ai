@@ -5,6 +5,7 @@ import databaseService from '../db/postgres.js';
 import settingsService from '../services/settingsService.js';
 import { info, warn, error } from '../utils/logger.js';
 import { createMicroAgent, safeExecuteMCPTool } from './baseAgent.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 export const sopComplianceTool = createDeterministicToolHarness({
   name: 'query_sop_compliance',
@@ -28,7 +29,7 @@ export const sopComplianceTool = createDeterministicToolHarness({
         const ragRes = await Promise.race([
           baselineRetrieve(q, { topK: 3 }),
           new Promise((_, reject) => setTimeout(() => reject(new Error('RAG retrieval timed out')), 2500)),
-        ]).catch(() => null);
+        ]).catch(swallow('agent.sopAgent.rag', null));
 
         if (ragRes && ragRes.sources && ragRes.sources.length > 0) {
           return {

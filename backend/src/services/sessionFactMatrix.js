@@ -1,6 +1,7 @@
 import databaseService from '../db/postgres.js';
 import { info, warn } from '../utils/logger.js';
 import { Redis } from 'ioredis';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 const inMemoryFactMatrices = new Map();
 let redisClient = null;
@@ -75,7 +76,7 @@ export class SessionFactMatrixService {
           inMemoryFactMatrices.set(threadId, parsed);
           return parsed;
         }
-      } catch (_err) {}
+      } catch (_err) { recordHandledError('services.sessionFactMatrix.getThreadFactMatrix', _err); }
     }
 
     // 3. Check PostgreSQL database
@@ -84,11 +85,11 @@ export class SessionFactMatrixService {
       if (dbMatrix && typeof dbMatrix === 'object' && Object.keys(dbMatrix).length > 0) {
         inMemoryFactMatrices.set(threadId, dbMatrix);
         if (isRedisAvailable && redisClient) {
-          redisClient.setex(`${REDIS_KEY_PREFIX}${threadId}`, TTL_SECONDS, JSON.stringify(dbMatrix)).catch(() => {});
+          redisClient.setex(`${REDIS_KEY_PREFIX}${threadId}`, TTL_SECONDS, JSON.stringify(dbMatrix)).catch(swallow('services.sessionFactMatrix.getThreadFactMatrix'));
         }
         return dbMatrix;
       }
-    } catch (_err) {}
+    } catch (_err) { recordHandledError('services.sessionFactMatrix.getThreadFactMatrix', _err); }
 
     return {};
   }
@@ -105,7 +106,7 @@ export class SessionFactMatrixService {
     inMemoryFactMatrices.set(threadId, matrix);
 
     if (isRedisAvailable && redisClient) {
-      redisClient.setex(`${REDIS_KEY_PREFIX}${threadId}`, TTL_SECONDS, JSON.stringify(matrix)).catch(() => {});
+      redisClient.setex(`${REDIS_KEY_PREFIX}${threadId}`, TTL_SECONDS, JSON.stringify(matrix)).catch(swallow('services.sessionFactMatrix.saveThreadFactMatrix'));
     }
 
     try {

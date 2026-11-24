@@ -7,6 +7,7 @@ import settingsService from '../services/settingsService.js';
 import { info, warn, error } from '../utils/logger.js';
 import { getDirectOrFormattedJiraUrl, formatMarkdownLinkOrCode } from '../utils/urlHelper.js';
 import { createMicroAgent, safeExecuteMCPTool } from './baseAgent.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 /** Planning assumptions. They are rules of thumb, shown to the user as assumptions, not data. */
 export const SPRINT_ASSUMPTIONS = {
@@ -98,8 +99,8 @@ export const sprintPlanTool = createDeterministicToolHarness({
       return null;
     },
     default: async (inputArgs) => {
-      const members = await identityService.getTeamMembers().catch(() => []);
-      const analytics = await databaseService.getSprintAnalytics().catch(() => []);
+      const members = await identityService.getTeamMembers().catch(swallow('agent.sprintAgent.default', []));
+      const analytics = await databaseService.getSprintAnalytics().catch(swallow('agent.sprintAgent.default', []));
       const velocities = completedVelocities(analytics);
       return {
         team_size: inputArgs.team_members?.length || members.length || null,
@@ -117,8 +118,8 @@ export const sprintPlanTool = createDeterministicToolHarness({
     if (source === 'googleCalendar') {
       return { pto_days_detected: null, is_cached: true, data_source: 'none', data_availability: 'no_calendar_data' };
     }
-    const members = await databaseService.getTeamMembers().catch(() => []);
-    const analytics = await databaseService.getSprintAnalytics().catch(() => []);
+    const members = await databaseService.getTeamMembers().catch(swallow('agent.sprintAgent.dbCacheFallback', []));
+    const analytics = await databaseService.getSprintAnalytics().catch(swallow('agent.sprintAgent.dbCacheFallback', []));
     const velocities = completedVelocities(analytics);
     const teamSize = inputArgs?.team_members?.length || members.length || null;
     return {

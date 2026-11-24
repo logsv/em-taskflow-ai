@@ -38,7 +38,7 @@ class GoldenDatasetRepository {
  */
 async function runEvaluation() {
   // 1. Initialize settings from PostgreSQL database if available
-  await settingsService.initialize().catch(() => {});
+  await settingsService.initialize().catch((err) => console.warn(`Settings not loaded, using env defaults: ${err.message}`));
 
   // 2. Allow CLI override via --model <name>
   const modelIdx = process.argv.indexOf('--model');

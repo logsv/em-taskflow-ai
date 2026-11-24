@@ -5,6 +5,7 @@ import { getLlmConfig } from '../config.js';
 import { bgeEmbeddingsClient } from './bgeEmbeddingsClient.js';
 import { info, warn } from '../utils/logger.js';
 import { DEFAULT_CHAT_MODEL } from './models.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 let chatModel = null;
 let initialized = false;
@@ -193,8 +194,7 @@ export async function getLLMStatus() {
 
   try {
     status.bgeEmbeddings = await bgeEmbeddingsClient.isAvailable();
-  } catch (error) {
-  }
+  } catch (error) { recordHandledError('llm.index.getLLMStatus', error); }
 
   return status;
 }

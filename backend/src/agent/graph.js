@@ -46,6 +46,7 @@ export function getRagTool() {
 import { getTracerCallbacks } from "../utils/tracer.js";
 import { info, warn, error as logError } from "../utils/logger.js";
 import { hasKeyword } from "../utils/keywords.js";
+import { swallow, recordHandledError } from '../core/safe.js';
 
 // Define the custom state schema for the supervisor graph
 export const SupervisorState = Annotation.Root({
@@ -198,7 +199,7 @@ function extractEvidenceContent(messages) {
         return `GitHub Evidence Summary (${lines.length} open issue(s)):\n${lines.join("\n")}`;
       }
     }
-  } catch {}
+  } catch (err) { recordHandledError('agent.graph.extractEvidenceContent', err); }
 
   return text;
 }

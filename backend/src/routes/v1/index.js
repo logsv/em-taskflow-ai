@@ -16,6 +16,7 @@ import {
   getJiraOAuthStatus,
   disconnectJiraOAuth,
 } from '../../mcp/jiraOAuth.js';
+import { sendError } from '../../middleware/errorHandler.js';
 
 const router = express.Router();
 
@@ -58,7 +59,7 @@ router.get('/mcp/jira/oauth/start', async (req, res) => {
     const result = await startJiraOAuthFlow();
     res.json({ success: true, ...result });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    return sendError(req, res, error, 'index.js');
   }
 });
 
@@ -67,7 +68,7 @@ router.get('/mcp/jira/oauth/status', async (req, res) => {
     const status = await getJiraOAuthStatus();
     res.json({ success: true, ...status });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    return sendError(req, res, error, 'index.js');
   }
 });
 
@@ -76,7 +77,7 @@ router.post('/mcp/jira/oauth/disconnect', async (req, res) => {
     const result = await disconnectJiraOAuth();
     res.json({ success: true, ...result });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    return sendError(req, res, error, 'index.js');
   }
 });
 

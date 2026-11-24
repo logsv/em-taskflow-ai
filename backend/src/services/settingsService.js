@@ -13,6 +13,7 @@ import { closeGoogleMcp } from '../mcp/google.js';
 import { resetChatModel } from '../llm/index.js';
 import { DEFAULT_CHAT_MODEL, DEFAULT_AVAILABLE_CHAT_MODELS, DEFAULT_EMBEDDING_MODEL, isLegacyDefaultChatModel, isRetiredChatModel } from '../llm/models.js';
 import { cacheInvalidator } from '../cache/cacheInvalidator.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 export function maskSecret(secret) {
   if (!secret || typeof secret !== 'string') return '';
@@ -122,7 +123,7 @@ class SettingsService {
           fs.mkdirSync(d, { recursive: true });
         }
         return path.join(d, 'settings-backup.json');
-      } catch (_e) {}
+      } catch (_e) { recordHandledError('services.settingsService.getBackupFilePath', _e); }
     }
     return path.resolve(process.cwd(), 'settings-backup.json');
   }
@@ -224,7 +225,7 @@ class SettingsService {
           const backup = this.loadBackupFromDisk();
           if (backup && this.mergeWithBackup(this.cachedRawSettings, backup)) {
             info('🔄 Self-healed and restored tool credentials from local backup file into PostgreSQL');
-            await databaseService.setAppSetting('mcp', this.cachedRawSettings.mcp, 'database').catch(() => {});
+            await databaseService.setAppSetting('mcp', this.cachedRawSettings.mcp, 'database').catch(swallow('services.settingsService.initialize'));
           }
         }
 
@@ -242,8 +243,8 @@ class SettingsService {
         this.migrateLegacyModelSettings(this.cachedRawSettings);
         this.sanitizeSettings(this.cachedRawSettings);
         // Persist sanitized clean values back to PostgreSQL
-        await databaseService.setAppSetting('llm', this.cachedRawSettings.llm, this.cachedRawSettings.metadata.llmSource).catch(() => {});
-        await databaseService.setAppSetting('mcp', this.cachedRawSettings.mcp, this.cachedRawSettings.metadata.mcpSource).catch(() => {});
+        await databaseService.setAppSetting('llm', this.cachedRawSettings.llm, this.cachedRawSettings.metadata.llmSource).catch(swallow('services.settingsService.initialize'));
+        await databaseService.setAppSetting('mcp', this.cachedRawSettings.mcp, this.cachedRawSettings.metadata.mcpSource).catch(swallow('services.settingsService.initialize'));
       }
       this.applyToRuntimeConfig(this.cachedRawSettings);
       this.initialized = true;
@@ -278,7 +279,7 @@ class SettingsService {
           dotenv.config({ path: p, override: true });
         }
       }
-    } catch (_e) {}
+    } catch (_e) { recordHandledError('services.settingsService.reloadEnvFromDisk', _e); }
   }
 
   getDefaultEnvSettings() {
@@ -636,14 +637,14 @@ class SettingsService {
     resetChatModel();
 
     // Reset MCP cached clients so the next call picks up the new credentials
-    await closeJiraMcp().catch(() => {});
-    await closeNotionMcp().catch(() => {});
-    await closeGithubMcp().catch(() => {});
-    await closeSlackMcp().catch(() => {});
-    await closeGoogleMcp().catch(() => {});
+    await closeJiraMcp().catch(swallow('services.settingsService.updateSettings'));
+    await closeNotionMcp().catch(swallow('services.settingsService.updateSettings'));
+    await closeGithubMcp().catch(swallow('services.settingsService.updateSettings'));
+    await closeSlackMcp().catch(swallow('services.settingsService.updateSettings'));
+    await closeGoogleMcp().catch(swallow('services.settingsService.updateSettings'));
 
     // Invalidate multi-tier caches on credential rotation
-    cacheInvalidator.invalidateAll().catch(() => {});
+    cacheInvalidator.invalidateAll().catch(swallow('services.settingsService.updateSettings'));
 
     info('✅ Settings saved to database and hot-reloaded into active runtime');
     return this.getMaskedSettings();
@@ -655,7 +656,7 @@ class SettingsService {
     await databaseService.setAppSetting('mcp', this.cachedRawSettings.mcp, 'env_default');
     this.applyToRuntimeConfig(this.cachedRawSettings);
     resetChatModel();
-    cacheInvalidator.invalidateAll().catch(() => {});
+    cacheInvalidator.invalidateAll().catch(swallow('services.settingsService.resetToEnvDefaults'));
     info('🔄 Restored settings to .env defaults');
     return this.getMaskedSettings();
   }

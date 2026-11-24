@@ -2,6 +2,12 @@ import { Pool } from 'pg';
 import { getDatabaseConfig } from '../config.js';
 import pythonAIServiceClient from '../grpc/client.js';
 import { info, warn, error } from '../utils/logger.js';
+import { swallow, recordHandledError } from '../core/safe.js';
+
+// In-memory stores used only when no pool exists (tests that pre-seed state). They were referenced
+// without being defined, so these paths threw ReferenceError. Phase 2 removes the in-memory mode.
+const inMemorySessions = new Map();
+const inMemoryThreads = new Map();
 
 export const SEEDED_PLACEHOLDER_KEY_RESULTS = [
   'KR1: Maintain >99.9% API uptime across core gateway services',
@@ -650,7 +656,7 @@ class DatabaseService {
       // Add archived column if it doesn't exist (safe migration)
       await this.pool.query(
         `ALTER TABLE sessions ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE`,
-      ).catch(() => {});
+      ).catch(swallow('db.postgres.archiveSession'));
       await this.pool.query(
         `UPDATE sessions SET archived = TRUE, updated_at = NOW() WHERE id = $1`,
         [sessionId],
@@ -1417,7 +1423,7 @@ class DatabaseService {
   }
 
   async saveDoraSnapshot(data) {
-    await this.ensureInitialized().catch(() => {});
+    await this.ensureInitialized().catch(swallow('db.postgres.saveDoraSnapshot'));
     const record = {
       id: this.inMemoryDoraSnapshots.length + 1,
       team_id: data.team_id || 'default',
@@ -1448,7 +1454,7 @@ class DatabaseService {
   }
 
   async getDoraSnapshots(teamId = null) {
-    await this.ensureInitialized().catch(() => {});
+    await this.ensureInitialized().catch(swallow('db.postgres.getDoraSnapshots'));
     if (!this.pool) {
       return teamId ? this.inMemoryDoraSnapshots.filter(r => r.team_id === teamId) : this.inMemoryDoraSnapshots;
     }
@@ -1467,7 +1473,7 @@ class DatabaseService {
   }
 
   async saveSbiRecord(data) {
-    await this.ensureInitialized().catch(() => {});
+    await this.ensureInitialized().catch(swallow('db.postgres.saveSbiRecord'));
     const record = {
       id: this.inMemorySbiRecords.length + 1,
       engineer_id: data.engineer_id || 'unknown',
@@ -1496,7 +1502,7 @@ class DatabaseService {
   }
 
   async getSbiRecords(engineerId = null) {
-    await this.ensureInitialized().catch(() => {});
+    await this.ensureInitialized().catch(swallow('db.postgres.getSbiRecords'));
     if (!this.pool) {
       return engineerId ? this.inMemorySbiRecords.filter(r => r.engineer_id === engineerId) : this.inMemorySbiRecords;
     }
@@ -1512,7 +1518,7 @@ class DatabaseService {
   }
 
   async saveSprintAnalytics(data) {
-    await this.ensureInitialized().catch(() => {});
+    await this.ensureInitialized().catch(swallow('db.postgres.saveSprintAnalytics'));
     const record = {
       id: this.inMemorySprintAnalytics.length + 1,
       sprint_id: data.sprint_id || `sprint_${Date.now()}`,
@@ -1543,7 +1549,7 @@ class DatabaseService {
   }
 
   async getSprintAnalytics(sprintId = null) {
-    await this.ensureInitialized().catch(() => {});
+    await this.ensureInitialized().catch(swallow('db.postgres.getSprintAnalytics'));
     if (!this.pool) {
       return sprintId ? this.inMemorySprintAnalytics.filter(r => r.sprint_id === sprintId) : this.inMemorySprintAnalytics;
     }
@@ -1562,7 +1568,7 @@ class DatabaseService {
   }
 
   async saveOkrRecord(data) {
-    await this.ensureInitialized().catch(() => {});
+    await this.ensureInitialized().catch(swallow('db.postgres.saveOkrRecord'));
     const record = {
       id: this.inMemoryOkrTracker.length + 1,
       objective: data.objective || '',
@@ -1592,7 +1598,7 @@ class DatabaseService {
   }
 
   async getOkrRecords(quarter = null) {
-    await this.ensureInitialized().catch(() => {});
+    await this.ensureInitialized().catch(swallow('db.postgres.getOkrRecords'));
     if (!this.pool) {
       return quarter ? this.inMemoryOkrTracker.filter(r => r.quarter === quarter) : this.inMemoryOkrTracker;
     }
@@ -2008,7 +2014,7 @@ class DatabaseService {
           };
         }
       }
-    } catch (_e) {}
+    } catch (_e) { recordHandledError('db.postgres.updateAuditRun', _e); }
 
     const idx = this.inMemoryAuditRuns.findIndex((a) => a.id === Number(id));
     if (idx >= 0) {
@@ -2044,7 +2050,7 @@ class DatabaseService {
           completedAt: row.completed_at,
         };
       }
-    } catch (_e) {}
+    } catch (_e) { recordHandledError('db.postgres.getLatestAuditRun', _e); }
 
     return this.inMemoryAuditRuns[0] || null;
   }
@@ -2071,7 +2077,7 @@ class DatabaseService {
           completedAt: row.completed_at,
         };
       }
-    } catch (_e) {}
+    } catch (_e) { recordHandledError('db.postgres.getAuditRunById', _e); }
 
     return this.inMemoryAuditRuns.find((a) => a.id === Number(id)) || null;
   }
@@ -2100,7 +2106,7 @@ class DatabaseService {
           completedAt: row.completed_at,
         }));
       }
-    } catch (_e) {}
+    } catch (_e) { recordHandledError('db.postgres.listAuditRuns', _e); }
 
     return this.inMemoryAuditRuns.slice(offset, offset + limit);
   }
@@ -2268,7 +2274,7 @@ class DatabaseService {
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       }));
-    } catch (_e) {}
+    } catch (_e) { recordHandledError('db.postgres.listActionItems', _e); }
 
     let items = [...this.inMemoryActionItems];
     if (status && status !== 'ALL') items = items.filter((i) => i.status === status);
@@ -2306,7 +2312,7 @@ class DatabaseService {
           updatedAt: row.updated_at,
         };
       }
-    } catch (_e) {}
+    } catch (_e) { recordHandledError('db.postgres.getActionItemById', _e); }
 
     return this.inMemoryActionItems.find((i) => i.id === id) || null;
   }
@@ -2348,7 +2354,7 @@ class DatabaseService {
           updatedAt: row.updated_at,
         };
       }
-    } catch (_e) {}
+    } catch (_e) { recordHandledError('db.postgres.updateActionItemStatus', _e); }
 
     const idx = this.inMemoryActionItems.findIndex((i) => i.id === id);
     if (idx >= 0) {
@@ -2391,7 +2397,7 @@ class DatabaseService {
           warningPending: Number(r.warning_pending || 0),
         };
       }
-    } catch (_e) {}
+    } catch (_e) { recordHandledError('db.postgres.getActionItemsSummary', _e); }
 
     const total = this.inMemoryActionItems.length;
     const pending = this.inMemoryActionItems.filter((i) => i.status === 'PENDING').length;

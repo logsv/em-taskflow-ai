@@ -1,5 +1,7 @@
 import express from 'express';
 import databaseService from '../../db/postgres.js';
+import { sendError } from '../../middleware/errorHandler.js';
+import { swallow, recordHandledError } from '../../core/safe.js';
 
 const router = express.Router();
 
@@ -7,7 +9,7 @@ const router = express.Router();
 router.get('/em/dora', async (req, res) => {
   try {
     const teamId = req.query.team_id || null;
-    const snapshots = await databaseService.getDoraSnapshots(teamId).catch(() => []);
+    const snapshots = await databaseService.getDoraSnapshots(teamId).catch(swallow('routes.v1.em.get /em/dora', []));
 
     let deployFreq = 3.5;
     let leadTime = 18.5;
@@ -132,7 +134,7 @@ router.get('/em/dora', async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    return sendError(req, res, error, 'em.js');
   }
 });
 
@@ -140,7 +142,7 @@ router.get('/em/dora', async (req, res) => {
 router.get('/em/sbi', async (req, res) => {
   try {
     const engineerId = req.query.engineer_id || null;
-    const records = await databaseService.getSbiRecords(engineerId).catch(() => []);
+    const records = await databaseService.getSbiRecords(engineerId).catch(swallow('routes.v1.em.get /em/sbi', []));
     res.json({
       framework: 'Situation-Behavior-Impact',
       total_records: records.length || 1,
@@ -157,7 +159,7 @@ router.get('/em/sbi', async (req, res) => {
       ],
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    return sendError(req, res, error, 'em.js');
   }
 });
 
@@ -165,7 +167,7 @@ router.get('/em/sbi', async (req, res) => {
 router.get('/em/sprints', async (req, res) => {
   try {
     const sprintId = req.query.sprint_id || null;
-    const sprints = await databaseService.getSprintAnalytics(sprintId).catch(() => []);
+    const sprints = await databaseService.getSprintAnalytics(sprintId).catch(swallow('routes.v1.em.get /em/sprints', []));
     const active = Array.isArray(sprints) && sprints.length > 0 ? sprints[0] : (sprints && sprints.sprint_id ? sprints : null);
 
     res.json({
@@ -181,14 +183,14 @@ router.get('/em/sprints', async (req, res) => {
       ],
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    return sendError(req, res, error, 'em.js');
   }
 });
 
 // GET /api/v1/em/okrs - Returns quarterly OKR progress and pacing scores
 router.get('/em/okrs', async (req, res) => {
   try {
-    const okrs = await databaseService.getOkrRecords('Q3').catch(() => []);
+    const okrs = await databaseService.getOkrRecords('Q3').catch(swallow('routes.v1.em.get /em/okrs', []));
     res.json({
       quarter: 'Q3',
       overall_completion_pct: 78,
@@ -215,7 +217,7 @@ router.get('/em/okrs', async (req, res) => {
       ],
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    return sendError(req, res, error, 'em.js');
   }
 });
 

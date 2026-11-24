@@ -6,6 +6,7 @@ import {
   getWorkflowStatus,
 } from '../temporal/client.js';
 import { info, warn } from '../utils/logger.js';
+import { sendError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
 
@@ -31,7 +32,7 @@ router.get('/', async (req, res) => {
     });
   } catch (err) {
     warn({ module: 'actionsRoute', action: 'listActionItemsError', err }, 'Failed to list action items');
-    res.status(500).json({ success: false, error: err.message, items: [] });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -64,7 +65,7 @@ router.get('/summary', async (req, res) => {
         : null,
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -78,7 +79,7 @@ router.get('/audit-runs', async (req, res) => {
     });
     res.json({ success: true, count: runs.length, runs });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message, runs: [] });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -91,7 +92,7 @@ router.get('/audit-runs/:id', async (req, res) => {
     }
     res.json({ success: true, run });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -131,7 +132,7 @@ router.get('/sop/compliance', async (_req, res) => {
       rules,
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(_req, res, err, 'actions.js');
   }
 });
 
@@ -154,7 +155,7 @@ router.patch('/:id', async (req, res) => {
     res.json({ success: true, item: updated });
   } catch (err) {
     warn({ module: 'actionsRoute', action: 'updateActionItemStatusError', err }, 'Failed to update action item');
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -217,7 +218,7 @@ router.post('/audit/trigger', async (req, res) => {
     });
   } catch (err) {
     warn({ module: 'actionsRoute', action: 'triggerAuditError', err }, 'Failed to trigger autonomous audit');
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -228,7 +229,7 @@ router.get('/audit/status/:workflowId', async (req, res) => {
     const status = await getWorkflowStatus(workflowId);
     res.json({ success: true, status });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -239,7 +240,7 @@ router.get('/slack/channels', async (_req, res) => {
     const { channels, available, reason } = await listSlackChannelsWithStatus();
     res.json({ success: true, available, channels, ...(reason ? { reason } : {}) });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message, channels: [] });
+    return sendError(_req, res, err, 'actions.js');
   }
 });
 
@@ -301,7 +302,7 @@ router.post('/slack/dispatch', async (req, res) => {
     });
   } catch (err) {
     warn({ module: 'actionsRoute', action: 'slackDispatchError', err }, 'Failed to dispatch to Slack');
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -332,7 +333,7 @@ router.post('/:id/nudge', async (req, res) => {
     });
   } catch (err) {
     warn({ module: 'actionsRoute', action: 'sendActionItemNudgeError', err }, 'Failed to send action item nudge');
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -365,7 +366,7 @@ router.post('/batch', async (req, res) => {
       message: `✅ Batch updated ${updatedItems.length} action items to ${status}`,
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 

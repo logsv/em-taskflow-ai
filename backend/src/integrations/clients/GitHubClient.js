@@ -6,6 +6,7 @@
 
 import { BaseIntegrationClient } from './BaseIntegrationClient.js';
 import settingsService from '../../services/settingsService.js';
+import { swallow } from '../../core/safe.js';
 
 export class GitHubClient extends BaseIntegrationClient {
   constructor() {
@@ -182,10 +183,10 @@ export class GitHubClient extends BaseIntegrationClient {
       const [prsRes, releasesRes] = await Promise.all([
         http.get(`https://api.github.com/repos/${targetOwner}/${targetRepo}/pulls`, {
           params: { state: 'closed', per_page: 30 },
-        }).catch(() => ({ data: [] })),
+        }).catch(swallow('integrations.github', { data: [] })),
         http.get(`https://api.github.com/repos/${targetOwner}/${targetRepo}/releases`, {
           params: { per_page: 15 },
-        }).catch(() => ({ data: [] })),
+        }).catch(swallow('integrations.github', { data: [] })),
       ]);
 
       const mergedPrs = (prsRes.data || []).filter((p) => p.merged_at);

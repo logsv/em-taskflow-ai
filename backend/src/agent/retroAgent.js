@@ -6,6 +6,7 @@ import identityService from '../services/identityService.js';
 import settingsService from '../services/settingsService.js';
 import { info, warn, error } from '../utils/logger.js';
 import { createMicroAgent, safeExecuteMCPTool } from './baseAgent.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 export const sprintRetroTool = createDeterministicToolHarness({
   name: 'generate_sprint_retro',
@@ -109,8 +110,8 @@ export const sprintRetroTool = createDeterministicToolHarness({
       return null;
     },
     default: async (inputArgs) => {
-      const members = await databaseService.getTeamMembers().catch(() => []);
-      const analytics = await databaseService.getSprintAnalytics().catch(() => []);
+      const members = await databaseService.getTeamMembers().catch(swallow('agent.retroAgent.default', []));
+      const analytics = await databaseService.getSprintAnalytics().catch(swallow('agent.retroAgent.default', []));
       const pastRetros = analytics.slice(0, inputArgs.include_past_sprints_count || 3);
 
       return {
@@ -126,8 +127,8 @@ export const sprintRetroTool = createDeterministicToolHarness({
   // Tier 2: PostgreSQL Database Snapshot Fallback
   dbCacheFallback: async (source, inputArgs = {}) => {
     try {
-      const members = await databaseService.getTeamMembers().catch(() => []);
-      const analytics = await databaseService.getSprintAnalytics().catch(() => []);
+      const members = await databaseService.getTeamMembers().catch(swallow('agent.retroAgent.dbCacheFallback', []));
+      const analytics = await databaseService.getSprintAnalytics().catch(swallow('agent.retroAgent.dbCacheFallback', []));
       const pastRetros = analytics.slice(0, inputArgs?.include_past_sprints_count || 3);
 
       return {

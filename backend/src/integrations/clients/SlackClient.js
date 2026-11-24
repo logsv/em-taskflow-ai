@@ -6,6 +6,7 @@
 
 import { BaseIntegrationClient } from './BaseIntegrationClient.js';
 import settingsService from '../../services/settingsService.js';
+import { swallow, recordHandledError } from '../../core/safe.js';
 
 export class SlackClient extends BaseIntegrationClient {
   constructor() {
@@ -67,7 +68,7 @@ export class SlackClient extends BaseIntegrationClient {
           if (convRes.data?.ok && Array.isArray(convRes.data.channels)) {
             channelsCount = convRes.data.channels.length;
           }
-        } catch (_convErr) {}
+        } catch (_convErr) { recordHandledError('integrations.clients.SlackClient.testConnection', _convErr); }
 
         return this.formatTestResult(true, `Connected to Slack Workspace '${authRes.data.team}' as @${authRes.data.user} (${channelsCount} channels accessible)`, {
           team: authRes.data.team,

@@ -1,6 +1,8 @@
 import express from 'express';
 import { attachSessionContext } from '../../middleware/sessionContext.js';
 import databaseService from '../../db/postgres.js';
+import { sendError } from '../../middleware/errorHandler.js';
+import { swallow, recordHandledError } from '../../core/safe.js';
 
 const router = express.Router();
 
@@ -8,7 +10,7 @@ const router = express.Router();
 router.get('/session', attachSessionContext, async (req, res) => {
   try {
     const threadId = req.sessionContext?.threadId;
-    const messages = threadId ? await databaseService.getThreadMessages(threadId, 100).catch(() => []) : [];
+    const messages = threadId ? await databaseService.getThreadMessages(threadId, 100).catch(swallow('routes.v1.sessions.get /session', [])) : [];
     res.json({
       sessionId: req.sessionContext.sessionId,
       threadId: req.sessionContext.threadId,
@@ -17,11 +19,7 @@ router.get('/session', attachSessionContext, async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to resolve session',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to resolve session');
   }
 });
 
@@ -38,11 +36,7 @@ router.get('/sessions', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to list sessions',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to list sessions');
   }
 });
 
@@ -56,7 +50,7 @@ router.post('/sessions', async (req, res) => {
     const newSession = await databaseService.createSession(clientInfo);
     const title = req.body?.title || 'New Chat';
     const newThread = await databaseService.createThreadForSession(newSession.id, title);
-    await databaseService.setActiveThread(newSession.id, newThread.id).catch(() => {});
+    await databaseService.setActiveThread(newSession.id, newThread.id).catch(swallow('routes.v1.sessions.post /sessions'));
 
     res.status(201).json({
       success: true,
@@ -66,11 +60,7 @@ router.post('/sessions', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to create session',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to create session');
   }
 });
 
@@ -89,11 +79,7 @@ router.get('/sessions/:sessionId/threads', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to list threads for session',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to list threads for session');
   }
 });
 
@@ -110,7 +96,7 @@ router.post('/sessions/:sessionId/switch', async (req, res) => {
     }
     await databaseService.ensureThread(threadId, 'Chat', sessionId);
     await databaseService.setActiveThread(sessionId, threadId);
-    const messages = await databaseService.getThreadMessages(threadId, 100).catch(() => []);
+    const messages = await databaseService.getThreadMessages(threadId, 100).catch(swallow('routes.v1.sessions.post /sessions/:sessionId/switch', []));
     res.json({
       success: true,
       sessionId,
@@ -119,11 +105,7 @@ router.post('/sessions/:sessionId/switch', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to switch active thread',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to switch active thread');
   }
 });
 
@@ -134,7 +116,7 @@ router.delete('/sessions/:sessionId', async (req, res) => {
     await databaseService.deleteSession(sessionId);
     res.json({ success: true, deleted: true, sessionId, requestId: req.requestId });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to delete session', details: error.message, requestId: req.requestId });
+    return sendError(req, res, error, 'Failed to delete session');
   }
 });
 
@@ -145,7 +127,7 @@ router.patch('/sessions/:sessionId/archive', async (req, res) => {
     await databaseService.archiveSession(sessionId);
     res.json({ success: true, archived: true, sessionId, requestId: req.requestId });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to archive session', details: error.message, requestId: req.requestId });
+    return sendError(req, res, error, 'Failed to archive session');
   }
 });
 
@@ -156,7 +138,7 @@ router.post('/threads', attachSessionContext, async (req, res) => {
     const sessionId = req.sessionContext?.sessionId || null;
     const newThread = await databaseService.createThreadForSession(sessionId, title);
     if (sessionId && newThread?.id) {
-      await databaseService.setActiveThread(sessionId, newThread.id).catch(() => {});
+      await databaseService.setActiveThread(sessionId, newThread.id).catch(swallow('routes.v1.sessions.post /threads'));
     }
     res.status(201).json({
       success: true,
@@ -166,11 +148,7 @@ router.post('/threads', attachSessionContext, async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to create thread',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to create thread');
   }
 });
 
@@ -179,7 +157,7 @@ router.get('/threads/:threadId/messages', attachSessionContext, async (req, res)
   try {
     const threadId = req.params.threadId;
     const limit = Number(req.query.limit) || 100;
-    const messages = await databaseService.getThreadMessages(threadId, limit).catch(() => []);
+    const messages = await databaseService.getThreadMessages(threadId, limit).catch(swallow('routes.v1.sessions.get /threads/:threadId/messages', []));
     res.json({
       threadId,
       messages: Array.isArray(messages) ? messages : [],
@@ -187,11 +165,7 @@ router.get('/threads/:threadId/messages', attachSessionContext, async (req, res)
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to fetch thread messages',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to fetch thread messages');
   }
 });
 

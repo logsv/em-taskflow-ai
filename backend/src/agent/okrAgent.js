@@ -5,6 +5,7 @@ import databaseService from '../db/postgres.js';
 import settingsService from '../services/settingsService.js';
 import { info, warn, error } from '../utils/logger.js';
 import { createMicroAgent, safeExecuteMCPTool } from './baseAgent.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 export const okrProgressTool = createDeterministicToolHarness({
   name: 'evaluate_okr_progress',
@@ -61,7 +62,7 @@ export const okrProgressTool = createDeterministicToolHarness({
     },
     default: async (inputArgs) => {
       const quarter = inputArgs.quarter || 'Q4';
-      const dbRecords = await databaseService.getOkrRecords(quarter).catch(() => []);
+      const dbRecords = await databaseService.getOkrRecords(quarter).catch(swallow('agent.okrAgent.default', []));
       
       if (dbRecords && dbRecords.length > 0) {
         return {
@@ -91,7 +92,7 @@ export const okrProgressTool = createDeterministicToolHarness({
   // Tier 2: PostgreSQL Database Snapshot Fallback
   dbCacheFallback: async (source, inputArgs) => {
     const quarter = inputArgs.quarter || 'Q4';
-    const records = await databaseService.getOkrRecords(quarter).catch(() => []);
+    const records = await databaseService.getOkrRecords(quarter).catch(swallow('agent.okrAgent.dbCacheFallback', []));
     
     return {
       quarter,

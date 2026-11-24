@@ -1,6 +1,15 @@
 import logging
 import json
 from datetime import datetime, timezone
+import sys
+
+
+def _stderr_handled(context, exc):
+    """Report a log-shipping failure without going through logging (avoids recursion)."""
+    try:
+        sys.stderr.write(f"[log-handler] {context} failed: {exc}\n")
+    except Exception:  # noqa: S110 - nothing left to report to
+        pass
 
 
 class JSONFormatter(logging.Formatter):
@@ -58,20 +67,20 @@ def setup_json_logging(level: int = logging.INFO):
                 def emit(self, record):
                     try:
                         super().emit(record)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        _stderr_handled("axiom.emit", exc)
 
                 def flush(self):
                     try:
                         super().flush()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        _stderr_handled("axiom.flush", exc)
 
                 def close(self):
                     try:
                         super().close()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        _stderr_handled("axiom.close", exc)
 
             axiom_client = Client(token=axiom_token)
             axiom_handler = SafeAxiomHandler(axiom_client, axiom_dataset)

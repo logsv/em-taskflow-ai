@@ -14,6 +14,7 @@ import preRouterRewriter from '../../services/preRouterRewriter.js';
 import episodicMemoryService from '../../services/episodicMemory.js';
 import sessionFactMatrixService from '../../services/sessionFactMatrix.js';
 import { warn } from '../../utils/logger.js';
+import { swallow, recordHandledError } from '../../core/safe.js';
 
 /**
  * Request body for the Python service's POST /api/v1/eval/shadow-evaluate.
@@ -78,10 +79,10 @@ export class ChatApplicationService {
       sessionContext?.sessionId || null,
     );
     const existingMessages = ensuredThread?.id
-      ? await Promise.resolve(this.messageRepo.getThreadMessages(ensuredThread.id, 50)).catch(() => [])
+      ? await Promise.resolve(this.messageRepo.getThreadMessages(ensuredThread.id, 50)).catch(swallow('application.chat.ChatApplicationService.processChat', []))
       : [];
     const contextMatrix = ensuredThread?.id
-      ? await sessionFactMatrixService.getThreadFactMatrix(ensuredThread.id).catch(() => ({}))
+      ? await sessionFactMatrixService.getThreadFactMatrix(ensuredThread.id).catch(swallow('application.chat.ChatApplicationService.processChat', {}))
       : {};
     const historyContext = optimizeChatHistory(existingMessages, 8, 2500, contextMatrix);
 
@@ -90,7 +91,7 @@ export class ChatApplicationService {
     const queryToProcess = wasRewritten ? rewrittenQuery : query;
 
     // Tier 4: Episodic Memory Retrieval for past references outside active window (0 extra DB queries)
-    const episodicPastContext = await episodicMemoryService.retrieveRelevantPastContext(queryToProcess, ensuredThread?.id, 2, existingMessages).catch(() => []);
+    const episodicPastContext = await episodicMemoryService.retrieveRelevantPastContext(queryToProcess, ensuredThread?.id, 2, existingMessages).catch(swallow('application.chat.ChatApplicationService.processChat', []));
 
     const result = await this.agentService.processQuery(queryToProcess, {
       threadId: ensuredThread.id,
@@ -163,7 +164,7 @@ export class ChatApplicationService {
     const shortTitle = generateShortChatTitle(query, routedDomains);
     if (ensuredThread?.id && (!ensuredThread.title || ensuredThread.title === 'New Chat' || ensuredThread.title === 'Chat')) {
       if (typeof this.threadRepo?.updateThreadTitle === 'function') {
-        await Promise.resolve(this.threadRepo.updateThreadTitle(ensuredThread.id, shortTitle)).catch(() => {});
+        await Promise.resolve(this.threadRepo.updateThreadTitle(ensuredThread.id, shortTitle)).catch(swallow('application.chat.ChatApplicationService.processChat'));
       }
     }
 
@@ -185,8 +186,8 @@ export class ChatApplicationService {
             const updated = sessionFactMatrixService.mergeFactMatrix(contextMatrix, delta);
             await sessionFactMatrixService.saveThreadFactMatrix(ensuredThread.id, updated);
           }
-        } catch (_syncErr) {}
-      }).catch(() => {});
+        } catch (_syncErr) { recordHandledError('application.chat.ChatApplicationService.processChat', _syncErr); }
+      }).catch(swallow('application.chat.ChatApplicationService.processChat'));
     }
 
     return {

@@ -1,4 +1,5 @@
 import sessionRepository from '../../persistence/session/SessionRepository.js';
+import { swallow, recordHandledError } from '../../core/safe.js';
 
 const SESSION_COOKIE_NAME = 'sid';
 const SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
@@ -39,7 +40,7 @@ export class SessionApplicationService {
       try {
         thread = await this.sessionRepo.ensureThread(queryThreadId, 'Chat', session.id);
         if (session.id && thread?.id && typeof this.sessionRepo.setActiveThread === 'function') {
-          await this.sessionRepo.setActiveThread(session.id, thread.id).catch(() => {});
+          await this.sessionRepo.setActiveThread(session.id, thread.id).catch(swallow('application.session.SessionApplicationService.resolveSession'));
         }
       } catch (e) {
         // Fallback to active thread

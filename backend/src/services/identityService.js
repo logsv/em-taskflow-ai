@@ -2,6 +2,7 @@ import axios from 'axios';
 import databaseService from '../db/postgres.js';
 import settingsService from './settingsService.js';
 import { info, warn, error } from '../utils/logger.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 class IdentityService {
   constructor() {
@@ -170,7 +171,7 @@ class IdentityService {
     };
 
     // 0. Purge legacy mock/dummy fixtures before reconciling real identities
-    await databaseService.purgeMockTeamMembers().catch(() => {});
+    await databaseService.purgeMockTeamMembers().catch(swallow('services.identityService.autoDiscoverAndSync'));
 
     // 0. Primary Administrator & Lead Profile Auto-Resolution
     const isDummyEmail = (email) => {
@@ -261,7 +262,7 @@ class IdentityService {
         const userRes = await axios.get('https://api.github.com/user', {
           headers: { Authorization: authHeader, Accept: 'application/vnd.github.v3+json', 'User-Agent': 'EM-TaskFlow-AI' },
           timeout: 4500,
-        }).catch(() => null);
+        }).catch(swallow('services.identityService.autoDiscoverAndSync', null));
 
         if (userRes?.data?.login) {
           addOrMerge({
@@ -278,7 +279,7 @@ class IdentityService {
           const contribRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}/contributors?per_page=30`, {
             headers: { Authorization: authHeader, Accept: 'application/vnd.github.v3+json', 'User-Agent': 'EM-TaskFlow-AI' },
             timeout: 4500,
-          }).catch(() => ({ data: [] }));
+          }).catch(swallow('services.identity', { data: [] }));
 
           for (const c of (contribRes.data || [])) {
             if (c.login && !c.login.includes('[bot]')) {
@@ -295,7 +296,7 @@ class IdentityService {
           const commitRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=30`, {
             headers: { Authorization: authHeader, Accept: 'application/vnd.github.v3+json', 'User-Agent': 'EM-TaskFlow-AI' },
             timeout: 4500,
-          }).catch(() => ({ data: [] }));
+          }).catch(swallow('services.identity', { data: [] }));
 
           for (const item of (commitRes.data || [])) {
             const author = item.commit?.author;
@@ -330,7 +331,7 @@ class IdentityService {
         const headers = { Authorization: authHeader, Accept: 'application/json' };
 
         // Try /rest/api/3/myself
-        const myselfRes = await axios.get(`${jiraUrl}/rest/api/3/myself`, { headers, timeout: 4500 }).catch(() => null);
+        const myselfRes = await axios.get(`${jiraUrl}/rest/api/3/myself`, { headers, timeout: 4500 }).catch(swallow('services.identityService.autoDiscoverAndSync', null));
         if (myselfRes?.data?.accountId) {
           const u = myselfRes.data;
           addOrMerge({
@@ -352,7 +353,7 @@ class IdentityService {
             return axios.get(`${jiraUrl}/rest/api/3/users/search?query=%20&maxResults=50`, {
               headers,
               timeout: 4500,
-            }).catch(() => ({ data: [] }));
+            }).catch(swallow('services.identity', { data: [] }));
           }
           return { data: [] };
         });
@@ -393,7 +394,7 @@ class IdentityService {
         const res = await axios.get(
           `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(gcalId)}/events`,
           { params: reqParams, headers, timeout: 4500 }
-        ).catch(() => ({ data: { items: [] } }));
+        ).catch(swallow('services.identity', { data: { items: [] } }));
 
         for (const evt of (res.data?.items || [])) {
           if (Array.isArray(evt.attendees)) {
@@ -422,7 +423,7 @@ class IdentityService {
         const slackRes = await axios.get('https://slack.com/api/users.list', {
           headers: { Authorization: `Bearer ${slackBotToken}` },
           timeout: 4500,
-        }).catch(() => ({ data: { members: [] } }));
+        }).catch(swallow('services.identity', { data: { members: [] } }));
 
         for (const su of (slackRes.data?.members || [])) {
           if (!su.is_bot && !su.deleted && su.profile?.email) {
@@ -446,7 +447,7 @@ class IdentityService {
         const notionRes = await axios.get('https://api.notion.com/v1/users', {
           headers: { Authorization: `Bearer ${apiKey}`, 'Notion-Version': '2022-06-28' },
           timeout: 4500,
-        }).catch(() => ({ data: { results: [] } }));
+        }).catch(swallow('services.identity', { data: { results: [] } }));
 
         for (const nu of (notionRes.data?.results || [])) {
           if (nu.type === 'person' && nu.person?.email) {

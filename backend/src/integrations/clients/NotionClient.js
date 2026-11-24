@@ -6,6 +6,7 @@
 
 import { BaseIntegrationClient } from './BaseIntegrationClient.js';
 import settingsService from '../../services/settingsService.js';
+import { swallow } from '../../core/safe.js';
 
 export class NotionClient extends BaseIntegrationClient {
   constructor() {
@@ -118,7 +119,7 @@ export class NotionClient extends BaseIntegrationClient {
     return this.execute('getPageContent', async () => {
       const [pageRes, blocksRes] = await Promise.all([
         http.get(`https://api.notion.com/v1/pages/${cleanPageId}`),
-        http.get(`https://api.notion.com/v1/blocks/${cleanPageId}/children?page_size=50`).catch(() => ({ data: { results: [] } })),
+        http.get(`https://api.notion.com/v1/blocks/${cleanPageId}/children?page_size=50`).catch(swallow('integrations.notion', { data: { results: [] } })),
       ]);
 
       const titleProp = Object.values(pageRes.data?.properties || {}).find((p) => p.type === 'title');

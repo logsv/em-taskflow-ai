@@ -6,6 +6,7 @@ import settingsService from '../services/settingsService.js';
 import identityService from '../services/identityService.js';
 import { createMicroAgent, safeExecuteMCPTool, resolveMemberTarget } from './baseAgent.js';
 import { warn } from '../utils/logger.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 // Standard 12 Competency Dimensions
 export const COMPETENCY_DIMENSIONS = [
@@ -119,7 +120,7 @@ export const peopleGrowthTool = createDeterministicToolHarness({
         const res = await Promise.race([
           executeMCPTool('get_calendar_events', { user: gcalUser || 'primary', time_window: '7d' }),
           new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('MCP GCal timed out')), 2500); }),
-        ]).catch(() => null).finally(() => clearTimeout(timer));
+        ]).catch(swallow('agent.peopleAgent.googleCalendar', null)).finally(() => clearTimeout(timer));
 
         if (Array.isArray(res) && res.length > 0) {
           return {
@@ -200,7 +201,7 @@ export const peopleGrowthTool = createDeterministicToolHarness({
     if (source === 'jira') {
       return { leadership_epics_count: 0, leadership_epics: [], is_cached: true, data_source: 'none', data_availability: 'no_jira_data' };
     }
-    const member = await resolveRequestedMember(inputArgs?.engineer_id).catch(() => null);
+    const member = await resolveRequestedMember(inputArgs?.engineer_id).catch(swallow('agent.peopleAgent.dbCacheFallback', null));
     if (!member) {
       return { is_cached: true, data_source: 'none', data_availability: inputArgs?.engineer_id ? 'engineer_not_in_roster' : 'engineer_not_specified' };
     }

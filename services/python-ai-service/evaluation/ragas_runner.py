@@ -12,6 +12,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 from app.model_config import DEFAULT_LLM_MODEL
+from app.telemetry.safe import log_handled
 
 load_dotenv()
 
@@ -159,8 +160,8 @@ def run_ragas_evaluation(
                 val = results[m] if hasattr(results, "__getitem__") else getattr(results, m, None)
                 if val is not None:
                     scores_dict[m] = round(float(val), 4)
-            except Exception:
-                pass
+            except Exception as exc:
+                log_handled("evaluation.ragas_runner.run_ragas_evaluation", exc)
 
         if not scores_dict:
             try:

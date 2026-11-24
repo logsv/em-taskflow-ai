@@ -1,5 +1,6 @@
 import express from 'express';
 import healthApplicationService from '../../application/health/HealthApplicationService.js';
+import { sendError } from '../../middleware/errorHandler.js';
 
 const router = express.Router();
 
@@ -11,11 +12,7 @@ router.get('/health', async (req, res) => {
     });
     res.json(responsePayload);
   } catch (error) {
-    res.status(503).json({
-      status: 'unhealthy',
-      error: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'health.js');
   }
 });
 

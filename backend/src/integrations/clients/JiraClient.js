@@ -6,6 +6,7 @@
 
 import { BaseIntegrationClient } from './BaseIntegrationClient.js';
 import settingsService from '../../services/settingsService.js';
+import { swallow, recordHandledError } from '../../core/safe.js';
 
 export class JiraClient extends BaseIntegrationClient {
   constructor() {
@@ -90,7 +91,7 @@ export class JiraClient extends BaseIntegrationClient {
         try {
           const infoRes = await http.get(`${url}/rest/api/3/serverInfo`);
           serverTitle = infoRes.data?.serverTitle || infoRes.data?.version || serverTitle;
-        } catch (_iErr) {}
+        } catch (_iErr) { recordHandledError('integrations.clients.JiraClient.testConnection', _iErr); }
 
         return this.formatTestResult(true, `Successfully connected to Jira as ${displayName} (${serverTitle})`, {
           user: displayName,

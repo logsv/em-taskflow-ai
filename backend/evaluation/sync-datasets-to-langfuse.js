@@ -58,7 +58,7 @@ export async function syncDatasetsToLangfuse() {
           if (evalId) existingItemMap.set(evalId, item);
         }
       }
-    } catch (_) {}
+    } catch (err) { console.warn(`Langfuse dataset call failed: ${err?.message || err}`); }
 
     for (const item of goldenItems) {
       const key = item.eval_id || item.user_query;
@@ -120,7 +120,7 @@ export async function syncDatasetsToLangfuse() {
           if (caseId) existingMatrixMap.set(caseId, item);
         }
       }
-    } catch (_) {}
+    } catch (err) { console.warn(`Langfuse dataset call failed: ${err?.message || err}`); }
 
     for (const item of matrixCases) {
       const key = item.id || item.prompt;

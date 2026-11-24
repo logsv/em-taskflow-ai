@@ -1,5 +1,6 @@
 import agentService from '../../services/agentService.js';
 import { getRuntimeConfig } from '../../config.js';
+import { swallow } from '../../core/safe.js';
 
 export class HealthApplicationService {
   constructor({
@@ -12,7 +13,7 @@ export class HealthApplicationService {
 
   async getHealth({ requestId = null }) {
     const runtimeConfig = this.getRuntimeConfig();
-    const agentStatus = await this.agentService.getStatus().catch(() => ({
+    const agentStatus = await this.agentService.getStatus().catch(swallow('health.agentStatus', {
       ready: false,
       mcpReady: false,
       ragEnabled: false,

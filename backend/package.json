@@ -22,7 +22,8 @@
     "eval:enterprise": "npm run eval:sync-datasets && npm run eval:sync-prompts && npm run evaluate && npm run eval:deepeval && npm run eval:ragas",
     "db:clean": "node scripts/clean-database.js",
     "start:google": "pnpm -C ../mcp-servers/google-workspace start",
-    "start:mcp": "pnpm start:google"
+    "start:mcp": "pnpm start:google",
+    "lint": "eslint src test evaluation"
   },
   "keywords": [],
   "author": "",
@@ -105,6 +106,7 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
+    "@eslint/js": "^9.17.0",
     "@istanbuljs/esm-loader-hook": "0.3.0",
     "@istanbuljs/nyc-config-typescript": "1.0.2",
     "@types/chai": "5.2.2",
@@ -120,6 +122,8 @@
     "@types/sinon": "17.0.4",
     "@types/supertest": "6.0.3",
     "chai": "^6.2.2",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
     "jasmine": "5.9.0",
     "jasmine-ts-console-reporter": "3.1.1",
     "nodemon": "3.1.10",
