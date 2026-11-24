@@ -13,6 +13,7 @@ import { initFactMatrixRedis } from './services/sessionFactMatrix.js';
 import db from './db/index.js';
 import { attachRequestContext, createRateLimiter } from './middleware/hardening.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import { background } from './core/safe.js';
 import { info, warn, error } from './utils/logger.js';
 import teamSyncWorker from './workers/teamSyncWorker.js';
 import sessionCleanupWorker from './services/SessionCleanupWorker.js';
@@ -137,6 +138,11 @@ async function startServer() {
     try {
       await initializeLLM();
       info('LLM clients initialized at startup');
+      // Pre-load the local model in the background so the first chat is not slow.
+      background('llm.warmUp', async () => {
+        const { warmUpModel } = await import('./llm/gateway.js');
+        await warmUpModel();
+      });
     } catch (e) {
       warn('LLM client initialization failed', { err: e.message });
     }

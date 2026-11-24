@@ -14,6 +14,7 @@ export const ERROR_CODES = {
   INTEGRATION_UNAVAILABLE: { status: 503, message: 'An integration is unavailable right now.' },
   LLM_UNAVAILABLE: { status: 503, message: 'The language model is unavailable. Check that Ollama is running.' },
   LLM_TIMEOUT: { status: 504, message: 'The language model did not respond in time.' },
+  LLM_INVALID_OUTPUT: { status: 502, message: 'The language model returned output that failed validation.' },
   DEPENDENCY_UNAVAILABLE: { status: 503, message: 'A required service is unavailable.' },
   RETRIEVAL_EMPTY: { status: 404, message: 'No matching documents were found.' },
   INTERNAL: { status: 500, message: 'Something went wrong. The error has been logged.' },

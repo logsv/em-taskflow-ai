@@ -1,42 +1,9 @@
-import { getChatModel } from "../llm/index.js";
-import { JsonOutputParser } from "@langchain/core/output_parsers";
-import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import { z as zv4 } from "zod/v4";
+import { llmCall } from "../llm/gateway.js";
+import { incCounter } from "../core/metrics.js";
 import { info, warn } from "../utils/logger.js";
 import { hasKeyword } from "../utils/keywords.js";
 
-// Define the schema for the router's output
-const routerOutputSchema = {
-  type: "object",
-  properties: {
-    domains: {
-      type: "array",
-      items: {
-        type: "string",
-        enum: ["jira", "github", "notion", "calendar", "slack", "rag", "dora", "sbi", "people", "delivery", "retro", "sprint", "sop", "roadmap", "okr", "critic"],
-      },
-      description: "List of required source domains for the query. Can be empty if no specific domain is needed.",
-    },
-    must_use_tools: {
-      type: "boolean",
-      description: "True if a tool call is mandatory to answer the query, false otherwise.",
-    },
-    allow_rag: {
-      type: "boolean",
-      description: "True if the RAG agent should be allowed to retrieve information, false otherwise.",
-    },
-    confidence: {
-      type: "number",
-      minimum: 0,
-      maximum: 1,
-      description: "Confidence score (0-1) in the determined routing plan.",
-    },
-    reasoning_summary: {
-      type: "string",
-      description: "A short explanation of why these domains were selected.",
-    },
-  },
-  required: ["domains", "must_use_tools", "allow_rag", "confidence", "reasoning_summary"],
-};
 
 const systemTemplate = `You are an expert routing assistant for an Engineering Management (EM) AI platform. Your task is to analyze user queries and determine the most relevant domain and routing plan.
 
@@ -184,9 +151,15 @@ export function classifyFastPath(query, options = {}) {
     "github", "issue", "repo", "pr", "pull request", "jira", "sprint", "blocker", "notion", "page",
     "calendar", "meeting", "schedule", "slack", "pdf", "doc", "document", "uploaded", "file", "rubric", "rubrics",
     "what is in", "dora", "metric", "sbi", "feedback", "1-on-1", "one on one", "burnout", "retro",
-    "retrospective", "wip", "sop", "adr", "roadmap", "okr", "kpi", "lead time", "mttr", "commit", "leaderboard", "ticket"
+    "retrospective", "wip", "sop", "adr", "roadmap", "okr", "kpi", "lead time", "mttr", "commit", "leaderboard", "ticket",
+    // Team-data questions must never be answered from the model's general knowledge.
+    "change failure", "deployment frequency", "deployment", "deploy", "release", "cycle time", "velocity", "capacity",
+    "throughput", "review", "incident", "outage", "engineer", "team", "backlog", "story point", "epic", "milestone",
+    "promotion", "career", "stalled", "overdue", "audit", "action item", "standup"
   ];
-  const containsWorkspaceKeyword = workspaceKeywords.some((kw) => q.includes(kw));
+  // "our ..." / "my team" means the user's own data, not general knowledge.
+  const asksAboutOwnData = /\b(our|my team|my engineers?|we)\b/.test(q);
+  const containsWorkspaceKeyword = asksAboutOwnData || workspaceKeywords.some((kw) => (kw.includes(" ") ? q.includes(kw) : hasKeyword(q, kw)));
 
   if (containsWorkspaceKeyword) {
     return null; // Must go to LLM Router / Domain Execution
@@ -214,29 +187,6 @@ export function classifyFastPath(query, options = {}) {
  * Useful when local Ollama SLMs hit token limits mid-output.
  * Returns a repaired string or null if repair is not possible.
  */
-function repairTruncatedJson(str) {
-  if (!str || typeof str !== 'string') return null;
-  let s = str.trimEnd();
-  // Remove trailing incomplete string value or key
-  s = s.replace(/,\s*"[^"]*$/, '');  // trailing incomplete key
-  s = s.replace(/"[^"]*$/, '"null"'); // trailing incomplete value → null string
-  // Count open braces/brackets and close them
-  const opens = [];
-  let inStr = false;
-  let escaped = false;
-  for (const ch of s) {
-    if (escaped) { escaped = false; continue; }
-    if (ch === '\\') { escaped = true; continue; }
-    if (ch === '"') { inStr = !inStr; continue; }
-    if (!inStr) {
-      if (ch === '{') opens.push('}');
-      else if (ch === '[') opens.push(']');
-      else if (ch === '}' || ch === ']') opens.pop();
-    }
-  }
-  if (opens.length === 0) return null;
-  return s + opens.reverse().join('');
-}
 
 /**
  * Deterministic Intent & Keyword Routing Fallback:
@@ -380,96 +330,70 @@ export function getDeterministicFallbackPlan(query, reason = "router_llm_json_fa
   };
 }
 
-// Initialize the LLM with the defined prompt and a JSON output parser
-const getRouterChain = () => {
-  const llm = getChatModel();
-  const parser = new JsonOutputParser();
+export const ROUTER_DOMAINS = ["jira", "github", "notion", "calendar", "slack", "rag", "dora", "sbi", "people", "delivery", "retro", "sprint", "sop", "roadmap", "okr", "critic"];
 
+/** Structured routing plan the planner model must return (constrained decoding + validation). */
+export const RouterPlanSchema = zv4.object({
+  domains: zv4.array(zv4.enum(ROUTER_DOMAINS)).max(4),
+  must_use_tools: zv4.boolean(),
+  allow_rag: zv4.boolean(),
+  confidence: zv4.number().min(0).max(1),
+  reasoning_summary: zv4.string().max(300),
+});
+
+function normalisePlan(parsed) {
+  const domains = Array.isArray(parsed.domains) ? parsed.domains : [];
+  const hasNonRagDomain = domains.some((d) => d !== "rag");
   return {
-    async invoke(input, config = {}) {
-      const fastResult = classifyFastPath(input.query, input.options || input);
-      if (fastResult) {
-        return fastResult;
-      }
-
-      let content = "";
-      try {
-        const options = input.options || input;
-        const historyMessages = Array.isArray(options.messages) && options.messages.length > 0
-          ? options.messages
-          : (Array.isArray(options.history) ? options.history : []);
-        const priorContext = historyMessages.length > 0
-          ? `[Prior Conversation Context: ${historyMessages.slice(-2).map((m) => `${m.role || 'speaker'}: ${String(m.content || '').slice(0, 120)}`).join(' | ')}]\n`
-          : '';
-
-        const messages = [
-          new SystemMessage(systemTemplate),
-          new HumanMessage(`${priorContext}User query: ${input.query}`),
-        ];
-        const result = await llm.invoke(messages);
-
-        content = typeof result.content === 'string' ? result.content : String(result.content || '');
-        content = content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          content = jsonMatch[0];
-        } else {
-          content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-        }
-        
-        let parsed = JSON.parse(content);
-        if (parsed && parsed.properties && !parsed.domains) {
-          parsed = parsed.properties;
-        }
-        if (parsed && (Array.isArray(parsed.domains) || typeof parsed.must_use_tools === 'boolean')) {
-          const domains = Array.isArray(parsed.domains) ? parsed.domains : [];
-          const hasNonRagDomain = domains.some(d => d !== 'rag');
-          return {
-            ...parsed,
-            domains,
-            must_use_tools: hasNonRagDomain ? true : (domains.length === 1 && domains[0] === 'rag' ? false : Boolean(parsed.must_use_tools)),
-            allow_rag: Boolean(parsed.allow_rag || domains.includes('rag') || domains.includes('sop')),
-            confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.95,
-          };
-        }
-      } catch (e) {
-        // Attempt partial JSON repair: close a truncated JSON object and re-parse
-        const repaired = repairTruncatedJson(content);
-        if (repaired) {
-          try {
-            let parsed = JSON.parse(repaired);
-            if (parsed && parsed.properties && !parsed.domains) {
-              parsed = parsed.properties;
-            }
-            if (parsed && (Array.isArray(parsed.domains) || typeof parsed.must_use_tools === 'boolean')) {
-              const domains = Array.isArray(parsed.domains) ? parsed.domains : [];
-              const hasNonRagDomain = domains.some(d => d !== 'rag');
-              return {
-                ...parsed,
-                domains,
-                must_use_tools: hasNonRagDomain ? true : (domains.length === 1 && domains[0] === 'rag' ? false : Boolean(parsed.must_use_tools)),
-                allow_rag: Boolean(parsed.allow_rag || domains.includes('rag') || domains.includes('sop')),
-                confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.95,
-              };
-            }
-          } catch (_) {
-            // repair also failed, continue to deterministic intent fallback
-          }
-        }
-        
-        // Gracefully fall back to deterministic intent analyzer rather than crashing with unhandled exception
-        warn("LLM router returned non-JSON / refusal text, activating resilient fallback parser", { 
-          query: input.query, 
-          err: e.message, 
-          contentSnippet: content.slice(0, 100) 
-        });
-        return getDeterministicFallbackPlan(input.query, "llm_json_parse_fallback", input.options || input);
-      }
-
-      return getDeterministicFallbackPlan(input.query, "llm_empty_response_fallback", input.options || input);
-    }
+    ...parsed,
+    domains,
+    must_use_tools: hasNonRagDomain ? true : (domains.length === 1 && domains[0] === "rag" ? false : Boolean(parsed.must_use_tools)),
+    allow_rag: Boolean(parsed.allow_rag || domains.includes("rag") || domains.includes("sop")),
   };
-};
+}
+
+/**
+ * Router: fast-path classifier first, then one schema-constrained planner call through the LLM
+ * gateway. If the model is unavailable or its output stays invalid after one repair turn, the
+ * deterministic rule plan is used and labelled as such (plan_source: "rule_fallback").
+ */
+const getRouterChain = () => ({
+  async invoke(input, config = {}) {
+    const fastResult = classifyFastPath(input.query, input.options || input);
+    if (fastResult) {
+      incCounter("router_plan_total", { source: "fast_path" }, 1, "Routing plans by source");
+      return { ...fastResult, plan_source: "fast_path" };
+    }
+
+    const options = input.options || input;
+    const historyMessages = Array.isArray(options.messages) && options.messages.length > 0
+      ? options.messages
+      : (Array.isArray(options.history) ? options.history : []);
+    const priorContext = historyMessages.length > 0
+      ? `[Prior Conversation Context: ${historyMessages.slice(-2).map((m) => `${m.role || "speaker"}: ${String(m.content || "").slice(0, 120)}`).join(" | ")}]\n`
+      : "";
+
+    try {
+      const { value, attempts } = await llmCall({
+        task: "plan",
+        schema: RouterPlanSchema,
+        messages: [
+          { role: "system", content: systemTemplate },
+          { role: "user", content: `${priorContext}User query: ${input.query}` },
+        ],
+        transport: options.llmTransport || config.llmTransport,
+      });
+      incCounter("router_plan_total", { source: "llm" }, 1, "Routing plans by source");
+      return { ...normalisePlan(value), plan_source: "llm", plan_attempts: attempts };
+    } catch (err) {
+      const reason = err?.code || "router_error";
+      incCounter("router_plan_total", { source: "rule_fallback", reason }, 1, "Routing plans by source");
+      warn({ module: "llmRouter", action: "ruleFallback", reason, err: err?.message, querySnippet: String(input.query || "").slice(0, 60) }, "LLM planner unavailable or invalid; using rule-based plan");
+      const plan = getDeterministicFallbackPlan(input.query, `llm_${String(reason).toLowerCase()}`, options);
+      return { ...plan, plan_source: "rule_fallback", plan_fallback_reason: reason };
+    }
+  },
+});
 
 export { getRouterChain };
 

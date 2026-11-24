@@ -620,6 +620,9 @@ export class LangGraphAgentService {
       allow_rag: isContextualSynthesis ? false : !!rawPlan?.allow_rag,
       confidence: normalizedConfidence,
       reasoning_summary: String(rawPlan?.reasoning_summary || "LLM router plan.").slice(0, 300),
+      // Where the plan came from: llm | fast_path | rule_fallback (and why), for observability.
+      plan_source: rawPlan?.plan_source || null,
+      ...(rawPlan?.plan_fallback_reason ? { plan_fallback_reason: rawPlan.plan_fallback_reason } : {}),
     };
   }
 

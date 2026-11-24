@@ -57,6 +57,14 @@ const envSchema = z.object({
   RAG_ADVANCED_COMPRESSION_ENABLED: boolSchema(true),
   LLM_DEFAULT_PROVIDER: z.string().default('ollama'),
   LLM_DEFAULT_MODEL: z.string().default(DEFAULT_CHAT_MODEL),
+  // LLM gateway: per-task model + thinking overrides (default: LLM_DEFAULT_MODEL, thinking off)
+  LLM_PLAN_MODEL: z.string().optional(),
+  LLM_COMPOSE_MODEL: z.string().optional(),
+  LLM_VERIFY_MODEL: z.string().optional(),
+  LLM_PLAN_THINK: boolSchema(false),
+  LLM_COMPOSE_THINK: boolSchema(false),
+  LLM_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(1),
+  LLM_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).default(120000),
   LLM_LOAD_BALANCING: z.enum(['round_robin', 'cost_priority_round_robin']).default('round_robin'),
   LLM_OPENAI_ENABLED: boolSchema(false),
   OPENAI_API_KEY: z.string().optional(),
@@ -193,6 +201,11 @@ const configSchema = z.object({
     compression: z.object({
       enabled: z.boolean(),
     }),
+  }),
+  llmGateway: z.object({
+    maxConcurrency: z.number().int().min(1),
+    requestTimeoutMs: z.number().int().min(1000),
+    tasks: z.record(z.string(), z.object({ model: z.string().optional(), think: z.boolean() })),
   }),
   llm: z.object({
     defaultProvider: z.string(),
@@ -407,6 +420,17 @@ function loadConfig() {
         enabled: env.RAG_ADVANCED_COMPRESSION_ENABLED,
       },
     },
+    llmGateway: {
+      maxConcurrency: env.LLM_MAX_CONCURRENCY,
+      requestTimeoutMs: env.LLM_REQUEST_TIMEOUT_MS,
+      tasks: {
+        plan: { model: env.LLM_PLAN_MODEL, think: env.LLM_PLAN_THINK },
+        compose: { model: env.LLM_COMPOSE_MODEL, think: env.LLM_COMPOSE_THINK },
+        verify: { model: env.LLM_VERIFY_MODEL, think: false },
+        rag_answer: { model: env.LLM_COMPOSE_MODEL, think: env.LLM_COMPOSE_THINK },
+        summarize: { model: undefined, think: false },
+      },
+    },
     llm: {
       defaultProvider: env.LLM_DEFAULT_PROVIDER,
       defaultModel: env.LLM_DEFAULT_MODEL,
@@ -545,6 +569,7 @@ export const getVectorDbConfig = () => config.vectorDb;
 export const getRagConfig = () => config.rag;
 export const getRagAdvancedConfig = () => config.ragAdvanced;
 export const getLlmConfig = () => config.llm;
+export const getLlmGatewayConfig = () => config.llmGateway;
 export const getMcpConfig = () => config.mcp;
 export const getApiConfig = () => config.api;
 export const getAgentConfig = () => config.agents;
