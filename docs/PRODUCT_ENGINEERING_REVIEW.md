@@ -119,7 +119,7 @@ The critic stops being a domain the user routes to. It becomes a **verification 
 | Fabricated-entity rate (person, ticket or number not in the evidence) | 0 in evals; < 0.5% in sampled production |
 | Weekly active EMs opening the Action Hub | Leading indicator of the proactive value |
 | Action items resolved vs dismissed | Measures audit precision |
-| Latency on the Mac mini M4 (local 8B) | Time to first streamed token < 3 s; p95 full answer < 15 s for tool answers and < 20 s for RAG/hybrid **(inferred budget; see §C.5)** |
+| Latency on the Mac mini M4 (guardrail, not a goal) | Streamed first token visible quickly; p95 full answer < 60 s. Accuracy and faithfulness take priority over speed (§C.5) |
 
 ---
 
@@ -514,62 +514,90 @@ export const EvidenceSchema = z.object({ /* same shape, validated at runtime */ 
 
 ## C.5 Local model choice for the target hardware (Mac mini M4, 16 GB unified memory, 256 GB disk)
 
-**Memory budget (inferred, verify with Activity Monitor).**
+**Selection priority (owner decision, 2026-11-24): quality over speed.** Rank models in this order, and treat latency only as a guardrail:
+
+1. **Tool calling.** Picks the right tool, fills arguments correctly, makes *no* call when none is needed, and never invents tool names or arguments.
+2. **Faithfulness.** Copies numbers, names and IDs from tool output exactly, and adds nothing that isn't in the evidence.
+3. **Abstention and correction.** Says "insufficient data" when a tool fails or returns nothing, instead of filling gaps. Fixes its own call when given a validation error.
+4. **Structured output.** Valid JSON against the schema on the first try.
+5. **Latency (guardrail only).** p95 full answer under ~60 s on the M4. A slower, more accurate model is preferred.
+
+**The model is not the only lever.** On an 8B–14B local model, tool-calling reliability comes as much from the harness as from the weights. These apply to whichever model wins:
+- **Few tools per call.** The planner sees only the capabilities that the classifier shortlisted (3–5), not every tool. Accuracy drops as the tool list grows.
+- **Typed arguments with enums.** Use enums for `window`, `mode` and `source`, and resolved IDs for engineers and repos (B.8 #3). The model chooses from a list instead of writing free text.
+- **Constrained decoding.** Use Ollama `format` (JSON schema) for plans, with zod validation on every call.
+- **One repair turn.** On a schema or validation error, send the error back once ("argument `window` must be one of 7d/30d/90d"), then fail loudly. No silent fallback to keyword routing.
+- **Deterministic numbers and the Verifier** (B.6) protect faithfulness whichever model is used.
+- **Temperature 0** for `plan`/`verify`, and low for `compose`.
+
+**Memory budget (inferred; verify with Activity Monitor).**
 
 | Consumer | Approx. memory |
 |---|---|
 | macOS + apps | 3–4 GB |
-| Docker Desktop VM: Postgres, Redis, Temporal + UI, Langfuse + analytics DB, Adminer, Python service (flashrank), backend (plus the in-process e5-large embedder) | 4–6 GB |
-| **Left for Ollama** (model weights + KV cache) | **≈ 6–8 GB** |
+| Docker Desktop VM, full stack (Postgres, Redis, Temporal + UI, Langfuse + analytics DB, Adminer, Python service, backend with the in-process e5-large embedder) | 4–6 GB |
+| Docker Desktop VM, **lean** stack (observability profile off, e5 embedder removed, VM memory capped at ~3 GB) | ~3 GB |
+| **Left for Ollama** (weights + KV cache), full stack / lean stack | **≈ 6–8 GB / ≈ 9–10 GB** |
 
-That rules out ~14 GB models such as `gpt-oss:20b` and 20B+ models while the stack is running. An **8B model at Q4 (~5 GB) plus `nomic-embed-text`** is the realistic ceiling.
+Because quality comes first, **run the lean stack day to day** and spend the freed memory on a bigger model or a higher-precision quantization.
 
-**Expected speed on the base M4 (≈120 GB/s memory bandwidth) (inferred estimates; measure with `ollama run <model> --verbose`).**
+**Quantization matters for tool calling.** Lower-bit quantizations (Q4) degrade argument precision and JSON adherence more than general chat quality **(inferred; commonly reported, verify on the eval)**. Approximate sizes for an 8B model: Q4_K_M ~5 GB, Q5_K_M ~5.8 GB, Q6_K ~6.6 GB, Q8_0 ~8.7 GB.
 
-| Model (Q4) | Generation | Prompt processing | A 250-token answer |
-|---|---|---|---|
-| 8B (`qwen3:8b`, `hermes3:8b`) | ~18–25 tokens/s | a few hundred tokens/s | ~10–14 s plus prefill |
-| 4B (`qwen3:4b`) | ~35–45 tokens/s | roughly double the 8B | ~6–8 s plus prefill |
+**Candidates, ranked for this priority order** (to be confirmed by the eval below):
 
-Generation speed is bounded by memory bandwidth ÷ model size, so an 8B model can't get much faster on this machine. Latency has to come from **fewer and shorter generations**:
-- Route most queries with the embedding classifier (no LLM call). Use `qwen3:4b` for `plan`/`verify` when a model call is needed, and `qwen3:8b` only for `compose` and `rag_answer`. Both fit together (~2.5 GB + ~5 GB) only if the rest of the stack stays lean, so benchmark loading both against `OLLAMA_MAX_LOADED_MODELS=3` vs swapping.
-- Cap narrative length (e.g. `num_predict` 300). Tables and numbers come from templates at zero LLM cost (B.6).
-- Keep prompts small. A 6k-token prompt costs many seconds of prefill before the first token. Keep the system prompt fixed, at the start of the prompt, so Ollama can reuse its cached prefix between requests **(inferred)**.
-- **Stream** `compose` output to the UI (A.5), so the first words appear in ~1–3 s even when the full answer takes 10+ s.
-- Ollama's MLX backend for Apple Silicon is in preview (see Ollama's blog). Benchmark it once it's stable; it may improve throughput, but it is unverified here.
+| Rank | Model / quant | Approx. weights | Fits | Why it's a candidate |
+|---|---|---|---|---|
+| 1 | `qwen3:8b` at **Q6_K or Q8_0** | 6.6–8.7 GB | Q6_K: yes; Q8_0: lean stack only | Tool calling built into the chat template; most-recommended 8B for tool use. Higher precision to protect argument accuracy |
+| 2 | `qwen3:14b` at Q4_K_M | ~9 GB | Lean stack only, small context (4k–8k); tight, watch for swap | More parameters usually help tool selection and abstention. Only adopt if it clearly beats #1 without swapping |
+| 3 | `qwen3:8b` at Q4_K_M | ~5 GB | Yes, full stack | Fallback when memory is short |
+| — | `hermes3:8b` (current) | ~5 GB | Yes | Baseline for comparison |
+| — | `llama3.1:8b` at Q6_K/Q8_0 | 6.6–8.7 GB | Yes / lean | Alternative tool-calling model from a different family |
+| — | Gemma 4 small variant | — | Check | Reportedly native function calling. **Unverified**; confirm tool support with `ollama show <model>` before testing |
 
-**Recommendation: switch the default from `hermes3:8b` to `qwen3:8b`, after it wins the nightly eval.**
-- Qwen3 has tool calling in its chat template and is Ollama's own example model for tool calls. It is the most commonly recommended 8B-class model for tool use and JSON output on 16 GB Macs **(per third-party guides; verify on our golden set)**.
-- It is about the same size as `hermes3:8b`, so it fits the same budget.
-- Qwen3 has a "thinking" mode. Turn it **off** for `plan` and `verify` (latency, and JSON-only output). Allow it for `compose` only if the evals show a gain. The router already strips `<think>` blocks (`llmRouter.js:406`), but the gateway should disable thinking instead of stripping it.
+Not viable on 16 GB with this stack: `gpt-oss:20b` (~14 GB) and 20B+ models.
 
-**Candidates to benchmark** (each pulled and scored with the same golden dataset):
+**Qwen3 "thinking" mode.** Since latency is secondary, **test thinking ON for `plan`** (it often improves tool selection and argument filling) and keep it OFF for `verify` (a deterministic, JSON-only check). Decide from the eval, not by default. The gateway should set thinking per task. The current code only strips `<think>` blocks (`llmRouter.js:406`).
 
-| Model | Role | Why |
+**Tool-calling eval: how to choose (replaces the latency-led gate).**
+
+Building blocks already in the repo:
+- `backend/evaluation/golden-dataset.json` has **138 cases with `expected_tool_calls`**.
+- `backend/evaluation/evaluators/multi-agent-eval.js` scores domain routing and tool abstention.
+- The EM-τ-Bench runner **does not exercise a model**. `_simulate_agent_execution` returns scripted actions chosen by keyword matching (`services/python-ai-service/evaluation/em_tau_bench/reliability_runner.py:42-62`). As written, it cannot compare models. Wire it to the real planner/executor before using its pass^k metric.
+
+Add a model-comparison harness that runs every candidate through the **real planner and executor** with recorded tool responses (so tool results are identical across models):
+
+| Metric | Definition | Gate |
 |---|---|---|
-| `qwen3:8b` | **Primary candidate** | Tool calling and JSON adherence at the 8B size |
-| `hermes3:8b` | Baseline | Current default (Llama 3.1-based) |
-| `llama3.1:8b` | Alternative | Well-documented tool calling; same base as Hermes 3 |
-| `qwen3:4b` | Planner / verifier only | Faster, ~2.5 GB; frees memory for a larger context in `compose` |
-| Gemma 4 small variant | Optional | Newer, reportedly with native function calling. **Unverified**; check `ollama show <model>` for tool support |
+| Tool selection accuracy | Correct set of tools called | ≥ 95% |
+| Argument accuracy | Exact match on typed args (repo, engineer ID, window, mode) | ≥ 95% |
+| No-call precision | Correctly makes no tool call on direct, conceptual or follow-up questions | ≥ 95% |
+| Hallucinated tool or argument rate | Tool name, or enum value, that doesn't exist | 0% |
+| First-try schema validity | Plan JSON valid without repair | ≥ 98% |
+| Repair success | Fixes the call after one validation-error turn | ≥ 90% |
+| Faithfulness | Every number, name and ID in the answer appears in tool output (Verifier check) | ≥ 98% |
+| Fabrication under failure | Tool returns error or empty → answer says so, invents nothing (inject failures in 20% of cases) | 0 fabrications |
+| Hybrid citation precision | `[E#]`/`[D#]` citations resolve and support the claim (C.3) | ≥ 95% |
+| **pass^k consistency** | Same case run k = 5 times, all correct (stability matters for a tool agent) | Report; prefer higher |
+| Latency | p95 full answer | Guardrail only: < 60 s |
+
+**Decision rule.** Pick the model with the best weighted score (tool selection and arguments 40%, faithfulness and fabrication-under-failure 35%, abstention 15%, schema validity 10%) that has **zero** hallucinated tools and **zero** fabrications under failure. Then confirm it runs without swap on the lean stack (`vm_stat` and Activity Monitor memory pressure stays green). Re-run the comparison whenever a new local model is released. With the gateway, switching is one config value.
 
 **Ollama settings for 16 GB** (Ollama runs natively on macOS, not in Docker, so it gets Metal acceleration; compose already points at `host.docker.internal:11434`):
 - `OLLAMA_NUM_PARALLEL=1` and `OLLAMA_MAX_LOADED_MODELS=2` (chat model + embedder).
-- `OLLAMA_FLASH_ATTENTION=1` and `OLLAMA_KV_CACHE_TYPE=q8_0` to halve KV-cache memory.
-- `num_ctx` 8192 (not 32k+). The ContextBuilder budget (B.3.2) keeps prompts within it.
+- `OLLAMA_FLASH_ATTENTION=1` and `OLLAMA_KV_CACHE_TYPE=q8_0`, which roughly halves KV-cache memory and leaves room for a higher-precision model.
+- `num_ctx` 8192 (4096 if running `qwen3:14b`). The ContextBuilder budget (B.3.2) keeps prompts within it.
 - `OLLAMA_KEEP_ALIVE=30m` so the model isn't reloaded for every chat.
 
 **Free memory and disk for the model:**
-- Remove the in-process `multilingual-e5-large` embedder (C.2). That saves roughly 0.5–1 GB in the backend **(inferred)**.
-- Make `adminer`, `temporal-ui`, `langfuse` and `analytics-db` an optional compose profile (`docker compose --profile observability up`). They are not needed for daily use.
-- Disk: each 8B Q4 model is ~5 GB. Keep at most two chat models pulled, and prune Docker images and build cache periodically (`docker system df`).
+- Remove the in-process `multilingual-e5-large` embedder (C.2), saving roughly 0.5–1 GB in the backend **(inferred)**.
+- Put `adminer`, `temporal-ui`, `langfuse` and `analytics-db` behind an optional compose profile (`docker compose --profile observability up`), and cap Docker Desktop's VM memory.
+- Disk: keep at most two or three chat models pulled (5–9 GB each), and prune Docker images and build cache periodically (`docker system df`).
 
 **Code changes needed to switch models cleanly:**
-- `hermes3:8b` is hard-coded in about 20 places: `llm/index.js:112,124,160`, `services/settingsService.js:262,431,526`, `routes/admin.js:102,186,407`, `temporal/client.js:139,163,237`, `scripts/promptfooServer.js` and Python eval defaults. Replace all of them with one config value.
-- The model saved in `app_settings` overrides `LLM_DEFAULT_MODEL` after the first run (`settingsService.js:260,431`). Change the model in the Admin → Settings page (or the DB), not only in `.env`.
-- Eval endpoints default to `hermes3:8b`, so a model switch would otherwise be evaluated against the old model.
-
-**Decision gate.** Adopt `qwen3:8b` only if, on the nightly eval, it matches or beats `hermes3:8b` on routing accuracy, JSON validity rate, faithfulness and fabricated-entity rate, with p95 latency within 20%.
+- `hermes3:8b` is hard-coded in about 20 places: `llm/index.js:112,124,160`, `services/settingsService.js:262,431,526`, `routes/admin.js:102,186,407`, `temporal/client.js:139,163,237`, `scripts/promptfooServer.js` and Python eval defaults. Replace them with one config value, with separate values per task (`plan`, `compose`, `verify`).
+- The model saved in `app_settings` overrides `LLM_DEFAULT_MODEL` after the first run (`settingsService.js:260,431`). Change it in Admin → Settings (or the DB), not only in `.env`.
+- Eval endpoints default to `hermes3:8b`, so they must take the candidate model explicitly.
 
 ## Remaining open questions
 
