@@ -1,7 +1,7 @@
 import sinon from 'sinon';
 import ragService from '../../src/rag/index.js';
 import { __test__ } from '../../src/rag/ingest.js';
-import pythonAIServiceClient from '../../src/grpc/client.js';
+import pythonAIServiceClient from '../../src/pythonAi/client.js';
 
 describe('RAG Service', () => {
   let fsMock, chromaClientMock, pdfParseMock, collectionMock;

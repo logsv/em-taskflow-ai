@@ -25,7 +25,6 @@ import teamSyncWorker from '../workers/teamSyncWorker.js';
 import { info, warn, error, debug } from '../utils/logger.js';
 import { l1ExactCache } from '../cache/l1ExactCache.js';
 import { getSemanticCacheStats } from '../cache/semanticCache.js';
-import { toolCache } from '../cache/toolCache.js';
 import { cacheInvalidator } from '../cache/cacheInvalidator.js';
 import { DEFAULT_CHAT_MODEL } from '../llm/models.js';
 import { sendError } from '../middleware/errorHandler.js';
@@ -1171,14 +1170,12 @@ router.get('/cache/stats', async (req, res) => {
   try {
     const l1Stats = l1ExactCache.getStats();
     const l2Stats = getSemanticCacheStats();
-    const toolStats = toolCache.getStats();
 
     res.json({
       success: true,
       tiers: {
         l1_exact_in_memory: l1Stats,
         l2_semantic_redis: l2Stats,
-        tier2_mcp_tool_cache: toolStats,
       },
       timestamp: new Date().toISOString(),
       requestId: req.requestId,

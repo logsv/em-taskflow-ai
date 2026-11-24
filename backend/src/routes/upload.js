@@ -3,7 +3,7 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import pythonAIServiceClient from '../grpc/client.js';
+import pythonAIServiceClient from '../pythonAi/client.js';
 import { attachSessionContext } from '../middleware/sessionContext.js';
 import { startChatFileExtractWorkflow, getWorkflowStatus } from '../temporal/client.js';
 import { info, warn, error, debug } from '../utils/logger.js';

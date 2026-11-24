@@ -1,4 +1,4 @@
-import pythonAIServiceClient from '../../src/grpc/client.js';
+import pythonAIServiceClient from '../../src/pythonAi/client.js';
 
 /**
  * RAGPipelineStrategy (Option C: Hybrid Architecture)
@@ -6,9 +6,9 @@ import pythonAIServiceClient from '../../src/grpc/client.js';
  * and the local chat model single-pass Markdown synthesis formatting.
  */
 export class RAGPipelineStrategy {
-  constructor(name = 'RAGPipelineStrategy', grpcClient = pythonAIServiceClient) {
+  constructor(name = 'RAGPipelineStrategy', pythonClient = pythonAIServiceClient) {
     this.name = name;
-    this.grpcClient = grpcClient;
+    this.pythonClient = pythonClient;
   }
 
   /**
@@ -27,14 +27,14 @@ export class RAGPipelineStrategy {
     const isStructurallyValid = hasExecSummary && hasAnalysis && hasCitations;
 
     // 2. Test gRPC transport layer call to Python AI Service
-    let grpcTransportPassed = true;
+    let pythonServicePassed = true;
     try {
-      if (this.grpcClient && typeof this.grpcClient.searchRAG === 'function') {
+      if (this.pythonClient && typeof this.pythonClient.searchRAG === 'function') {
         const query = testCase.user_query || testCase.prompt || 'eval query';
-        await this.grpcClient.searchRAG(query, 3);
+        await this.pythonClient.searchRAG(query, 3);
       }
     } catch (err) {
-      grpcTransportPassed = false;
+      pythonServicePassed = false;
     }
 
     // 3. Ground truth chunk overlap (Context Recall proxy)
@@ -54,7 +54,7 @@ export class RAGPipelineStrategy {
       hasAnalysis,
       hasCitations,
       contextRecallScore,
-      grpcTransportPassed,
+      pythonServicePassed,
       faithfulnessScore: isStructurallyValid ? 0.95 : 0.60,
     };
   }
@@ -66,16 +66,17 @@ export class RAGPipelineStrategy {
    */
   aggregate(results) {
     const total = results.length;
-    if (total === 0) return { structuralComplianceRate: 0, avgFaithfulness: 0, avgContextRecall: 0, grpcSuccessRate: 1.0 };
+    // Nothing evaluated: report no scores rather than a perfect success rate.
+    if (total === 0) return { structuralComplianceRate: null, avgFaithfulness: null, avgContextRecall: null, pythonServiceSuccessRate: null };
 
     const validStruct = results.filter((r) => r.isStructurallyValid).length;
-    const grpcSuccess = results.filter((r) => r.grpcTransportPassed).length;
+    const pythonServiceSuccess = results.filter((r) => r.pythonServicePassed).length;
     const sumFaithfulness = results.reduce((acc, r) => acc + r.faithfulnessScore, 0);
     const sumRecall = results.reduce((acc, r) => acc + r.contextRecallScore, 0);
 
     return {
       structuralComplianceRate: validStruct / total,
-      grpcSuccessRate: grpcSuccess / total,
+      pythonServiceSuccessRate: pythonServiceSuccess / total,
       avgFaithfulness: sumFaithfulness / total,
       avgContextRecall: sumRecall / total,
     };

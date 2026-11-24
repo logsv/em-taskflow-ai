@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { getDatabaseConfig } from '../config.js';
-import pythonAIServiceClient from '../grpc/client.js';
+import pythonAIServiceClient from '../pythonAi/client.js';
 import { info, warn, error } from '../utils/logger.js';
 import { swallow, recordHandledError } from '../core/safe.js';
 

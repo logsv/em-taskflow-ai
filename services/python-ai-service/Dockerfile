@@ -19,10 +19,9 @@ RUN uv pip install --system -r requirements.txt
 # Copy source code after dependencies to maximize Docker layer cache hits
 COPY . .
 
-EXPOSE 8000 50051
+EXPOSE 8000
 
 ENV REST_PORT=8000
-ENV GRPC_PORT=50051
 ENV PYTHONPATH=/app
 ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 # Local-first: no third-party telemetry from evaluation libraries

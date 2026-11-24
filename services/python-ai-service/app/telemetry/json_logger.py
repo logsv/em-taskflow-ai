@@ -1,15 +1,6 @@
 import logging
 import json
 from datetime import datetime, timezone
-import sys
-
-
-def _stderr_handled(context, exc):
-    """Report a log-shipping failure without going through logging (avoids recursion)."""
-    try:
-        sys.stderr.write(f"[log-handler] {context} failed: {exc}\n")
-    except Exception:  # noqa: S110 - nothing left to report to
-        pass
 
 
 class JSONFormatter(logging.Formatter):
@@ -43,8 +34,7 @@ class JSONFormatter(logging.Formatter):
 
 
 def setup_json_logging(level: int = logging.INFO):
-    """Configures root Python logger to output single-line JSON logs and optional Axiom Cloud transport."""
-    import os
+    """Configures the root Python logger to output single-line JSON logs."""
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
     
@@ -55,40 +45,6 @@ def setup_json_logging(level: int = logging.INFO):
     handler = logging.StreamHandler()
     handler.setFormatter(JSONFormatter())
     root_logger.addHandler(handler)
-
-    axiom_token = os.environ.get("AXIOM_TOKEN")
-    axiom_dataset = os.environ.get("AXIOM_DATASET", "emtaskflowai")
-    if axiom_token:
-        try:
-            from axiom_py import Client
-            from axiom_py.logging import AxiomHandler
-
-            class SafeAxiomHandler(AxiomHandler):
-                def emit(self, record):
-                    try:
-                        super().emit(record)
-                    except Exception as exc:
-                        _stderr_handled("axiom.emit", exc)
-
-                def flush(self):
-                    try:
-                        super().flush()
-                    except Exception as exc:
-                        _stderr_handled("axiom.flush", exc)
-
-                def close(self):
-                    try:
-                        super().close()
-                    except Exception as exc:
-                        _stderr_handled("axiom.close", exc)
-
-            axiom_client = Client(token=axiom_token)
-            axiom_handler = SafeAxiomHandler(axiom_client, axiom_dataset)
-            axiom_handler.setLevel(level)
-            root_logger.addHandler(axiom_handler)
-        except Exception as e:
-            # Output warning using standard logger
-            root_logger.warning(f"Failed to setup Axiom logging handler: {e}")
 
     return root_logger
 

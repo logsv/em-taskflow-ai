@@ -1,7 +1,7 @@
 import sinon from 'sinon';
 import axios from 'axios';
 import { getReadiness, checkModel } from '../../src/application/health/readiness.js';
-import pythonAIServiceClient from '../../src/grpc/client.js';
+import pythonAIServiceClient from '../../src/pythonAi/client.js';
 import { getCounter, resetMetrics } from '../../src/core/metrics.js';
 
 const ok = async () => ({ status: 'ok' });

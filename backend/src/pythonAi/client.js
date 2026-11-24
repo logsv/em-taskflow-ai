@@ -1,5 +1,5 @@
 /**
- * Python AI Microservice Client (gRPC + HTTP REST Fallback)
+ * Python AI microservice client (HTTP REST)
  * Provides type-safe calls for Document Extraction, 512-Token Chunking, PostgreSQL RAG Search, and Document CRUD.
  */
 

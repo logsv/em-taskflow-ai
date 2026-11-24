@@ -11,7 +11,6 @@ import {
   getSemanticCacheStats,
   DOMAIN_TTL_MAP,
 } from '../../src/cache/semanticCache.js';
-import { toolCache } from '../../src/cache/toolCache.js';
 import { cacheInvalidator } from '../../src/cache/cacheInvalidator.js';
 import { bgeEmbeddingsClient } from '../../src/llm/bgeEmbeddingsClient.js';
 
@@ -21,7 +20,6 @@ describe('Multi-Tier Production Caching Architecture', () => {
   beforeEach(() => {
     sandbox = sinon.createSandbox();
     l1ExactCache.clear();
-    toolCache.cache.clear();
     cacheInvalidator.invalidateAll().catch(() => {});
   });
 
@@ -171,49 +169,6 @@ describe('Multi-Tier Production Caching Architecture', () => {
     });
   });
 
-  describe('Tier 2: MCP Tool Execution Cache', () => {
-    it('should cache deterministic tool call results with parameters', () => {
-      const toolName = 'jira_search';
-      const args = { jql: 'project = PROJ AND status = Blocker', maxResults: 10 };
-      const result = { issues: [{ key: 'PROJ-1', summary: 'Outage blocker' }] };
-
-      toolCache.set(toolName, args, result, 60);
-
-      const cached = toolCache.get(toolName, args);
-      expect(cached).not.toBeNull();
-      expect(cached.issues.length).toBe(1);
-      expect(cached.issues[0].key).toBe('PROJ-1');
-    });
-
-    it('should differentiate tool calls with different parameters', () => {
-      const toolName = 'jira_search';
-      const args1 = { jql: 'project = A' };
-      const args2 = { jql: 'project = B' };
-
-      toolCache.set(toolName, args1, { data: 'A' }, 60);
-      toolCache.set(toolName, args2, { data: 'B' }, 60);
-
-      expect(toolCache.get(toolName, args1).data).toBe('A');
-      expect(toolCache.get(toolName, args2).data).toBe('B');
-    });
-
-    it('should execute wrapper function on miss and return cached value on subsequent call', async () => {
-      const toolName = 'github_list_prs';
-      const args = { repo: 'em-taskflow-ai', state: 'open' };
-      const executorSpy = sinon.stub().resolves([{ number: 101, title: 'Add cache' }]);
-
-      // First call: executes executor
-      const res1 = await toolCache.wrap(toolName, args, executorSpy, 60);
-      expect(res1.length).toBe(1);
-      expect(executorSpy.calledOnce).toBe(true);
-
-      // Second call: returns cached result without invoking executor
-      const res2 = await toolCache.wrap(toolName, args, executorSpy, 60);
-      expect(res2.length).toBe(1);
-      expect(executorSpy.calledOnce).toBe(true); // Still 1 call!
-    });
-  });
-
   describe('Event-Driven Cache Invalidator Bus', () => {
     it('should invalidate L1 and L2 when a document is mutated/deleted', async () => {
       const mockVector = new Array(768).fill(0.05);
@@ -237,12 +192,10 @@ describe('Multi-Tier Production Caching Architecture', () => {
 
     it('should invalidate all cache tiers on invalidateAll', async () => {
       l1ExactCache.set('q1', 'ans1');
-      toolCache.set('jira_get_issue', { id: 'ENG-1' }, { key: 'ENG-1' });
 
       await cacheInvalidator.invalidateAll();
 
       expect(l1ExactCache.get('q1')).toBeNull();
-      expect(toolCache.get('jira_get_issue', { id: 'ENG-1' })).toBeNull();
     });
 
     it('should execute invalidateCacheActivity and clear caches durably', async () => {

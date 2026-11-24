@@ -2,7 +2,7 @@ import express from 'express';
 import supertest from 'supertest';
 import sinon from 'sinon';
 import uploadRouter from '../../src/routes/upload.js';
-import pythonAIServiceClient from '../../src/grpc/client.js';
+import pythonAIServiceClient from '../../src/pythonAi/client.js';
 import sessionApplicationService from '../../src/application/session/SessionApplicationService.js';
 
 describe('Upload Route (Fast-Path Chat Attachment)', () => {

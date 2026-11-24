@@ -1,11 +1,9 @@
-import './tracing.js';
 import express from 'express';
 import cors from 'cors';
 import apiRouter from './routes/api.js';
 import v1Router from './routes/v1/index.js';
 import { config, getServerConfig, getRuntimeConfig, getDatabaseConfig, getLlmConfig, getRagConfig, getAuthConfig, validateConfig } from './config.js';
 import dotenv from 'dotenv';
-import * as Sentry from '@sentry/node';
 import { initializeLLM } from './llm/index.js';
 import { initializeIngest } from './rag/index.js';
 import { initSemanticCache } from './cache/semanticCache.js';
@@ -35,19 +33,9 @@ export function redactDatabaseUrl(url) {
 
 dotenv.config();
 
-if (process.env.SENTRY_DSN) {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    environment: process.env.NODE_ENV || 'development',
-    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0.1),
-  });
-}
 
-// NOTE: Generic OTel auto-instrumentation is disabled by default because
-// newrelic/esm-loader.mjs and @opentelemetry/auto-instrumentations-node both
-// register 'import-in-the-middle' hooks which conflict in Node.js ESM mode.
-// New Relic APM handles HTTP/Express instrumentation natively.
-// Set OTEL_ENABLED=true only when running without New Relic.
+// Telemetry: OpenTelemetry (opt-in, OTEL_ENABLED=true, exports to OTEL_EXPORTER_OTLP_ENDPOINT)
+// plus Langfuse for LLM traces. Metrics are exposed at /api/v1/metrics.
 if (process.env.OTEL_ENABLED === 'true') {
   try {
     const { NodeSDK } = await import('@opentelemetry/sdk-node');
@@ -71,12 +59,6 @@ if (process.env.OTEL_ENABLED === 'true') {
 const app = express();
 const serverConfig = getServerConfig();
 const PORT = serverConfig.port;
-
-if (process.env.SENTRY_DSN) {
-  if (Sentry.Handlers?.requestHandler) {
-    app.use(Sentry.Handlers.requestHandler());
-  }
-}
 
 // Only the owner's frontend may call the API from a browser.
 app.use(cors({ origin: serverConfig.frontendUrl, credentials: true }));
@@ -104,12 +86,6 @@ app.use('/api', apiRouter);
 app.get('/', (req, res) => {
   res.send('EM TaskFlow AI is running.');
 });
-
-if (process.env.SENTRY_DSN) {
-  if (Sentry.Handlers?.errorHandler) {
-    app.use(Sentry.Handlers.errorHandler());
-  }
-}
 
 // Unknown /api routes get a JSON 404; every error that reaches Express gets a coded JSON body.
 app.use('/api', notFoundHandler);
@@ -223,16 +199,10 @@ async function startServer() {
 }
 
 process.on('uncaughtException', (err) => {
-  if (process.env.SENTRY_DSN) {
-    try { Sentry.captureException(err); } catch (_) { recordHandledError('index.startServer', _); }
-  }
   error('Uncaught Exception', { err: err?.message || String(err), stack: err?.stack });
 });
 
 process.on('unhandledRejection', (reason) => {
-  if (process.env.SENTRY_DSN) {
-    try { Sentry.captureException(reason instanceof Error ? reason : new Error(String(reason))); } catch (_) { recordHandledError('index.startServer', _); }
-  }
   error('Unhandled Promise Rejection', { reason: String(reason) });
 });
 

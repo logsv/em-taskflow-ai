@@ -2,7 +2,6 @@ import express from 'express';
 import supertest from 'supertest';
 import adminRouter from '../../src/routes/admin.js';
 import { l1ExactCache } from '../../src/cache/l1ExactCache.js';
-import { toolCache } from '../../src/cache/toolCache.js';
 import { cacheInvalidator } from '../../src/cache/cacheInvalidator.js';
 
 describe('Admin Cache Management Endpoints Contract', () => {
@@ -16,7 +15,6 @@ describe('Admin Cache Management Endpoints Contract', () => {
     request = supertest(app);
 
     l1ExactCache.clear();
-    toolCache.cache.clear();
   });
 
   afterEach(async () => {
@@ -24,9 +22,8 @@ describe('Admin Cache Management Endpoints Contract', () => {
   });
 
   describe('GET /api/admin/cache/stats', () => {
-    it('should return live metrics for all 3 caching tiers', async () => {
+    it('should return live metrics for the L1 and L2 answer caches', async () => {
       l1ExactCache.set('q1', 'ans1', [], { domain: 'dora' });
-      toolCache.set('jira_search', { jql: 'status = open' }, { total: 5 });
 
       const res = await request
         .get('/api/admin/cache/stats')
@@ -36,8 +33,8 @@ describe('Admin Cache Management Endpoints Contract', () => {
       expect(res.body.tiers).toBeDefined();
       expect(res.body.tiers.l1_exact_in_memory).toBeDefined();
       expect(res.body.tiers.l1_exact_in_memory.size).toBeGreaterThanOrEqual(1);
-      expect(res.body.tiers.tier2_mcp_tool_cache).toBeDefined();
-      expect(res.body.tiers.tier2_mcp_tool_cache.size).toBeGreaterThanOrEqual(1);
+      // The former 'tier 2 tool cache' was never used by any tool and has been removed.
+      expect(res.body.tiers.tier2_mcp_tool_cache).toBeUndefined();
       expect(res.body.tiers.l2_semantic_redis).toBeDefined();
       expect(res.body.tiers.l2_semantic_redis.similarityThreshold).toBe(0.95);
     });
@@ -46,7 +43,6 @@ describe('Admin Cache Management Endpoints Contract', () => {
   describe('POST /api/admin/cache/flush', () => {
     it('should flush all cache tiers when all: true is passed', async () => {
       l1ExactCache.set('test_q1', 'ans1', [], { domain: 'sprint' });
-      toolCache.set('github_list_prs', { repo: 'taskflow' }, []);
 
       const res = await request
         .post('/api/admin/cache/flush')
@@ -56,7 +52,6 @@ describe('Admin Cache Management Endpoints Contract', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.flushed).toBe('all');
       expect(l1ExactCache.get('test_q1', { domain: 'sprint' })).toBeNull();
-      expect(toolCache.get('github_list_prs', { repo: 'taskflow' })).toBeNull();
     });
 
     it('should flush targeted domain entries when domain is specified', async () => {

@@ -10,7 +10,7 @@ import pdf from 'pdf-parse/lib/pdf-parse.js';
 import { config, getRagConfig } from '../config.js';
 import { BGEEmbeddingsAdapter } from '../llm/bgeEmbeddingsAdapter.js';
 import databaseService from '../db/postgres.js';
-import pythonAIServiceClient from '../grpc/client.js';
+import pythonAIServiceClient from '../pythonAi/client.js';
 import { info, warn, error, debug } from '../utils/logger.js';
 import { swallow, recordHandledError } from '../core/safe.js';
 
