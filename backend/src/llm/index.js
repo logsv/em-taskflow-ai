@@ -10,7 +10,7 @@ import { swallow, recordHandledError } from '../core/safe.js';
 let chatModel = null;
 let initialized = false;
 
-function resolveOllamaBaseUrl(configuredUrl) {
+export function resolveOllamaBaseUrl(configuredUrl) {
   const inDocker = fs.existsSync('/.dockerenv');
   let url = configuredUrl || process.env.OLLAMA_BASE_URL || (inDocker ? 'http://host.docker.internal:11434' : 'http://localhost:11434');
   if (!inDocker && url.includes('host.docker.internal')) {

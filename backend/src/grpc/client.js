@@ -5,7 +5,41 @@
 
 import axios from 'axios';
 import config from '../config.js';
-import { warn, debug } from '../utils/logger.js';
+import { z } from 'zod';
+import { warn, debug, error as logError } from '../utils/logger.js';
+import { incCounter } from '../core/metrics.js';
+
+/** Response shapes of the Python AI service (see services/python-ai-service/app/api/rest_router.py). */
+const SearchResponseSchema = z.object({
+  results: z.array(z.object({
+    id: z.union([z.string(), z.number()]),
+    content: z.string(),
+    filename: z.string(),
+    chunk_index: z.number().int().nullable().optional(),
+    parent_content: z.string().nullable().optional(),
+    score: z.number().nullable().optional(),
+  }).passthrough()),
+}).passthrough();
+
+const RerankResponseSchema = z.object({
+  reranked_chunks: z.array(z.object({ id: z.union([z.string(), z.number()]), rerank_score: z.number() }).passthrough()),
+}).passthrough();
+
+const DocumentsResponseSchema = z.object({
+  documents: z.array(z.object({ filename: z.string() }).passthrough()),
+}).passthrough();
+
+/** Parse a Python response; on a contract mismatch, log + count it and return null. */
+function validateResponse(endpoint, schema, data) {
+  const parsed = schema.safeParse(data);
+  if (parsed.success) return parsed.data;
+  incCounter('python_contract_violation_total', { endpoint }, 1, 'Python AI service responses that did not match the expected schema');
+  logError({ module: 'pythonAIServiceClient', action: 'contractViolation', endpoint, issues: parsed.error.issues.slice(0, 3) }, `Python AI service response for ${endpoint} did not match the expected schema`);
+  return null;
+}
+
+/** File types that are safe to read as UTF-8 text when the Python extractor is unavailable. */
+const TEXT_EXTENSIONS = /\.(txt|md|markdown|csv|tsv|json|ya?ml|log)$/i;
 
 const PYTHON_AI_REST_URL = process.env.PYTHON_AI_SERVICE_URL || 'http://localhost:8000';
 
@@ -41,6 +75,19 @@ class PythonAIServiceClient {
       };
     } catch (error) {
       warn({ module: 'pythonAIServiceClient', action: 'extractDocumentFallback', filename, err: error }, `Python AI Service extraction fallback for ${filename}`);
+      incCounter('python_service_fallback_total', { endpoint: 'extract' }, 1, 'Python AI service calls that fell back');
+      // Only plain-text formats can be read without the extractor. Decoding a PDF/DOCX/image as
+      // UTF-8 produced garbage that was passed to the model as "extracted text".
+      if (!TEXT_EXTENSIONS.test(filename) && !/^text\//.test(mimeType || '')) {
+        return {
+          success: false,
+          filename,
+          extracted_text: '',
+          page_count: 0,
+          extraction_method: 'unavailable',
+          error_message: 'The document extraction service is unavailable, so this file type cannot be read right now.',
+        };
+      }
       try {
         const text = fileBuffer.toString('utf-8');
         return {
@@ -84,6 +131,7 @@ class PythonAIServiceClient {
       }
     } catch (error) {
       warn({ module: 'pythonAIServiceClient', action: 'processRAGIngestionFallback', filename, err: error }, `Python AI Service chunking fallback for ${filename}`);
+      incCounter('python_service_fallback_total', { endpoint: 'processRAGIngestion' }, 1, 'Python AI service calls that fell back');
     }
 
     return null;
@@ -100,8 +148,9 @@ class PythonAIServiceClient {
         filter_filename: filterFilename,
       }, { timeout: 30000 });
 
-      if (response.data && Array.isArray(response.data.results)) {
-        return response.data.results.map((r) => ({
+      const data = validateResponse('rag/search', SearchResponseSchema, response.data);
+      if (data) {
+        return data.results.map((r) => ({
           pageContent: r.content,
           metadata: {
             id: r.id,
@@ -114,6 +163,7 @@ class PythonAIServiceClient {
       }
     } catch (error) {
       warn({ module: 'pythonAIServiceClient', action: 'searchRAGFallback', query, err: error }, `Python AI Service searchRAG fallback for query`);
+      incCounter('python_service_fallback_total', { endpoint: 'searchRAG' }, 1, 'Python AI service calls that fell back');
     }
     return [];
   }
@@ -124,11 +174,13 @@ class PythonAIServiceClient {
   async listDocuments() {
     try {
       const response = await axios.get(`${this.baseUrl}/api/v1/rag/documents`, { timeout: 5000 });
-      if (response.data && Array.isArray(response.data.documents)) {
-        return response.data.documents;
+      const data = validateResponse('rag/documents', DocumentsResponseSchema, response.data);
+      if (data) {
+        return data.documents;
       }
     } catch (error) {
       warn({ module: 'pythonAIServiceClient', action: 'listDocumentsFallback', err: error }, 'Python AI Service listDocuments fallback');
+      incCounter('python_service_fallback_total', { endpoint: 'listDocuments' }, 1, 'Python AI service calls that fell back');
     }
     return [];
   }
@@ -150,12 +202,13 @@ class PythonAIServiceClient {
             filename: r.filename,
             chunkIndex: r.chunk_index,
             parentContent: r.parent_content,
-            score: r.score || 1.0,
+            score: typeof r.score === 'number' ? r.score : null,
           },
         }));
       }
     } catch (error) {
-      // Fall back to searchRAG
+      warn({ module: 'pythonAIServiceClient', action: 'getDocumentChunksFallback', filename, err: error }, 'getDocumentChunks failed, falling back to filtered search');
+      incCounter('python_service_fallback_total', { endpoint: 'document_chunks' }, 1, 'Python AI service calls that fell back');
     }
     return this.searchRAG('', 100, filename);
   }
@@ -171,6 +224,7 @@ class PythonAIServiceClient {
       }
     } catch (error) {
       warn({ module: 'pythonAIServiceClient', action: 'deleteDocumentFallback', filename, err: error }, `Python AI Service deleteDocument fallback for ${filename}`);
+      incCounter('python_service_fallback_total', { endpoint: 'deleteDocument' }, 1, 'Python AI service calls that fell back');
     }
     return { success: false, filename, deleted_chunks: 0 };
   }
@@ -197,8 +251,9 @@ class PythonAIServiceClient {
 
       const response = await axios.post(`${this.baseUrl}/api/v1/rag/rerank`, payload, { timeout: 30000 });
       
-      if (response.data && Array.isArray(response.data.reranked_chunks) && response.data.reranked_chunks.length > 0) {
-        const rerankedMap = new Map(response.data.reranked_chunks.map((r) => [r.id, r.rerank_score]));
+      const data = validateResponse('rag/rerank', RerankResponseSchema, response.data);
+      if (data && data.reranked_chunks.length > 0) {
+        const rerankedMap = new Map(data.reranked_chunks.map((r) => [r.id, r.rerank_score]));
         
         const rerankedDocs = candidateChunks
           .map((doc, i) => {
@@ -222,6 +277,7 @@ class PythonAIServiceClient {
       }
     } catch (error) {
       warn({ module: 'pythonAIServiceClient', action: 'rerankChunksFallback', err: error }, 'Cross-Encoder reranking fallback');
+      incCounter('python_service_fallback_total', { endpoint: 'rerankChunks' }, 1, 'Python AI service calls that fell back');
     }
 
     return candidateChunks.slice(0, topN);

@@ -370,3 +370,9 @@ export function getSemanticCacheStats() {
     domainTtlSettings: DOMAIN_TTL_MAP,
   };
 }
+
+
+/** True when the semantic cache is connected to Redis (false = in-memory fallback). */
+export function isSemanticCacheRedisConnected() {
+  return isRedisAvailable;
+}

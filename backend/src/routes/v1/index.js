@@ -17,6 +17,8 @@ import {
   disconnectJiraOAuth,
 } from '../../mcp/jiraOAuth.js';
 import { sendError } from '../../middleware/errorHandler.js';
+import { renderPrometheus } from '../../core/metrics.js';
+import { getReadiness } from '../../application/health/readiness.js';
 
 const router = express.Router();
 
@@ -82,6 +84,19 @@ router.post('/mcp/jira/oauth/disconnect', async (req, res) => {
 });
 
 // Mount feature sub-routers
+// Metrics and full readiness detail (owner only)
+router.get('/metrics', (req, res) => {
+  res.type('text/plain; version=0.0.4').send(renderPrometheus());
+});
+router.get('/health/ready/details', async (req, res) => {
+  try {
+    const readiness = await getReadiness();
+    res.status(readiness.ready ? 200 : 503).json({ ...readiness, requestId: req.requestId });
+  } catch (error) {
+    return sendError(req, res, error, 'health.ready.details');
+  }
+});
+
 router.use('/rag', ragRouter);
 router.use('/chat/upload', uploadRouter);
 router.use('/admin', adminRouter);
