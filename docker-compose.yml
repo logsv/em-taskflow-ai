@@ -44,6 +44,8 @@ services:
       # "127.0.0.1:9229:9229" port mapping (never expose the inspector on all interfaces).
       NODE_OPTIONS: ${NODE_OPTIONS:-}
       RUNTIME_MODE: ${RUNTIME_MODE:-full}
+      # Background workers run in the separate `worker` service below.
+      WORKERS_IN_PROCESS: "false"
       PORT: 4000
       HOST: 0.0.0.0
       DATABASE_URL: postgresql://taskflow:taskflow@postgres:5432/taskflow_backend
@@ -81,6 +83,42 @@ services:
       timeout: 5s
       retries: 20
       start_period: 20s
+    networks:
+      - em-taskflow-net
+
+  # Background workers (team sync, session cleanup, Temporal team-sync-queue) in their own
+  # process: a crash or a long sync cannot take the API down. Same image as the backend.
+  worker:
+    build: ./backend
+    container_name: em-taskflow-worker
+    command: ["node", "src/worker.js"]
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: production
+      RUNTIME_MODE: ${RUNTIME_MODE:-full}
+      DATABASE_URL: postgresql://taskflow:taskflow@postgres:5432/taskflow_backend
+      PYTHON_AI_SERVICE_URL: http://python-ai-service:8000
+      TEMPORAL_HOST: ${TEMPORAL_HOST:-temporal:7233}
+      LLM_DEFAULT_PROVIDER: ${LLM_DEFAULT_PROVIDER:-ollama}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-qwen3:8b-q8_0}
+      LLM_OLLAMA_ENABLED: "true"
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      MCP_GITHUB_ENABLED: "true"
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - backend_data:/app/data
     networks:
       - em-taskflow-net
 
@@ -131,7 +169,11 @@ services:
     networks:
       - em-taskflow-net
 
+  # Optional services (not started by default, to leave RAM for Ollama on a 16 GB machine):
+  #   docker compose --profile observability up -d   -> Langfuse + its database + Temporal UI
+  #   docker compose --profile tools up -d           -> Adminer
   analytics-db:
+    profiles: ["observability"]
     image: postgres:16
     container_name: em-taskflow-analytics-db
     environment:
@@ -152,6 +194,7 @@ services:
       - em-taskflow-net
 
   langfuse:
+    profiles: ["observability"]
     image: langfuse/langfuse:2
     container_name: em-taskflow-langfuse
     depends_on:
@@ -169,6 +212,7 @@ services:
       - em-taskflow-net
 
   adminer:
+    profiles: ["tools"]
     image: adminer:latest
     container_name: em-taskflow-adminer
     ports:
@@ -198,7 +242,8 @@ services:
       - em-taskflow-net
 
   temporal-ui:
-    image: temporalio/ui:latest
+    profiles: ["observability"]
+    image: temporalio/ui:2.26.2
     container_name: em-taskflow-temporal-ui
     environment:
       - TEMPORAL_ADDRESS=temporal:7233

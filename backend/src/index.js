@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import apiRouter from './routes/api.js';
 import v1Router from './routes/v1/index.js';
-import { config, getServerConfig, getRuntimeConfig, getDatabaseConfig, getLlmConfig, getRagConfig, getAuthConfig, validateConfig } from './config.js';
+import { config, getServerConfig, getRuntimeConfig, getDatabaseConfig, getLlmConfig, getRagConfig, getAuthConfig, getWorkersConfig, validateConfig } from './config.js';
 import dotenv from 'dotenv';
 import { initializeLLM } from './llm/index.js';
 import { initializeIngest } from './rag/index.js';
@@ -13,12 +13,10 @@ import { attachRequestContext, createRateLimiter } from './middleware/hardening.
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { background } from './core/safe.js';
 import { info, warn, error } from './utils/logger.js';
-import teamSyncWorker from './workers/teamSyncWorker.js';
-import sessionCleanupWorker from './services/SessionCleanupWorker.js';
+import { startWorkers, stopWorkers } from './workers/runWorkers.js';
 import { swallow, recordHandledError } from './core/safe.js';
 
 let httpServer = null;
-let temporalWorker = null;
 
 /** Remove the password from a connection URL before logging it. */
 export function redactDatabaseUrl(url) {
@@ -165,14 +163,12 @@ async function startServer() {
       info('Runtime mode is rag_only, skipping MCP and agent initialization');
     }
 
-    // Start Node.js background team sync worker & Temporal Node Worker
-    try {
-      teamSyncWorker.start();
-      sessionCleanupWorker.start();
-      const { startTemporalNodeWorker } = await import('./temporal/worker.js');
-      temporalWorker = await startTemporalNodeWorker();
-    } catch (workerErr) {
-      warn('Background workers start warning', { err: workerErr.message });
+    // Background workers run here only when WORKERS_IN_PROCESS=true (local default);
+    // docker compose runs them in the separate `worker` service (src/worker.js).
+    if (getWorkersConfig().inProcess) {
+      await startWorkers();
+    } else {
+      info('Background workers are not started in the API process (WORKERS_IN_PROCESS=false)');
     }
 
     const databaseConfig = getDatabaseConfig();
@@ -220,11 +216,7 @@ async function shutdown(signal) {
     if (httpServer) {
       await new Promise((resolve) => httpServer.close(() => resolve()));
     }
-    teamSyncWorker.stop?.();
-    if (temporalWorker && typeof temporalWorker.shutdown === 'function') {
-      await Promise.resolve(temporalWorker.shutdown()).catch((e) => warn('Temporal worker shutdown warning', { err: e.message }));
-    }
-    sessionCleanupWorker.stop();
+    await stopWorkers();
     await Promise.resolve(db.close());
     info('Services shut down successfully');
     process.exit(0);

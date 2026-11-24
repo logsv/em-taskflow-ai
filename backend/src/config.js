@@ -118,6 +118,9 @@ const envSchema = z.object({
   LEGACY_ROUTER_METRICS_API_ENABLED: boolSchema(true),
   SESSION_INACTIVITY_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(7),
   SESSION_CLEANUP_ENABLED: boolSchema(true),
+  // true: the API process also runs background workers (local `npm run dev`).
+  // false: run them in their own process with `npm run worker` (docker compose does this).
+  WORKERS_IN_PROCESS: boolSchema(true),
   SESSION_CLEANUP_CRON_SCHEDULE: z.string().default('0 3 * * *'),
   SESSION_CLEANUP_BATCH_SIZE: z.coerce.number().int().min(10).max(5000).default(500),
 });
@@ -175,6 +178,9 @@ const configSchema = z.object({
     inactivityTtlDays: z.number().int().min(1),
     cleanupEnabled: z.boolean(),
     cleanupBatchSize: z.number().int().min(10),
+  }),
+  workers: z.object({
+    inProcess: z.boolean(),
   }),
   database: z.object({
     url: z.string().url(),
@@ -394,6 +400,9 @@ function loadConfig() {
       cleanupEnabled: env.SESSION_CLEANUP_ENABLED,
       cleanupBatchSize: env.SESSION_CLEANUP_BATCH_SIZE,
     },
+    workers: {
+      inProcess: env.WORKERS_IN_PROCESS,
+    },
     database: {
       url: env.DATABASE_URL,
     },
@@ -561,6 +570,7 @@ export default config;
 export const getServerConfig = () => config.server;
 export const getAuthConfig = () => config.auth;
 export const getSessionsConfig = () => config.sessions;
+export const getWorkersConfig = () => config.workers;
 export const getRuntimeConfig = () => config.runtime;
 export const getDatabaseConfig = () => ({
   url: process.env.DATABASE_URL || config.database.url,
