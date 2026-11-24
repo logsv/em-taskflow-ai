@@ -421,9 +421,17 @@ export class LangGraphAgentService {
    */
   async runRequiredDomainRecovery(query, routingPlan, decision, options = {}) {
     const domains = toArray(routingPlan?.domains);
-    const ctx = {
-      engineerInput: domains.includes("people") ? await this.resolveEngineerInput(query, options) : {},
-    };
+    const needsEngineer = domains.includes("people") || domains.includes("sbi");
+    const engineerInput = needsEngineer ? await this.resolveEngineerInput(query, options) : {};
+    if (engineerInput.ambiguous) {
+      // Ask rather than guess which person the owner means.
+      decision.selectedPath = "clarification";
+      decision.needsClarification = true;
+      decision.reasons.push(`ambiguous_engineer:${engineerInput.ambiguous.length}`);
+      const names = engineerInput.ambiguous.map((c) => `**${c.name}**`).join(', ');
+      return { answer: `More than one person on your roster matches this question: ${names}. Which one do you mean? Reply with the full name.`, sources: [] };
+    }
+    const ctx = { engineerInput: domains.includes("people") ? engineerInput : {} };
     const result = await runCapabilityPipeline(query, routingPlan, decision, ctx);
     if (!result) return null;
     decision.policy = this.validatePolicy(routingPlan, decision.toolsUsed, true);
@@ -437,9 +445,11 @@ export class LangGraphAgentService {
   async resolveEngineerInput(query, options = {}) {
     const entity = options?.entities?.engineer || options?.entities?.person || null;
     try {
-      const member = (entity && (await identityService.resolveMember(entity)))
-        || (await identityService.resolveMemberFromText(String(query || '')));
-      if (member?.id) return { engineer_id: member.id };
+      const exact = entity ? await identityService.resolveMember(entity) : null;
+      if (exact?.id) return { engineer_id: exact.id };
+      const candidates = await identityService.findMemberCandidates(String(entity || query || ''));
+      if (candidates.length === 1) return { engineer_id: candidates[0].id };
+      if (candidates.length > 1) return { ambiguous: candidates.map((c) => ({ id: c.id, name: c.displayName })) };
     } catch (err) {
       warn({ module: 'agentService', action: 'resolveEngineer', err: err?.message }, 'Engineer resolution failed');
     }

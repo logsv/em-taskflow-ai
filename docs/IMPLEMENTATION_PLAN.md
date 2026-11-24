@@ -77,7 +77,7 @@ Goal: safe to run, honest output, correct configuration, new model.
 | # | Item | Status |
 |---|---|---|
 | 3.1 | Planner: embedding-similarity shortlist (3–5 capabilities) → `qwen3:8b-q8_0` with JSON schema, temperature 0, one repair turn on validation error, then fail loudly | ⬜ |
-| 3.2 | Entity resolution (engineer, repo, sprint, window) against the roster before execution; ask when ambiguous | ⬜ |
+| 3.2 | Entity resolution (engineer, repo, sprint, window) against the roster before execution; ask when ambiguous | 🟡 Engineer: whole-word matching on name / handle / alias / email (substring matching made "on" resolve to "Jonathan"); several matches → the assistant asks which person instead of picking one. Repo / sprint / time window still to do |
 | 3.3 | Knowledge capability returns `Evidence[]` (chunk IDs, page numbers, rerank scores); abstain below threshold τ; remove RAG/tool exclusivity; hybrid answers | ⬜ |
 | 3.4 | Verifier: numbers, entities and citations (`[E#]`/`[D#]`) checked against evidence; deterministic sections only when verification fails | 🟡 Figures: every number in an LLM-written answer (RAG answers, integration-supervisor answers) must appear in the retrieved chunks / tool outputs / question; otherwise the answer carries a visible "Unverified figures" note, `decision.verification.figures` lists them and `verifier_answers_total` counts it. Capability answers are deterministic (no LLM). Still to do: entities, citation markers |
 | 3.5 | Composer: templated numbers and tables; constrained narrative; streaming | ⬜ |
@@ -109,6 +109,7 @@ Goal: safe to run, honest output, correct configuration, new model.
 | Date | Phase | Change |
 |---|---|---|
 | 2026-11-24 | — | Plan written |
+| 2026-11-24 | 3 | 3.4 figure verifier for LLM-written answers; 3.2 engineer resolution without substring matches, asks when ambiguous. Backend 492 / 0 |
 | 2026-11-24 | 3 | 3.8 HITL: closed two bypasses in the Slack post tool (LLM-settable approval flag; fail-open when Temporal was down); scheduled audit Slack posts opt-in. Backend 483 / 0 |
 | 2026-11-24 | 2 | 2.1–2.3 capability registry (5 capabilities) + deterministic pipeline; supervisor limited to integration-only plans; RAG outage distinguished from zero hits; `postgres.js` split. Backend 482 / 0; Python 44 passed / 12 skipped |
 | 2026-11-24 | 2 | Fabrication sweep 2: `/em/okrs`, `/em/sbi`, `/em/sprints` returned invented records (fake OKRs + 78%, a fictional SBI record, 'Sprint 24' 28/35 SP); OKR quarter hard-coded (Q3 vs Q4); OKRs scored against an assumed target of 100; fake PR #402; retriever placeholder score 0.8. Audit bug: DORA read camelCase from snake_case rows for team 'main_team' (snapshots are 'default') so every audit recorded 0s with tier 'Elite'. Snapshots now store NULL, not 0, when unmeasured. Backend 471 / 0 |

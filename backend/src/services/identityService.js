@@ -49,22 +49,39 @@ class IdentityService {
    * Extracts member mentions from natural language query and resolves handles.
    * e.g. "Review Alex's PRs" -> resolves Alex -> { github: 'alex-dev99', jira: 'alex.williams@...', ... }
    */
-  async resolveMemberFromText(text) {
-    if (!text || typeof text !== 'string') return null;
+  /**
+   * Roster members a piece of text refers to, by whole-word match on display name, first name,
+   * GitHub handle, alias or email (never substrings: "on" must not match "Jonathan").
+   * @returns {Promise<Array<object>>} distinct members, best evidence first
+   */
+  async findMemberCandidates(text) {
+    if (!text || typeof text !== 'string') return [];
     const members = await this.getAllMembers();
-    if (!members || members.length === 0) return null;
-
-    const tokens = text.replace(/['".,?!;:]/g, ' ').split(/\s+/).filter(Boolean);
-    for (const token of tokens) {
-      if (['the', 'and', 'for', 'with', 'our', 'team', 'check', 'show', 'review', 'calculate'].includes(token.toLowerCase())) {
-        continue;
+    if (!members || members.length === 0) return [];
+    const lower = text.toLowerCase();
+    const words = new Set(lower.replace(/[^a-z0-9@._-]+/g, ' ').split(/\s+/).filter((w) => w.length >= 2).map((w) => w.replace(/^@/, '').replace(/[._-]+$/, '')));
+    const hasPhrase = (phrase) => !!phrase && new RegExp(`(^|[^a-z0-9])${phrase.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`).test(lower);
+    const scored = [];
+    for (const m of members) {
+      let score = 0;
+      if (hasPhrase(m.displayName)) score = 3;
+      else if ([m.email, m.githubUsername, m.jiraEmail, m.gcalEmail].some((v) => v && words.has(String(v).toLowerCase()))) score = 3;
+      else if ((m.aliases || []).some((a) => a && a.length >= 3 && hasPhrase(a))) score = 2;
+      else {
+        const first = String(m.displayName || '').split(/\s+/)[0].toLowerCase();
+        if (first.length >= 3 && words.has(first)) score = 1;
       }
-      const match = await this.resolveMember(token);
-      if (match) {
-        return match;
-      }
+      if (score > 0) scored.push({ m, score });
     }
-    return null;
+    scored.sort((x, y) => y.score - x.score);
+    if (scored.length > 1 && scored[0].score > scored[1].score) return [scored[0].m];
+    return scored.map((x) => x.m);
+  }
+
+  /** The single member the text refers to, or null when none or more than one match. */
+  async resolveMemberFromText(text) {
+    const candidates = await this.findMemberCandidates(text);
+    return candidates.length === 1 ? candidates[0] : null;
   }
 
   /**
