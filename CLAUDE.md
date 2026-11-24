@@ -12,15 +12,16 @@ This is a polyglot microservices system:
 
 - **Backend**: Node.js 20+ with ES Modules (`"type": "module"`), Express, `@langchain/langgraph-supervisor`, and pg driver.
 - **Frontend**: React 18 SPA built with Vite, `@assistant-ui/react`, space-dark glassmorphism design system, and Standalone Admin Portal (`/admin`).
-- **Python AI Service**: Python 3.12 microservice (REST on port 8000 & gRPC on port 50051) for parent-child chunking, Cross-Encoder reranking, and `taskflow_ai` vector operations.
+- **Python AI Service**: Python 3.12 microservice (REST on port 8000; the unused gRPC server was removed) for parent-child chunking, reranking, and `taskflow_ai` vector operations.
 - **Vector & Relational Storage**: PostgreSQL 16 (`pgvector/pgvector:pg16`) with per-service database isolation (`taskflow_backend`, `taskflow_ai`, `temporal`).
 - **Semantic Caching**: Redis 7 Alpine (`em-taskflow-redis:6379`) with vector similarity caching (0.95 cosine threshold, 1h TTL).
-- **Telemetry & Tracing**: Self-hosted Langfuse (port 3001) backed by isolated `langfuse_db` on port 5433 (`analytics-db`).
+- **Telemetry & Tracing**: Self-hosted Langfuse (port 3001, `--profile observability`) backed by `langfuse_db` on port 5433; Prometheus text at `/api/v1/metrics`; optional OpenTelemetry.
 - **Durable Orchestration**: Temporal Workflows on port 7233 (UI on port 8233).
 
 ### Key Services & Modules
 
-- **Agent Service (`backend/src/services/agentService.js`)**: Coordinates Fast-Path classifier, LLM router, and LangGraph multi-agent supervisor.
+- **Agent Service (`backend/src/services/agentService.js`)**: Fast-path classifier → LLM planner (`agent/llmRouter.js`, via `llm/gateway.js`) → capability pipeline. The LangGraph supervisor (`agent/graph.js`) only runs for integration-only plans (jira/github/notion/calendar/slack).
+- **Capabilities (`backend/src/capabilities/registry.js`)**: the 10 domain tools grouped into 5 capabilities. **Pipeline (`backend/src/pipeline/`)**: execute → verify → compose deterministically; failed sources are listed, nothing succeeded → abstain; `verifier.js` checks figures in LLM-written answers against evidence.
 - **10 Domain Micro-Agents (`backend/src/agent/`)**:
   - `dora`: DORA metrics from GitHub, Jira, and PostgreSQL snapshots.
   - `delivery`: Delivery bottlenecks, review cycle turnaround, and Jira blockers.
@@ -40,7 +41,8 @@ This is a polyglot microservices system:
   - `google.js`: Google Calendar REST API event listing and schedule inspection.
   - `baseToolHarness.js`: Standardized circuit breaker, backoff, and execution logging.
 - **RAG Retriever (`backend/src/rag/retriever.js`)**: Single-pass answer synthesis with HyDE query transformation and Reciprocal Rank Fusion (RRF CTE).
-- **Database Layer (`backend/src/db/postgres.js`)**: Multi-session persistence, chat threads, messages, and MCP fallback caches.
+- **Database Layer (`backend/src/db/`)**: `postgres.js` core (pool, `withTransaction`), `migrator.js` + numbered SQL in `migrations/` (never edit an applied migration; add a new one), table methods in `repositories/*` mixed into the same `db` object.
+- **Workers**: `src/worker.js` (`npm run worker`, compose `worker` service); `WORKERS_IN_PROCESS=true` runs them inside the API for `npm run dev`.
 
 ## Development & Test Commands
 
@@ -52,10 +54,13 @@ npm run dev
 # Build ESM JavaScript output
 npm run build
 
-# Run unit tests with Jasmine (319 specs, 0 failures)
+# Lint (no-undef, no silent catches)
+npm run lint
+
+# Unit tests (Jasmine). Set TEST_DATABASE_URL to also run the real-Postgres integration specs.
 npm test
 
-# Run full evaluation suite (Model: hermes3:8b)
+# Evaluation suite (needs Ollama with qwen3:8b-q8_0; dev routes need ENABLE_DEV_EVAL_ROUTES=true)
 npm run evaluate
 npm run eval:multi-agent
 npm run eval:rag
@@ -64,8 +69,9 @@ npm run eval:pre-llm
 
 ### Python AI Service (from `/services/python-ai-service`)
 ```bash
-# Run Pytest suite (45 specs, 0 failures)
+# Pytest (live-judge tests skip without Ollama) and ruff
 uv run pytest
+uv run ruff check .
 ```
 
 
@@ -76,6 +82,9 @@ npm run dev
 
 # Build production bundle
 npm run build
+
+# Component tests (Vitest)
+npm test
 ```
 
 ### Full Container Management (from project root)
@@ -94,19 +103,20 @@ docker compose logs -f backend python-ai-service postgres redis langfuse
 
 1. **Frontend Cockpit**: `http://localhost:3000` (Admin Portal at `http://localhost:3000/admin`)
 2. **Backend Express API**: `http://localhost:4000` (`/api/health`, `/api/chat`, `/api/sessions`, `/api/admin/*`, `/api/docs`)
-3. **Python AI Microservice**: Port 8000 (REST) and Port 50051 (gRPC)
+3. **Python AI Microservice**: Port 8000 (REST)
 4. **PostgreSQL 16**: Port 5432 (`taskflow_backend`, `taskflow_ai`, `temporal`)
 5. **Analytics DB (Langfuse)**: Port 5433 (`langfuse_db`)
 6. **Langfuse UI**: `http://localhost:3001`
 7. **Promptfoo Matrix Server**: `http://localhost:15500`
 8. **Adminer Database Explorer**: `http://localhost:8080`
 9. **Temporal Web UI**: `http://localhost:8233`
-10. **Ollama Local LLM**: `http://localhost:11434` (`hermes3:8b`, `nomic-embed-text`)
+10. **Ollama Local LLM**: `http://localhost:11434` (`qwen3:8b-q8_0`, `nomic-embed-text`; set up with `scripts/setup-ollama-models.sh`)
 
 ## Architectural Guidelines & Rules
 
-- **Zero Cloud LLM Requirement**: All inferences run locally against Ollama (`hermes3:8b`). External cloud LLMs are disabled.
+- **Local LLM by default**: All inference runs against local Ollama (`qwen3:8b-q8_0`). A cloud provider is opt-in only (`LLM_DEFAULT_PROVIDER` + explicit enable). New code calls models through `llm/gateway.js` (JSON-schema output, one repair turn, then `LLM_INVALID_OUTPUT`).
 - **1-Tool Sub-Agent Bounding**: Sub-agents in LangGraph are bounded to maximum 1 tool per call for local SLM accuracy >95%.
-- **Zero Misleading Fallbacks**: Fallback responses return real PostgreSQL cached snapshots (`github_issues`, `dora_snapshots`, `sprint_analytics`, `okr_records`). Never output hardcoded dummy strings.
+- **Zero Misleading Fallbacks**: Fallbacks return real PostgreSQL snapshots and say so (provenance `mode: snapshot`). Missing data is `null` / `n/a` / `NO_DATA`, never a default number, invented record or assumed target. Errors use `core/errors.js` codes; handled errors go through `core/safe.js` (`swallow`, `recordHandledError`), never empty catches.
+- **Writes need approval**: the model can only draft Slack posts (HITL via Temporal); nothing posts if approval cannot be requested.
 - **Non-Blocking Telemetry**: Tracing calls to Langfuse must be non-blocking and never crash request lifecycles.
-- **Test Integrity**: Never push without running backend unit tests (`240 specs`) and Python unit tests (`39 specs`).
+- **Test Integrity**: Never push without running backend lint + tests (492 specs, 0 failures) and Python tests (47 passed, 12 skipped without Ollama). Frontend: `npm test` (11) and `npm run build`.
