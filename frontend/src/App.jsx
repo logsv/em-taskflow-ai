@@ -39,6 +39,7 @@ function App() {
   const [sessionSummary, setSessionSummary] = useState(null);
   const [useAdvancedMode, setUseAdvancedMode] = useState(false);
   const [sourcesMap, setSourcesMap] = useState({});
+  const [provenanceMap, setProvenanceMap] = useState({});
   const [traceMap, setTraceMap] = useState({});
   const [isDevSettingsOpen, setIsDevSettingsOpen] = useState(false);
   const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
@@ -165,6 +166,9 @@ function App() {
           [assistantMessageIndex]: data.sources,
         }));
       }
+      if (Array.isArray(data?.meta?.decision?.provenance)) {
+        setProvenanceMap(prev => ({ ...prev, [assistantMessageIndex]: data.meta.decision.provenance }));
+      }
       if (data?.traceId || data?.messageId) {
         setTraceMap(prev => ({
           ...prev,
@@ -215,6 +219,7 @@ function App() {
       // Hydrate past messages into assistant-ui runtime thread
       const threadMessages = [];
       const newSourcesMap = {};
+      const newProvenanceMap = {};
       const newTraceMap = {};
 
       if (Array.isArray(data?.messages) && data.messages.length > 0) {
@@ -229,6 +234,9 @@ function App() {
           if (msg.citations && Array.isArray(msg.citations) && msg.citations.length > 0) {
             newSourcesMap[index] = msg.citations;
           }
+          if (Array.isArray(msg.metadata?.provenance) && msg.metadata.provenance.length > 0) {
+            newProvenanceMap[index] = msg.metadata.provenance;
+          }
           if (msg.trace_id || msg.traceId || msg.id) {
             newTraceMap[index] = {
               traceId: msg.trace_id || msg.traceId || null,
@@ -242,6 +250,7 @@ function App() {
         runtime.thread.reset(threadMessages);
       }
       setSourcesMap(newSourcesMap);
+      setProvenanceMap(newProvenanceMap);
       setTraceMap(newTraceMap);
     } catch (error) {
       logger.error('Failed to fetch session', { error: error.message });
@@ -268,6 +277,7 @@ function App() {
         syncUrl(newSessionId, newThreadId);
       }
       setSourcesMap({});
+      setProvenanceMap({});
       setTraceMap({});
       if (typeof runtime?.thread?.reset === 'function') {
         runtime.thread.reset([]);
@@ -378,6 +388,7 @@ function App() {
               useAdvancedMode={useAdvancedMode}
               setUseAdvancedMode={setUseAdvancedMode}
               sourcesMap={sourcesMap}
+              provenanceMap={provenanceMap}
               setSourcesMap={setSourcesMap}
               traceMap={traceMap}
               runtime={runtime}

@@ -136,6 +136,7 @@ export class LangGraphAgentService {
       ragMode,
       ragHit: false,
       toolsUsed: [],
+      provenance: [],
       routingPlan: null,
       rollout,
       policy: {
@@ -534,8 +535,10 @@ export class LangGraphAgentService {
       });
 
       const outcomes = await Promise.all(recoveryPromises);
+      decision.provenance = toArray(decision.provenance);
       for (const { domain, tool, result } of outcomes) {
         decision.toolsUsed = Array.from(new Set([...toArray(decision.toolsUsed), tool.name]));
+        toArray(result?.provenance).forEach((p) => decision.provenance.push({ ...p, domain }));
         decision.reasons.push(`supervisor_missing_${tool.name}_recovered_deterministically`);
         if (result?.status !== "SUCCESS") {
           decision.reasons.push(`recovery_tool_status:${tool.name}:${result?.status || "unknown"}`);

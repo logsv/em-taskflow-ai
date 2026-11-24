@@ -177,7 +177,9 @@ describe('Phase 2 Infrastructure Specs: Deterministic Tool Harness & 3-Tier Fall
       });
 
       const res = await harness.invoke({});
-      expect(res.status).toBe('SUCCESS');
+      // A failed computation is reported as FAILED (it used to claim SUCCESS); raw data is kept for debugging.
+      expect(res.status).toBe('FAILED');
+      expect(res.outcome).toBe('failed');
       expect(res.data.rawSources).toBeDefined();
       expect(res.data.rawSources.default.data.value).toBe(42);
       expect(res.data.error).toBe('Math computation failed');
