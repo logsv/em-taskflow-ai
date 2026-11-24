@@ -44,7 +44,7 @@ Goal: safe to run, honest output, correct configuration, new model.
 | 1.1 | `Result` and `Evidence` JSDoc typedefs + zod schemas (`backend/src/core/`) | ✅ |
 | 1.2 | Error taxonomy (`INTEGRATION_UNAUTHORIZED`, `INTEGRATION_UNAVAILABLE`, `LLM_UNAVAILABLE`, `LLM_TIMEOUT`, `RETRIEVAL_EMPTY`, `VALIDATION`, `INTERNAL`) + one Express error middleware; no raw `err.message` to clients | ✅ |
 | 1.3 | Tool harness returns `ok \| degraded \| failed` with provenance (`source`, `mode`, `asOf`, `url`); UI renders a source/freshness strip on every answer | ✅ |
-| 1.4 | ESLint + Prettier; ban empty catch blocks and `.catch(() => {})`; `background(task, name)` helper with failure counter; ruff `S110`/`BLE001` for Python | ✅ |
+| 1.4 | ESLint (no-empty, swallowed-catch ban, no-undef) and ruff (S110, undefined names); `swallow()`/`background()`/`recordHandledError()` helpers with failure counters. Prettier deliberately not added yet (it would reformat most files in one diff) | ✅ |
 | 1.5 | Fallback and tool-status metrics (OTel counters); `/api/v1/health/ready` with per-dependency status, including "model loaded" | ✅ |
 | 1.6 | Node↔Python contract tests (pydantic JSON Schema checked against the Node client; zod validation of Python responses) | ✅ |
 | 1.7 | LLM gateway (`llm/gateway.js`): per-task model routing (Ollama default), constrained JSON output via Ollama `format`, Qwen3 thinking toggle per task, concurrency limiter, model warm-up; cloud as an off-by-default plug-in | ✅ |
