@@ -97,7 +97,7 @@ Goal: safe to run, honest output, correct configuration, new model.
 |---|---|---|
 | 4.1 | Weekly EM brief built from the audit | ⬜ |
 | 4.2 | Action item lifecycle: owner, due date, snooze, dismiss-with-reason feeding audit scoring | ✅ backend: migration 004 (`due_date`, `snoozed_until`, `dismissed_reason`), `domain/actionItems.js` rules (dismiss needs a reason, snooze needs a future time, strict fields), `PATCH /api/actions/:id` validated (400 `VALIDATION`), snoozed items wake to PENDING, dismissed/snoozed items no longer cost health-score points and the audit summary says how many were set aside. UI controls for snooze/due date still to add |
-| 4.3 | Health score trend view | ⬜ |
+| 4.3 | Health score trend view | 🟡 backend: `GET /api/actions/health-trend?days=30` (completed, measured runs only, oldest first, change over the window, message when empty). Chart in the Admin overview still to add |
 | 4.4 | Setup wizard and connection health page | ⬜ |
 | 4.5 | Notion/Confluence knowledge sync into the document index | ⬜ |
 | 4.6 | Privacy controls: retention, exclude-person, PII redaction in traces | ⬜ |

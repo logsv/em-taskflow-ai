@@ -70,6 +70,24 @@ router.get('/summary', async (req, res) => {
   }
 });
 
+// GET /api/actions/health-trend?days=30 - Health score per completed audit run, oldest first.
+// Runs without a measured score (failed / unmeasured) are left out, not shown as 0 or 100.
+router.get('/health-trend', async (req, res) => {
+  try {
+    const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30));
+    const since = Date.now() - days * 24 * 60 * 60 * 1000;
+    const runs = await databaseService.listAuditRuns({ limit: 500, offset: 0 });
+    const points = runs
+      .filter((r) => r.status === 'COMPLETED' && Number.isFinite(r.healthScore) && new Date(r.createdAt).getTime() >= since)
+      .map((r) => ({ at: r.createdAt, healthScore: r.healthScore, auditRunId: r.id }))
+      .sort((a, b) => new Date(a.at) - new Date(b.at));
+    const change = points.length >= 2 ? points.at(-1).healthScore - points[0].healthScore : null;
+    res.json({ success: true, days, points, change, ...(points.length ? {} : { message: `No completed audits in the last ${days} days.` }) });
+  } catch (err) {
+    return sendError(req, res, err, 'actions.js');
+  }
+});
+
 // GET /api/actions/audit-runs - Historical audit run snapshots
 router.get('/audit-runs', async (req, res) => {
   try {
