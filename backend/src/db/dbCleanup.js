@@ -1,6 +1,6 @@
 import databaseService from './postgres.js';
 import { info, warn, error } from '../utils/logger.js';
-import { swallow, recordHandledError } from '../core/safe.js';
+import { swallow } from '../core/safe.js';
 
 /**
  * List of state/data tables to clean during database resets.
