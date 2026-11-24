@@ -55,10 +55,13 @@ export function createMicroAgent({ name, defaultTool, promptTemplate, customTool
 export async function safeExecuteMCPTool(toolName, params = {}, timeoutMs = 2500) {
   try {
     const { executeMCPTool } = await import('../mcp/index.js');
+    let timer;
     const res = await Promise.race([
       executeMCPTool(toolName, params),
-      new Promise((_, reject) => setTimeout(() => reject(new Error(`MCP Tool '${toolName}' timed out after ${timeoutMs}ms`)), timeoutMs)),
-    ]);
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`MCP Tool '${toolName}' timed out after ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]).finally(() => clearTimeout(timer));
 
     if (!res) return null;
 

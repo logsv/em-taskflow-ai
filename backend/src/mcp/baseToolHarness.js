@@ -3,6 +3,8 @@ import { z } from 'zod';
 import config, { getAgentConfig, getMcpConfig } from '../config.js';
 import { info, warn, error } from '../utils/logger.js';
 import { createSpan } from '../utils/tracer.js';
+import { provenanceFor, outcomeFrom } from '../core/types.js';
+import { incCounter } from '../core/metrics.js';
 
 export const commonHarnessSchema = z.object({
   sources: z.array(z.string()).default(['default']),
@@ -121,18 +123,30 @@ export function createDeterministicToolHarness({
 
       // 3. Mathematical Computation & Report Preparation
       let finalPayload = {};
+      let computeFailed = false;
       try {
         finalPayload = await computeMath(sourceResults, inputArgs);
       } catch (err) {
+        computeFailed = true;
         error(`Harness '${name}' computeMath failed: ${err.message}`);
         finalPayload = { rawSources: sourceResults, error: err.message };
       }
+
+      // 4. Provenance: where each source's data came from and how fresh it is.
+      const provenance = Object.entries(sourceResults).map(([src, r]) => provenanceFor(src, r.tierUsed, r.data));
+      const outcome = outcomeFrom(provenance, computeFailed);
+      provenance.forEach((p) => {
+        if (p.mode !== 'live') incCounter('tool_fallback_total', { tool: name, source: p.source, mode: p.mode }, 1, 'Tool sources served from snapshot or with no data');
+      });
+      incCounter('tool_result_total', { tool: name, outcome }, 1, 'Tool runs by outcome');
 
       const executionTimeMs = Date.now() - startTime;
       info(`Deterministic Harness '${name}' executed in ${executionTimeMs}ms (Mode: ${mode}, Sources: ${sources.join(',')})`);
 
       const resultPayload = {
-        status: 'SUCCESS',
+        status: computeFailed ? 'FAILED' : 'SUCCESS',
+        outcome,
+        provenance,
         name,
         mode,
         staleDataWarning,

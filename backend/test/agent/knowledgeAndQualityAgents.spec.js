@@ -12,7 +12,8 @@ describe('Phase 6 Knowledge & Quality Agents Specs: SOP RAG & Reflective Critic 
 
       expect(res.status).toBe('SUCCESS');
       expect(res.name).toBe('query_sop_compliance');
-      expect(res.data.overall_compliance).toBe('COMPLIANT');
+      // A check that finds nothing reports NO_VIOLATIONS_FOUND, not proof of compliance.
+      expect(res.data.overall_compliance).toBe('NO_VIOLATIONS_FOUND');
       expect(Array.isArray(res.data.checked_sops)).toBe(true);
       expect(res.data.checked_sops.length).toBeGreaterThan(0);
       expect(Array.isArray(res.data.rubric_checks)).toBe(true);
@@ -23,7 +24,7 @@ describe('Phase 6 Knowledge & Quality Agents Specs: SOP RAG & Reflective Critic 
       expect(res.data.summary).toContain('Source Citations');
     });
 
-    it('should evaluate ADR-008 database-per-service isolation compliance', async () => {
+    it('reports NOT_EVALUATED (not COMPLIANT) when no evidence is provided, and labels built-in guidance', async () => {
       const res = await sopComplianceTool.invoke({
         topic: 'database_isolation',
         query: 'Check our Architecture Decision Record (ADR) on database-per-service isolation guidelines',
@@ -31,9 +32,19 @@ describe('Phase 6 Knowledge & Quality Agents Specs: SOP RAG & Reflective Critic 
       });
 
       expect(res.status).toBe('SUCCESS');
-      expect(res.data.overall_compliance).toBe('COMPLIANT');
-      expect(res.data.summary).toContain('ADR-008');
-      expect(res.data.summary).toContain('Database Per-Service Isolation Architecture');
+      expect(res.data.overall_compliance).toBe('NOT_EVALUATED');
+      expect(res.data.summary).toContain('BASELINE-DB-ISOLATION');
+      expect(res.data.summary).toContain('not a company document');
+      expect(res.data.summary).not.toContain('strictly adhere');
+    });
+
+    it('flags a violation found in the provided text', async () => {
+      const res = await sopComplianceTool.invoke({
+        topic: 'database_isolation',
+        task_context: 'The billing service will run a cross-service join against the users table',
+        mode: 'ANALYZE',
+      });
+      expect(res.data.overall_compliance).toBe('NON_COMPLIANT');
     });
 
     it('should list checked SOPs in LIST_RAW mode', async () => {

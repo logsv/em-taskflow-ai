@@ -73,7 +73,6 @@ export default withMermaid(
           text: 'API Reference ▾',
           items: [
             { text: 'Canonical REST API (v1) Catalog', link: '/api-reference/rest-api' },
-            { text: 'gRPC Protobuf Services', link: '/api-reference/grpc-protobuf' },
             { text: 'Multi-Session Persistence & Memory', link: '/api-reference/session-management' }
           ]
         },
@@ -166,7 +165,6 @@ export default withMermaid(
             text: '📡 API & Protocol Reference',
             items: [
               { text: 'Canonical REST API (v1) Catalog', link: '/api-reference/rest-api' },
-              { text: 'gRPC Protobuf Services', link: '/api-reference/grpc-protobuf' },
               { text: 'Multi-Session Persistence & Memory', link: '/api-reference/session-management' }
             ]
           }

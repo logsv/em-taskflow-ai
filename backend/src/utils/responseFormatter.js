@@ -36,6 +36,9 @@ export async function buildEmResponse(query, rawAnswer, evidenceBySource, decisi
     decision.selectedPath === "parallel-multi-agent-orchestrator" ||
     decision.selectedPath === "rag-zero-hit-guidance" ||
     decision.selectedPath === "deterministic-domain-tool-recovery" ||
+    decision.selectedPath === "capability-pipeline" ||
+    decision.selectedPath === "rag-unavailable" ||
+    decision.selectedPath === "capability-pipeline-abstained" ||
     decision.selectedPath === "rag+llm" || 
     decision.ragHit || 
     decision.routingPlan?.intent_type === "DIRECT_LLM" ||

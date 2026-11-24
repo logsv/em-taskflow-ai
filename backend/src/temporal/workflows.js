@@ -168,6 +168,7 @@ export async function emAutonomousAuditWorkflow(params = {}) {
     topActions: synthesisResult.topActions,
     mode: params.slackMode || 'consolidated',
     channel: params.slackChannel,
+    notifySlack: params.notifySlack === true,
   });
 
   return {

@@ -88,4 +88,14 @@ describe('Deterministic Fallback Router (getDeterministicFallbackPlan)', () => {
   });
 });
 
+describe('Fast path never answers team-data questions from general knowledge', () => {
+  it('routes questions about our/my team data to the planner', () => {
+    ['what is our change failure rate this month', 'what is the deployment frequency for my team', 'how is our sprint velocity trending', 'which engineer has overdue reviews'].forEach((q) => {
+      expect(classifyFastPath(q)).withContext(q).toBeNull();
+    });
+  });
 
+  it('still fast-paths general questions', () => {
+    expect(classifyFastPath('what is a binary search tree')?.intent_type).toBe('DIRECT_LLM');
+  });
+});

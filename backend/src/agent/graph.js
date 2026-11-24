@@ -27,9 +27,12 @@ import { createOkrAgent } from "./okrAgent.js";
 import { createCriticAgent } from "./criticAgent.js";
 import { supervisorAgentPromptTemplate } from "./prompts.js";
 
+/** Name of the knowledge-base search tool. Imported by the policy layer so names cannot drift. */
+export const RAG_TOOL_NAME = "rag_search";
+
 export function getRagTool() {
   return new DynamicStructuredTool({
-    name: "rag_search",
+    name: RAG_TOOL_NAME,
     description: "Search local PDF knowledge base documents for relevant context, rubrics, and guidelines.",
     schema: z.object({
       query: z.string().describe("Search query for PDF chunks"),
@@ -42,6 +45,8 @@ export function getRagTool() {
 }
 import { getTracerCallbacks } from "../utils/tracer.js";
 import { info, warn, error as logError } from "../utils/logger.js";
+import { hasKeyword } from "../utils/keywords.js";
+import { swallow, recordHandledError } from '../core/safe.js';
 
 // Define the custom state schema for the supervisor graph
 export const SupervisorState = Annotation.Root({
@@ -194,7 +199,7 @@ function extractEvidenceContent(messages) {
         return `GitHub Evidence Summary (${lines.length} open issue(s)):\n${lines.join("\n")}`;
       }
     }
-  } catch {}
+  } catch (err) { recordHandledError('agent.graph.extractEvidenceContent', err); }
 
   return text;
 }
@@ -352,17 +357,17 @@ function createSupervisorLlmWrapper(baseLlm) {
         const domain = authorizedDomains[0];
         targetAgent = `transfer_to_${domain}_agent`;
       } else {
-        const isDora = text.includes("dora") || text.includes("lead time") || text.includes("mttr") || text.includes("deployment frequency");
-        const isDelivery = text.includes("delivery") || text.includes("wip") || text.includes("throughput") || text.includes("cycle time");
-        const isSbi = text.includes("sbi") || text.includes("feedback") || text.includes("coaching") || text.includes("situation");
-        const isPeople = text.includes("people") || text.includes("career") || text.includes("burnout") || text.includes("1-on-1") || text.includes("1:1") || text.includes("agenda") || text.includes("promotion") || text.includes("growth");
-        const isSprint = text.includes("sprint plan") || text.includes("velocity") || text.includes("capacity");
-        const isRetro = text.includes("retro") || text.includes("retrospective") || text.includes("action items") || text.includes("slack");
-        const isSop = text.includes("sop") || text.includes("adr") || text.includes("compliance") || text.includes("guidelines");
-        const isRoadmap = text.includes("roadmap") || text.includes("milestone") || text.includes("drift");
-        const isOkr = text.includes("okr") || text.includes("kpi") || text.includes("key result");
-        const isGithub = text.includes("github") || text.includes("issue") || text.includes("repo") || text.includes("pr") || text.includes("bug");
-        const isJira = text.includes("jira") || text.includes("blocker");
+        const isDora = hasKeyword(text, "dora") || text.includes("lead time") || hasKeyword(text, "mttr") || text.includes("deployment frequency");
+        const isDelivery = hasKeyword(text, "delivery") || hasKeyword(text, "wip") || hasKeyword(text, "throughput") || text.includes("cycle time");
+        const isSbi = hasKeyword(text, "sbi") || hasKeyword(text, "feedback") || hasKeyword(text, "coaching") || hasKeyword(text, "situation");
+        const isPeople = hasKeyword(text, "people") || hasKeyword(text, "career") || hasKeyword(text, "burnout") || hasKeyword(text, "1-on-1") || text.includes("1:1") || hasKeyword(text, "agenda") || hasKeyword(text, "promotion") || hasKeyword(text, "growth");
+        const isSprint = text.includes("sprint plan") || hasKeyword(text, "velocity") || hasKeyword(text, "capacity");
+        const isRetro = hasKeyword(text, "retro") || hasKeyword(text, "retrospective") || text.includes("action items") || hasKeyword(text, "slack");
+        const isSop = hasKeyword(text, "sop") || hasKeyword(text, "adr") || hasKeyword(text, "compliance") || hasKeyword(text, "guidelines");
+        const isRoadmap = hasKeyword(text, "roadmap") || hasKeyword(text, "milestone") || hasKeyword(text, "drift");
+        const isOkr = hasKeyword(text, "okr") || hasKeyword(text, "kpi") || text.includes("key result");
+        const isGithub = hasKeyword(text, "github") || hasKeyword(text, "issue") || hasKeyword(text, "repo") || hasKeyword(text, "pr") || hasKeyword(text, "bug");
+        const isJira = hasKeyword(text, "jira") || hasKeyword(text, "blocker");
 
         if (isDora) targetAgent = "transfer_to_dora_agent";
         else if (isDelivery || isGithub || isJira) targetAgent = "transfer_to_delivery_agent";
@@ -553,6 +558,7 @@ export async function executeAgentQuery(query, options = {}) {
     return {
       response: responseText,
       toolsUsed,
+      toolOutputs: collectToolOutputs(messages),
       messageCount: messages.length,
       evidence: result.evidence || {},
     };
@@ -576,6 +582,14 @@ function extractMessageText(message) {
       .join("\n");
   }
   return String(message.content);
+}
+
+/** Text of every tool result in the run (evidence for the verifier). */
+function collectToolOutputs(messages) {
+  return (messages || [])
+    .filter((m) => m && (m._getType?.() === 'tool' || m.constructor?.name === 'ToolMessage' || m.tool_call_id))
+    .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '')))
+    .filter(Boolean);
 }
 
 function collectToolsUsed(messages) {

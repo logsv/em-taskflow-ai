@@ -4,6 +4,7 @@ import { StatusBadge, Badge } from '../ui/Badge.jsx';
 import { Button } from '../ui/Button.jsx';
 import { Card, CardHeader, CardBody } from '../ui/Card.jsx';
 import './drawers.css';
+import { DEFAULT_CHAT_MODEL } from '../../../constants/models';
 
 function formatUptime(totalSeconds) {
   if (typeof totalSeconds !== 'number' || totalSeconds <= 0) return 'Just started (< 1m)';
@@ -148,7 +149,7 @@ export function SystemStatusDrawer({
             <div className="drawer-diag-item">
               <span className="drawer-diag-label">Default Model</span>
               <span className="drawer-diag-value mono-val">
-                {adminSettings?.llm?.defaultModel || systemStatus?.ollama?.defaultModel || 'hermes3:8b'}
+                {adminSettings?.llm?.defaultModel || systemStatus?.ollama?.defaultModel || DEFAULT_CHAT_MODEL}
               </span>
             </div>
             <div className="drawer-diag-item">

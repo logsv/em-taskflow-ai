@@ -1,5 +1,6 @@
 import databaseService from '../db/postgres.js';
 import { info, warn } from '../utils/logger.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 /**
  * Tier 4: Episodic Semantic Memory Retrieval
@@ -40,7 +41,7 @@ export class EpisodicMemoryService {
         : null;
 
       if (!allMessages && threadId) {
-        allMessages = await this.db.getThreadMessages(threadId, 50).catch(() => []);
+        allMessages = await this.db.getThreadMessages(threadId, 50).catch(swallow('services.episodicMemory.retrieveRelevantPastContext', []));
       }
 
       if (!Array.isArray(allMessages) || allMessages.length <= 6) {

@@ -17,23 +17,26 @@ describe('DatabaseService session foundation', () => {
     db.initializing = null;
   });
 
-  it('creates session and feedback tables plus session/message columns', async () => {
-    const executedSql = [];
-    db.pool = {
+  it('createTables runs the numbered migrations (schema DDL lives in src/db/migrations)', async () => {
+    const executed = [];
+    const client = {
       query: sandbox.stub().callsFake(async (sql) => {
-        executedSql.push(sql);
+        executed.push(String(sql));
         return { rowCount: 0, rows: [] };
       }),
+      release: sandbox.stub(),
     };
+    db.pool = { query: sandbox.stub().resolves({ rows: [] }), connect: sandbox.stub().resolves(client) };
 
-    await db.createTables();
+    const result = await db.createTables();
 
-    const combined = executedSql.join('\n');
+    const combined = executed.join('\n');
+    expect(combined).toContain('pg_advisory_lock');
+    expect(combined).toContain('CREATE TABLE IF NOT EXISTS schema_migrations');
     expect(combined).toContain('CREATE TABLE IF NOT EXISTS sessions');
-    expect(combined).toContain('CREATE TABLE IF NOT EXISTS feedback');
-    expect(combined).toContain('ADD COLUMN IF NOT EXISTS session_id');
     expect(combined).toContain('ADD COLUMN IF NOT EXISTS trace_id');
-    expect(combined).toContain('ADD COLUMN IF NOT EXISTS citations_json');
+    expect(result.applied.length).toBeGreaterThanOrEqual(3);
+    expect(client.release.called).toBeTrue();
   });
 
   it('creates a session and parses client info', async () => {

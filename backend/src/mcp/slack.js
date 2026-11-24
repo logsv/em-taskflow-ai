@@ -7,7 +7,13 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import slackClient from '../integrations/clients/SlackClient.js';
 import { info, warn, debug } from '../utils/logger.js';
+import { recordHandledError } from '../core/safe.js';
 import settingsService from '../services/settingsService.js';
+
+/** Format a possibly-missing value for a Slack message without inventing one. */
+function na(value, suffix = '') {
+  return value === null || value === undefined || value === '' ? 'n/a' : `${value}${suffix}`;
+}
 
 export async function testSlackConnection(credentials = {}) {
   return slackClient.testConnection(credentials);
@@ -75,88 +81,44 @@ export async function getSlackTools() {
 
   const postTool = new DynamicStructuredTool({
     name: 'slack_post_message',
-    description: 'Posts an executive summary, retrospective action plan, or notification to a Slack channel with Temporal Human-in-the-Loop (HITL) approval governance.',
+    description: 'Drafts a Slack post (summary, retro action plan, notification) and queues it for the owner to approve. It never posts directly.',
     schema: z.object({
       message: z.string().describe('Markdown formatted message or executive summary to post'),
       channel: z.string().optional().describe('Target channel name or ID'),
-      approved_by_human: z.boolean().default(false).describe('Set to true ONLY if this post has received explicit human manager confirmation'),
-      approver: z.string().optional().describe('Identity of human approver confirming the post'),
       sprint_name: z.string().optional().describe('Sprint or context name for retrospective posting'),
     }),
-    func: async ({ message, channel, approved_by_human, approver, sprint_name }) => {
-      const { token, defaultChannel } = slackClient.getCredentials();
+    // Write actions never run from the model: this tool can only *request* a post. The owner
+    // approves it (Admin, or POST /api/v1/admin/temporal/slack-post/approve) and the Temporal
+    // activity sends it. If the approval workflow cannot be started, nothing is posted.
+    func: async ({ message, channel, sprint_name }) => {
+      const { defaultChannel } = slackClient.getCredentials();
       const targetChannel = channel || defaultChannel;
-
-      // 1. Human-in-the-Loop (HITL) Gate via Temporal
-      if (!approved_by_human) {
-        try {
-          const { startSlackPostHITLWorkflow } = await import('../temporal/client.js');
-          const hitlRes = await startSlackPostHITLWorkflow({
-            channel: targetChannel,
-            message,
-            sprintName: sprint_name || 'Current Sprint',
-            requestedBy: 'EM TaskFlow Agent',
-          });
-
-          return JSON.stringify({
-            status: 'PENDING_HUMAN_APPROVAL',
-            workflowId: hitlRes?.workflowId || `slack-post-hitl-${Date.now()}`,
-            target_channel: targetChannel,
-            draft_message: message,
-            requires_approval: true,
-            approval_endpoint: '/api/v1/admin/temporal/slack-post/approve',
-            message: 'Draft post held in Temporal Human-in-the-Loop (HITL) queue. Awaiting human confirmation before dispatching to Slack.',
-          });
-        } catch (hitlErr) {
-          info({ module: 'slackMCP', action: 'hitlDispatchFallback', err: hitlErr.message }, 'HITL dispatch notice');
-        }
-      }
-
-      // 2. Direct Post Execution (Human Confirmed)
-      if (!token || token.includes('dummy') || token.includes('placeholder')) {
-        return JSON.stringify({
-          status: 'SIMULATED',
-          target_channel: targetChannel,
-          message: 'Slack token unconfigured. Simulated post to channel (Human Confirmed).',
-          approved_by: approver || 'Engineering Manager',
-        });
-      }
-
       try {
-        debug({ module: 'slackMCP', action: 'slack_post_message', targetChannel }, `Executing confirmed slack_post_message: to ${targetChannel}`);
-        const res = await slackClient.post(
-          'https://slack.com/api/chat.postMessage',
-          {
-            channel: targetChannel,
-            text: message,
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            timeout: 4500,
-          }
-        );
-
-        if (res.data?.ok) {
-          return JSON.stringify({
-            status: 'SUCCESS',
-            channel: targetChannel,
-            ts: res.data.ts,
-            approved_by: approver || 'Engineering Manager',
-            message: 'Successfully posted to Slack channel',
-          });
-        }
-        return JSON.stringify({
-          status: 'ERROR',
-          error: res.data?.error || 'Failed to post message',
+        const { startSlackPostHITLWorkflow } = await import('../temporal/client.js');
+        const hitlRes = await startSlackPostHITLWorkflow({
+          channel: targetChannel,
+          message,
+          sprintName: sprint_name || 'Current Sprint',
+          requestedBy: 'EM TaskFlow Agent',
         });
-      } catch (err) {
-        warn({ module: 'slackMCP', action: 'slack_post_message_error', targetChannel, err: err.message }, 'Slack message post failed');
+        if (!hitlRes?.workflowId) throw new Error('approval workflow did not return an id');
         return JSON.stringify({
-          status: 'ERROR',
-          error: err.message,
+          status: 'PENDING_HUMAN_APPROVAL',
+          workflowId: hitlRes.workflowId,
+          target_channel: targetChannel,
+          draft_message: message,
+          requires_approval: true,
+          approval_endpoint: '/api/v1/admin/temporal/slack-post/approve',
+          message: 'Draft held for your approval. Nothing has been posted yet.',
+        });
+      } catch (hitlErr) {
+        recordHandledError('mcp.slack.postApproval', hitlErr);
+        return JSON.stringify({
+          status: 'NOT_POSTED',
+          error: 'APPROVAL_UNAVAILABLE',
+          target_channel: targetChannel,
+          draft_message: message,
+          message: `Nothing was posted: the approval workflow could not be started (${hitlErr.message}). Copy the draft manually or retry when Temporal is running.`,
         });
       }
     },
@@ -217,12 +179,13 @@ export async function sendAuditOverviewMessage({
   const { defaultChannel, token } = slackClient.getCredentials();
   const targetChannel = channel || defaultChannel;
 
-  const healthScore = auditRun.healthScore ?? 100;
-  const healthEmoji = healthScore >= 85 ? '🟢' : healthScore >= 65 ? '🟡' : '🔴';
-  const doraTier = auditRun.doraSummary?.tier || 'Elite';
-  const sprintPacing = auditRun.sprintOkrSummary?.sprintPacingPct ?? 82;
-  const overdue1on1s = auditRun.peopleSummary?.overdue1on1sCount ?? 0;
-  const sopScore = auditRun.sopSummary?.complianceScore ?? 100;
+  // Missing values are shown as n/a: a Slack post must never contain invented numbers.
+  const healthScore = auditRun.healthScore ?? null;
+  const healthEmoji = healthScore === null ? '⚪' : healthScore >= 85 ? '🟢' : healthScore >= 65 ? '🟡' : '🔴';
+  const doraTier = auditRun.doraSummary?.tier || 'n/a';
+  const sprintPacing = auditRun.sprintOkrSummary?.sprintPacingPct;
+  const overdue1on1s = auditRun.peopleSummary?.overdue1on1sCount;
+  const sopScore = auditRun.sopSummary?.complianceScore;
 
   const actionLines = topActions.length > 0
     ? topActions.slice(0, 4).map((a) => {
@@ -234,8 +197,8 @@ export async function sendAuditOverviewMessage({
 
   const messageText = [
     `*${healthEmoji} EM TaskFlow AI — Autonomous Engineering Health Audit*`,
-    `*Overall Health Score:* \`${healthScore}/100\` | *DORA Tier:* \`${doraTier}\` | *Sprint Pacing:* \`${sprintPacing}%\` | *SOP Compliance:* \`${sopScore}%\``,
-    `*Overdue 1-on-1s:* \`${overdue1on1s}\` | *Pending Actions:* \`${topActions.length}\``,
+    `*Overall Health Score:* \`${na(healthScore, '/100')}\` | *DORA Tier:* \`${doraTier}\` | *Sprint Pacing:* \`${na(sprintPacing, '%')}\` | *SOP Compliance:* \`${na(sopScore, '%')}\``,
+    `*Overdue 1-on-1s:* \`${na(overdue1on1s)}\` | *Pending Actions:* \`${topActions.length}\``,
     '',
     '*📌 Action Items & Bottlenecks:*',
     actionLines,
@@ -308,19 +271,19 @@ export async function sendAuditSubsectionThread({
   const subsections = [
     {
       title: '🚀 *Delivery & DORA Metrics*',
-      content: `• *Open PRs:* ${delivery.openPrsCount ?? 4} | *Stalled PRs (>24h):* ${delivery.stalledPrsCount ?? 1}\n• *Avg PR Review Latency:* ${delivery.avgPrReviewWaitHours ?? '14.2'}h\n• *DORA Deployment Frequency:* ${auditRun.doraSummary?.deploymentFrequency ?? '2.4'}/day | *MTTR:* ${auditRun.doraSummary?.mttrHours ?? '0.8'}h`,
+      content: `• *Open PRs:* ${na(delivery.openPrsCount)} | *Stalled PRs (>24h):* ${na(delivery.stalledPrsCount)}\n• *Avg PR Review Latency:* ${na(delivery.avgPrReviewWaitHours, 'h')}\n• *DORA Deployment Frequency:* ${na(auditRun.doraSummary?.deploymentFrequency, '/day')} | *MTTR:* ${na(auditRun.doraSummary?.mttrHours, 'h')}`,
     },
     {
       title: '👥 *People, 1-on-1s & Growth*',
-      content: `• *1-on-1 Cadence Health:* ${people.cadenceHealth ?? '92%'}\n• *Overdue 1-on-1s (>14d):* ${people.overdue1on1sCount ?? 0}\n• *Upcoming Milestones:* ${people.upcomingMilestones ?? 'Alex Williams (L4 -> L5 Target Mid-Year)'}`,
+      content: `• *1-on-1 Cadence Health:* ${na(people.cadenceHealth)}\n• *Overdue 1-on-1s (>14d):* ${na(people.overdue1on1sCount)}\n• *Upcoming Milestones:* ${na(people.upcomingMilestones)}`,
     },
     {
       title: '🎯 *Sprint Velocity & OKR Pacing*',
-      content: `• *Sprint Completion:* ${sprintOkr.completedPoints ?? 38}/${sprintOkr.totalPoints ?? 48} SP (${sprintOkr.sprintPacingPct ?? 79}%)\n• *WIP Limit Violations:* ${sprintOkr.wipViolations ?? 0}\n• *OKR Health:* ${sprintOkr.onTrackOkrs ?? 3}/${sprintOkr.totalOkrs ?? 4} Objectives on track`,
+      content: `• *Sprint Completion:* ${na(sprintOkr.completedPoints)}/${na(sprintOkr.totalPoints)} SP (${na(sprintOkr.sprintPacingPct, '%')})\n• *WIP Limit Violations:* ${na(sprintOkr.wipViolations)}\n• *OKR Health:* ${na(sprintOkr.onTrackOkrs)}/${na(sprintOkr.totalOkrs)} objectives on track`,
     },
     {
       title: '🛡️ *SOP, ADR & Governance Compliance*',
-      content: `• *ADR-008 Database Per-Service Isolation:* 🟢 PASS\n• *PR Size SLA (<300 lines):* 🟢 PASS\n• *Secrets Masking & Zero Cloud Keys:* 🟢 PASS (100% Ollama Local)\n• *Overall SOP Score:* ${sop.complianceScore ?? 100}%`,
+      content: `${(sop.checks || []).map((c) => `• *${c.title}:* ${c.status === 'PASS' ? '🟢 PASS' : c.status === 'WARN' ? '🟡 WARN' : c.status === 'FAIL' ? '🔴 FAIL' : '⚪ not checked'}`).join('\n') || '• No governance checks recorded'}\n• *Overall SOP Score:* ${na(sop.complianceScore, '%')}`,
     },
   ];
 
@@ -424,28 +387,31 @@ export async function sendActionItemNudge({
   }
 }
 
-export async function getAvailableSlackChannels() {
-  const defaultList = [
-    { id: 'C_LEADERSHIP', name: 'engineering-leadership', is_default: true },
-    { id: 'C_DEV_STANDUP', name: 'dev-standup', is_default: false },
-    { id: 'C_ALERTS', name: 'em-taskflow-alerts', is_default: false },
-    { id: 'C_RETRO', name: 'engineering-retro', is_default: false },
-  ];
-
+/**
+ * Lists real Slack channels. When Slack is not configured or the API fails, returns an empty
+ * list with the reason (it used to return four invented channel IDs).
+ * @returns {Promise<{ channels: Array<{id: string, name: string, is_default: boolean}>, available: boolean, reason?: string }>}
+ */
+export async function listSlackChannelsWithStatus() {
   try {
     const channels = await slackClient.listChannels({ limit: 50 });
     const { defaultChannel } = slackClient.getCredentials();
-    if (channels && channels.length > 0) {
-      return channels.map((c) => ({
-        id: c.id,
-        name: c.name,
-        is_default: `#${c.name}` === defaultChannel,
-      }));
+    if (Array.isArray(channels) && channels.length > 0) {
+      return {
+        available: true,
+        channels: channels.map((c) => ({ id: c.id, name: c.name, is_default: `#${c.name}` === defaultChannel })),
+      };
     }
-    return defaultList;
-  } catch {
-    return defaultList;
+    return { available: false, channels: [], reason: 'Slack returned no channels (check the bot token and its channel scopes).' };
+  } catch (err) {
+    warn({ module: 'slackMcp', action: 'listChannels', err: err.message }, 'Slack channel listing failed');
+    return { available: false, channels: [], reason: `Slack is not reachable: ${err.message}` };
   }
+}
+
+export async function getAvailableSlackChannels() {
+  const { channels } = await listSlackChannelsWithStatus();
+  return channels;
 }
 
 export async function closeSlackMcp() {}

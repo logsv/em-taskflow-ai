@@ -1,15 +1,4 @@
 import pino from 'pino';
-import * as Sentry from '@sentry/node';
-
-const transport = process.env.AXIOM_TOKEN && process.env.AXIOM_DATASET
-  ? pino.transport({
-      target: '@axiomhq/pino',
-      options: {
-        dataset: process.env.AXIOM_DATASET || 'emtaskflowai',
-        token: process.env.AXIOM_TOKEN,
-      },
-    })
-  : undefined;
 
 const pinoLogger = pino(
   {
@@ -17,7 +6,6 @@ const pinoLogger = pino(
     timestamp: pino.stdTimeFunctions.isoTime,
     base: { service: 'em-taskflow-backend' },
   },
-  transport
 );
 
 function normalizeArgs(first, second) {
@@ -50,14 +38,6 @@ function error(message, meta = {}) {
   const [ctx, msg] = normalizeArgs(message, meta);
   pinoLogger.error(ctx, msg);
 
-  if (process.env.SENTRY_DSN) {
-    try {
-      const errObj = ctx?.err || ctx?.error || (message instanceof Error ? message : new Error(msg || 'Unknown Error'));
-      Sentry.captureException(errObj, { extra: ctx });
-    } catch (_) {
-      // Prevent Sentry capture failure from interrupting logging
-    }
-  }
 }
 
 function warn(message, meta = {}) {

@@ -3,8 +3,10 @@ import { sbiAgentPromptTemplate } from './prompts.js';
 import { createDeterministicToolHarness } from '../mcp/baseToolHarness.js';
 import databaseService from '../db/postgres.js';
 import settingsService from '../services/settingsService.js';
+import identityService from '../services/identityService.js';
 import { info, warn, error } from '../utils/logger.js';
 import { createMicroAgent, safeExecuteMCPTool, resolveMemberTarget } from './baseAgent.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 // Dictionary of subjective/emotional terms mapped to objective behavioral anchors
 const DE_BIASING_RULES = [
@@ -52,13 +54,12 @@ function cleanMetaPromptSituation(text, contextType) {
 
 function linkifyWorkItems(text, repo) {
   if (!text || typeof text !== 'string') return text;
-  const isTestEnv = process.env.NODE_ENV === 'test' || (Array.isArray(process.argv) && process.argv.some(a => a.includes('jasmine')));
   const cached = settingsService.getCachedSettings();
   const defaultRepo = cached?.mcp?.github?.owner && cached?.mcp?.github?.repo 
     ? `${cached.mcp.github.owner}/${cached.mcp.github.repo}` 
-    : (process.env.GITHUB_REPO || (isTestEnv ? 'company/repo' : null));
+    : (process.env.GITHUB_REPO || null);
   const targetRepo = repo && repo !== 'github_repo' ? repo : defaultRepo;
-  const jiraUrl = (cached?.mcp?.jira?.url || process.env.JIRA_BASE_URL || (isTestEnv ? 'https://your-company.atlassian.net' : null))?.replace(/\/$/, '');
+  const jiraUrl = (cached?.mcp?.jira?.url || process.env.JIRA_BASE_URL || null)?.replace(/\/$/, '');
 
   // Linkify PR #123 or #123 (avoiding already formatted markdown links)
   let out = text.replace(/(?<!\[)\b(PR\s+#?|#)(\d+)\b(?!\])/gi, (_match, _prefix, num) => {
@@ -139,9 +140,9 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
           return {
             related_prs_count: prs.length,
             recent_prs: prs.slice(0, 3).map((p) => ({
-              number: p.number || 402,
-              title: p.title || 'Feature implementation PR',
-              html_url: p.html_url || `https://github.com/${defaultRepo}/pull/${p.number || 402}`,
+              number: p.number ?? null,
+              title: p.title || '(untitled PR)',
+              html_url: p.html_url || (p.number ? `https://github.com/${defaultRepo}/pull/${p.number}` : null),
             })),
             source: 'mcp_github',
             synced_at: new Date().toISOString(),
@@ -165,9 +166,9 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
         if (issues.length > 0) {
           return {
             related_tickets_count: issues.length,
-            recent_tickets: issues.slice(0, 3).map((iss) => ({
-              key: iss.key || 'ENG-104',
-              summary: iss.summary || iss.fields?.summary || 'Database migration incident',
+            recent_tickets: issues.filter((iss) => iss?.key).slice(0, 3).map((iss) => ({
+              key: iss.key,
+              summary: iss.summary || iss.fields?.summary || '(no summary)',
             })),
             source: 'mcp_jira',
             synced_at: new Date().toISOString(),
@@ -188,9 +189,9 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
           if (pages.length > 0) {
             return {
               feedback_notes_count: pages.length,
-              past_notes: pages.slice(0, 2).map((p) => ({
-                title: p.title || p.name || '1-on-1 Feedback History',
-                url: p.url || 'https://notion.so/feedback',
+              past_notes: pages.filter((p) => p?.url).slice(0, 2).map((p) => ({
+                title: p.title || p.name || 'Untitled page',
+                url: p.url,
               })),
               source: 'mcp_notion',
               synced_at: new Date().toISOString(),
@@ -274,7 +275,7 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
   // Tier 2: PostgreSQL Database Snapshot Fallback
   dbCacheFallback: async (source, inputArgs = {}) => {
     try {
-      const records = await databaseService.getSbiRecords(inputArgs?.engineer_id || 'eng_alex').catch(() => []);
+      const records = await databaseService.getSbiRecords(inputArgs?.engineer_id || 'eng_alex').catch(swallow('agent.sbiAgent.dbCacheFallback', []));
       if (records && records.length > 0) {
         return {
           ...records[0],
@@ -313,7 +314,7 @@ export const sbiFeedbackTool = createDeterministicToolHarness({
     const feedbackType = inputArgs.feedback_type || 'CONSTRUCTIVE_COACHING';
 
     if (mode === 'LIST_RAW') {
-      const historyRecords = await databaseService.getSbiRecords(engineerId).catch(() => []);
+      const historyRecords = await databaseService.getSbiRecords(engineerId).catch(swallow('agent.sbiAgent.computeMath', []));
       const recordRows = historyRecords.map((r) => {
         return `| \`${r.created_at ? new Date(r.created_at).toLocaleDateString() : 'Recent'}\` | **${r.feedback_type || 'COACHING'}** | *${(r.situation || '').slice(0, 45)}...* | 🟢 Recorded |`;
       });

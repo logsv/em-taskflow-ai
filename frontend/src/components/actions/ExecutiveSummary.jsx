@@ -29,20 +29,20 @@ export function ExecutiveSummary({
         i.title?.toLowerCase().includes('overdue') ||
         i.description?.toLowerCase().includes('waiting') ||
         i.description?.toLowerCase().includes('stalled'))
-  ).length || (criticalPending > 0 ? criticalPending : 1);
+  ).length;
 
   // Derive oldest age note
   const oldestCritical = actionItems.find((i) => i.severity === 'CRITICAL' && i.status === 'PENDING');
   let oldestNote = 'Review & 1-on-1 SLAs';
-  if (oldestCritical?.description?.includes('38')) {
-    oldestNote = 'Oldest 38.5h';
-  } else if (oldestCritical) {
+  if (oldestCritical) {
     oldestNote = 'SLA breached (>24h)';
   }
 
-  const healthScore = summary?.healthScore ?? 88;
-  const healthSeverity = healthScore >= 85 ? 'success' : healthScore >= 65 ? 'warning' : 'critical';
-  const complianceScore = sopData?.complianceScore ?? 100;
+  const healthScore = summary?.healthScore ?? null;
+  const m = summary?.metrics || {};
+  const fmt = (v, suffix = '') => (v === null || v === undefined || v === '' ? 'n/a' : `${v}${suffix}`);
+  const healthSeverity = healthScore === null ? 'info' : healthScore >= 85 ? 'success' : healthScore >= 65 ? 'warning' : 'critical';
+  const complianceScore = sopData?.complianceScore ?? null;
 
   // Close popover on outside click
   useEffect(() => {
@@ -118,10 +118,10 @@ export function ExecutiveSummary({
             <span className="ah-summary-card-caret" aria-hidden="true">▾</span>
           </div>
           <div className="ah-summary-card-val">
-            {healthScore}<span className="ah-val-denom">/100</span>
+            {healthScore === null ? 'n/a' : healthScore}{healthScore !== null && <span className="ah-val-denom">/100</span>}
           </div>
           <div className="ah-summary-card-sub">
-            <span className="text-success">↑ Elite Tier</span> · {complianceScore}% SOP
+            DORA tier: {fmt(m.doraTier)} · SOP: {fmt(complianceScore, '%')}
           </div>
         </Card>
 
@@ -141,23 +141,23 @@ export function ExecutiveSummary({
             <div className="ah-popover-rows">
               <div className="ah-popover-row">
                 <span>🚀 DORA Velocity:</span>
-                <strong className="text-success">Elite (96.5%)</strong>
+                <strong>{fmt(m.doraTier)}</strong>
               </div>
               <div className="ah-popover-row">
                 <span>⏱️ PR Turnaround SLA:</span>
-                <strong className="text-warning">14.2h avg (1 Stalled)</strong>
+                <strong>{fmt(m.avgPrReviewWaitHours, 'h')} avg ({fmt(m.stalledPrsCount)} stalled)</strong>
               </div>
               <div className="ah-popover-row">
                 <span>👥 1-on-1 Cadence:</span>
-                <strong className="text-warning">85% (1 Overdue)</strong>
+                <strong>{fmt(m.overdue1on1sCount)} overdue</strong>
               </div>
               <div className="ah-popover-row">
                 <span>🎯 Sprint Pacing:</span>
-                <strong className="text-success">79% (3/4 OKRs On-Track)</strong>
+                <strong>{fmt(m.sprintPacingPct, '%')}</strong>
               </div>
               <div className="ah-popover-row">
-                <span>🛡️ SOP & ADR-008 Isolation:</span>
-                <strong className="text-success">100% Pass</strong>
+                <span>🛡️ SOP checks:</span>
+                <strong>{fmt(complianceScore, '%')}</strong>
               </div>
             </div>
             <div className="ah-popover-footer">

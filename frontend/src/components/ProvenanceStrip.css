@@ -1,0 +1,26 @@
+.provenance-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: var(--font-size-xs, 0.75rem);
+}
+.provenance-label { color: var(--text-muted, #64748b); }
+.provenance-chip {
+  padding: 2px 8px;
+  border-radius: var(--radius-full, 9999px);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  color: var(--text-secondary, #94a3b8);
+}
+.provenance-live { border-color: rgba(16, 185, 129, 0.35); color: #6ee7b7; }
+.provenance-snapshot { border-color: rgba(245, 158, 11, 0.35); color: #fcd34d; }
+.provenance-none { border-color: rgba(148, 163, 184, 0.25); color: var(--text-muted, #64748b); }
+.provenance-refresh {
+  border: 0;
+  background: transparent;
+  color: var(--accent-primary, #8b5cf6);
+  cursor: pointer;
+  font-size: inherit;
+}
+.provenance-refresh:disabled { opacity: 0.5; cursor: default; }

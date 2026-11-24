@@ -21,6 +21,7 @@ if service_dir not in sys.path:
     sys.path.insert(0, service_dir)
 
 from evaluation.llm_judge import LLMJudgeFactory
+from app.model_config import DEFAULT_LLM_MODEL
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("replay_langfuse_traces")
@@ -81,8 +82,8 @@ def fetch_historical_traces_from_langfuse(limit: int = 50) -> List[Dict[str, Any
 
 
 def replay_and_evaluate_traces(
-    baseline_model: str = "hermes3:8b",
-    candidate_model: str = "hermes3:8b",
+    baseline_model: str = DEFAULT_LLM_MODEL,
+    candidate_model: str = DEFAULT_LLM_MODEL,
     reports_dir: str = None,
 ) -> Dict[str, Any]:
     start_time = time.time()

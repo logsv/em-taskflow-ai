@@ -38,6 +38,8 @@ out/
 backend/.env
 frontend/.env
 .env.*
+!.env.example
+!**/.env.example
 
 # Convict configuration files (old YAML system - removed)
 # New JSON-based configuration
@@ -203,6 +205,8 @@ mcp-servers/
 *token*
 *secret*
 *credential*
+# Design tokens are not secrets: keep them tracked despite the *token* rule above.
+!frontend/src/**/*[Tt]okens.css
 
 # Google Cloud Service Account credentials
 backend/gcp-oauth.keys.json

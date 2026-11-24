@@ -4,7 +4,7 @@ description: "EM TaskFlow AI - Comprehensive Micro-Agent Router & Prompt Evaluat
 sharing: true
 
 providers:
-  - id: "ollama:chat:hermes3:8b"
+  - id: "ollama:chat:qwen3:8b-q8_0"
     config:
       temperature: 0.0
       baseUrl: "http://localhost:11434"

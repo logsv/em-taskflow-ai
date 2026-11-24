@@ -5,6 +5,8 @@
 
 import { Connection, Client } from '@temporalio/client';
 import { info, warn, debug } from '../utils/logger.js';
+import { DEFAULT_CHAT_MODEL } from '../llm/models.js';
+import { config } from '../config.js';
 
 let temporalClient = null;
 let hasLoggedTestWarning = false;
@@ -136,7 +138,7 @@ export async function startDeepBenchmarkWorkflow(options = {}) {
   const client = await getTemporalClient();
   if (!client) return null;
 
-  const { modelTarget = 'hermes3:8b', trulensLimit = 5 } = options;
+  const { modelTarget = config.llm?.defaultModel || DEFAULT_CHAT_MODEL, trulensLimit = 5 } = options;
   const workflowId = `deep-benchmark-${Date.now()}`;
   try {
     const handle = await client.workflow.start('DeepEvaluationBenchmarkWorkflow', {
@@ -160,7 +162,7 @@ export async function startTraceReplayWorkflow(options = {}) {
   const client = await getTemporalClient();
   if (!client) return null;
 
-  const { baselineModel = 'hermes3:8b', candidateModel = 'hermes3:8b' } = options;
+  const { baselineModel = config.llm?.defaultModel || DEFAULT_CHAT_MODEL, candidateModel = config.llm?.defaultModel || DEFAULT_CHAT_MODEL } = options;
   const workflowId = `trace-replay-${Date.now()}`;
   try {
     const handle = await client.workflow.start('TraceReplayWorkflow', {
@@ -234,7 +236,7 @@ export async function startPromptEvaluationWorkflow(options = {}) {
 
   const evalTaskQueue = process.env.TEMPORAL_EVAL_TASK_QUEUE || 'eval-task-queue';
   const workflowId = `prompt-eval-${Date.now()}`;
-  const modelTarget = options.modelTarget || 'hermes3:8b';
+  const modelTarget = options.modelTarget || config.llm?.defaultModel || DEFAULT_CHAT_MODEL;
   const limit = options.limit || 10;
   const batchSize = options.batchSize || 2;
 

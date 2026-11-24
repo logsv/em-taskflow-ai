@@ -4,6 +4,7 @@ import { attachSessionContext } from '../../middleware/sessionContext.js';
 import chatApplicationService from '../../application/chat/ChatApplicationService.js';
 import feedbackApplicationService from '../../application/feedback/FeedbackApplicationService.js';
 import githubSyncService from '../../services/githubSyncService.js';
+import { sendError } from '../../middleware/errorHandler.js';
 
 const router = express.Router();
 
@@ -53,16 +54,8 @@ router.post('/chat', attachSessionContext, async (req, res) => {
     });
     res.json(responsePayload);
   } catch (error) {
-    const message = error?.message || 'Failed to process query';
-    const status = message.includes('timed out')
-      ? 504
-      : message.includes('LLM unavailable')
-        ? 503
-        : 500;
-    res.status(status).json({
-      error: message,
-      requestId: req.requestId,
-    });
+    // classifyError maps timeouts to 504 and an unreachable model to 503.
+    return sendError(req, res, error, 'chat');
   }
 });
 
@@ -88,11 +81,7 @@ router.post('/feedback', attachSessionContext, async (req, res) => {
     });
     res.status(201).json(responsePayload);
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to capture feedback',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to capture feedback');
   }
 });
 
@@ -103,11 +92,7 @@ router.post('/github/sync', async (req, res) => {
     const result = await githubSyncService.syncGithubData(repo);
     res.json(result);
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Failed to sync GitHub data',
-      details: error.message,
-    });
+    return sendError(req, res, error, 'Failed to sync GitHub data');
   }
 });
 
@@ -117,10 +102,7 @@ router.get('/github/sync-status', async (req, res) => {
     const status = await githubSyncService.getSyncStatus();
     res.json(status);
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to fetch GitHub sync status',
-      details: error.message,
-    });
+    return sendError(req, res, error, 'Failed to fetch GitHub sync status');
   }
 });
 

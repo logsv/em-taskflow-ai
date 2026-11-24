@@ -1,35 +1,39 @@
-import './tracing.js';
 import express from 'express';
 import cors from 'cors';
 import apiRouter from './routes/api.js';
 import v1Router from './routes/v1/index.js';
-import { config, getServerConfig, getRuntimeConfig, getDatabaseConfig, getLlmConfig, getRagConfig, validateConfig } from './config.js';
+import { config, getServerConfig, getRuntimeConfig, getDatabaseConfig, getLlmConfig, getRagConfig, getAuthConfig, getWorkersConfig, validateConfig } from './config.js';
 import dotenv from 'dotenv';
-import * as Sentry from '@sentry/node';
 import { initializeLLM } from './llm/index.js';
 import { initializeIngest } from './rag/index.js';
 import { initSemanticCache } from './cache/semanticCache.js';
 import { initFactMatrixRedis } from './services/sessionFactMatrix.js';
 import db from './db/index.js';
 import { attachRequestContext, createRateLimiter } from './middleware/hardening.js';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import { background } from './core/safe.js';
 import { info, warn, error } from './utils/logger.js';
-import teamSyncWorker from './workers/teamSyncWorker.js';
+import { startWorkers, stopWorkers } from './workers/runWorkers.js';
+import { swallow, recordHandledError } from './core/safe.js';
+
+let httpServer = null;
+
+/** Remove the password from a connection URL before logging it. */
+export function redactDatabaseUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.password) parsed.password = '***';
+    return parsed.toString();
+  } catch {
+    return '[unparseable database url]';
+  }
+}
 
 dotenv.config();
 
-if (process.env.SENTRY_DSN) {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    environment: process.env.NODE_ENV || 'development',
-    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0.1),
-  });
-}
 
-// NOTE: Generic OTel auto-instrumentation is disabled by default because
-// newrelic/esm-loader.mjs and @opentelemetry/auto-instrumentations-node both
-// register 'import-in-the-middle' hooks which conflict in Node.js ESM mode.
-// New Relic APM handles HTTP/Express instrumentation natively.
-// Set OTEL_ENABLED=true only when running without New Relic.
+// Telemetry: OpenTelemetry (opt-in, OTEL_ENABLED=true, exports to OTEL_EXPORTER_OTLP_ENDPOINT)
+// plus Langfuse for LLM traces. Metrics are exposed at /api/v1/metrics.
 if (process.env.OTEL_ENABLED === 'true') {
   try {
     const { NodeSDK } = await import('@opentelemetry/sdk-node');
@@ -54,13 +58,8 @@ const app = express();
 const serverConfig = getServerConfig();
 const PORT = serverConfig.port;
 
-if (process.env.SENTRY_DSN) {
-  if (Sentry.Handlers?.requestHandler) {
-    app.use(Sentry.Handlers.requestHandler());
-  }
-}
-
-app.use(cors());
+// Only the owner's frontend may call the API from a browser.
+app.use(cors({ origin: serverConfig.frontendUrl, credentials: true }));
 app.use(attachRequestContext);
 app.use(createRateLimiter());
 app.use(express.json({ limit: '2mb' }));
@@ -86,16 +85,22 @@ app.get('/', (req, res) => {
   res.send('EM TaskFlow AI is running.');
 });
 
-if (process.env.SENTRY_DSN) {
-  if (Sentry.Handlers?.errorHandler) {
-    app.use(Sentry.Handlers.errorHandler());
-  }
-}
+// Unknown /api routes get a JSON 404; every error that reaches Express gets a coded JSON body.
+app.use('/api', notFoundHandler);
+app.use(errorHandler);
 
 async function startServer() {
   try {
     info('Validating configuration...');
     validateConfig();
+
+    if (config.env === 'production' && !getAuthConfig().token) {
+      error('AUTH_TOKEN is required in production. Set a random value of at least 24 characters in backend/.env (for example: openssl rand -hex 32).');
+      process.exit(1);
+    }
+    if (!getAuthConfig().token) {
+      warn('AUTH_TOKEN is not set: API authentication is DISABLED. Set AUTH_TOKEN in backend/.env before exposing this server.');
+    }
 
     try {
       await db.initialize();
@@ -107,6 +112,11 @@ async function startServer() {
     try {
       await initializeLLM();
       info('LLM clients initialized at startup');
+      // Pre-load the local model in the background so the first chat is not slow.
+      background('llm.warmUp', async () => {
+        const { warmUpModel } = await import('./llm/gateway.js');
+        await warmUpModel();
+      });
     } catch (e) {
       warn('LLM client initialization failed', { err: e.message });
     }
@@ -153,24 +163,24 @@ async function startServer() {
       info('Runtime mode is rag_only, skipping MCP and agent initialization');
     }
 
-    // Start Node.js background team sync worker & Temporal Node Worker
-    try {
-      teamSyncWorker.start();
-      const { startTemporalNodeWorker } = await import('./temporal/worker.js');
-      await startTemporalNodeWorker();
-    } catch (workerErr) {
-      warn('Background workers start warning', { err: workerErr.message });
+    // Background workers run here only when WORKERS_IN_PROCESS=true (local default);
+    // docker compose runs them in the separate `worker` service (src/worker.js).
+    if (getWorkersConfig().inProcess) {
+      await startWorkers();
+    } else {
+      info('Background workers are not started in the API process (WORKERS_IN_PROCESS=false)');
     }
 
     const databaseConfig = getDatabaseConfig();
     const llmConfig = getLlmConfig();
     const ragConfig = getRagConfig();
 
-    app.listen(PORT, serverConfig.host, () => {
+    httpServer = app.listen(PORT, serverConfig.host, () => {
       info(`EM TaskFlow AI server listening on ${serverConfig.host}:${PORT}`, {
         env: config.env,
         runtimeMode: runtimeConfig.mode,
-        database: databaseConfig.url,
+        database: redactDatabaseUrl(databaseConfig.url),
+        authEnabled: !!getAuthConfig().token,
         llmProvider: llmConfig.defaultProvider,
         ragEnabled: ragConfig.enabled,
         healthCheckUrl: `http://${serverConfig.host}:${PORT}/api/v1/health`,
@@ -185,24 +195,38 @@ async function startServer() {
 }
 
 process.on('uncaughtException', (err) => {
-  if (process.env.SENTRY_DSN) {
-    try { Sentry.captureException(err); } catch (_) {}
-  }
   error('Uncaught Exception', { err: err?.message || String(err), stack: err?.stack });
 });
 
 process.on('unhandledRejection', (reason) => {
-  if (process.env.SENTRY_DSN) {
-    try { Sentry.captureException(reason instanceof Error ? reason : new Error(String(reason))); } catch (_) {}
-  }
   error('Unhandled Promise Rejection', { reason: String(reason) });
 });
 
-process.on('SIGINT', () => {
-  info('Shutting down gracefully...');
-  db.close();
-  info('Services shut down successfully');
-  process.exit(0);
-});
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  info(`Received ${signal}, shutting down gracefully...`);
+  const forceExit = setTimeout(() => {
+    warn('Graceful shutdown timed out after 10s, forcing exit');
+    process.exit(1);
+  }, 10_000);
+  forceExit.unref();
+  try {
+    if (httpServer) {
+      await new Promise((resolve) => httpServer.close(() => resolve()));
+    }
+    await stopWorkers();
+    await Promise.resolve(db.close());
+    info('Services shut down successfully');
+    process.exit(0);
+  } catch (e) {
+    error('Error during shutdown', { err: e.message });
+    process.exit(1);
+  }
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 startServer();

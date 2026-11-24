@@ -13,6 +13,23 @@ import {
 import preRouterRewriter from '../../services/preRouterRewriter.js';
 import episodicMemoryService from '../../services/episodicMemory.js';
 import sessionFactMatrixService from '../../services/sessionFactMatrix.js';
+import { warn } from '../../utils/logger.js';
+import { swallow, recordHandledError } from '../../core/safe.js';
+
+/**
+ * Request body for the Python service's POST /api/v1/eval/shadow-evaluate.
+ * Field names must match ShadowEvalRequest in services/python-ai-service/app/api/rest_router.py
+ * (checked by test/contracts/pythonContracts.spec.js).
+ */
+export function buildShadowEvalPayload({ query, answer, context = [], traceId = null, domain = 'general' }) {
+  return {
+    query: String(query || ''),
+    answer: String(answer || ''),
+    context: Array.isArray(context) ? context.map(String) : [],
+    trace_id: traceId,
+    domain,
+  };
+}
 
 export class ChatApplicationService {
   constructor({
@@ -62,10 +79,10 @@ export class ChatApplicationService {
       sessionContext?.sessionId || null,
     );
     const existingMessages = ensuredThread?.id
-      ? await Promise.resolve(this.messageRepo.getThreadMessages(ensuredThread.id, 50)).catch(() => [])
+      ? await Promise.resolve(this.messageRepo.getThreadMessages(ensuredThread.id, 50)).catch(swallow('application.chat.ChatApplicationService.processChat', []))
       : [];
     const contextMatrix = ensuredThread?.id
-      ? await sessionFactMatrixService.getThreadFactMatrix(ensuredThread.id).catch(() => ({}))
+      ? await sessionFactMatrixService.getThreadFactMatrix(ensuredThread.id).catch(swallow('application.chat.ChatApplicationService.processChat', {}))
       : {};
     const historyContext = optimizeChatHistory(existingMessages, 8, 2500, contextMatrix);
 
@@ -74,7 +91,7 @@ export class ChatApplicationService {
     const queryToProcess = wasRewritten ? rewrittenQuery : query;
 
     // Tier 4: Episodic Memory Retrieval for past references outside active window (0 extra DB queries)
-    const episodicPastContext = await episodicMemoryService.retrieveRelevantPastContext(queryToProcess, ensuredThread?.id, 2, existingMessages).catch(() => []);
+    const episodicPastContext = await episodicMemoryService.retrieveRelevantPastContext(queryToProcess, ensuredThread?.id, 2, existingMessages).catch(swallow('application.chat.ChatApplicationService.processChat', []));
 
     const result = await this.agentService.processQuery(queryToProcess, {
       threadId: ensuredThread.id,
@@ -119,7 +136,7 @@ export class ChatApplicationService {
         }))
       : [];
 
-    const userMessageRecord = await this.messageRepo.saveMessage({
+    const userMessageInput = {
       threadId: ensuredThread.id,
       role: 'user',
       content: query,
@@ -127,8 +144,8 @@ export class ChatApplicationService {
       executorPath: decision.selectedPath || null,
       traceId: result.meta?.traceId || null,
       metadata: decision,
-    });
-    const assistantMessageRecord = await this.messageRepo.saveMessage({
+    };
+    const assistantMessageInput = (userMessageId) => ({
       threadId: ensuredThread.id,
       role: 'assistant',
       content: result.answer,
@@ -138,16 +155,27 @@ export class ChatApplicationService {
       citations: sources,
       metadata: {
         ...decision,
-        userMessageId: userMessageRecord.id,
+        userMessageId,
         sourceCount: sources.length,
       },
     });
+    let userMessageRecord;
+    let assistantMessageRecord;
+    if (typeof this.messageRepo.saveMessagePair === 'function') {
+      // One transaction: a thread never shows a question without its answer.
+      const pair = await this.messageRepo.saveMessagePair(userMessageInput, assistantMessageInput);
+      userMessageRecord = pair.user;
+      assistantMessageRecord = pair.assistant;
+    } else {
+      userMessageRecord = await this.messageRepo.saveMessage(userMessageInput);
+      assistantMessageRecord = await this.messageRepo.saveMessage(assistantMessageInput(userMessageRecord.id));
+    }
 
     // Update thread title from default 'New Chat' to concise query-derived title
     const shortTitle = generateShortChatTitle(query, routedDomains);
     if (ensuredThread?.id && (!ensuredThread.title || ensuredThread.title === 'New Chat' || ensuredThread.title === 'Chat')) {
       if (typeof this.threadRepo?.updateThreadTitle === 'function') {
-        await Promise.resolve(this.threadRepo.updateThreadTitle(ensuredThread.id, shortTitle)).catch(() => {});
+        await Promise.resolve(this.threadRepo.updateThreadTitle(ensuredThread.id, shortTitle)).catch(swallow('application.chat.ChatApplicationService.processChat'));
       }
     }
 
@@ -169,8 +197,8 @@ export class ChatApplicationService {
             const updated = sessionFactMatrixService.mergeFactMatrix(contextMatrix, delta);
             await sessionFactMatrixService.saveThreadFactMatrix(ensuredThread.id, updated);
           }
-        } catch (_syncErr) {}
-      }).catch(() => {});
+        } catch (_syncErr) { recordHandledError('application.chat.ChatApplicationService.processChat', _syncErr); }
+      }).catch(swallow('application.chat.ChatApplicationService.processChat'));
     }
 
     return {
@@ -200,23 +228,22 @@ export class ChatApplicationService {
   }
 
   triggerShadowEvaluation({ query, answer, context = [], traceId = null, domain = 'general' }) {
-    // Non-blocking zero-downtime execution
+    // Non-blocking: runs after the response is sent and never fails the request,
+    // but failures are logged so a broken contract or a down service is visible.
     setImmediate(async () => {
+      const pythonHost = process.env.PYTHON_AI_SERVICE_URL || 'http://localhost:8000';
       try {
-        const pythonHost = process.env.PYTHON_AI_SERVICE_URL || 'http://localhost:8000';
-        await fetch(`${pythonHost}/api/v1/eval/shadow-evaluate`, {
+        const res = await fetch(`${pythonHost}/api/v1/eval/shadow-evaluate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_query: query,
-            model_response: answer,
-            retrieved_chunks: context,
-            trace_id: traceId,
-            domain_category: domain,
-          }),
+          body: JSON.stringify(buildShadowEvalPayload({ query, answer, context, traceId, domain })),
+          signal: AbortSignal.timeout(10_000),
         });
+        if (!res.ok) {
+          warn({ module: 'chat', action: 'shadowEval', status: res.status, traceId }, 'Shadow evaluation request rejected');
+        }
       } catch (err) {
-        // Non-blocking catch
+        warn({ module: 'chat', action: 'shadowEval', err: err?.message, traceId }, 'Shadow evaluation request failed');
       }
     });
   }
@@ -306,6 +333,7 @@ function createMessageRepoAdapter(dbService) {
 
   return {
     saveMessage: (...args) => dbService.saveMessage(...args),
+    ...(typeof dbService.saveMessagePair === 'function' ? { saveMessagePair: (...args) => dbService.saveMessagePair(...args) } : {}),
     getThreadMessages: (...args) => (typeof dbService.getThreadMessages === 'function' ? dbService.getThreadMessages(...args) : []),
   };
 }

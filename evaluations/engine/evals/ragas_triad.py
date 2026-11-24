@@ -1,7 +1,7 @@
 """
 Official Ragas Multi-Metric Suite (Full RAG Triad)
 Evaluates Faithfulness, Answer Relevancy, Context Precision, and Context Recall
-using local Ollama (hermes3:8b & nomic-embed-text).
+using local Ollama (local chat model & nomic-embed-text).
 """
 
 import os
@@ -10,6 +10,7 @@ import types
 import logging
 from typing import Dict, Any, List
 from dotenv import load_dotenv
+from evals.model_config import DEFAULT_LLM_MODEL
 
 load_dotenv()
 
@@ -66,7 +67,7 @@ logger = logging.getLogger("ragas_triad")
 
 
 def get_ragas_evaluators(
-    model_name: str = "hermes3:8b",
+    model_name: str = DEFAULT_LLM_MODEL,
     embedding_model: str = "nomic-embed-text",
     base_url: str = "http://localhost:11434",
 ):
@@ -115,7 +116,7 @@ def run_ragas_evaluation(
             ]
 
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    model_name = os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b")
+    model_name = DEFAULT_LLM_MODEL
 
     if not HAS_RAGAS:
         return {

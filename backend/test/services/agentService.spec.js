@@ -61,7 +61,8 @@ describe('Agent Service', () => {
 
       expect(result.answer).toBeDefined();
       expect(result.answer).toContain('Situation-Behavior-Impact');
-      expect(result.meta.decision.selectedPath).toBe('direct-domain-executor');
+      expect(result.meta.decision.selectedPath).toBe('capability-pipeline');
+      expect(result.meta.decision.capabilities).toEqual(['people_coaching']);
     });
 
     it('should execute parallel multi-agent orchestrator for composite queries', async () => {
@@ -86,7 +87,9 @@ describe('Agent Service', () => {
       const result = await service.processQuery('Evaluate team health: calculate DORA metrics, check delivery bottlenecks, and draft an SBI feedback', { threadId: 'th_multi' });
 
       expect(result.answer).toBeDefined();
-      expect(result.meta.decision.selectedPath).toBe('parallel-multi-agent-orchestrator');
+      expect(result.meta.decision.selectedPath).toBe('capability-pipeline');
+      expect(result.meta.decision.capabilities).toEqual(['delivery_health', 'people_coaching']);
+      expect(result.meta.decision.verification.complete).toBeTrue();
       expect(result.meta.decision.toolsUsed.length).toBeGreaterThanOrEqual(2);
     });
 
@@ -94,6 +97,7 @@ describe('Agent Service', () => {
       const routingPlan = { domains: ['rag'], must_use_tools: false, allow_rag: true, confidence: 0.95 };
       sandbox.stub(service, 'routeQueryPlan').resolves(routingPlan);
       sandbox.stub(service, 'tryRag').resolves({ answer: '', sources: [] });
+      service.ragEnabled = true; // RAG is up and simply found nothing
 
       const result = await service.processQuery('Search internal engineering documentation and uploaded PDFs for architecture guidelines', { threadId: 'th_rag' });
 

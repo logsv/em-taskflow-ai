@@ -4,16 +4,21 @@ import sessionsRouter from './sessions.js';
 import chatRouter from './chat.js';
 import emRouter from './em.js';
 import actionsRouter from '../actions.js';
-import adminRouter from '../admin.js';
+import adminRouter from '../admin/index.js';
 import ragRouter from '../rag.js';
 import uploadRouter from '../upload.js';
 import docsRouter from '../docs.js';
+import authRouter from './auth.js';
+import { requireOwner } from '../../middleware/auth.js';
 import {
   startJiraOAuthFlow,
   completeJiraOAuthFlow,
   getJiraOAuthStatus,
   disconnectJiraOAuth,
 } from '../../mcp/jiraOAuth.js';
+import { sendError } from '../../middleware/errorHandler.js';
+import { renderPrometheus } from '../../core/metrics.js';
+import { getReadiness } from '../../application/health/readiness.js';
 
 const router = express.Router();
 
@@ -23,22 +28,12 @@ router.use((req, res, next) => {
   next();
 });
 
-// Mount domain sub-routers
+// ---- Public routes (no owner auth) ----
 router.use('/', healthRouter);
-router.use('/', sessionsRouter);
-router.use('/', chatRouter);
-router.use('/', emRouter);
+router.use('/', authRouter);
 
-// Atlassian Jira OAuth 2.0 (3LO) Endpoints
-router.get('/mcp/jira/oauth/start', async (req, res) => {
-  try {
-    const result = await startJiraOAuthFlow();
-    res.json({ success: true, ...result });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
+// The OAuth callback is a top-level redirect from Atlassian: SameSite=Strict cookies are
+// not sent on it, so it must stay public. It only accepts a one-time authorization code.
 router.get('/mcp/jira/oauth/callback', async (req, res) => {
   const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
   try {
@@ -49,7 +44,24 @@ router.get('/mcp/jira/oauth/callback', async (req, res) => {
     await completeJiraOAuthFlow(code);
     res.redirect(`${frontendBase}/admin?tab=settings&jira_oauth=success`);
   } catch (error) {
-    res.status(500).send(`<h3>Atlassian OAuth Notice: ${error.message}</h3><p><a href="${frontendBase}/admin?tab=settings">Back to Admin Settings</a></p>`);
+    res.status(500).send(`<h3>Atlassian OAuth could not be completed.</h3><p><a href="${frontendBase}/admin?tab=settings">Back to Admin Settings</a></p>`);
+  }
+});
+
+// ---- Everything below requires the owner ----
+router.use(requireOwner);
+
+router.use('/', sessionsRouter);
+router.use('/', chatRouter);
+router.use('/', emRouter);
+
+// Atlassian Jira OAuth 2.0 (3LO) Endpoints
+router.get('/mcp/jira/oauth/start', async (req, res) => {
+  try {
+    const result = await startJiraOAuthFlow();
+    res.json({ success: true, ...result });
+  } catch (error) {
+    return sendError(req, res, error, 'index.js');
   }
 });
 
@@ -58,7 +70,7 @@ router.get('/mcp/jira/oauth/status', async (req, res) => {
     const status = await getJiraOAuthStatus();
     res.json({ success: true, ...status });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    return sendError(req, res, error, 'index.js');
   }
 });
 
@@ -67,11 +79,24 @@ router.post('/mcp/jira/oauth/disconnect', async (req, res) => {
     const result = await disconnectJiraOAuth();
     res.json({ success: true, ...result });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    return sendError(req, res, error, 'index.js');
   }
 });
 
 // Mount feature sub-routers
+// Metrics and full readiness detail (owner only)
+router.get('/metrics', (req, res) => {
+  res.type('text/plain; version=0.0.4').send(renderPrometheus());
+});
+router.get('/health/ready/details', async (req, res) => {
+  try {
+    const readiness = await getReadiness();
+    res.status(readiness.ready ? 200 : 503).json({ ...readiness, requestId: req.requestId });
+  } catch (error) {
+    return sendError(req, res, error, 'health.ready.details');
+  }
+});
+
 router.use('/rag', ragRouter);
 router.use('/chat/upload', uploadRouter);
 router.use('/admin', adminRouter);

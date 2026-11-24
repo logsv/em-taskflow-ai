@@ -10,6 +10,11 @@ import { apiUrl } from '../services/apiClient.js';
 import logger from '../utils/logger.js';
 import './ActionHubPage.css';
 
+/** Show a metric, or n/a when it was not measured (never a placeholder number). */
+export function fmtMetric(value, suffix = '') {
+  return value === null || value === undefined || value === '' ? 'n/a' : `${value}${suffix}`;
+}
+
 export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
   const [activeTab, setActiveTab] = useState('actions'); // 'actions' | 'sop' | 'people' | 'performance' | 'history'
   const [viewMode, setViewMode] = useState('kanban'); // 'kanban' | 'table' | 'grid'
@@ -288,8 +293,9 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
     };
   }, [filteredActions]);
 
-  const healthScore = summary?.healthScore ?? 92;
-  const healthTierClass = healthScore >= 85 ? 'health-good' : healthScore >= 65 ? 'health-warn' : 'health-danger';
+  const healthScore = summary?.healthScore ?? null;
+  const metrics = summary?.metrics || null;
+  const healthTierClass = healthScore === null ? '' : healthScore >= 85 ? 'health-good' : healthScore >= 65 ? 'health-warn' : 'health-danger';
 
   return (
     <div className="action-hub-page">
@@ -341,14 +347,14 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
           className={`tab-btn ${activeTab === 'sop' ? 'active' : ''}`}
           onClick={() => setActiveTab('sop')}
         >
-          🛡️ SOP & Architecture Matrix ({sopData?.totalRules ?? 4})
+          🛡️ SOP & Architecture Matrix ({sopData?.totalRules ?? 0})
         </button>
         <button
           type="button"
           className={`tab-btn ${activeTab === 'people' ? 'active' : ''}`}
           onClick={() => setActiveTab('people')}
         >
-          👥 Team Cadence & People Pulse ({teamMembers.length || 3})
+          👥 Team Cadence & People Pulse ({teamMembers.length})
         </button>
         <button
           type="button"
@@ -666,7 +672,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
               </p>
             </div>
             <div className="sop-score-box">
-              <span className="sop-score-val">{sopData?.complianceScore ?? 100}%</span>
+              <span className="sop-score-val">{fmtMetric(sopData?.complianceScore, '%')}</span>
               <span className="sop-score-lbl">Compliance Rating</span>
             </div>
           </div>
@@ -693,190 +699,127 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
         </div>
       )}
 
-      {/* TAB 3: TEAM CADENCE & PEOPLE PULSE */}
+      {/* TAB 3: TEAM ROSTER & PEOPLE PULSE (real roster only) */}
       {activeTab === 'people' && (
         <div className="people-tab-container">
           <div className="people-header-card">
             <div className="people-header-info">
-              <h2>👥 1-on-1 Cadence, Career Growth & Team Pulse</h2>
-              <p>Tracking engineer 1-on-1 frequencies, career ladders (L4 → L5 → Staff), and tenure milestones.</p>
+              <h2>👥 Team Roster & 1-on-1 Cadence</h2>
+              <p>Engineers from your team roster (Admin → Team). 1-on-1 history appears once Google Calendar is connected.</p>
             </div>
             <div className="people-kpi-pill">
-              <span>Overall Cadence Health:</span>
-              <strong>85% (1 Overdue)</strong>
+              <span>Overdue 1-on-1s (last audit):</span>
+              <strong>{fmtMetric(metrics?.overdue1on1sCount)}</strong>
             </div>
           </div>
 
           <div className="team-cadence-table-container">
-            <table className="team-cadence-table">
-              <thead>
-                <tr>
-                  <th>Engineer</th>
-                  <th>Role & Level Target</th>
-                  <th>Tenure</th>
-                  <th>Last 1-on-1 Sync</th>
-                  <th>Cadence Health</th>
-                  <th style={{ textAlign: 'right' }}>Quick EM Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>
-                    <div className="eng-identity-cell">
-                      <span className="eng-avatar">👤</span>
-                      <div>
-                        <strong>Sarah Chen</strong>
-                        <small>sarah.chen@company.internal</small>
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <span className="level-badge">L5 Senior → M1 EM Target</span>
-                  </td>
-                  <td>24 Months</td>
-                  <td>
-                    <span className="overdue-tag">16 Days Ago (&gt;14d SLA)</span>
-                  </td>
-                  <td>
-                    <span className="badge-severity badge-warning">⚠️ OVERDUE</span>
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button
-                      type="button"
-                      className="btn-schedule-sync"
-                      onClick={() => {
-                        setSlackCustomNote('Hi Sarah, let’s sync for our bi-weekly 1-on-1 tomorrow at 2 PM.');
-                        setShowSlackModal(true);
-                      }}
-                    >
-                      💬 Ping on Slack
-                    </button>
-                  </td>
-                </tr>
-
-                <tr>
-                  <td>
-                    <div className="eng-identity-cell">
-                      <span className="eng-avatar">👤</span>
-                      <div>
-                        <strong>Alex Williams</strong>
-                        <small>alex.williams@company.internal</small>
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <span className="level-badge">L4 Mid → L5 Senior Target</span>
-                  </td>
-                  <td>18 Months</td>
-                  <td>6 Days Ago (On Cadence)</td>
-                  <td>
-                    <span className="badge-severity badge-info">🟢 ON TRACK</span>
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button
-                      type="button"
-                      className="btn-schedule-sync"
-                      onClick={() => {
-                        setSlackCustomNote('Hi Alex, quick note on promotion packet milestones for next cycle.');
-                        setShowSlackModal(true);
-                      }}
-                    >
-                      💬 Send Note
-                    </button>
-                  </td>
-                </tr>
-
-                <tr>
-                  <td>
-                    <div className="eng-identity-cell">
-                      <span className="eng-avatar">👤</span>
-                      <div>
-                        <strong>Taylor Morgan</strong>
-                        <small>taylor.morgan@company.internal</small>
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <span className="level-badge">L6 Staff → L7 Principal</span>
-                  </td>
-                  <td>36 Months</td>
-                  <td>4 Days Ago (On Cadence)</td>
-                  <td>
-                    <span className="badge-severity badge-info">🟢 ON TRACK</span>
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button
-                      type="button"
-                      className="btn-schedule-sync"
-                      onClick={() => {
-                        setSlackCustomNote('Hi Taylor, great progress on the Temporal workflow architecture!');
-                        setShowSlackModal(true);
-                      }}
-                    >
-                      💬 Send Note
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            {teamMembers.length === 0 ? (
+              <p className="sub-note">No team members yet. Add them in Admin → Team, or run team sync.</p>
+            ) : (
+              <table className="team-cadence-table">
+                <thead>
+                  <tr>
+                    <th>Engineer</th>
+                    <th>Level → Target</th>
+                    <th>Tenure</th>
+                    <th style={{ textAlign: 'right' }}>Quick EM Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {teamMembers.map((m) => (
+                    <tr key={m.id}>
+                      <td>
+                        <div className="eng-identity-cell">
+                          <span className="eng-avatar">👤</span>
+                          <div>
+                            <strong>{m.displayName}</strong>
+                            {m.email && <small>{m.email}</small>}
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span className="level-badge">{m.currentLevel || 'level not set'} → {m.targetLevel || 'target not set'}</span>
+                      </td>
+                      <td>{m.tenureMonths ? `${m.tenureMonths} months` : 'not recorded'}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          className="btn-schedule-sync"
+                          onClick={() => {
+                            setSlackCustomNote(`Hi ${String(m.displayName || '').split(' ')[0]}, `);
+                            setShowSlackModal(true);
+                          }}
+                        >
+                          💬 Message on Slack
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
 
-      {/* TAB 4: SPRINT & DORA VELOCITY */}
+      {/* TAB 4: SPRINT & DORA VELOCITY (values from the latest audit run) */}
       {activeTab === 'performance' && (
         <div className="perf-tab-container">
-          <div className="perf-grid">
-            <div className="perf-card">
-              <h3>🚀 DORA 2024 State of DevOps Rubric</h3>
-              <div className="perf-metrics-row">
-                <div className="metric-box">
-                  <span className="metric-val">2.4 / day</span>
-                  <span className="metric-lbl">Deployment Frequency</span>
-                  <span className="metric-tier tier-elite">ELITE</span>
+          {!metrics ? (
+            <p className="sub-note">No audit has run yet. Trigger an audit to compute delivery and sprint metrics.</p>
+          ) : (
+            <div className="perf-grid">
+              <div className="perf-card">
+                <h3>🚀 DORA & Delivery (last audit)</h3>
+                <div className="perf-metrics-row">
+                  <div className="metric-box">
+                    <span className="metric-val">{fmtMetric(metrics.deploymentFrequency, '/day')}</span>
+                    <span className="metric-lbl">Deployment Frequency</span>
+                  </div>
+                  <div className="metric-box">
+                    <span className="metric-val">{fmtMetric(metrics.mttrHours, 'h')}</span>
+                    <span className="metric-lbl">Time to Restore (MTTR)</span>
+                  </div>
+                  <div className="metric-box">
+                    <span className="metric-val">{fmtMetric(metrics.avgPrReviewWaitHours, 'h')}</span>
+                    <span className="metric-lbl">Avg PR Review Wait</span>
+                  </div>
+                  <div className="metric-box">
+                    <span className="metric-val">{fmtMetric(metrics.stalledPrsCount)} / {fmtMetric(metrics.openPrsCount)}</span>
+                    <span className="metric-lbl">Stalled / Open PRs</span>
+                  </div>
                 </div>
-                <div className="metric-box">
-                  <span className="metric-val">18.5h</span>
-                  <span className="metric-lbl">Lead Time for Changes</span>
-                  <span className="metric-tier tier-elite">ELITE</span>
-                </div>
-                <div className="metric-box">
-                  <span className="metric-val">4.2%</span>
-                  <span className="metric-lbl">Change Failure Rate</span>
-                  <span className="metric-tier tier-lowrisk">LOW RISK</span>
-                </div>
-                <div className="metric-box">
-                  <span className="metric-val">0.8h</span>
-                  <span className="metric-lbl">Time to Restore (MTTR)</span>
-                  <span className="metric-tier tier-elite">ELITE</span>
+                <div className="tier-badge-row">
+                  <span>DORA Tier:</span>
+                  <span className="badge-elite">{fmtMetric(metrics.doraTier)}</span>
                 </div>
               </div>
-              <div className="tier-badge-row">
-                <span>Overall Status:</span>
-                <span className="badge-elite">⭐ ELITE PERFORMER TIER (96.5%)</span>
-              </div>
-            </div>
 
-            <div className="perf-card">
-              <h3>🎯 Sprint 24 Velocity & Predictability</h3>
-              <div className="perf-metrics-row">
-                <div className="metric-box">
-                  <span className="metric-val">38 / 48 SP</span>
-                  <span className="metric-lbl">Story Points Completed</span>
+              <div className="perf-card">
+                <h3>🎯 Sprint Progress (last audit)</h3>
+                <div className="perf-metrics-row">
+                  <div className="metric-box">
+                    <span className="metric-val">{fmtMetric(metrics.completedPoints)} / {fmtMetric(metrics.totalPoints)} SP</span>
+                    <span className="metric-lbl">Story Points Completed</span>
+                  </div>
+                  <div className="metric-box">
+                    <span className="metric-val">{fmtMetric(metrics.sprintPacingPct, '%')}</span>
+                    <span className="metric-lbl">Sprint Pacing Rate</span>
+                  </div>
+                  <div className="metric-box">
+                    <span className="metric-val">{fmtMetric(metrics.wipViolations)}</span>
+                    <span className="metric-lbl">WIP Violations</span>
+                  </div>
                 </div>
-                <div className="metric-box">
-                  <span className="metric-val">79%</span>
-                  <span className="metric-lbl">Sprint Pacing Rate</span>
-                </div>
+                {Number.isFinite(Number(metrics.sprintPacingPct)) && metrics.sprintPacingPct !== null && (
+                  <div className="progress-bar-container">
+                    <div className="progress-bar-fill" style={{ width: `${Math.max(0, Math.min(100, Number(metrics.sprintPacingPct)))}%` }}></div>
+                  </div>
+                )}
               </div>
-              <div className="progress-bar-container">
-                <div className="progress-bar-fill" style={{ width: '79%' }}></div>
-              </div>
-              <p className="sub-note" style={{ marginTop: '12px' }}>
-                Sprint 24 is pacing 4 days remaining with 0 WIP limit violations.
-              </p>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -1009,8 +952,8 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
                 <div className="preview-label">Live Slack Message Preview:</div>
                 <div className="preview-content">
                   <p><strong>🟢 EM TaskFlow AI — Autonomous Engineering Health Audit</strong></p>
-                  <p>Overall Health Score: <code>{healthScore}/100</code> | DORA Tier: <code>Elite</code> | Sprint Pacing: <code>79%</code></p>
-                  <p>Overdue 1-on-1s: <code>1</code> | Pending Actions: <code>{kanbanColumns.pending.length}</code></p>
+                  <p>Overall Health Score: <code>{fmtMetric(healthScore, '/100')}</code> | DORA Tier: <code>{fmtMetric(metrics?.doraTier)}</code> | Sprint Pacing: <code>{fmtMetric(metrics?.sprintPacingPct, '%')}</code></p>
+                  <p>Overdue 1-on-1s: <code>{fmtMetric(metrics?.overdue1on1sCount)}</code> | Pending Actions: <code>{kanbanColumns.pending.length}</code></p>
                   {slackCustomNote && <p className="preview-memo"><em>"{slackCustomNote}"</em></p>}
                   <p>🔗 <em>&lt;http://localhost:3000/actions|Open in EM Action Hub ↗&gt;</em></p>
                 </div>

@@ -1,6 +1,6 @@
 """
 LLM-as-a-Judge Evaluation Engine (Factory Pattern)
-Standardized on local SLM inference (hermes3:8b via Ollama)
+Standardized on local SLM inference (the local Ollama chat model)
 """
 
 import json
@@ -8,10 +8,11 @@ import logging
 import os
 from typing import Dict, Any, List, Optional
 from scipy.stats import kendalltau
+from app.model_config import DEFAULT_LLM_MODEL
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_JUDGE_MODEL = os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b")
+DEFAULT_JUDGE_MODEL = DEFAULT_LLM_MODEL
 
 
 class BaseLLMJudge:
@@ -59,24 +60,25 @@ Output structured JSON:
 """
 
     def evaluate(self, input_context: Dict[str, Any]) -> Dict[str, Any]:
-        query = input_context.get("query", "")
-        response = input_context.get("response", "")
-        context = input_context.get("context", "")
+        """
+        Heuristic format/tone checks. No LLM is called, so faithfulness is NOT measured here
+        (it is None). A model-based judge is part of the Phase 3 evaluation harness.
+        """
+        response = input_context.get("response") or input_context.get("answer") or ""
 
-        # Multi-dimensional heuristic evaluation for fast verification
         is_valid = len(response) > 20 and ("Summary" in response or "Key" in response or len(response) > 50)
         has_blameless_tone = not any(word in response.lower() for word in ["fault", "incompetent", "lazy", "blame"])
         has_smart_actions = "Owner" in response or "Action" in response or "Metric" in response or "@" in response
 
-        score = 5 if is_valid else 3
-
         return {
-            "judge_model": self.model_name,
-            "score": score,
-            "faithfulness": 0.95 if is_valid else 0.70,
-            "blameless_tone": 1.0 if has_blameless_tone else 0.5,
-            "smart_actionability": 0.95 if has_smart_actions else 0.75,
-            "reasoning": f"Evaluated using {self.model_name} multi-dimensional G-Eval CoT rubric.",
+            "judge_model": None,
+            "judge_type": "heuristic",
+            "score": 5 if is_valid else 3,
+            "faithfulness": None,
+            "format_valid": is_valid,
+            "blameless_tone": has_blameless_tone,
+            "smart_actionability": has_smart_actions,
+            "reasoning": "Heuristic format and tone checks only; no LLM was called, so faithfulness was not measured.",
         }
 
 
@@ -90,24 +92,25 @@ class PairwiseArenaJudge(BaseLLMJudge):
         candidate_a = input_context.get("candidate_a", "")
         candidate_b = input_context.get("candidate_b", "")
 
-        # Dual-pass position swap consistency check
-        preferred_pass_1 = "A" if len(candidate_a) >= len(candidate_b) else "B"
-        preferred_pass_2 = "A" if len(candidate_a) >= len(candidate_b) else "B"
-
-        consistent = preferred_pass_1 == preferred_pass_2
-        winner = preferred_pass_1 if consistent else "TIE"
+        # Heuristic: prefers the longer answer. No LLM is called and no position-bias
+        # mitigation happens; the result says so instead of claiming otherwise.
+        if len(candidate_a) == len(candidate_b):
+            winner = "TIE"
+        else:
+            winner = "A" if len(candidate_a) > len(candidate_b) else "B"
 
         return {
-            "judge_model": self.model_name,
+            "judge_model": None,
+            "judge_type": "heuristic_length",
             "winner": winner,
-            "position_bias_mitigated": True,
-            "reasoning": f"Dual-pass position swap verified winner as {winner}.",
+            "position_bias_mitigated": False,
+            "reasoning": "Heuristic: prefers the longer answer. No LLM was called.",
         }
 
 
 class LLMJudgeFactory:
     """
-    Factory Pattern for initializing LLM Judges with hermes3:8b.
+    Factory Pattern for initializing LLM Judges with the local chat model.
     """
 
     @staticmethod
@@ -126,7 +129,8 @@ def calculate_human_judge_calibration(human_scores: List[float], judge_scores: L
     Computes Kendall's Tau (tau) rank correlation between human expert ratings and LLM Judge scores.
     """
     if len(human_scores) < 2 or len(human_scores) != len(judge_scores):
-        return {"kendall_tau": 1.0, "p_value": 0.0}
+        # Not enough paired ratings to compute a correlation; do not report a perfect one.
+        return {"kendall_tau": None, "p_value": None}
 
     tau, p_val = kendalltau(human_scores, judge_scores)
     return {"kendall_tau": float(tau), "p_value": float(p_val)}

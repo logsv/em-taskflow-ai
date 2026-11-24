@@ -8,6 +8,7 @@ import os
 import logging
 from typing import List, Dict, Any, Optional
 from app.telemetry.tracer import trace_observation
+from app.telemetry.safe import log_handled
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +46,8 @@ class RAGDatabaseService:
                         logger.info(f"pgvector extension not installed in postgres image ({str(ve)}), using tsvector.")
                     try:
                         cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log_handled("app.services.rag_processor.database._ensure_table_exists", exc)
 
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS pdf_chunks (
@@ -107,8 +108,8 @@ class RAGDatabaseService:
                     emb = res.json().get("embedding")
                     if emb and isinstance(emb, list):
                         return json.dumps(emb), url
-            except Exception:
-                pass
+            except Exception as exc:
+                log_handled("app.services.rag_processor.database._fetch_ollama_embedding", exc)
         return None, cached_url
 
     def upsert_chunks(self, filename: str, chunks: List[Dict[str, Any]]) -> bool:

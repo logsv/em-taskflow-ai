@@ -37,7 +37,7 @@ class PromptEvaluationWorkflow:
     @workflow.run
     async def run(self, params: Dict[str, Any]) -> Dict[str, Any]:
         limit = params.get("limit", 10)
-        model_name = params.get("model_name", "hermes3:8b")
+        model_name = params.get("model_name", "qwen3:8b-q8_0")
         batch_size = params.get("batch_size", 5)
 
         retry_policy = RetryPolicy(
@@ -118,7 +118,7 @@ class DeepEvaluationBenchmarkWorkflow:
 
     @workflow.run
     async def run(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        model_name = params.get("model_name", "hermes3:8b")
+        model_name = params.get("model_name", "qwen3:8b-q8_0")
         retry_policy = RetryPolicy(
             initial_interval=timedelta(seconds=2),
             maximum_interval=timedelta(seconds=15),

@@ -49,7 +49,11 @@ describe('Autonomous EM Task & Health Audit Engine Specs', () => {
       expect(res.source).toBe('dora_and_delivery');
       expect(res.openPrsCount).toBeGreaterThanOrEqual(1);
       expect(res.doraSummary).toBeDefined();
-      expect(res.doraSummary.tier).toBe('Elite');
+      // The tier is computed from the latest stored snapshot (which depends on what other specs
+      // wrote when a test database is present), never a hard-coded default.
+      const latest = (await databaseService.getDoraSnapshots())[0];
+      expect(res.doraSummary.leadTimeHours).toBe(Number(latest.lead_time_hours));
+      expect(['ELITE', 'HIGH', 'MEDIUM']).toContain(res.doraSummary.tier);
       expect(Array.isArray(res.openPrs)).toBe(true);
     });
 
@@ -73,9 +77,12 @@ describe('Autonomous EM Task & Health Audit Engine Specs', () => {
     it('harvestSopAndGovernanceActivity should evaluate ADR compliance and return checklist', async () => {
       const res = await harvestSopAndGovernanceActivity({ stalledPrsCount: 1 });
       expect(res.source).toBe('sop_and_governance');
-      expect(res.complianceScore).toBeGreaterThanOrEqual(50);
-      expect(Array.isArray(res.checks)).toBe(true);
-      expect(res.checks.some((c) => c.id === 'ADR-008')).toBe(true);
+      expect(res.checks.find((c) => c.id === 'BASELINE-REVIEW-SLA').status).toBe('WARN');
+      expect(res.complianceScore).toBe(0); // only the measured rule is scored
+      expect(res.checks.filter((c) => c.status === 'NOT_CHECKED').length).toBe(3);
+
+      const unknown = await harvestSopAndGovernanceActivity({});
+      expect(unknown.complianceScore).toBeNull();
     });
   });
 
@@ -184,12 +191,19 @@ describe('Autonomous EM Task & Health Audit Engine Specs', () => {
       expect(results.some((r) => r.title.includes('SOP'))).toBe(true);
     });
 
-    it('dispatchSlackAuditNotificationActivity should orchestrate Slack dispatch seamlessly', async () => {
+    it('dispatchSlackAuditNotificationActivity does not post a scheduled audit unless the owner opted in', async () => {
+      delete process.env.AUDIT_SLACK_AUTO_POST;
+      const res = await dispatchSlackAuditNotificationActivity({ auditRun: { id: 1 }, topActions: [], channel: '#test-channel' });
+      expect(res.status).toBe('SKIPPED');
+    });
+
+    it('dispatchSlackAuditNotificationActivity should orchestrate Slack dispatch when asked', async () => {
       const res = await dispatchSlackAuditNotificationActivity({
         auditRun: { id: 1, healthScore: 92 },
         topActions: [],
         mode: 'threaded_subsections',
         channel: '#test-channel',
+        notifySlack: true,
       });
 
       expect(res.status).toBe('SUCCESS');
@@ -223,8 +237,8 @@ describe('Autonomous EM Task & Health Audit Engine Specs', () => {
     it('getAvailableSlackChannels should return list of accessible Slack channels', async () => {
       const channels = await getAvailableSlackChannels();
       expect(Array.isArray(channels)).toBe(true);
-      expect(channels.length).toBeGreaterThanOrEqual(2);
-      expect(channels.some((c) => c.name === 'engineering-leadership' || c.name === 'engineering-retro')).toBe(true);
+      // No configured Slack bot in tests: no invented placeholder channels.
+      expect(channels.some((c) => c.id === 'C_LEADERSHIP' || c.id === 'C_RETRO')).toBe(false);
     });
   });
 

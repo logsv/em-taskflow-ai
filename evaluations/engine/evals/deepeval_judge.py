@@ -8,6 +8,7 @@ import json
 import logging
 from typing import Optional, Any, Dict
 from deepeval.models.base_model import DeepEvalBaseLLM
+from evals.model_config import DEFAULT_LLM_MODEL
 
 logger = logging.getLogger("deepeval_judge")
 
@@ -20,10 +21,14 @@ except ImportError:
         ChatOllama = None
 
 
-class Hermes3Judge(DeepEvalBaseLLM):
-    """Custom DeepEval LLM driver wrapping local Ollama hermes3:8b model."""
 
-    def __init__(self, model: str = "hermes3:8b", base_url: Optional[str] = None):
+class JudgeUnavailableError(RuntimeError):
+    """The LLM judge could not produce a judgement. Evaluations must fail or skip, never pass."""
+
+class Hermes3Judge(DeepEvalBaseLLM):
+    """Custom DeepEval LLM driver wrapping local Ollama chat model."""
+
+    def __init__(self, model: str = DEFAULT_LLM_MODEL, base_url: Optional[str] = None):
         self.model_name = model
         self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         if ChatOllama:
@@ -42,37 +47,28 @@ class Hermes3Judge(DeepEvalBaseLLM):
     def load_model(self) -> Any:
         return self._client
 
-    def _fallback_json_for_prompt(self, prompt: str) -> str:
-        prompt_lower = prompt.lower()
-        if "steps" in prompt_lower:
-            return json.dumps({"steps": ["Evaluate input against criteria", "Verify output quality", "Generate final score"]})
-        if "statements" in prompt_lower:
-            return json.dumps({"statements": ["The candidate provided the required technical metrics.", "The candidate adhered to the specified output format."]})
-        return json.dumps({"score": 10, "reason": "Evaluation criteria strictly satisfied."})
-
     def generate(self, prompt: str) -> str:
+        """Generates a judgement from local Ollama. Raises instead of inventing a score."""
+        if not self._client:
+            raise JudgeUnavailableError(f"Ollama judge client for {self.model_name} is not available")
         try:
-            if self._client:
-                response = self._client.invoke(prompt)
-                content = str(response.content).strip()
-                if content:
-                    return content
-            return self._fallback_json_for_prompt(prompt)
+            content = str(self._client.invoke(prompt).content).strip()
         except Exception as e:
-            logger.warning(f"Ollama inference fallback triggered: {e}")
-            return self._fallback_json_for_prompt(prompt)
+            raise JudgeUnavailableError(f"Ollama judge call failed: {e}") from e
+        if not content:
+            raise JudgeUnavailableError("Ollama judge returned an empty response")
+        return content
 
     async def a_generate(self, prompt: str) -> str:
+        if not self._client:
+            raise JudgeUnavailableError(f"Ollama judge client for {self.model_name} is not available")
         try:
-            if self._client:
-                response = await self._client.ainvoke(prompt)
-                content = str(response.content).strip()
-                if content:
-                    return content
-            return self._fallback_json_for_prompt(prompt)
+            content = str((await self._client.ainvoke(prompt)).content).strip()
         except Exception as e:
-            logger.warning(f"Ollama inference fallback triggered: {e}")
-            return self._fallback_json_for_prompt(prompt)
+            raise JudgeUnavailableError(f"Ollama judge call failed: {e}") from e
+        if not content:
+            raise JudgeUnavailableError("Ollama judge returned an empty response")
+        return content
 
     def get_model_name(self) -> str:
         return f"Ollama {self.model_name}"

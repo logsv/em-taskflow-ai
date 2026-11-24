@@ -9,18 +9,34 @@ import time
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, Optional, List
 from temporalio import activity
 
 from app.services.file_processor.pdf_extractor import FileUploadProcessor
 from app.services.rag_processor.chunker import RAGChunker
 from app.services.rag_processor.database import RAGDatabaseService
 from app.telemetry.tracer import log_rag_activity_telemetry
+from app.model_config import DEFAULT_LLM_MODEL
+from app.telemetry.safe import log_handled
 
 logger = logging.getLogger(__name__)
 file_processor = FileUploadProcessor()
 rag_chunker = RAGChunker()
 db_service = RAGDatabaseService()
+
+
+def _score_or_none(scores: Dict[str, Any], key: str) -> Optional[float]:
+    """A metric value from an evaluation result, or None when it was not produced."""
+    value = (scores or {}).get(key)
+    try:
+        return None if value is None else float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _mean(values) -> Optional[float]:
+    nums = [float(v) for v in values if isinstance(v, (int, float))]
+    return round(sum(nums) / len(nums), 4) if nums else None
 
 
 @activity.defn
@@ -33,8 +49,8 @@ async def extract_text_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     filename = params.get("filename", "")
     try:
         activity.heartbeat("Extracting text from file")
-    except Exception:
-        pass
+    except Exception as exc:
+        log_handled("app.temporal.activities.extract_text_activity", exc, logging.DEBUG)
 
     logger.info(f"📄 [Temporal Activity] Extracting text for {filename} ({file_path})")
 
@@ -102,8 +118,8 @@ async def chunk_text_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     text = params.get("text", "")
     try:
         activity.heartbeat("Chunking text into 512-token windows")
-    except Exception:
-        pass
+    except Exception as exc:
+        log_handled("app.temporal.activities.chunk_text_activity", exc, logging.DEBUG)
 
     logger.info(f"✂️ [Temporal Activity] Chunking text for {filename}")
     chunks = rag_chunker.chunk_text(text, filename)
@@ -133,8 +149,8 @@ async def persist_and_embed_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     chunks = params.get("chunks", [])
     try:
         activity.heartbeat("Generating vector embeddings & upserting to PostgreSQL")
-    except Exception:
-        pass
+    except Exception as exc:
+        log_handled("app.temporal.activities.persist_and_embed_activity", exc, logging.DEBUG)
 
     logger.info(f"🗄️ [Temporal Activity] Upserting {len(chunks)} chunks into PostgreSQL for {filename}")
     success = db_service.upsert_chunks(filename, chunks)
@@ -192,8 +208,8 @@ async def inspect_file_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     mime_type = params.get("mime_type", "")
     try:
         activity.heartbeat("Inspecting file format and size")
-    except Exception:
-        pass
+    except Exception as exc:
+        log_handled("app.temporal.activities.inspect_file_activity", exc, logging.DEBUG)
 
     file_bytes = _resolve_file_bytes(file_path, filename)
     fname_lower = filename.lower()
@@ -229,8 +245,8 @@ async def extract_pdf_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     filename = params.get("filename", "")
     try:
         activity.heartbeat("Extracting PDF text via PyMuPDF (with OCR fallback for scanned PDFs)")
-    except Exception:
-        pass
+    except Exception as exc:
+        log_handled("app.temporal.activities.extract_pdf_activity", exc, logging.DEBUG)
 
     file_bytes = _resolve_file_bytes(file_path, filename)
     res = file_processor._extract_pdf(file_bytes, filename)
@@ -277,8 +293,8 @@ async def extract_tabular_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     filename = params.get("filename", "")
     try:
         activity.heartbeat("Parsing tabular data into Markdown table via Pandas")
-    except Exception:
-        pass
+    except Exception as exc:
+        log_handled("app.temporal.activities.extract_tabular_activity", exc, logging.DEBUG)
 
     file_bytes = _resolve_file_bytes(file_path, filename)
     res = file_processor._extract_csv(file_bytes, filename)
@@ -305,8 +321,8 @@ async def extract_docx_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     filename = params.get("filename", "")
     try:
         activity.heartbeat("Extracting Word document paragraphs and tables")
-    except Exception:
-        pass
+    except Exception as exc:
+        log_handled("app.temporal.activities.extract_docx_activity", exc, logging.DEBUG)
 
     file_bytes = _resolve_file_bytes(file_path, filename)
     res = file_processor._extract_docx(file_bytes, filename)
@@ -334,8 +350,8 @@ async def extract_image_context_activity(params: Dict[str, Any]) -> Dict[str, An
     mime_type = params.get("mime_type", "")
     try:
         activity.heartbeat("Processing image attachment context")
-    except Exception:
-        pass
+    except Exception as exc:
+        log_handled("app.temporal.activities.extract_image_context_activity", exc, logging.DEBUG)
 
     file_bytes = _resolve_file_bytes(file_path, filename)
     res = file_processor._extract_image(file_bytes, filename, mime_type)
@@ -360,8 +376,8 @@ async def extract_text_fallback_activity(params: Dict[str, Any]) -> Dict[str, An
     filename = params.get("filename", "")
     try:
         activity.heartbeat("Decoding plain text / Markdown content")
-    except Exception:
-        pass
+    except Exception as exc:
+        log_handled("app.temporal.activities.extract_text_fallback_activity", exc, logging.DEBUG)
 
     file_bytes = _resolve_file_bytes(file_path, filename)
     res = file_processor._extract_text_fallback(file_bytes, filename)
@@ -398,8 +414,8 @@ def load_evaluation_queries(limit: int = 10) -> List[str]:
                         if item.get("is_rag_appropriate", False) or item.get("domain_category") in ["rag_sop", "dora", "people"]:
                             queries.append(item.get("user_query"))
                 break
-            except Exception:
-                pass
+            except Exception as exc:
+                log_handled("app.temporal.activities.load_evaluation_queries", exc)
 
     if not queries:
         queries = [
@@ -425,8 +441,8 @@ async def fetch_evaluation_queries_activity(params: Dict[str, Any]) -> Dict[str,
     limit = params.get("limit", 5)
     try:
         activity.heartbeat("Loading evaluation query dataset")
-    except Exception:
-        pass
+    except Exception as exc:
+        log_handled("app.temporal.activities.fetch_evaluation_queries_activity", exc, logging.DEBUG)
 
     queries = load_evaluation_queries(limit=limit)
     logger.info(f"📋 Loaded {len(queries)} evaluation queries for RAG Triad sweep")
@@ -444,7 +460,7 @@ async def evaluate_single_rag_triad_query_activity(params: Dict[str, Any]) -> Di
     query = params.get("query", "")
     query_index = params.get("query_index", 1)
     total_queries = params.get("total_queries", 1)
-    model_name = params.get("model_name", os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b"))
+    model_name = params.get("model_name", DEFAULT_LLM_MODEL)
 
     stop_event = asyncio.Event()
 
@@ -452,8 +468,8 @@ async def evaluate_single_rag_triad_query_activity(params: Dict[str, Any]) -> Di
         while not stop_event.is_set():
             try:
                 activity.heartbeat(f"Evaluating query {query_index}/{total_queries}: {query[:35]}...")
-            except Exception:
-                pass
+            except Exception as exc:
+                log_handled("app.temporal.activities.heartbeat_loop", exc, logging.DEBUG)
             try:
                 await asyncio.sleep(5.0)
             except asyncio.CancelledError:
@@ -470,26 +486,23 @@ async def evaluate_single_rag_triad_query_activity(params: Dict[str, Any]) -> Di
             "status": "SUCCESS",
             "query": query,
             "feedbacks": {
-                "faithfulness": float(scores.get("faithfulness", 0.965)),
-                "answer_relevance": float(scores.get("answer_relevancy", 0.892)),
-                "context_precision": float(scores.get("context_precision", 0.950)),
-                "context_recall": float(scores.get("context_recall", 0.925)),
+                "faithfulness": _score_or_none(scores, "faithfulness"),
+                "answer_relevance": _score_or_none(scores, "answer_relevancy"),
+                "context_precision": _score_or_none(scores, "context_precision"),
+                "context_recall": _score_or_none(scores, "context_recall"),
             },
             "latency_seconds": latency,
             "model_name": model_name,
         }
     except Exception as e:
-        logger.warning(f"⚠️ Single query evaluation fallback: {e}")
+        # An evaluation that could not run is a failure, never a passing score.
+        logger.error(f"Single query evaluation failed: {e}")
         return {
-            "status": "SUCCESS",
+            "status": "FAILED",
             "query": query,
-            "feedbacks": {
-                "faithfulness": 0.965,
-                "answer_relevance": 0.892,
-                "context_precision": 0.950,
-                "context_recall": 0.925,
-            },
-            "latency_seconds": 1.5,
+            "error": str(e),
+            "feedbacks": {"faithfulness": None, "answer_relevance": None, "context_precision": None, "context_recall": None},
+            "latency_seconds": round(time.time() - start_time, 2),
             "model_name": model_name,
         }
     finally:
@@ -505,7 +518,7 @@ async def evaluate_single_rag_triad_query_activity(params: Dict[str, Any]) -> Di
 async def evaluate_prompt_batch_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     """Activity: Evaluates a micro-batch of prompts (5-10 items) with heartbeats & Langfuse score flusher."""
     queries = params.get("queries", [])
-    model_name = params.get("model_name", os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b"))
+    model_name = params.get("model_name", DEFAULT_LLM_MODEL)
     batch_index = params.get("batch_index", 1)
     total_batches = params.get("total_batches", 1)
 
@@ -515,8 +528,8 @@ async def evaluate_prompt_batch_activity(params: Dict[str, Any]) -> Dict[str, An
         while not stop_event.is_set():
             try:
                 activity.heartbeat(f"Evaluating prompt micro-batch {batch_index}/{total_batches} ({len(queries)} items)...")
-            except Exception:
-                pass
+            except Exception as exc:
+                log_handled("app.temporal.activities.heartbeat_loop", exc, logging.DEBUG)
             try:
                 await asyncio.sleep(5.0)
             except asyncio.CancelledError:
@@ -549,24 +562,25 @@ async def evaluate_prompt_batch_activity(params: Dict[str, Any]) -> Dict[str, An
 async def sync_evaluation_leaderboard_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     """Activity: Aggregates query metrics and confirms Langfuse leaderboard sync."""
     results = params.get("results", [])
-    model_name = params.get("model_name", os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b"))
+    model_name = params.get("model_name", DEFAULT_LLM_MODEL)
     total_queries = len(results)
 
     try:
         activity.heartbeat("Aggregating metrics & syncing Langfuse leaderboard")
-    except Exception:
-        pass
+    except Exception as exc:
+        log_handled("app.temporal.activities.sync_evaluation_leaderboard_activity", exc, logging.DEBUG)
 
+    mean_scores = {
+        metric: _mean([((r or {}).get("feedbacks") or (r or {}).get("scores") or {}).get(metric) for r in results])
+        for metric in ("faithfulness", "answer_relevance", "context_precision", "context_recall")
+    }
+    failed = sum(1 for r in results if (r or {}).get("status") == "FAILED")
     return {
-        "status": "SUCCESS",
+        "status": "FAILED" if total_queries == 0 or failed == total_queries else ("PARTIAL" if failed else "SUCCESS"),
         "total_evaluated": total_queries,
+        "failed_count": failed,
         "model_name": model_name,
-        "mean_scores": {
-            "faithfulness": 0.9650,
-            "answer_relevance": 0.8920,
-            "context_precision": 0.9500,
-            "context_recall": 0.9250,
-        },
+        "mean_scores": mean_scores,
         "synced_at": datetime.now().isoformat(),
     }
 
@@ -583,8 +597,8 @@ async def run_ragas_evaluation_activity(params: Dict[str, Any]) -> Dict[str, Any
         while not stop_event.is_set():
             try:
                 activity.heartbeat("Executing Ragas Multi-Metric Evaluation in background...")
-            except Exception:
-                pass
+            except Exception as exc:
+                log_handled("app.temporal.activities.heartbeat_loop", exc, logging.DEBUG)
             try:
                 await asyncio.sleep(5.0)
             except asyncio.CancelledError:
@@ -596,12 +610,14 @@ async def run_ragas_evaluation_activity(params: Dict[str, Any]) -> Dict[str, Any
         scores = await asyncio.to_thread(run_ragas_evaluation, sync_to_langfuse=sync_to_langfuse)
         return scores
     except Exception as e:
-        logger.warning(f"⚠️ Ragas activity non-blocking fallback: {e}")
+        logger.error(f"Ragas evaluation failed: {e}")
         return {
-            "faithfulness": 0.9650,
-            "answer_relevancy": 0.8920,
-            "context_precision": 0.9500,
-            "context_recall": 0.9250,
+            "status": "FAILED",
+            "error": str(e),
+            "faithfulness": None,
+            "answer_relevancy": None,
+            "context_precision": None,
+            "context_recall": None,
         }
     finally:
         stop_event.set()
@@ -617,12 +633,12 @@ async def run_pairwise_arena_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     """Activity: Executes Position-Bias Mitigated Pairwise Arena Judging."""
     try:
         activity.heartbeat("Executing Pairwise Arena Calibration")
-    except Exception:
-        pass
+    except Exception as exc:
+        log_handled("app.temporal.activities.run_pairwise_arena_activity", exc, logging.DEBUG)
 
     try:
         from evaluation.llm_judge import LLMJudgeFactory
-        model_name = params.get("model_name", os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b"))
+        model_name = params.get("model_name", DEFAULT_LLM_MODEL)
         pairwise_judge = LLMJudgeFactory.create_judge("pairwise", model_name=model_name)
         arena_test_context = {
             "candidate_a": params.get(
@@ -648,7 +664,7 @@ async def export_benchmark_report_activity(params: Dict[str, Any]) -> Dict[str, 
     from datetime import datetime
     import time
     
-    model_name = params.get("model_name", os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b"))
+    model_name = params.get("model_name", DEFAULT_LLM_MODEL)
     ragas_scores = params.get("ragas_scores", {})
     trulens_res = params.get("trulens_res", {})
     arena_res = params.get("arena_res", {})
@@ -693,12 +709,12 @@ async def run_trace_replay_activity(params: Dict[str, Any]) -> Dict[str, Any]:
     """Activity: Replays historical traces across baseline and candidate models."""
     try:
         activity.heartbeat("Executing Trace Replay and Arena Comparison")
-    except Exception:
-        pass
+    except Exception as exc:
+        log_handled("app.temporal.activities.run_trace_replay_activity", exc, logging.DEBUG)
 
     from evaluation.replay_langfuse_traces import replay_and_evaluate_traces
-    baseline_model = params.get("baseline_model", os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b"))
-    candidate_model = params.get("candidate_model", os.getenv("LLM_DEFAULT_MODEL", "hermes3:8b"))
+    baseline_model = params.get("baseline_model", DEFAULT_LLM_MODEL)
+    candidate_model = params.get("candidate_model", DEFAULT_LLM_MODEL)
     res = replay_and_evaluate_traces(baseline_model=baseline_model, candidate_model=candidate_model)
     return res
 

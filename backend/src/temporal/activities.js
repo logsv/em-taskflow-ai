@@ -7,6 +7,9 @@ import axios from 'axios';
 import databaseService from '../db/postgres.js';
 import settingsService from '../services/settingsService.js';
 import { info, warn } from '../utils/logger.js';
+import { swallow, recordHandledError } from '../core/safe.js';
+import { buildDoraResponse } from '../domain/dora.js';
+import { isSuppressed } from '../domain/actionItems.js';
 
 /**
  * Activity 1: Harvest GitHub contributors & commit authors
@@ -284,17 +287,18 @@ export async function reconcileAndPersistTeamActivity(params = {}) {
         mergedMap.set(key, {
           id: `mem_${key.replace(/[@.]/g, '_')}`,
           displayName: name || 'Team Member',
-          email: email || `${key}@company.internal`,
+          email: email || null,
           githubUsername: m.githubUsername,
           jiraEmail: m.jiraEmail || email,
           jiraAccountId: m.jiraAccountId,
           gcalEmail: m.gcalEmail || email,
           notionName: m.notionName || name,
           aliases: m.aliases || [name],
-          currentLevel: 'L4_MID',
-          targetLevel: 'L5_SENIOR',
+          // Levels and tenure are unknown until the owner enters them (no assumed defaults).
+          currentLevel: null,
+          targetLevel: null,
           track: 'INDIVIDUAL_CONTRIBUTOR',
-          tenureMonths: 18,
+          tenureMonths: null,
         });
       }
     }
@@ -473,7 +477,7 @@ export async function harvestDoraAndDeliveryActivity(params = {}) {
         Accept: 'application/vnd.github.v3+json',
         'User-Agent': 'EM-TaskFlow-AI',
       };
-      const prRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}/pulls?state=open&per_page=20`, { headers, timeout: 4500 }).catch(() => null);
+      const prRes = await axios.get(`https://api.github.com/repos/${owner}/${repo}/pulls?state=open&per_page=20`, { headers, timeout: 4500 }).catch(swallow('temporal.activities.harvestDoraAndDeliveryActivity', null));
       if (Array.isArray(prRes?.data)) {
         const now = Date.now();
         let totalWait = 0;
@@ -497,7 +501,7 @@ export async function harvestDoraAndDeliveryActivity(params = {}) {
     }
 
     if (openPrs.length === 0) {
-      const cachedIssues = databaseService.getGithubIssues ? await databaseService.getGithubIssues({ state: 'open' }).catch(() => []) : [];
+      const cachedIssues = databaseService.getGithubIssues ? await databaseService.getGithubIssues({ state: 'open' }).catch(swallow('temporal.activities.harvestDoraAndDeliveryActivity', [])) : [];
       const now = Date.now();
       let totalWait = 0;
       openPrs = cachedIssues
@@ -520,17 +524,20 @@ export async function harvestDoraAndDeliveryActivity(params = {}) {
       if (openPrs.length > 0) avgWaitHours = Number((totalWait / openPrs.length).toFixed(1));
     }
 
-    const doraSnapshotsList = databaseService.getDoraSnapshots ? await databaseService.getDoraSnapshots('main_team').catch(() => []) : [];
-    const doraSnapshots = Array.isArray(doraSnapshotsList) ? doraSnapshotsList[0] : doraSnapshotsList;
+    const doraSnapshotsList = databaseService.getDoraSnapshots ? await databaseService.getDoraSnapshots().catch(swallow('temporal.activities.harvestDoraAndDeliveryActivity', [])) : [];
+    // Rows are snake_case (deployment_frequency, ...). Reading camelCase used to yield 0 for every
+    // metric with a default 'Elite' tier. Missing values are null, the tier is computed or null.
+    const dora = buildDoraResponse(Array.isArray(doraSnapshotsList) ? doraSnapshotsList : [doraSnapshotsList].filter(Boolean));
     const doraSummary = {
-      tier: doraSnapshots?.tier || 'Elite',
-      deploymentFrequency: doraSnapshots?.deploymentFrequency ? Number(doraSnapshots.deploymentFrequency) : 0,
-      leadTimeHours: doraSnapshots?.leadTimeHours ? Number(doraSnapshots.leadTimeHours) : 0,
-      changeFailureRate: doraSnapshots?.changeFailureRate ? Number(doraSnapshots.changeFailureRate) : 0,
-      mttrHours: doraSnapshots?.mttrHours ? Number(doraSnapshots.mttrHours) : 0,
+      measured: dora.measured,
+      tier: dora.rating,
+      deploymentFrequency: dora.metrics.deployment_frequency.numeric,
+      leadTimeHours: dora.lead_time_hours,
+      changeFailureRate: dora.change_failure_rate_pct,
+      mttrHours: dora.mttr_hours,
     };
 
-    const sprintAnalyticsList = databaseService.getSprintAnalytics ? await databaseService.getSprintAnalytics().catch(() => []) : [];
+    const sprintAnalyticsList = databaseService.getSprintAnalytics ? await databaseService.getSprintAnalytics().catch(swallow('temporal.activities.harvestDoraAndDeliveryActivity', [])) : [];
     const blockedTickets = Array.isArray(sprintAnalyticsList) && sprintAnalyticsList[0]?.blocked_tickets
       ? sprintAnalyticsList[0].blocked_tickets.map((t) => ({
           key: t.key,
@@ -568,7 +575,7 @@ export async function harvestDoraAndDeliveryActivity(params = {}) {
  */
 export async function harvestPeopleAndCadenceActivity(params = {}) {
   try {
-    const teamMembers = databaseService.getTeamMembers ? await databaseService.getTeamMembers().catch(() => []) : [];
+    const teamMembers = databaseService.getTeamMembers ? await databaseService.getTeamMembers().catch(swallow('temporal.activities.harvestPeopleAndCadenceActivity', [])) : [];
     const overdue1on1s = [];
 
     for (const m of teamMembers) {
@@ -612,14 +619,14 @@ export async function harvestPeopleAndCadenceActivity(params = {}) {
  */
 export async function harvestSprintAndOkrActivity(params = {}) {
   try {
-    const sprintAnalyticsList = databaseService.getSprintAnalytics ? await databaseService.getSprintAnalytics().catch(() => []) : [];
+    const sprintAnalyticsList = databaseService.getSprintAnalytics ? await databaseService.getSprintAnalytics().catch(swallow('temporal.activities.harvestSprintAndOkrActivity', [])) : [];
     const sprintAnalytics = Array.isArray(sprintAnalyticsList) ? (sprintAnalyticsList[0] || null) : sprintAnalyticsList;
     const totalPoints = sprintAnalytics?.totalPoints ?? (sprintAnalytics?.total_points ?? 0);
     const completedPoints = sprintAnalytics?.completedPoints ?? (sprintAnalytics?.completed_points ?? 0);
     const wipViolations = sprintAnalytics?.wipViolations ?? 0;
     const sprintPacingPct = totalPoints > 0 ? Math.round((completedPoints / totalPoints) * 100) : 100;
 
-    const okrs = databaseService.getOkrRecords ? await databaseService.getOkrRecords().catch(() => []) : [];
+    const okrs = databaseService.getOkrRecords ? await databaseService.getOkrRecords().catch(swallow('temporal.activities.harvestSprintAndOkrActivity', [])) : [];
     const okrsList = Array.isArray(okrs) ? okrs : [];
     const atRiskOkrs = okrsList.filter((o) => o.status === 'AT_RISK' || o.status === 'OFF_TRACK');
 
@@ -653,28 +660,38 @@ export async function harvestSprintAndOkrActivity(params = {}) {
  */
 export async function harvestSopAndGovernanceActivity(params = {}) {
   try {
+    // Only rules that can be checked from harvested data are scored. The rest are reported as
+    // NOT_CHECKED instead of being marked PASS without evidence.
+    const stalled = Number.isFinite(Number(params.stalledPrsCount)) ? Number(params.stalledPrsCount) : null;
     const checks = [
-      { id: 'ADR-008', title: 'Database Per-Service Isolation', status: 'PASS', details: 'All 4 services isolated (taskflow_backend, taskflow_ai, temporal, langfuse_db)' },
-      { id: 'SOP-01', title: 'PR Code Review Turnaround SLA (<24h)', status: params.stalledPrsCount > 0 ? 'WARN' : 'PASS', details: params.stalledPrsCount > 0 ? `${params.stalledPrsCount} stalled PR(s) exceeding 24h SLA` : 'All open PRs within review SLA' },
-      { id: 'SOP-04', title: 'Zero Cloud Key & Secret Masking', status: 'PASS', details: '100% Ollama local inference; secrets masked in API & UI' },
-      { id: 'SOP-09', title: 'Zero-Downtime Telemetry Non-Blocking', status: 'PASS', details: 'Langfuse tracing operates in async background' },
+      {
+        id: 'BASELINE-REVIEW-SLA',
+        title: 'PR review turnaround SLA (<24h)',
+        status: stalled === null ? 'NOT_CHECKED' : stalled > 0 ? 'WARN' : 'PASS',
+        details: stalled === null ? 'No pull request data harvested' : stalled > 0 ? `${stalled} stalled PR(s) exceeding the 24h SLA` : 'All open PRs within the review SLA',
+      },
+      { id: 'BASELINE-DB-ISOLATION', title: 'Database per-service isolation', status: 'NOT_CHECKED', details: 'Not automatically verifiable from harvested data' },
+      { id: 'BASELINE-SECURITY', title: 'Secret masking policy', status: 'NOT_CHECKED', details: 'Not automatically verifiable from harvested data' },
+      { id: 'BASELINE-OBSERVABILITY', title: 'Non-blocking telemetry', status: 'NOT_CHECKED', details: 'Not automatically verifiable from harvested data' },
     ];
 
-    const passCount = checks.filter((c) => c.status === 'PASS').length;
-    const complianceScore = Math.round((passCount / checks.length) * 100);
+    const scored = checks.filter((c) => c.status !== 'NOT_CHECKED');
+    const passCount = scored.filter((c) => c.status === 'PASS').length;
+    const complianceScore = scored.length > 0 ? Math.round((passCount / scored.length) * 100) : null;
 
     return {
       source: 'sop_and_governance',
       complianceScore,
       checks,
-      activeViolations: checks.filter((c) => c.status !== 'PASS'),
+      activeViolations: checks.filter((c) => c.status === 'WARN' || c.status === 'FAIL'),
     };
   } catch (err) {
     return {
       source: 'sop_and_governance',
-      complianceScore: 100,
+      complianceScore: null,
       checks: [],
       activeViolations: [],
+      error: err.message,
     };
   }
 }
@@ -722,7 +739,7 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
       actionItems.push({
         id: `act_jira_${keyClean}`,
         title: `Blocked Jira Ticket ${t.key}: ${t.summary || 'Blocked Issue'}`,
-        description: `Ticket has been blocked for ${t.daysBlocked || 1} days.`,
+        description: Number.isFinite(Number(t.daysBlocked)) ? `Ticket has been blocked for ${t.daysBlocked} days.` : 'Ticket is blocked (blocked duration unknown).',
         category: 'DELIVERY',
         severity: 'WARNING',
         suggestedAction: `Triage impediment in daily standup and review dependency chain.`,
@@ -742,9 +759,9 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
       actionItems.push({
         id: `act_1on1_${rawMember}`,
         title: `Overdue 1-on-1 Sync: ${o.name || 'Team Member'}`,
-        description: `Last 1-on-1 was ${o.daysSinceLast1on1 || 15} days ago (recommended cadence is <=14 days).`,
+        description: Number.isFinite(Number(o.daysSinceLast1on1)) ? `Last 1-on-1 was ${o.daysSinceLast1on1} days ago (recommended cadence is <=14 days).` : 'No 1-on-1 found in the calendar window (recommended cadence is <=14 days).',
         category: 'PEOPLE',
-        severity: (o.daysSinceLast1on1 || 15) > 20 ? 'CRITICAL' : 'WARNING',
+        severity: Number(o.daysSinceLast1on1) > 20 ? 'CRITICAL' : 'WARNING',
         suggestedAction: `Schedule 30-minute 1-on-1 check-in via Google Calendar.`,
         assigneeName: o.name || 'Team Member',
         assigneeEmail: o.email || null,
@@ -777,52 +794,58 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
     }
   }
 
+  // Items the owner dismissed (with a reason) or snoozed do not count against the score.
+  // Each finding above cost 5 points; give those back for suppressed items.
+  const existing = databaseService.getActionItemsByIds
+    ? await databaseService.getActionItemsByIds(actionItems.map((i) => i.id)).catch(swallow('temporal.activities.suppressedActionItems', []))
+    : [];
+  const suppressedIds = new Set(existing.filter((i) => isSuppressed(i)).map((i) => i.id));
+  score += 5 * suppressedIds.size;
+
   // Clamp health score between 20 and 100
   const finalHealthScore = Math.max(20, Math.min(100, score));
 
   // Build Markdown executive summary
+  const shown = (v, suffix = '') => (v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? 'n/a' : `${v}${suffix}`);
   const summaryMarkdown = [
-    `### 🛡️ Autonomous EM Health Audit Summary`,
+    `### Autonomous EM Health Audit Summary`,
     `- **Overall Health Score:** \`${finalHealthScore}/100\``,
-    `- **DORA Metrics Tier:** \`${delivery.doraSummary?.tier || 'Elite'}\` (Deploy: ${delivery.doraSummary?.deploymentFrequency || 2.4}/d, MTTR: ${delivery.doraSummary?.mttrHours || 0.8}h)`,
-    `- **Active Sprint Velocity:** \`${sprintOkr.completedPoints || 38}/${sprintOkr.totalPoints || 48} SP\` (${sprintOkr.sprintPacingPct || 79}%)`,
-    `- **SOP Compliance Score:** \`${sop.complianceScore || 100}%\``,
+    `- **DORA Metrics Tier:** \`${delivery.doraSummary?.tier || 'n/a'}\` (Deploy: ${shown(delivery.doraSummary?.deploymentFrequency, '/wk')}, MTTR: ${shown(delivery.doraSummary?.mttrHours, 'h')})`,
+    `- **Active Sprint Velocity:** \`${shown(sprintOkr.completedPoints)}/${shown(sprintOkr.totalPoints)} SP\` (${shown(sprintOkr.sprintPacingPct, '%')})`,
+    `- **SOP Compliance Score:** \`${sop.complianceScore === null || sop.complianceScore === undefined ? "not checked" : `${sop.complianceScore}%`}\``,
     `- **Pending Action Items:** \`${actionItems.length}\` items require engineering manager review.`,
+    ...(suppressedIds.size ? [`- **Set aside by you:** \`${suppressedIds.size}\` dismissed or snoozed item(s) are not counted in the score.`] : []),
   ].join('\n');
 
-  // Persist Audit Run
-  const auditRun = await databaseService.createAuditRun({
+  // Persist the audit run and its action items in one transaction.
+  const { auditRun, actionItems: persistedActions } = await databaseService.recordAuditRun({
     triggeredBy,
     status: 'COMPLETED',
     healthScore: finalHealthScore,
     summaryMarkdown,
     doraSummary: delivery.doraSummary || {},
     deliverySummary: {
-      openPrsCount: delivery.openPrsCount || 0,
-      stalledPrsCount: delivery.stalledPrsCount || 0,
-      avgPrReviewWaitHours: delivery.avgPrReviewWaitHours || 0,
+      openPrsCount: delivery.openPrsCount ?? null,
+      stalledPrsCount: delivery.stalledPrsCount ?? null,
+      avgPrReviewWaitHours: delivery.avgPrReviewWaitHours ?? null,
     },
     peopleSummary: {
-      cadenceHealth: people.cadenceHealth || '100%',
-      overdue1on1sCount: people.overdue1on1sCount || 0,
-      totalTeamMembers: people.totalTeamMembers || 0,
+      cadenceHealth: people.cadenceHealth ?? null,
+      overdue1on1sCount: people.overdue1on1sCount ?? null,
+      totalTeamMembers: people.totalTeamMembers ?? null,
     },
     sprintOkrSummary: {
-      sprintPacingPct: sprintOkr.sprintPacingPct || 100,
-      completedPoints: sprintOkr.completedPoints || 0,
-      totalPoints: sprintOkr.totalPoints || 0,
-      wipViolations: sprintOkr.wipViolations || 0,
+      sprintPacingPct: sprintOkr.sprintPacingPct ?? null,
+      completedPoints: sprintOkr.completedPoints ?? null,
+      totalPoints: sprintOkr.totalPoints ?? null,
+      wipViolations: sprintOkr.wipViolations ?? null,
     },
     sopSummary: {
-      complianceScore: sop.complianceScore || 100,
+      complianceScore: sop.complianceScore ?? null,
       activeViolationsCount: sop.activeViolations?.length || 0,
     },
     slackStatus: { status: 'PENDING' },
-  });
-
-  // Attach auditRunId to action items & upsert
-  const itemsWithAuditId = actionItems.map((item) => ({ ...item, auditRunId: auditRun.id }));
-  const persistedActions = await databaseService.upsertActionItems(itemsWithAuditId);
+  }, actionItems);
 
   info({ module: 'temporalActivities', action: 'synthesizeAuditAndActionItemsActivity', auditId: auditRun.id, healthScore: finalHealthScore, actionsCount: persistedActions.length }, 'Successfully synthesized and persisted autonomous audit run');
 
@@ -838,7 +861,14 @@ export async function synthesizeAuditAndActionItemsActivity(params = {}) {
  * Audit Activity 6: Multi-Channel Slack Notification Dispatcher
  */
 export async function dispatchSlackAuditNotificationActivity(params = {}) {
-  const { auditRun = {}, topActions = [], mode = 'consolidated', channel = null } = params;
+  const { auditRun = {}, topActions = [], mode = 'consolidated', channel = null, notifySlack = false } = params;
+  // Scheduled audits only post to Slack when the owner opted in (AUDIT_SLACK_AUTO_POST=true);
+  // an owner-triggered run can ask for it explicitly with notifySlack.
+  const autoPost = String(process.env.AUDIT_SLACK_AUTO_POST || 'false').toLowerCase() === 'true';
+  if (!autoPost && !notifySlack) {
+    info({ module: 'temporalActivities', action: 'dispatchSlackAuditSkipped', auditId: auditRun.id }, 'Audit Slack post skipped (AUDIT_SLACK_AUTO_POST is off)');
+    return { status: 'SKIPPED', reason: 'AUDIT_SLACK_AUTO_POST is off; nothing was posted.' };
+  }
   try {
     const { sendAuditOverviewMessage, sendAuditSubsectionThread } = await import('../mcp/slack.js');
     const overviewRes = await sendAuditOverviewMessage({
@@ -863,7 +893,7 @@ export async function dispatchSlackAuditNotificationActivity(params = {}) {
         threadsCount: threadResults.length,
         dispatchedAt: new Date().toISOString(),
       },
-    }).catch(() => null);
+    }).catch(swallow('temporal.activities.dispatchSlackAuditNotificationActivity', null));
 
     return {
       status: 'SUCCESS',

@@ -6,6 +6,8 @@ import {
   getWorkflowStatus,
 } from '../temporal/client.js';
 import { info, warn } from '../utils/logger.js';
+import { sendError } from '../middleware/errorHandler.js';
+import { validateActionItemUpdate } from '../domain/actionItems.js';
 
 const router = express.Router();
 
@@ -31,7 +33,7 @@ router.get('/', async (req, res) => {
     });
   } catch (err) {
     warn({ module: 'actionsRoute', action: 'listActionItemsError', err }, 'Failed to list action items');
-    res.status(500).json({ success: false, error: err.message, items: [] });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -43,11 +45,46 @@ router.get('/summary', async (req, res) => {
     res.json({
       success: true,
       summary,
-      healthScore: latestAudit?.healthScore ?? 100,
+      // No audit yet means no score, not a perfect one.
+      healthScore: latestAudit?.healthScore ?? null,
       lastAuditAt: latestAudit?.createdAt || null,
+      metrics: latestAudit
+        ? {
+            doraTier: latestAudit.doraSummary?.tier ?? null,
+            deploymentFrequency: latestAudit.doraSummary?.deploymentFrequency ?? null,
+            mttrHours: latestAudit.doraSummary?.mttrHours ?? null,
+            openPrsCount: latestAudit.deliverySummary?.openPrsCount ?? null,
+            stalledPrsCount: latestAudit.deliverySummary?.stalledPrsCount ?? null,
+            avgPrReviewWaitHours: latestAudit.deliverySummary?.avgPrReviewWaitHours ?? null,
+            overdue1on1sCount: latestAudit.peopleSummary?.overdue1on1sCount ?? null,
+            sprintPacingPct: latestAudit.sprintOkrSummary?.sprintPacingPct ?? null,
+            completedPoints: latestAudit.sprintOkrSummary?.completedPoints ?? null,
+            totalPoints: latestAudit.sprintOkrSummary?.totalPoints ?? null,
+            wipViolations: latestAudit.sprintOkrSummary?.wipViolations ?? null,
+            sopComplianceScore: latestAudit.sopSummary?.complianceScore ?? null,
+          }
+        : null,
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(req, res, err, 'actions.js');
+  }
+});
+
+// GET /api/actions/health-trend?days=30 - Health score per completed audit run, oldest first.
+// Runs without a measured score (failed / unmeasured) are left out, not shown as 0 or 100.
+router.get('/health-trend', async (req, res) => {
+  try {
+    const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30));
+    const since = Date.now() - days * 24 * 60 * 60 * 1000;
+    const runs = await databaseService.listAuditRuns({ limit: 500, offset: 0 });
+    const points = runs
+      .filter((r) => r.status === 'COMPLETED' && Number.isFinite(r.healthScore) && new Date(r.createdAt).getTime() >= since)
+      .map((r) => ({ at: r.createdAt, healthScore: r.healthScore, auditRunId: r.id }))
+      .sort((a, b) => new Date(a.at) - new Date(b.at));
+    const change = points.length >= 2 ? points.at(-1).healthScore - points[0].healthScore : null;
+    res.json({ success: true, days, points, change, ...(points.length ? {} : { message: `No completed audits in the last ${days} days.` }) });
+  } catch (err) {
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -61,7 +98,7 @@ router.get('/audit-runs', async (req, res) => {
     });
     res.json({ success: true, count: runs.length, runs });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message, runs: [] });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -74,7 +111,7 @@ router.get('/audit-runs/:id', async (req, res) => {
     }
     res.json({ success: true, run });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -82,56 +119,39 @@ router.get('/audit-runs/:id', async (req, res) => {
 router.get('/sop/compliance', async (_req, res) => {
   try {
     const latestAudit = await databaseService.getLatestAuditRun();
+    const stalledRaw = latestAudit?.deliverySummary?.stalledPrsCount;
+    const stalled = Number.isFinite(Number(stalledRaw)) && stalledRaw !== null ? Number(stalledRaw) : null;
+    const lastChecked = latestAudit?.createdAt || null;
+    // Only the review SLA is measured (from the last audit's PR harvest). The other baseline rules
+    // cannot be verified automatically and are reported as NOT_CHECKED, never as PASS.
     const rules = [
       {
-        id: 'ADR-008',
-        category: 'Architecture',
-        title: 'Database Per-Service Isolation Architecture',
-        description: 'Dedicated isolated PostgreSQL databases for backend, AI vector store, temporal, and analytics.',
-        status: 'PASS',
-        impact: 'High',
-        lastChecked: latestAudit?.createdAt || new Date().toISOString(),
-      },
-      {
-        id: 'SOP-01',
+        id: 'BASELINE-REVIEW-SLA',
         category: 'Code Review',
-        title: 'PR Code Review Turnaround SLA (<24h)',
-        description: 'Pull requests must receive review and feedback within 24 hours of submission.',
-        status: (latestAudit?.deliverySummary?.stalledPrsCount || 0) > 0 ? 'WARN' : 'PASS',
+        title: 'PR code review turnaround SLA (<24h)',
+        description: 'Pull requests receive review within 24 hours.',
+        status: stalled === null ? 'NOT_CHECKED' : stalled > 0 ? 'WARN' : 'PASS',
+        details: stalled === null ? 'No audit with pull request data yet' : `${stalled} stalled PR(s) in the last audit`,
         impact: 'Medium',
-        lastChecked: latestAudit?.createdAt || new Date().toISOString(),
+        lastChecked,
       },
-      {
-        id: 'SOP-04',
-        category: 'Security',
-        title: 'Zero Cloud Key & Secret Masking Policy',
-        description: '100% Local SLM inference with Ollama; zero third-party cloud LLM API dependencies.',
-        status: 'PASS',
-        impact: 'Critical',
-        lastChecked: latestAudit?.createdAt || new Date().toISOString(),
-      },
-      {
-        id: 'SOP-09',
-        category: 'Observability',
-        title: 'Zero-Downtime Telemetry Non-Blocking Execution',
-        description: 'Trace logging, feedback, and telemetry must never block or crash user requests.',
-        status: 'PASS',
-        impact: 'High',
-        lastChecked: latestAudit?.createdAt || new Date().toISOString(),
-      },
+      { id: 'BASELINE-DB-ISOLATION', category: 'Architecture', title: 'Database per-service isolation', description: 'One database per service; no cross-service joins.', status: 'NOT_CHECKED', details: 'Not automatically verifiable', impact: 'High', lastChecked: null },
+      { id: 'BASELINE-SECURITY', category: 'Security', title: 'Secret masking policy', description: 'No plaintext secrets in code, logs or UI.', status: 'NOT_CHECKED', details: 'Not automatically verifiable', impact: 'Critical', lastChecked: null },
+      { id: 'BASELINE-OBSERVABILITY', category: 'Observability', title: 'Non-blocking telemetry', description: 'Telemetry never blocks or fails user requests.', status: 'NOT_CHECKED', details: 'Not automatically verifiable', impact: 'High', lastChecked: null },
     ];
 
-    const passCount = rules.filter((r) => r.status === 'PASS').length;
-    const score = Math.round((passCount / rules.length) * 100);
+    const scored = rules.filter((r) => r.status !== 'NOT_CHECKED');
+    const score = scored.length > 0 ? Math.round((scored.filter((r) => r.status === 'PASS').length / scored.length) * 100) : null;
 
     res.json({
       success: true,
       complianceScore: score,
       totalRules: rules.length,
+      checkedRules: scored.length,
       rules,
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(_req, res, err, 'actions.js');
   }
 });
 
@@ -139,12 +159,10 @@ router.get('/sop/compliance', async (_req, res) => {
 router.patch('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, resolutionNotes, completedBy } = req.body;
-    const updated = await databaseService.updateActionItemStatus(id, {
-      status,
-      resolutionNotes,
-      completedBy: completedBy || 'Engineering Manager',
-    });
+    // Lifecycle: status, dueDate, owner (assigneeName/Email), snoozedUntil, dismissedReason.
+    const patch = validateActionItemUpdate(req.body || {});
+    const updated = await databaseService.updateActionItem(id, patch);
+    const status = patch.status;
 
     if (!updated) {
       return res.status(404).json({ success: false, error: 'Action item not found' });
@@ -154,7 +172,7 @@ router.patch('/:id', async (req, res) => {
     res.json({ success: true, item: updated });
   } catch (err) {
     warn({ module: 'actionsRoute', action: 'updateActionItemStatusError', err }, 'Failed to update action item');
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -217,7 +235,7 @@ router.post('/audit/trigger', async (req, res) => {
     });
   } catch (err) {
     warn({ module: 'actionsRoute', action: 'triggerAuditError', err }, 'Failed to trigger autonomous audit');
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -228,18 +246,18 @@ router.get('/audit/status/:workflowId', async (req, res) => {
     const status = await getWorkflowStatus(workflowId);
     res.json({ success: true, status });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
 // GET /api/actions/slack/channels - List available Slack channels
 router.get('/slack/channels', async (_req, res) => {
   try {
-    const { getAvailableSlackChannels } = await import('../mcp/slack.js');
-    const channels = await getAvailableSlackChannels();
-    res.json({ success: true, channels });
+    const { listSlackChannelsWithStatus } = await import('../mcp/slack.js');
+    const { channels, available, reason } = await listSlackChannelsWithStatus();
+    res.json({ success: true, available, channels, ...(reason ? { reason } : {}) });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message, channels: [] });
+    return sendError(_req, res, err, 'actions.js');
   }
 });
 
@@ -301,7 +319,7 @@ router.post('/slack/dispatch', async (req, res) => {
     });
   } catch (err) {
     warn({ module: 'actionsRoute', action: 'slackDispatchError', err }, 'Failed to dispatch to Slack');
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -332,7 +350,7 @@ router.post('/:id/nudge', async (req, res) => {
     });
   } catch (err) {
     warn({ module: 'actionsRoute', action: 'sendActionItemNudgeError', err }, 'Failed to send action item nudge');
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 
@@ -365,7 +383,7 @@ router.post('/batch', async (req, res) => {
       message: `✅ Batch updated ${updatedItems.length} action items to ${status}`,
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    return sendError(req, res, err, 'actions.js');
   }
 });
 

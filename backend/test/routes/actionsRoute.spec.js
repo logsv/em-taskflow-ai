@@ -126,9 +126,12 @@ describe('EM Action Hub & Audit REST API Routes', () => {
       const res = await request.get('/api/actions/sop/compliance');
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.complianceScore).toBeGreaterThanOrEqual(50);
       expect(res.body.rules.length).toBeGreaterThanOrEqual(4);
-      expect(res.body.rules.some((r) => r.id === 'ADR-008')).toBe(true);
+      const reviewSla = res.body.rules.find((r) => r.id === 'BASELINE-REVIEW-SLA');
+      expect(reviewSla).toBeDefined();
+      // Rules that cannot be verified automatically are never reported as PASS.
+      res.body.rules.filter((r) => r.id !== 'BASELINE-REVIEW-SLA').forEach((r) => expect(r.status).toBe('NOT_CHECKED'));
+      expect(res.body.checkedRules).toBe(reviewSla.status === 'NOT_CHECKED' ? 0 : 1);
     });
   });
 
@@ -149,13 +152,23 @@ describe('EM Action Hub & Audit REST API Routes', () => {
       expect(res.body.item.completedBy).toBe('Sarah Chen (EM)');
     });
 
-    it('should update status to DISMISSED', async () => {
+    it('should update status to DISMISSED with a reason', async () => {
+      const res = await request
+        .patch('/api/actions/act_test_1on1_sarah')
+        .send({ status: 'DISMISSED', dismissedReason: 'Covered in skip-level this week' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.item.status).toBe('DISMISSED');
+      expect(res.body.item.dismissedReason).toBe('Covered in skip-level this week');
+    });
+
+    it('should refuse to dismiss without a reason (400 VALIDATION)', async () => {
       const res = await request
         .patch('/api/actions/act_test_1on1_sarah')
         .send({ status: 'DISMISSED' });
 
-      expect(res.status).toBe(200);
-      expect(res.body.item.status).toBe('DISMISSED');
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('VALIDATION');
     });
 
     it('should return 404 when action item is missing', async () => {
@@ -214,7 +227,12 @@ describe('EM Action Hub & Audit REST API Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(Array.isArray(res.body.channels)).toBe(true);
-      expect(res.body.channels.length).toBeGreaterThanOrEqual(1);
+      // Without a configured Slack bot the list is empty with a reason, never invented channels.
+      if (!res.body.available) {
+        expect(res.body.channels).toEqual([]);
+        expect(res.body.reason).toBeDefined();
+      }
+      expect(res.body.channels.some((c) => c.id === 'C_LEADERSHIP')).toBe(false);
     });
 
     it('POST /api/actions/slack/dispatch should dispatch executive brief to Slack', async () => {

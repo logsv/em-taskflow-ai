@@ -3,15 +3,16 @@
  * Handles document ingestion with token-aware chunking and vector storage
  */
 
-import { TokenTextSplitter } from '@langchain/textsplitters';
+import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { Document } from '@langchain/core/documents';
 import fs from 'fs/promises';
 import pdf from 'pdf-parse/lib/pdf-parse.js';
 import { config, getRagConfig } from '../config.js';
 import { BGEEmbeddingsAdapter } from '../llm/bgeEmbeddingsAdapter.js';
 import databaseService from '../db/postgres.js';
-import pythonAIServiceClient from '../grpc/client.js';
+import pythonAIServiceClient from '../pythonAi/client.js';
 import { info, warn, error, debug } from '../utils/logger.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 // Dependencies for injection
 let fsModule = fs;
@@ -20,6 +21,7 @@ let pdfModule = pdf;
 // Chunking configuration (Industry standard 512 tokens with 64 token overlap)
 const CHUNK_SIZE = 512; // tokens
 const CHUNK_OVERLAP = 64; // tokens
+const CHARS_PER_TOKEN = 4; // estimate used by the offline fallback splitter
 
 // Singleton instances
 let vectorStore = null;
@@ -250,14 +252,14 @@ function createFallbackChunks(text, filename, filePath) {
 async function createChunks(text, filename, filePath) {
   debug({ module: 'ragIngest', action: 'createChunks', filename }, 'Creating token-aware chunks');
 
-  // Use TokenTextSplitter for precise token control
-  const tokenSplitter = new TokenTextSplitter({
-    chunkSize: CHUNK_SIZE,
-    chunkOverlap: CHUNK_OVERLAP,
+  // Offline splitter. (TokenTextSplitter downloads its tokenizer from a CDN at runtime, which
+  // hangs without internet and breaks local-first operation.) Sizes use ~4 characters per token;
+  // the Python service does exact 512-token chunking when it is available.
+  const splitter = new RecursiveCharacterTextSplitter({
+    chunkSize: CHUNK_SIZE * CHARS_PER_TOKEN,
+    chunkOverlap: CHUNK_OVERLAP * CHARS_PER_TOKEN,
   });
-
-  // Use token splitter for most precise control
-  const chunks = await tokenSplitter.splitText(text);
+  const chunks = await splitter.splitText(text);
   
   // Create documents with enhanced metadata
   const documents = chunks.map((chunk, index) => new Document({
@@ -351,7 +353,7 @@ export async function getIngestStatus() {
   try {
     const docs = await databaseService.listPdfDocuments();
     docCount = docs.reduce((acc, d) => acc + (d.chunkCount || 0), 0);
-  } catch (e) {}
+  } catch (e) { recordHandledError('rag.ingest.getIngestStatus', e); }
 
   return {
     initialized,

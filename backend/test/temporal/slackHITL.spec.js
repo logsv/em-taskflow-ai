@@ -6,7 +6,7 @@ import {
   startSlackPostHITLWorkflow,
   signalSlackPostApproval,
 } from '../../src/temporal/client.js';
-import adminRoutes from '../../src/routes/admin.js';
+import adminRoutes from '../../src/routes/admin/index.js';
 
 describe('Temporal Human-in-the-Loop (HITL) Slack Post Specs', () => {
   let app;

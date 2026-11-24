@@ -8,6 +8,7 @@ import * as activities from './activities.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { info, warn } from '../utils/logger.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,7 +37,7 @@ export async function startTemporalNodeWorker() {
 
     info({ module: 'temporalWorker', action: 'listening', taskQueue: 'team-sync-queue' }, "Node.js Temporal Worker listening on task queue: 'team-sync-queue'");
     // Register audit schedule
-    import('./client.js').then((m) => m.ensureAuditCronSchedule()).catch(() => {});
+    import('./client.js').then((m) => m.ensureAuditCronSchedule()).catch(swallow('temporal.worker.startTemporalNodeWorker'));
 
     // Run worker in background
     worker.run().catch(err => {

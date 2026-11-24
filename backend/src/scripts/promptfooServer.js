@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
+import { DEFAULT_CHAT_MODEL } from '../llm/models.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,8 +26,8 @@ let matrixResults = {
   prompts: [
     {
       id: 'p1',
-      name: 'hermes3:8b (Fast-Path + ReAct)',
-      provider: 'ollama:chat:hermes3:8b',
+      name: `${DEFAULT_CHAT_MODEL} (Fast-Path + ReAct)`,
+      provider: `ollama:chat:${DEFAULT_CHAT_MODEL}`,
       template: 'You are the EM TaskFlow AI intent router. Classify query into [dora, delivery, sbi, people, sprint, retro, roadmap, okr, sop, critic, rag, fast_path]. Return JSON: {"domain": "..."}\n\nQuery: {{query}}',
       passCount: 10,
       totalCount: 10,
@@ -36,8 +37,8 @@ let matrixResults = {
     },
     {
       id: 'p2',
-      name: 'hermes3:8b (LangGraph Supervisor)',
-      provider: 'ollama:chat:hermes3:8b',
+      name: `${DEFAULT_CHAT_MODEL} (LangGraph Supervisor)`,
+      provider: `ollama:chat:${DEFAULT_CHAT_MODEL}`,
       template: 'Supervisor Agent: Review EM user request and delegate to exactly 1 specialized micro-agent or return fast_path code.\n\nQuery: {{query}}',
       passCount: 10,
       totalCount: 10,
@@ -163,7 +164,7 @@ Query: ${row.query}`;
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'hermes3:8b',
+          model: DEFAULT_CHAT_MODEL,
           messages: [{ role: 'user', content: prompt }],
           stream: false,
           options: { temperature: 0.0 }
@@ -494,7 +495,7 @@ const server = http.createServer(async (req, res) => {
     new Chart(ctxPass, {
       type: 'bar',
       data: {
-        labels: ['Fast-Path (hermes3)', 'Supervisor (hermes3)', 'Baseline (mistral)'],
+        labels: ['Fast-Path', 'Supervisor', 'Baseline'],
         datasets: [{
           data: [100, 100, 80],
           backgroundColor: ['#10b981', '#3b82f6', '#ef4444'],

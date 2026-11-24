@@ -2,6 +2,7 @@ import ragService from '../../rag/index.js';
 import { startRAGIngestWorkflow } from '../../temporal/client.js';
 import { cacheInvalidator } from '../../cache/cacheInvalidator.js';
 import { warn } from '../../utils/logger.js';
+import { swallow, recordHandledError } from '../../core/safe.js';
 
 export class UploadPdfApplicationService {
   constructor({ rag = ragService } = {}) {
@@ -22,7 +23,7 @@ export class UploadPdfApplicationService {
     const filename = file.originalname || 'unknown.pdf';
 
     // Trigger event-driven cache invalidation for this document
-    cacheInvalidator.invalidateDocument(filename).catch(() => {});
+    cacheInvalidator.invalidateDocument(filename).catch(swallow('application.upload.UploadPdfApplicationService.processUpload'));
 
     // Try Temporal Durable Workflow first
     try {

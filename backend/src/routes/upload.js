@@ -3,10 +3,11 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import pythonAIServiceClient from '../grpc/client.js';
+import pythonAIServiceClient from '../pythonAi/client.js';
 import { attachSessionContext } from '../middleware/sessionContext.js';
 import { startChatFileExtractWorkflow, getWorkflowStatus } from '../temporal/client.js';
 import { info, warn, error, debug } from '../utils/logger.js';
+import { sendError } from '../middleware/errorHandler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,12 +84,7 @@ router.post('/', upload.single('file'), attachSessionContext, async (req, res) =
     });
   } catch (err) {
     error({ module: 'upload', action: 'chatUploadError', err }, 'Chat upload failed');
-    return res.status(500).json({
-      success: false,
-      error: 'File attachment extraction failed',
-      details: err.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, err, 'File attachment extraction failed');
   }
 });
 
@@ -136,11 +132,7 @@ router.get('/workflows/:workflowId', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    return res.status(500).json({
-      error: 'Failed to query chat workflow status',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to query chat workflow status');
   }
 });
 

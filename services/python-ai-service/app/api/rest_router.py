@@ -12,6 +12,7 @@ from app.services.rag_processor.chunker import RAGChunker
 from app.services.rag_processor.reranker import CrossEncoderReranker
 from app.services.rag_processor.database import RAGDatabaseService
 from app.telemetry.shadow_evaluator import ShadowEvaluatorWorker
+from app.model_config import DEFAULT_LLM_MODEL
 
 router = APIRouter()
 file_processor = FileUploadProcessor()
@@ -158,7 +159,7 @@ def evaluate_shadow(req: ShadowEvalRequest):
 
 class PromptMatrixRequest(BaseModel):
     limit: Optional[int] = 10
-    model_name: Optional[str] = "hermes3:8b"
+    model_name: Optional[str] = DEFAULT_LLM_MODEL
     batch_size: Optional[int] = 5
     include_golden: Optional[bool] = True
 

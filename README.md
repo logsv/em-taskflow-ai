@@ -221,18 +221,25 @@ flowchart TD
    cd em-taskflow-ai
    ```
 
-2. **Start the stack**:
+2. **Start the stack** (lean by default: API, worker, frontend, Python AI service, Postgres, Redis, Temporal):
    ```bash
    docker compose up -d --build
    ```
+   Optional services, off by default to leave memory for Ollama on a 16 GB machine:
+   ```bash
+   docker compose --profile observability up -d   # Langfuse (3001) + Temporal UI (8233)
+   docker compose --profile tools up -d           # Adminer (8080)
+   ```
+   Background workers run in the `worker` container. With `npm run dev` they run inside the API
+   process (`WORKERS_IN_PROCESS=true`, the default); set it to `false` and run `npm run worker` to split them.
 
 3. **Access the applications & portals**:
    - **Frontend Chat UI**: `http://localhost:3000`
    - **Standalone Admin Portal**: `http://localhost:3000/admin`
-   - **Langfuse AI Telemetry**: `http://localhost:3001`
+   - **Langfuse AI Telemetry** (observability profile): `http://localhost:3001`
    - **Promptfoo Matrix Server**: `http://localhost:15500`
-   - **Adminer Postgres Explorer**: `http://localhost:8080`
-   - **Temporal Web UI**: `http://localhost:8233`
+   - **Adminer Postgres Explorer** (tools profile): `http://localhost:8080`
+   - **Temporal Web UI** (observability profile): `http://localhost:8233`
    - **Backend API**: `http://localhost:4000/api/health`
 
 4. **Stop the stack**:

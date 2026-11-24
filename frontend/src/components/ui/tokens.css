@@ -1,0 +1,68 @@
+/*
+ * Base aliases and Action Hub design tokens (--ah-*). Admin Portal tokens live in
+ * components/admin/adminTokens.css.
+ * They alias the base palette in src/index.css so there is one source of colour truth.
+ * (This file was previously excluded by a broad *token* rule in .gitignore, so fresh
+ * checkouts could not build the frontend.)
+ */
+:root {
+  --bg-primary: var(--bg-canvas);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  --font-family-mono: var(--font-mono);
+
+  /* ---------- Action Hub ---------- */
+  --ah-bg-canvas: var(--bg-canvas);
+  --ah-bg-surface: var(--bg-surface);
+  --ah-bg-card: var(--bg-elevated);
+  --ah-bg-elevated: var(--bg-elevated);
+  --ah-bg-subtle: var(--bg-subtle);
+  --ah-border-subtle: var(--border-subtle);
+  --ah-border-medium: var(--border-medium);
+  --ah-border-focus: var(--accent-border);
+  --ah-text-primary: var(--text-primary);
+  --ah-text-secondary: var(--text-secondary);
+  --ah-text-muted: var(--text-muted);
+  --ah-text-dim: var(--text-subtle);
+  --ah-primary: var(--accent-primary);
+  --ah-primary-hover: var(--accent-hover);
+  --ah-primary-bg: var(--accent-surface);
+  --ah-primary-border: var(--accent-border);
+  --ah-primary-text: #c4b5fd;
+  --ah-critical: var(--status-danger);
+  --ah-critical-bg: var(--status-danger-bg);
+  --ah-critical-border: rgba(239, 68, 68, 0.35);
+  --ah-critical-text: #fca5a5;
+  --ah-warning: var(--status-warning);
+  --ah-warning-bg: var(--status-warning-bg);
+  --ah-warning-border: rgba(245, 158, 11, 0.35);
+  --ah-warning-text: #fcd34d;
+  --ah-success: var(--status-success);
+  --ah-success-bg: var(--status-success-bg);
+  --ah-success-border: rgba(16, 185, 129, 0.35);
+  --ah-success-text: #6ee7b7;
+  --ah-info: var(--status-info);
+  --ah-info-bg: var(--status-info-bg);
+  --ah-info-border: rgba(56, 189, 248, 0.35);
+  --ah-info-text: #7dd3fc;
+  --ah-neutral: #94a3b8;
+  --ah-neutral-bg: rgba(148, 163, 184, 0.1);
+  --ah-neutral-border: rgba(148, 163, 184, 0.25);
+  --ah-neutral-text: #cbd5e1;
+  --ah-slack: #4a154b;
+  --ah-slack-hover: #611f69;
+  --ah-slack-border: rgba(224, 30, 90, 0.35);
+  --ah-radius-xs: 4px;
+  --ah-radius-sm: var(--radius-sm);
+  --ah-radius-md: var(--radius-md);
+  --ah-radius-lg: var(--radius-lg);
+  --ah-radius-xl: var(--radius-xl);
+  --ah-radius-full: var(--radius-full);
+  --ah-shadow-sm: var(--shadow-sm);
+  --ah-shadow-md: var(--shadow-md);
+  --ah-shadow-lg: var(--shadow-lg);
+  --ah-shadow-dropdown: var(--shadow-dropdown);
+  --ah-transition-fast: var(--transition-fast);
+  --ah-btn-h-sm: 28px;
+  --ah-btn-h-md: 34px;
+  --ah-btn-h-lg: 40px;
+}

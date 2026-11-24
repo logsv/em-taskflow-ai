@@ -9,6 +9,7 @@ import ragService from '../rag/index.js';
 import uploadPdfApplicationService from '../application/upload/UploadPdfApplicationService.js';
 import { createLegacyEndpointGate } from './legacyRouteGate.js';
 import { getWorkflowStatus } from '../temporal/client.js';
+import { sendError } from '../middleware/errorHandler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,11 +47,7 @@ async function handleFileUpload(req, res) {
     });
     return res.status(response.statusCode).json(response.body);
   } catch (error) {
-    return res.status(500).json({
-      error: 'Failed to ingest document',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to ingest document');
   }
 }
 
@@ -72,11 +69,7 @@ router.get('/workflows/:workflowId', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    return res.status(500).json({
-      error: 'Failed to query workflow status',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to query workflow status');
   }
 });
 
@@ -88,11 +81,7 @@ router.get('/documents', async (req, res) => {
       requestId: req.requestId,
     });
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to list documents',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to list documents');
   }
 });
 
@@ -112,11 +101,7 @@ router.get('/documents/:documentId', requireLegacyRagDocumentsApi, async (req, r
       requestId: req.requestId,
     });
   } catch (error) {
-    return res.status(500).json({
-      error: 'Failed to get document',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to get document');
   }
 });
 
@@ -162,11 +147,7 @@ router.post('/documents/:documentId/query', requireLegacyRagDocumentsApi, async 
       requestId: req.requestId,
     });
   } catch (error) {
-    return res.status(500).json({
-      error: 'Failed to query document',
-      details: error.message,
-      requestId: req.requestId,
-    });
+    return sendError(req, res, error, 'Failed to query document');
   }
 });
 

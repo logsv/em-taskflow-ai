@@ -2,6 +2,7 @@ import { config, getMcpConfig } from "../config.js";
 import { ChatOpenAI } from "@langchain/openai";
 import { info, warn, error } from "../utils/logger.js";
 import settingsService from "../services/settingsService.js";
+import { swallow, recordHandledError } from '../core/safe.js';
 
 let mcpTools = [];
 let jiraMcpTools = [];
@@ -230,11 +231,11 @@ export async function reconnectMCP() {
 }
 
 export async function closeMCP() {
-  const jiraModule = await import("./jira.js").catch(() => null);
-  const notionModule = await import("./notion.js").catch(() => null);
-  const githubModule = await import("./github.js").catch(() => null);
-  const googleModule = await import("./google.js").catch(() => null);
-  const slackModule = await import("./slack.js").catch(() => null);
+  const jiraModule = await import("./jira.js").catch(swallow('mcp.index.closeMCP', null));
+  const notionModule = await import("./notion.js").catch(swallow('mcp.index.closeMCP', null));
+  const githubModule = await import("./github.js").catch(swallow('mcp.index.closeMCP', null));
+  const googleModule = await import("./google.js").catch(swallow('mcp.index.closeMCP', null));
+  const slackModule = await import("./slack.js").catch(swallow('mcp.index.closeMCP', null));
 
   const closers = [];
   if (jiraModule?.closeJiraMcp) closers.push(jiraModule.closeJiraMcp());

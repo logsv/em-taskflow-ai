@@ -82,7 +82,7 @@
       },
       "ground_truth_answer": {
         "type": "string",
-        "description": "Expert-validated ideal Markdown response generated with hermes3:8b"
+        "description": "Expert-validated ideal Markdown response generated with the local chat model"
       },
       "success_criteria_gates": {
         "type": "object",

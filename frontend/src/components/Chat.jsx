@@ -6,6 +6,7 @@ import AgentPromptPalette from './AgentPromptPalette.jsx';
 import { apiUrl } from '../services/apiClient.js';
 import logger from '../utils/logger.js';
 import './Chat.css';
+import ProvenanceStrip from './ProvenanceStrip';
 
 function formatRelativeTime(dateInput) {
   if (!dateInput) return null;
@@ -47,6 +48,7 @@ function Chat({
   useAdvancedMode,
   setUseAdvancedMode,
   sourcesMap,
+  provenanceMap = {},
   setSourcesMap,
   traceMap,
   runtime,
@@ -626,18 +628,8 @@ function Chat({
                       dangerouslySetInnerHTML={{ __html: formatMessage(textContent) }}
                     />
 
-                    {role === 'assistant' && (textContent.includes('⚠️ **Notice**: Live GitHub MCP') || textContent.includes('Local Cache')) && (
-                      <div className="stale-data-alert">
-                        <span className="stale-alert-text">⚠️ Telemetry was populated from PostgreSQL cache.</span>
-                        <button 
-                          type="button"
-                          className="inline-refresh-btn" 
-                          onClick={triggerSync}
-                          disabled={isSyncing}
-                        >
-                          {isSyncing ? 'Syncing...' : '↻ Refresh Live Data'}
-                        </button>
-                      </div>
+                    {role === 'assistant' && (
+                      <ProvenanceStrip provenance={provenanceMap[idx]} onRefresh={triggerSync} refreshing={isSyncing} />
                     )}
                     
                     {role === 'assistant' && hasContent && isMessageComplete && (

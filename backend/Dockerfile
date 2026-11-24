@@ -9,14 +9,11 @@ RUN apt-get update && \
 ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund || \
-    npm install --omit=dev --legacy-peer-deps --no-audit --no-fund
+RUN npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund --onnxruntime-node-install-cuda=skip
 
 
 COPY . .
 
-EXPOSE 4000 9229
+EXPOSE 4000
 
-# --import newrelic/esm-loader.mjs bootstraps the New Relic agent BEFORE any
-# ES module is loaded, and --import newrelic initializes the agent runtime.
-CMD ["node", "--import", "newrelic/esm-loader.mjs", "--import", "newrelic", "src/index.js"]
+CMD ["node", "src/index.js"]

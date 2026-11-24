@@ -4,6 +4,7 @@ import { getMcpConfig } from '../config.js';
 import legacyPreferenceRepository from '../persistence/legacy/LegacyPreferenceRepository.js';
 import settingsService from '../services/settingsService.js';
 import { info, warn } from '../utils/logger.js';
+import { swallow, recordHandledError } from '../core/safe.js';
 
 const TOKENS_KEY = 'mcp.jira.oauth.tokens';
 const CLIENT_INFO_KEY = 'mcp.jira.oauth.clientInfo';
@@ -72,7 +73,7 @@ export class JiraOAuthProvider {
       await legacyPreferenceRepository.set(CODE_VERIFIER_KEY, null);
       await legacyPreferenceRepository.set(AUTH_URL_KEY, null);
       // Fetch accessible resources (Jira Cloud ID and domain)
-      await this.fetchAndSaveAccessibleResources(tokens.access_token).catch(() => {});
+      await this.fetchAndSaveAccessibleResources(tokens.access_token).catch(swallow('mcp.jiraOAuthProvider.saveTokens'));
     }
   }
 

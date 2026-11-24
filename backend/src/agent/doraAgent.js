@@ -6,6 +6,13 @@ import settingsService from '../services/settingsService.js';
 import { evaluateDoraTier, identifyDoraBottlenecks } from '../utils/doraMetrics.js';
 import { createMicroAgent, safeExecuteMCPTool, resolveGithubTarget, createProvenanceNotice } from './baseAgent.js';
 import { warn } from '../utils/logger.js';
+import { swallow, recordHandledError } from '../core/safe.js';
+
+/** A positive measured number, or null when the value was not measured. */
+function measuredOrNull(value) {
+  const n = Number(value);
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(n) && n > 0 ? n : null;
+}
 
 export const doraMetricsTool = createDeterministicToolHarness({
   name: 'calculate_dora_metrics',
@@ -45,8 +52,8 @@ export const doraMetricsTool = createDeterministicToolHarness({
             lead_time_hours: Number(parsed.lead_time_hours) || 0,
             change_failure_rate_pct: Number(parsed.change_failure_rate_pct) || 0,
             mttr_hours: Number(parsed.mttr_hours) || 0,
-            review_wait_time_hours: Number(parsed.review_wait_time_hours) || 0,
-            ci_build_time_hours: Number(parsed.ci_build_time_hours) || 0.25,
+            review_wait_time_hours: measuredOrNull(parsed.review_wait_time_hours),
+            ci_build_time_hours: measuredOrNull(parsed.ci_build_time_hours),
             pull_requests_analyzed: parsed.pull_requests_analyzed || 0,
             releases_analyzed: parsed.releases_analyzed || 0,
             is_cached: false,
@@ -62,11 +69,11 @@ export const doraMetricsTool = createDeterministicToolHarness({
   },
   // Tier 2 Fallback: PostgreSQL Database Cache Snapshot
   dbCacheFallback: async (source, inputArgs) => {
-    const snapshots = await databaseService.getDoraSnapshots(inputArgs.team_id || null).catch(() => []);
+    const snapshots = await databaseService.getDoraSnapshots(inputArgs.team_id || null).catch(swallow('agent.doraAgent.dbCacheFallback', []));
     const issues = await databaseService.getGithubIssues({
       ...(inputArgs.repo_id ? { repo: inputArgs.repo_id } : {}),
       state: 'open',
-    }).catch(() => []);
+    }).catch(swallow('agent.doraAgent.dbCacheFallback', []));
 
     const activeIssues = (issues || []).map((i) => ({
       number: i.number,
@@ -87,8 +94,9 @@ export const doraMetricsTool = createDeterministicToolHarness({
         lead_time_hours: leadTime,
         change_failure_rate_pct: Number(snap.change_failure_rate),
         mttr_hours: Number(snap.mttr_hours),
-        review_wait_time_hours: Number((leadTime * 0.7).toFixed(2)),
-        ci_build_time_hours: 0.25,
+        // Snapshots store only the four DORA metrics; sub-metrics are unknown, not estimated.
+        review_wait_time_hours: null,
+        ci_build_time_hours: null,
         active_issues: activeIssues,
         is_cached: true,
         synced_at: snap.created_at || new Date().toISOString(),
@@ -139,8 +147,10 @@ export const doraMetricsTool = createDeterministicToolHarness({
     const averageLeadTimeHours = ghData.lead_time_hours;
     const changeFailureRatePct = ghData.change_failure_rate_pct;
     const mttrHours = ghData.mttr_hours;
-    const reviewWaitTimeHours = ghData.review_wait_time_hours || Number((averageLeadTimeHours * 0.7).toFixed(2));
-    const ciBuildTimeHours = ghData.ci_build_time_hours || 0.25;
+    const reviewWaitTimeHours = measuredOrNull(ghData.review_wait_time_hours);
+    const ciBuildTimeHours = measuredOrNull(ghData.ci_build_time_hours);
+    const reviewWaitText = reviewWaitTimeHours === null ? 'not measured' : `${reviewWaitTimeHours} hours`;
+    const ciBuildText = ciBuildTimeHours === null ? 'not measured' : `~${Math.round(ciBuildTimeHours * 60)} minutes`;
     const dataSource = ghData.data_source || (ghData.is_cached ? 'postgres_dora_snapshots' : 'github_live_mcp');
     const syncedAt = ghData.synced_at || new Date().toISOString();
 
@@ -154,7 +164,7 @@ export const doraMetricsTool = createDeterministicToolHarness({
 
     // Identify Flow Bottlenecks
     const bottlenecks = identifyDoraBottlenecks({
-      reviewWaitTimeHours,
+      reviewWaitTimeHours: reviewWaitTimeHours ?? 0,
       averageLeadTimeHours,
       changeFailureRatePct,
       mttrHours,
@@ -180,9 +190,11 @@ export const doraMetricsTool = createDeterministicToolHarness({
       if (targetMetric === 'LEAD_TIME' || targetEntity === 'PRS') {
         drillSummary = `### ⏱️ Lead Time for Changes Drilldown: ${targetLabel}\n\n` +
           `- **Average Lead Time**: **${averageLeadTimeHours} hours** (${rating} Tier)\n` +
-          `- **PR Review Queue Latency**: **${reviewWaitTimeHours} hours** (~${Math.round((reviewWaitTimeHours / Math.max(averageLeadTimeHours, 1)) * 100)}% of lead time)\n` +
-          `- **CI/CD Pipeline Build Time**: **~${ciBuildTimeHours * 60} minutes**\n\n` +
-          `> 💡 **Optimization Focus**: Lead time is predominantly constrained by review wait latency. Implementing pairing and $<400$ line PR sizing will yield immediate velocity improvements.`;
+          `- **PR Review Queue Latency**: **${reviewWaitText}**${reviewWaitTimeHours !== null ? ` (~${Math.round((reviewWaitTimeHours / Math.max(averageLeadTimeHours, 1)) * 100)}% of lead time)` : ''}\n` +
+          `- **CI/CD Pipeline Build Time**: **${ciBuildText}**\n\n` +
+          (reviewWaitTimeHours !== null && reviewWaitTimeHours / Math.max(averageLeadTimeHours, 1) >= 0.5
+            ? `> 💡 **Optimization Focus**: Review wait is ${Math.round((reviewWaitTimeHours / Math.max(averageLeadTimeHours, 1)) * 100)}% of lead time. Smaller PRs and review rotations are the first lever.`
+            : `> 💡 **Next step**: ${reviewWaitTimeHours === null ? 'Review wait time is not measured, so the lead-time breakdown is unknown. Connect GitHub with PR review timestamps to break lead time down.' : 'Review wait is not the dominant share of lead time; inspect build and deploy stages next.'}`);
       } else if (targetMetric === 'DEPLOY_FREQ' || targetEntity === 'RELEASES' || targetEntity === 'DEPLOYMENTS') {
         drillSummary = `### 🚀 Deployment Frequency Drilldown: ${targetLabel}\n\n` +
           `- **Cadence**: **${deploymentFrequencyWeeks} deploys/week** (${rating} Tier)\n` +
@@ -201,7 +213,7 @@ export const doraMetricsTool = createDeterministicToolHarness({
       } else {
         drillSummary = `### 🔍 DORA Metrics Operational Breakdown: ${targetLabel}\n\n` +
           `- **Deployment Frequency**: ${deploymentFrequencyWeeks} deploys/week\n` +
-          `- **Lead Time for Changes**: ${averageLeadTimeHours}h (Review Wait: ${reviewWaitTimeHours}h)\n` +
+          `- **Lead Time for Changes**: ${averageLeadTimeHours}h (Review Wait: ${reviewWaitText})\n` +
           `- **Change Failure Rate**: ${changeFailureRatePct}%\n` +
           `- **MTTR**: ${mttrHours}h\n`;
       }
@@ -250,8 +262,8 @@ ${provenanceNotice}
 <summary><b>🔍 Flow & Bottleneck Analysis (${bottlenecks.length} Key Insights)</b></summary>
 
 ${bottlenecks.map((b) => `- ${b}`).join('\n')}
-- **Review Queue Latency**: Pull requests average **${reviewWaitTimeHours}h** in review across [**${repoPath} Pull Requests**](${repoUrl}/pulls).
-- **CI Pipeline Duration**: Build & test automation accounts for **~${ciBuildTimeHours * 60} minutes**.
+- **Review Queue Latency**: ${reviewWaitTimeHours === null ? 'not measured' : `pull requests average **${reviewWaitTimeHours}h** in review across [**${repoPath} Pull Requests**](${repoUrl}/pulls)`}.
+- **CI Pipeline Duration**: ${ciBuildText}.
 
 </details>
 

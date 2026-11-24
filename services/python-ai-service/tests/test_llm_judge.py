@@ -28,8 +28,10 @@ def test_geval_single_answer_evaluates():
         "context": "Blocker info"
     })
     assert result["score"] == 5
-    assert result["faithfulness"] == 0.95
-    assert "hermes3:8b" in result["reasoning"] or "G-Eval" in result["reasoning"]
+    # The heuristic judge calls no LLM, so it must not report a faithfulness score.
+    assert result["faithfulness"] is None
+    assert result["judge_type"] == "heuristic"
+    assert "no LLM was called" in result["reasoning"]
 
 def test_pairwise_arena_evaluates():
     judge = LLMJudgeFactory.create_judge("pairwise")
@@ -38,7 +40,8 @@ def test_pairwise_arena_evaluates():
         "candidate_b": "Short text."
     })
     assert result["winner"] == "A"
-    assert result["position_bias_mitigated"] is True
+    assert result["judge_type"] == "heuristic_length"
+    assert result["position_bias_mitigated"] is False
 
 def test_human_judge_calibration():
     human = [4.0, 5.0, 3.0, 2.0, 5.0]
@@ -46,3 +49,15 @@ def test_human_judge_calibration():
     res = calculate_human_judge_calibration(human, judge)
     assert "kendall_tau" in res
     assert res["kendall_tau"] > 0.5
+
+
+def test_human_judge_calibration_needs_two_pairs():
+    assert calculate_human_judge_calibration([4.0], [4.0]) == {"kendall_tau": None, "p_value": None}
+
+
+def test_judge_raises_instead_of_inventing_scores():
+    from evaluation.deepeval_hermes import Hermes3Judge, JudgeUnavailableError
+    judge = Hermes3Judge()
+    judge._client = None
+    with pytest.raises(JudgeUnavailableError):
+        judge.generate("Score this answer from 1 to 10")

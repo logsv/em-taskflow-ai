@@ -1,41 +1,9 @@
-import { getChatModel } from "../llm/index.js";
-import { JsonOutputParser } from "@langchain/core/output_parsers";
-import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import { z as zv4 } from "zod/v4";
+import { llmCall } from "../llm/gateway.js";
+import { incCounter } from "../core/metrics.js";
 import { info, warn } from "../utils/logger.js";
+import { hasKeyword } from "../utils/keywords.js";
 
-// Define the schema for the router's output
-const routerOutputSchema = {
-  type: "object",
-  properties: {
-    domains: {
-      type: "array",
-      items: {
-        type: "string",
-        enum: ["jira", "github", "notion", "calendar", "slack", "rag", "dora", "sbi", "people", "delivery", "retro", "sprint", "sop", "roadmap", "okr", "critic"],
-      },
-      description: "List of required source domains for the query. Can be empty if no specific domain is needed.",
-    },
-    must_use_tools: {
-      type: "boolean",
-      description: "True if a tool call is mandatory to answer the query, false otherwise.",
-    },
-    allow_rag: {
-      type: "boolean",
-      description: "True if the RAG agent should be allowed to retrieve information, false otherwise.",
-    },
-    confidence: {
-      type: "number",
-      minimum: 0,
-      maximum: 1,
-      description: "Confidence score (0-1) in the determined routing plan.",
-    },
-    reasoning_summary: {
-      type: "string",
-      description: "A short explanation of why these domains were selected.",
-    },
-  },
-  required: ["domains", "must_use_tools", "allow_rag", "confidence", "reasoning_summary"],
-};
 
 const systemTemplate = `You are an expert routing assistant for an Engineering Management (EM) AI platform. Your task is to analyze user queries and determine the most relevant domain and routing plan.
 
@@ -115,7 +83,7 @@ export function classifyFastPath(query, options = {}) {
   // 2. Pure Math Arithmetic & Percentage Calculations
   // e.g. "What is 18 multiplied by 24?", "Calculate 40 * 1.5", "Calculate the percentage increase from 40 to 65"
   const mathArithmeticPattern = /^(\d+\s*[\+\-\*\/\^]\s*\d+|\(.*\)\s*[\+\-\*\/]|what is \d+|what's \d+|calculate (the )?(percentage|sum|product|difference|average|math|\d+))/i;
-  const isPureMath = mathArithmeticPattern.test(q) && !q.includes("team") && !q.includes("dora metrics") && !q.includes("sprint capacity") && !q.includes("our ");
+  const isPureMath = mathArithmeticPattern.test(q) && !hasKeyword(q, "team") && !q.includes("dora metrics") && !q.includes("sprint capacity") && !q.includes("our ");
   if (isPureMath) {
     info(`Fast-routed math calculation query directly to LLM (0 tools)`, { querySnippet: q.slice(0, 40) });
     return {
@@ -149,7 +117,7 @@ export function classifyFastPath(query, options = {}) {
   // 4. General Conceptual Explanations & Summaries (No workspace telemetry state required)
   // e.g. "Explain the difference between optimistic and pessimistic locking...", "Summarize the differences between TCP and UDP protocols"
   const explanationPattern = /^((explain|summarize) (the )?(difference between|differences between|concept of|how |why )|what is the difference between)\b/i;
-  const isGeneralExplanation = explanationPattern.test(q) && !q.includes("our ") && !q.includes("team ") && !q.includes("company sop") && !q.includes("document");
+  const isGeneralExplanation = explanationPattern.test(q) && !q.includes("our ") && !q.includes("team ") && !q.includes("company sop") && !hasKeyword(q, "document");
   if (isGeneralExplanation) {
     info(`Fast-routed conceptual explanation query directly to LLM (0 tools)`, { querySnippet: q.slice(0, 40) });
     return {
@@ -183,9 +151,15 @@ export function classifyFastPath(query, options = {}) {
     "github", "issue", "repo", "pr", "pull request", "jira", "sprint", "blocker", "notion", "page",
     "calendar", "meeting", "schedule", "slack", "pdf", "doc", "document", "uploaded", "file", "rubric", "rubrics",
     "what is in", "dora", "metric", "sbi", "feedback", "1-on-1", "one on one", "burnout", "retro",
-    "retrospective", "wip", "sop", "adr", "roadmap", "okr", "kpi", "lead time", "mttr", "commit", "leaderboard", "ticket"
+    "retrospective", "wip", "sop", "adr", "roadmap", "okr", "kpi", "lead time", "mttr", "commit", "leaderboard", "ticket",
+    // Team-data questions must never be answered from the model's general knowledge.
+    "change failure", "deployment frequency", "deployment", "deploy", "release", "cycle time", "velocity", "capacity",
+    "throughput", "review", "incident", "outage", "engineer", "team", "backlog", "story point", "epic", "milestone",
+    "promotion", "career", "stalled", "overdue", "audit", "action item", "standup"
   ];
-  const containsWorkspaceKeyword = workspaceKeywords.some((kw) => q.includes(kw));
+  // "our ..." / "my team" means the user's own data, not general knowledge.
+  const asksAboutOwnData = /\b(our|my team|my engineers?|we)\b/.test(q);
+  const containsWorkspaceKeyword = asksAboutOwnData || workspaceKeywords.some((kw) => (kw.includes(" ") ? q.includes(kw) : hasKeyword(q, kw)));
 
   if (containsWorkspaceKeyword) {
     return null; // Must go to LLM Router / Domain Execution
@@ -213,29 +187,6 @@ export function classifyFastPath(query, options = {}) {
  * Useful when local Ollama SLMs hit token limits mid-output.
  * Returns a repaired string or null if repair is not possible.
  */
-function repairTruncatedJson(str) {
-  if (!str || typeof str !== 'string') return null;
-  let s = str.trimEnd();
-  // Remove trailing incomplete string value or key
-  s = s.replace(/,\s*"[^"]*$/, '');  // trailing incomplete key
-  s = s.replace(/"[^"]*$/, '"null"'); // trailing incomplete value → null string
-  // Count open braces/brackets and close them
-  const opens = [];
-  let inStr = false;
-  let escaped = false;
-  for (const ch of s) {
-    if (escaped) { escaped = false; continue; }
-    if (ch === '\\') { escaped = true; continue; }
-    if (ch === '"') { inStr = !inStr; continue; }
-    if (!inStr) {
-      if (ch === '{') opens.push('}');
-      else if (ch === '[') opens.push(']');
-      else if (ch === '}' || ch === ']') opens.pop();
-    }
-  }
-  if (opens.length === 0) return null;
-  return s + opens.reverse().join('');
-}
 
 /**
  * Deterministic Intent & Keyword Routing Fallback:
@@ -250,8 +201,8 @@ export function getDeterministicFallbackPlan(query, reason = "router_llm_json_fa
 
   // 1. RAG & Document Search keywords (PDF, docs, guidelines, wikis, runbooks, uploaded files, ADR docs, policy docs)
   const isDocumentLookup = 
-    q.includes("document") || q.includes("pdf") || q.includes("uploaded") || q.includes("file") ||
-    q.includes("rubric") || q.includes("guide") || q.includes("wiki") || q.includes("runbook") ||
+    hasKeyword(q, "document") || hasKeyword(q, "pdf") || hasKeyword(q, "uploaded") || hasKeyword(q, "file") ||
+    hasKeyword(q, "rubric") || hasKeyword(q, "guide") || hasKeyword(q, "wiki") || hasKeyword(q, "runbook") ||
     q.includes("notes for today") || q.includes("onboarding checklist") ||
     q.includes("architecture decision record") || q.includes("rate limiting and token bucket") ||
     q.includes("policy on technical debt") || q.includes("in the '") || q.includes('in the "') ||
@@ -260,31 +211,31 @@ export function getDeterministicFallbackPlan(query, reason = "router_llm_json_fa
 
   // 2. SBI / Coaching / Feedback keywords (Takes precedence over sprint / meetings / PR deadline mentions)
   const isSbi = 
-    q.includes("sbi") || q.includes("feedback") || q.includes("coaching") || q.includes("disciplinary") ||
-    q.includes("recognition") || q.includes("situation-behavior-impact") || q.includes("constructive coaching") ||
+    hasKeyword(q, "sbi") || hasKeyword(q, "feedback") || hasKeyword(q, "coaching") || hasKeyword(q, "disciplinary") ||
+    hasKeyword(q, "recognition") || hasKeyword(q, "situation-behavior-impact") || q.includes("constructive coaching") ||
     q.includes("career progression notes and format constructive") || q.includes("skill progression and format") ||
-    (q.includes("slack") && (q.includes("feedback") || q.includes("coaching") || q.includes("1-on-1")));
+    (hasKeyword(q, "slack") && (hasKeyword(q, "feedback") || hasKeyword(q, "coaching") || hasKeyword(q, "1-on-1")));
 
   // 3. DORA Metrics keywords (MTTR is pure DORA, not delivery)
   const isDora = 
-    q.includes("dora") || q.includes("deployment frequency") || q.includes("lead time") ||
-    q.includes("change failure rate") || q.includes("mttr") || q.includes("mean time to restore") ||
+    hasKeyword(q, "dora") || q.includes("deployment frequency") || q.includes("lead time") ||
+    q.includes("change failure rate") || hasKeyword(q, "mttr") || q.includes("mean time to restore") ||
     q.includes("dora performance scorecard") || q.includes("lines of code (loc)") || q.includes("lines of code");
 
   // 4. Delivery / WIP / PRs / GitHub / Jira / Bottlenecks / Release risks
   const isDelivery = 
-    ((q.includes("delivery") || q.includes("wip") || q.includes("cycle time") || q.includes("pr ") || q.includes("prs") ||
+    ((hasKeyword(q, "delivery") || hasKeyword(q, "wip") || q.includes("cycle time") || q.includes("pr ") || hasKeyword(q, "prs") ||
     q.includes("pull request") || q.includes("review bottleneck") || q.includes("stalled code review") ||
     q.includes("commit count") || q.includes("slowest developer") || q.includes("fewest ticket") ||
-    q.includes("github") || q.includes("jira") || q.includes("blockers and wip") || q.includes("release risk") ||
+    hasKeyword(q, "github") || hasKeyword(q, "jira") || q.includes("blockers and wip") || q.includes("release risk") ||
     q.includes("jira backlog blockers")) && (!isSbi || q.includes("pr turnaround") || q.includes("review bottleneck"))) &&
     !q.includes("mttr across recent production incidents");
 
   // 5. People / 1-on-1 / Career / Burnout / Competency gaps
   const isPeople = 
-    q.includes("1-on-1") || q.includes("one on one") || q.includes("burnout") || q.includes("career ladder") ||
-    q.includes("competency gap") || q.includes("promotion nomination") || q.includes("personnel") ||
-    q.includes("career progression") || (q.includes("people") && !q.includes("sbi")) || q.includes("development roadmap for");
+    hasKeyword(q, "1-on-1") || q.includes("one on one") || hasKeyword(q, "burnout") || q.includes("career ladder") ||
+    q.includes("competency gap") || q.includes("promotion nomination") || hasKeyword(q, "personnel") ||
+    q.includes("career progression") || (hasKeyword(q, "people") && !hasKeyword(q, "sbi")) || q.includes("development roadmap for");
 
   // 6. Sprint planning / Capacity / Velocity
   const isSprint = 
@@ -292,26 +243,26 @@ export function getDeterministicFallbackPlan(query, reason = "router_llm_json_fa
 
   // 7. Retrospective
   const isRetro = 
-    (q.includes("retro") || q.includes("retrospective") || q.includes("post-mortem") || q.includes("blameless retro") || q.includes("post to slack") || q.includes("#engineering-retro") || (q.includes("slack") && (q.includes("retro") || q.includes("action") || q.includes("standup") || q.includes("channel")))) &&
+    (hasKeyword(q, "retro") || hasKeyword(q, "retrospective") || hasKeyword(q, "post-mortem") || q.includes("blameless retro") || q.includes("post to slack") || q.includes("#engineering-retro") || (hasKeyword(q, "slack") && (hasKeyword(q, "retro") || hasKeyword(q, "action") || hasKeyword(q, "standup") || hasKeyword(q, "channel")))) &&
     !q.includes("audit our sprint retrospective");
 
   // 8. SOP / Compliance / ADR
   const isSop = 
-    (q.includes("sop") || q.includes("compliance") || q.includes("company standard operating procedure") || q.includes("code review sla") || q.includes("adr repository")) &&
+    (hasKeyword(q, "sop") || hasKeyword(q, "compliance") || q.includes("company standard operating procedure") || q.includes("code review sla") || q.includes("adr repository")) &&
     !isDocumentLookup && !q.includes("audit this em report") && !q.includes("audit and critique this");
 
   // 9. Roadmap
   const isRoadmap = 
-    (q.includes("roadmap") || q.includes("milestone alignment") || q.includes("projected slippage") || q.includes("cross-team technical dependencies")) &&
+    (hasKeyword(q, "roadmap") || q.includes("milestone alignment") || q.includes("projected slippage") || q.includes("cross-team technical dependencies")) &&
     !isDocumentLookup && !isPeople && !q.includes("jira backlog blockers") && !q.includes("development roadmap for");
 
   // 10. OKR / KPI
   const isOkr = 
-    q.includes("okr") || q.includes("quarterly okr") || q.includes("confidence pacing score") || q.includes("kpi");
+    hasKeyword(q, "okr") || q.includes("quarterly okr") || q.includes("confidence pacing score") || hasKeyword(q, "kpi");
 
   // 11. Critic / Audit
   const isCritic = 
-    q.includes("critic") || q.includes("audit") || q.includes("critique") || q.includes("dossier") || q.includes("audit this em report");
+    hasKeyword(q, "critic") || hasKeyword(q, "audit") || hasKeyword(q, "critique") || hasKeyword(q, "dossier") || q.includes("audit this em report");
 
   // Build domains list with multi-domain synergy
   if (isDora) domains.push("dora");
@@ -379,96 +330,70 @@ export function getDeterministicFallbackPlan(query, reason = "router_llm_json_fa
   };
 }
 
-// Initialize the LLM with the defined prompt and a JSON output parser
-const getRouterChain = () => {
-  const llm = getChatModel();
-  const parser = new JsonOutputParser();
+export const ROUTER_DOMAINS = ["jira", "github", "notion", "calendar", "slack", "rag", "dora", "sbi", "people", "delivery", "retro", "sprint", "sop", "roadmap", "okr", "critic"];
 
+/** Structured routing plan the planner model must return (constrained decoding + validation). */
+export const RouterPlanSchema = zv4.object({
+  domains: zv4.array(zv4.enum(ROUTER_DOMAINS)).max(4),
+  must_use_tools: zv4.boolean(),
+  allow_rag: zv4.boolean(),
+  confidence: zv4.number().min(0).max(1),
+  reasoning_summary: zv4.string().max(300),
+});
+
+function normalisePlan(parsed) {
+  const domains = Array.isArray(parsed.domains) ? parsed.domains : [];
+  const hasNonRagDomain = domains.some((d) => d !== "rag");
   return {
-    async invoke(input, config = {}) {
-      const fastResult = classifyFastPath(input.query, input.options || input);
-      if (fastResult) {
-        return fastResult;
-      }
-
-      let content = "";
-      try {
-        const options = input.options || input;
-        const historyMessages = Array.isArray(options.messages) && options.messages.length > 0
-          ? options.messages
-          : (Array.isArray(options.history) ? options.history : []);
-        const priorContext = historyMessages.length > 0
-          ? `[Prior Conversation Context: ${historyMessages.slice(-2).map((m) => `${m.role || 'speaker'}: ${String(m.content || '').slice(0, 120)}`).join(' | ')}]\n`
-          : '';
-
-        const messages = [
-          new SystemMessage(systemTemplate),
-          new HumanMessage(`${priorContext}User query: ${input.query}`),
-        ];
-        const result = await llm.invoke(messages);
-
-        content = typeof result.content === 'string' ? result.content : String(result.content || '');
-        content = content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          content = jsonMatch[0];
-        } else {
-          content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-        }
-        
-        let parsed = JSON.parse(content);
-        if (parsed && parsed.properties && !parsed.domains) {
-          parsed = parsed.properties;
-        }
-        if (parsed && (Array.isArray(parsed.domains) || typeof parsed.must_use_tools === 'boolean')) {
-          const domains = Array.isArray(parsed.domains) ? parsed.domains : [];
-          const hasNonRagDomain = domains.some(d => d !== 'rag');
-          return {
-            ...parsed,
-            domains,
-            must_use_tools: hasNonRagDomain ? true : (domains.length === 1 && domains[0] === 'rag' ? false : Boolean(parsed.must_use_tools)),
-            allow_rag: Boolean(parsed.allow_rag || domains.includes('rag') || domains.includes('sop')),
-            confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.95,
-          };
-        }
-      } catch (e) {
-        // Attempt partial JSON repair: close a truncated JSON object and re-parse
-        const repaired = repairTruncatedJson(content);
-        if (repaired) {
-          try {
-            let parsed = JSON.parse(repaired);
-            if (parsed && parsed.properties && !parsed.domains) {
-              parsed = parsed.properties;
-            }
-            if (parsed && (Array.isArray(parsed.domains) || typeof parsed.must_use_tools === 'boolean')) {
-              const domains = Array.isArray(parsed.domains) ? parsed.domains : [];
-              const hasNonRagDomain = domains.some(d => d !== 'rag');
-              return {
-                ...parsed,
-                domains,
-                must_use_tools: hasNonRagDomain ? true : (domains.length === 1 && domains[0] === 'rag' ? false : Boolean(parsed.must_use_tools)),
-                allow_rag: Boolean(parsed.allow_rag || domains.includes('rag') || domains.includes('sop')),
-                confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.95,
-              };
-            }
-          } catch (_) {
-            // repair also failed, continue to deterministic intent fallback
-          }
-        }
-        
-        // Gracefully fall back to deterministic intent analyzer rather than crashing with unhandled exception
-        warn("LLM router returned non-JSON / refusal text, activating resilient fallback parser", { 
-          query: input.query, 
-          err: e.message, 
-          contentSnippet: content.slice(0, 100) 
-        });
-        return getDeterministicFallbackPlan(input.query, "llm_json_parse_fallback", input.options || input);
-      }
-
-      return getDeterministicFallbackPlan(input.query, "llm_empty_response_fallback", input.options || input);
-    }
+    ...parsed,
+    domains,
+    must_use_tools: hasNonRagDomain ? true : (domains.length === 1 && domains[0] === "rag" ? false : Boolean(parsed.must_use_tools)),
+    allow_rag: Boolean(parsed.allow_rag || domains.includes("rag") || domains.includes("sop")),
   };
-};
+}
+
+/**
+ * Router: fast-path classifier first, then one schema-constrained planner call through the LLM
+ * gateway. If the model is unavailable or its output stays invalid after one repair turn, the
+ * deterministic rule plan is used and labelled as such (plan_source: "rule_fallback").
+ */
+const getRouterChain = () => ({
+  async invoke(input, config = {}) {
+    const fastResult = classifyFastPath(input.query, input.options || input);
+    if (fastResult) {
+      incCounter("router_plan_total", { source: "fast_path" }, 1, "Routing plans by source");
+      return { ...fastResult, plan_source: "fast_path" };
+    }
+
+    const options = input.options || input;
+    const historyMessages = Array.isArray(options.messages) && options.messages.length > 0
+      ? options.messages
+      : (Array.isArray(options.history) ? options.history : []);
+    const priorContext = historyMessages.length > 0
+      ? `[Prior Conversation Context: ${historyMessages.slice(-2).map((m) => `${m.role || "speaker"}: ${String(m.content || "").slice(0, 120)}`).join(" | ")}]\n`
+      : "";
+
+    try {
+      const { value, attempts } = await llmCall({
+        task: "plan",
+        schema: RouterPlanSchema,
+        messages: [
+          { role: "system", content: systemTemplate },
+          { role: "user", content: `${priorContext}User query: ${input.query}` },
+        ],
+        transport: options.llmTransport || config.llmTransport,
+      });
+      incCounter("router_plan_total", { source: "llm" }, 1, "Routing plans by source");
+      return { ...normalisePlan(value), plan_source: "llm", plan_attempts: attempts };
+    } catch (err) {
+      const reason = err?.code || "router_error";
+      incCounter("router_plan_total", { source: "rule_fallback", reason }, 1, "Routing plans by source");
+      warn({ module: "llmRouter", action: "ruleFallback", reason, err: err?.message, querySnippet: String(input.query || "").slice(0, 60) }, "LLM planner unavailable or invalid; using rule-based plan");
+      const plan = getDeterministicFallbackPlan(input.query, `llm_${String(reason).toLowerCase()}`, options);
+      return { ...plan, plan_source: "rule_fallback", plan_fallback_reason: reason };
+    }
+  },
+});
 
 export { getRouterChain };
 
