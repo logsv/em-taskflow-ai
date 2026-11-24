@@ -13,6 +13,22 @@ import {
 import preRouterRewriter from '../../services/preRouterRewriter.js';
 import episodicMemoryService from '../../services/episodicMemory.js';
 import sessionFactMatrixService from '../../services/sessionFactMatrix.js';
+import { warn } from '../../utils/logger.js';
+
+/**
+ * Request body for the Python service's POST /api/v1/eval/shadow-evaluate.
+ * Field names must match ShadowEvalRequest in services/python-ai-service/app/api/rest_router.py
+ * (checked by test/contracts/pythonContracts.spec.js).
+ */
+export function buildShadowEvalPayload({ query, answer, context = [], traceId = null, domain = 'general' }) {
+  return {
+    query: String(query || ''),
+    answer: String(answer || ''),
+    context: Array.isArray(context) ? context.map(String) : [],
+    trace_id: traceId,
+    domain,
+  };
+}
 
 export class ChatApplicationService {
   constructor({
@@ -200,23 +216,22 @@ export class ChatApplicationService {
   }
 
   triggerShadowEvaluation({ query, answer, context = [], traceId = null, domain = 'general' }) {
-    // Non-blocking zero-downtime execution
+    // Non-blocking: runs after the response is sent and never fails the request,
+    // but failures are logged so a broken contract or a down service is visible.
     setImmediate(async () => {
+      const pythonHost = process.env.PYTHON_AI_SERVICE_URL || 'http://localhost:8000';
       try {
-        const pythonHost = process.env.PYTHON_AI_SERVICE_URL || 'http://localhost:8000';
-        await fetch(`${pythonHost}/api/v1/eval/shadow-evaluate`, {
+        const res = await fetch(`${pythonHost}/api/v1/eval/shadow-evaluate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_query: query,
-            model_response: answer,
-            retrieved_chunks: context,
-            trace_id: traceId,
-            domain_category: domain,
-          }),
+          body: JSON.stringify(buildShadowEvalPayload({ query, answer, context, traceId, domain })),
+          signal: AbortSignal.timeout(10_000),
         });
+        if (!res.ok) {
+          warn({ module: 'chat', action: 'shadowEval', status: res.status, traceId }, 'Shadow evaluation request rejected');
+        }
       } catch (err) {
-        // Non-blocking catch
+        warn({ module: 'chat', action: 'shadowEval', err: err?.message, traceId }, 'Shadow evaluation request failed');
       }
     });
   }

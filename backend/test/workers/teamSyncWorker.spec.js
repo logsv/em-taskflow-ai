@@ -39,12 +39,25 @@ describe('TeamSyncWorker (Node.js Background Parallel Worker)', () => {
   });
 
   it('should execute parallel sync and update lastRunStatus', async () => {
+    // No integrations are configured in tests, so stub the discovery result instead of
+    // expecting members to appear from nowhere.
+    spyOn(identityService, 'autoDiscoverAndSync').and.resolveTo({
+      syncedCount: 1,
+      syncedAt: new Date().toISOString(),
+      members: [{ id: 'mem_dana', displayName: 'Dana Example' }],
+    });
     const res = await teamSyncWorker.executeParallelSync();
     expect(res.status).toBe('SUCCESS');
-    expect(res.syncedCount).toBeGreaterThanOrEqual(1);
+    expect(res.syncedCount).toBe(1);
 
     const status = teamSyncWorker.getStatus();
     expect(status.lastRunStatus).toBe('SUCCESS');
     expect(status.lastRunAt).not.toBeNull();
+  });
+
+  it('reports zero synced members (not invented ones) when no integration is configured', async () => {
+    const res = await teamSyncWorker.executeParallelSync();
+    expect(res.status).toBe('SUCCESS');
+    expect(res.syncedCount).toBe(0);
   });
 });

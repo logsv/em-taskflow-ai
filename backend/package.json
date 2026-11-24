@@ -30,12 +30,11 @@
   "nyc": {
     "all": true,
     "include": [
-      "dist/src/**/*.js"
+      "src/**/*.js"
     ],
     "exclude": [
-      "dist/test/**/*.js",
-      "dist/src/test/**/*.js",
-      "dist/src/scripts/**/*.js",
+      "test/**/*.js",
+      "src/scripts/**/*.js",
       "node_modules/**"
     ],
     "reporter": [

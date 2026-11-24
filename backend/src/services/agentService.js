@@ -1,6 +1,7 @@
 import ragService from "../rag/index.js";
 import { ensureLLMReady, getChatModel, getLLMStatus } from "../llm/index.js";
-import { executeAgentQuery, checkAgentReadiness, getAgentTools } from "../agent/graph.js";
+import { executeAgentQuery, checkAgentReadiness, getAgentTools, RAG_TOOL_NAME } from "../agent/graph.js";
+import identityService from "./identityService.js";
 import { getRuntimeConfig } from "../config.js";
 import { getRouterChain } from "../agent/llmRouter.js";
 import { getGithubMCPTools, getGoogleMCPTools, getJiraMCPTools, getNotionMCPTools } from "../mcp/index.js";
@@ -17,13 +18,13 @@ import { auditReportTool } from "../agent/criticAgent.js";
 import { buildEmResponse } from "../utils/responseFormatter.js";
 import { getTracerCallbacks, createEndToEndTrace, createSpan } from "../utils/tracer.js";
 import { info, warn, error } from "../utils/logger.js";
+import { hasKeyword } from "../utils/keywords.js";
 
 const VALID_DOMAINS = new Set([
   "dora", "delivery", "sbi", "people", "sprint", "retro", "roadmap", "okr", "sop", "critic",
   "jira", "github", "notion", "calendar", "slack", "rag"
 ]);
 const TRANSFER_TOOL_PREFIX = "transfer_";
-const RAG_TOOL_NAME = "rag_db_query_retriever";
 
 function toArray(value) {
   return Array.isArray(value) ? value : [];
@@ -46,7 +47,7 @@ export class LangGraphAgentService {
     this.ragEnabled = false;
     this.domainToolNames = {
       dora: new Set(["calculate_dora_metrics", "transfer_to_dora_agent"]),
-      delivery: new Set(["analyze_delivery_bottlenecks", "transfer_to_delivery_agent", "search_issues", "list_pull_requests"]),
+      delivery: new Set(["analyze_delivery_bottlenecks", "transfer_to_delivery_agent", "search_issues", "get_pull_requests"]),
       sbi: new Set(["format_sbi_feedback", "transfer_to_sbi_agent", "slack_search_messages"]),
       people: new Set(["analyze_personnel_growth", "transfer_to_people_agent"]),
       sprint: new Set(["calculate_sprint_plan", "transfer_to_sprint_agent"]),
@@ -56,9 +57,9 @@ export class LangGraphAgentService {
       sop: new Set(["query_sop_compliance", "transfer_to_sop_agent"]),
       critic: new Set(["audit_em_report", "transfer_to_critic_agent"]),
       jira: new Set(["jira_search", "transfer_to_jira_agent"]),
-      github: new Set(["search_issues", "list_pull_requests", "transfer_to_github_agent"]),
+      github: new Set(["search_issues", "issue_read", "get_pull_requests", "get_dora_events", "transfer_to_github_agent"]),
       notion: new Set(["notion_search", "transfer_to_notion_agent"]),
-      calendar: new Set(["get_calendar_events", "calendar_list_events", "transfer_to_calendar_agent"]),
+      calendar: new Set(["get_calendar_events", "get_event_details", "transfer_to_calendar_agent"]),
       slack: new Set(["slack_search_messages", "slack_post_message", "slack_list_channels", "transfer_to_slack_agent"]),
       rag: new Set([RAG_TOOL_NAME]),
     };
@@ -462,7 +463,8 @@ export class LangGraphAgentService {
           context_type: "coaching_request",
         },
       },
-      people: { tool: peopleGrowthTool, input: { mode: "ANALYZE", engineer_id: String(query || "") } },
+      // The people tool needs a resolved engineer; without one it asks which engineer is meant.
+      people: { tool: peopleGrowthTool, input: { mode: "ANALYZE", ...(domains.includes("people") ? await this.resolveEngineerInput(query, options) : {}) } },
       sprint: { tool: sprintPlanTool, input: {} },
       retro: { tool: sprintRetroTool, input: { mode: "ANALYZE" } },
       roadmap: { tool: roadmapAlignmentTool, input: { mode: "ANALYZE" } },
@@ -478,43 +480,43 @@ export class LangGraphAgentService {
     const queryLower = String(query || "").toLowerCase();
     const isListQuery = queryLower.startsWith("list ") || queryLower.startsWith("show all ") || queryLower.includes("list all") || queryLower.includes("list raw");
     let detectedTarget = "ALL";
-    if (queryLower.includes("pr") || queryLower.includes("pull request")) {
+    if (hasKeyword(queryLower, "pr") || queryLower.includes("pull request")) {
       detectedTarget = "PRS";
-    } else if (queryLower.includes("wip")) {
+    } else if (hasKeyword(queryLower, "wip")) {
       detectedTarget = "WIP_ITEMS";
-    } else if (queryLower.includes("block") || queryLower.includes("dependency") || queryLower.includes("dependencies")) {
+    } else if (hasKeyword(queryLower, "block") || hasKeyword(queryLower, "dependency") || hasKeyword(queryLower, "dependencies")) {
       detectedTarget = "BLOCKERS";
-    } else if (queryLower.includes("release") || queryLower.includes("deploy")) {
+    } else if (hasKeyword(queryLower, "release") || hasKeyword(queryLower, "deploy")) {
       detectedTarget = "RELEASES";
-    } else if (queryLower.includes("1-on-1") || queryLower.includes("one on one") || queryLower.includes("meeting")) {
+    } else if (hasKeyword(queryLower, "1-on-1") || queryLower.includes("one on one") || hasKeyword(queryLower, "meeting")) {
       detectedTarget = "ONE_ON_ONES";
-    } else if (queryLower.includes("skill") || queryLower.includes("gap") || queryLower.includes("competenc")) {
+    } else if (hasKeyword(queryLower, "skill") || hasKeyword(queryLower, "gap") || hasKeyword(queryLower, "competenc")) {
       detectedTarget = "SKILL_GAPS";
     } else if (queryLower.includes("action item") || queryLower.includes("retro item")) {
       detectedTarget = "ACTION_ITEMS";
-    } else if (queryLower.includes("pattern") || queryLower.includes("recurring") || queryLower.includes("friction")) {
+    } else if (hasKeyword(queryLower, "pattern") || hasKeyword(queryLower, "recurring") || hasKeyword(queryLower, "friction")) {
       detectedTarget = "PATTERNS";
-    } else if (queryLower.includes("epic") || queryLower.includes("roadmap item")) {
+    } else if (hasKeyword(queryLower, "epic") || queryLower.includes("roadmap item")) {
       detectedTarget = "EPICS";
-    } else if (queryLower.includes("drift") || queryLower.includes("scope creep") || queryLower.includes("milestone")) {
+    } else if (hasKeyword(queryLower, "drift") || queryLower.includes("scope creep") || hasKeyword(queryLower, "milestone")) {
       detectedTarget = "DRIFT";
-    } else if (queryLower.includes("at risk") || queryLower.includes("off track") || queryLower.includes("lagging")) {
+    } else if (queryLower.includes("at risk") || queryLower.includes("off track") || hasKeyword(queryLower, "lagging")) {
       detectedTarget = "AT_RISK";
-    } else if (queryLower.includes("remediation")) {
+    } else if (hasKeyword(queryLower, "remediation")) {
       detectedTarget = "GAP_REMEDIATION";
-    } else if (queryLower.includes("okr") || queryLower.includes("key result") || queryLower.includes("kr")) {
+    } else if (hasKeyword(queryLower, "okr") || queryLower.includes("key result") || hasKeyword(queryLower, "kr")) {
       detectedTarget = "KRS";
-    } else if (queryLower.includes("adr") || queryLower.includes("architecture decision")) {
+    } else if (hasKeyword(queryLower, "adr") || queryLower.includes("architecture decision")) {
       detectedTarget = "ADRS";
-    } else if (queryLower.includes("sop") || queryLower.includes("policy") || queryLower.includes("governance") || queryLower.includes("standard")) {
+    } else if (hasKeyword(queryLower, "sop") || hasKeyword(queryLower, "policy") || hasKeyword(queryLower, "governance") || hasKeyword(queryLower, "standard")) {
       detectedTarget = "SOPS";
-    } else if (queryLower.includes("violation") || queryLower.includes("non-compliant") || queryLower.includes("non compliant")) {
+    } else if (hasKeyword(queryLower, "violation") || hasKeyword(queryLower, "non-compliant") || queryLower.includes("non compliant")) {
       detectedTarget = "VIOLATIONS";
-    } else if (queryLower.includes("script") || queryLower.includes("talking")) {
+    } else if (hasKeyword(queryLower, "script") || hasKeyword(queryLower, "talking")) {
       detectedTarget = "TALKING_SCRIPT";
-    } else if (queryLower.includes("bias") || queryLower.includes("objectivity")) {
+    } else if (hasKeyword(queryLower, "bias") || hasKeyword(queryLower, "objectivity")) {
       detectedTarget = "BIAS_AUDIT";
-    } else if (queryLower.includes("check") || queryLower.includes("audit")) {
+    } else if (hasKeyword(queryLower, "check") || hasKeyword(queryLower, "audit")) {
       detectedTarget = "CHECKS";
     }
 
@@ -562,6 +564,19 @@ export class LangGraphAgentService {
       decision.reasons.push("recovery_failed");
       return null;
     }
+  }
+
+  /** Resolve the engineer a query is about (roster match or extracted entity); never the raw query. */
+  async resolveEngineerInput(query, options = {}) {
+    const entity = options?.entities?.engineer || options?.entities?.person || null;
+    try {
+      const member = (entity && (await identityService.resolveMember(entity)))
+        || (await identityService.resolveMemberFromText(String(query || '')));
+      if (member?.id) return { engineer_id: member.id };
+    } catch (err) {
+      warn({ module: 'agentService', action: 'resolveEngineer', err: err?.message }, 'Engineer resolution failed');
+    }
+    return entity ? { engineer_id: String(entity) } : {};
   }
 
   async routeQueryPlan(query, runtimeMode, options = {}) {
@@ -618,38 +633,38 @@ export class LangGraphAgentService {
       };
     }
     const domains = [];
-    if (q.includes("dora") || q.includes("lead time") || q.includes("mttr") || q.includes("deployment frequency")) {
+    if (hasKeyword(q, "dora") || q.includes("lead time") || hasKeyword(q, "mttr") || q.includes("deployment frequency")) {
       domains.push("dora");
     }
-    if (q.includes("delivery") || q.includes("wip") || q.includes("throughput") || q.includes("cycle time") || q.includes("github") || q.includes("pr") || q.includes("issue") || q.includes("jira")) {
+    if (hasKeyword(q, "delivery") || hasKeyword(q, "wip") || hasKeyword(q, "throughput") || q.includes("cycle time") || hasKeyword(q, "github") || hasKeyword(q, "pr") || hasKeyword(q, "issue") || hasKeyword(q, "jira")) {
       domains.push("delivery");
     }
-    if (q.includes("sbi") || q.includes("feedback") || q.includes("coaching")) {
+    if (hasKeyword(q, "sbi") || hasKeyword(q, "feedback") || hasKeyword(q, "coaching")) {
       domains.push("sbi");
     }
-    if (q.includes("people") || q.includes("1-on-1") || q.includes("career") || q.includes("burnout") || q.includes("calendar")) {
+    if (hasKeyword(q, "people") || hasKeyword(q, "1-on-1") || hasKeyword(q, "career") || hasKeyword(q, "burnout") || hasKeyword(q, "calendar")) {
       domains.push("people");
     }
-    if (q.includes("sprint") || q.includes("velocity") || q.includes("capacity")) {
+    if (hasKeyword(q, "sprint") || hasKeyword(q, "velocity") || hasKeyword(q, "capacity")) {
       domains.push("sprint");
     }
-    if (q.includes("retro") || q.includes("retrospective")) {
+    if (hasKeyword(q, "retro") || hasKeyword(q, "retrospective")) {
       domains.push("retro");
     }
-    if (q.includes("sop") || q.includes("compliance") || q.includes("adr")) {
+    if (hasKeyword(q, "sop") || hasKeyword(q, "compliance") || hasKeyword(q, "adr")) {
       domains.push("sop");
     }
-    if (q.includes("roadmap") || q.includes("milestone") || q.includes("drift")) {
+    if (hasKeyword(q, "roadmap") || hasKeyword(q, "milestone") || hasKeyword(q, "drift")) {
       domains.push("roadmap");
     }
-    if (q.includes("okr") || q.includes("kpi") || q.includes("notion")) {
+    if (hasKeyword(q, "okr") || hasKeyword(q, "kpi") || hasKeyword(q, "notion")) {
       domains.push("okr");
     }
-    if (q.includes("critic") || q.includes("audit")) {
+    if (hasKeyword(q, "critic") || hasKeyword(q, "audit")) {
       domains.push("critic");
     }
     
-    const isDocQuery = q.includes("pdf") || q.includes("doc") || q.includes("file") || q.includes("guide") || q.includes("rubric") || q.includes("sop") || q.includes("pointer") || q.includes("summary");
+    const isDocQuery = hasKeyword(q, "pdf") || hasKeyword(q, "doc") || hasKeyword(q, "file") || hasKeyword(q, "guide") || hasKeyword(q, "rubric") || hasKeyword(q, "sop") || hasKeyword(q, "pointer") || hasKeyword(q, "summary");
     if (domains.length === 0 || isDocQuery) {
       domains.push("rag");
     }
