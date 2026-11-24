@@ -35,6 +35,7 @@ The path to production:
 | Tenancy | **Single user** | Auth is one owner account (password + session cookie, or a static API token behind the reverse proxy). No `workspace_id` and no RBAC. The admin and chat surfaces share one identity. The scope of B.3.6 shrinks: horizontal scaling is a nice-to-have, while **reliability and restart safety** are the priorities. See §C.1 |
 | LLM | **Local Ollama first; cloud is an opt-in option, off by default** | Every task runs on local Ollama (`hermes3:8b`) by default. One LLM gateway keeps a *pluggable* cloud provider that the owner can enable per task (for example only `compose`). Nothing leaves the machine unless explicitly enabled. Because the default model is small, the design leans on deterministic code, constrained JSON output and the Verifier rather than model strength. See §C.2 |
 | Answer types | **Both document Q&A and tool-grounded answers are core**, including *hybrid* answers ("Is our PR review time within the SLA in our SOP?") | Remove the current **mutual exclusion** between RAG and tools (`agentService.js:347-349`, router rules 1/5/6 in `llmRouter.js:56-61`). Documents become a first-class capability that produces the same `Evidence` items as tools. See §C.3 |
+| Language | **Keep JavaScript (ESM)** | No TypeScript migration. Types are JSDoc typedefs plus zod schemas validated at runtime (B.9, C.3). No build step is added |
 
 Sections A–B below remain valid. Where they conflict with Part C, **Part C wins**.
 
@@ -335,7 +336,7 @@ Recommendations:
 
 ## B.9 Testing and quality bar
 
-- **Lint/format/typecheck:** ESLint plus Prettier, and `// @ts-check`/`checkJs` (or a gradual TypeScript migration starting with the registry and `Result` types). For Python, ruff plus mypy. None exist today.
+- **Lint/format/types (staying on JavaScript):** ESLint plus Prettier. Shared shapes (`Result`, `Evidence`, capability definitions) are **JSDoc `@typedef`s backed by zod schemas**, so they are checked at runtime at every boundary (tool output, Python responses, API bodies). Editor-only checking with `// @ts-check` is optional and needs no build step. For Python, ruff plus mypy. None exist today.
 - **CI:** one workflow with **Postgres (pgvector) and Redis service containers**. Real-DB repository tests replace the in-memory seeding (`test/setup.js:17-27`). Counts are generated from the run, not echoed.
 - **Frontend:** add Vitest plus React Testing Library. The existing `*.test.js` files currently have no runner.
 - **Test pyramid targets:** capability math and verifier ≥ 90% line coverage; planner on recorded fixtures; three Playwright e2e flows (chat with tool answer, document Q&A, Action Hub resolve).
@@ -456,17 +457,23 @@ So a question like "Are we meeting the review SLA in our engineering SOP?" canno
 
 **Design: one evidence model, two kinds of capability.**
 
-```ts
-type Evidence = {
-  id: 'E1' | 'D3' | …,                 // E = tool evidence, D = document chunk
-  kind: 'metric' | 'record' | 'doc_chunk',
-  source: 'github' | 'jira' | … | 'document',
-  title, url?,                          // PR/ticket link or doc#page
-  value?, unit?,                        // for metrics
-  text?,                                // for records/chunks
-  asOf, mode: 'live' | 'snapshot' | 'indexed',
-  score?,                               // rerank score for doc chunks
-}
+```js
+// backend/src/core/types.js — JSDoc typedefs, plain JavaScript
+/**
+ * @typedef {Object} Evidence
+ * @property {string} id            e.g. 'E1' (tool evidence) or 'D3' (document chunk)
+ * @property {'metric'|'record'|'doc_chunk'} kind
+ * @property {string} source        'github' | 'jira' | 'slack' | 'notion' | 'calendar' | 'document'
+ * @property {string} title
+ * @property {string} [url]         PR/ticket link or doc#page
+ * @property {number} [value]       for metrics
+ * @property {string} [unit]
+ * @property {string} [text]        for records and chunks
+ * @property {string} asOf          ISO timestamp
+ * @property {'live'|'snapshot'|'indexed'} mode
+ * @property {number} [score]       rerank score for doc chunks
+ */
+export const EvidenceSchema = z.object({ /* same shape, validated at runtime */ });
 ```
 
 - **The knowledge capability** (`knowledge.search`) is registered like any tool capability (B.3.1). It returns `doc_chunk` evidence with page-level citations and rerank scores. It abstains below threshold τ by returning `status:'ok', data: []` plus a reason, never a fabricated answer.
@@ -510,4 +517,3 @@ type Evidence = {
 1. **Ollama model choice.** Stay on `hermes3:8b`, or benchmark a newer local model with better JSON and tool following on the nightly eval? The gateway makes this a config change.
 2. **Hardware target.** What GPU or RAM does the owner run on? This sets the concurrency limit and whether a larger local model is feasible.
 3. **If cloud is ever enabled:** which provider, and may people data be sent (never, pseudonymised, or raw)?
-4. **JavaScript or TypeScript?** Recommended: `checkJs` now, TypeScript for new modules (registry, `Result`/`Evidence` types, gateway).
