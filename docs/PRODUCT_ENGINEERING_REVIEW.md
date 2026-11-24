@@ -33,7 +33,7 @@ The path to production:
 | Decision | Choice | What it changes in this plan |
 |---|---|---|
 | Tenancy | **Single user** | Auth is one owner account (password + session cookie, or a static API token behind the reverse proxy). No `workspace_id` and no RBAC. The admin and chat surfaces share one identity. The scope of B.3.6 shrinks: horizontal scaling is a nice-to-have, while **reliability and restart safety** are the priorities. See §C.1 |
-| LLM | **Cloud LLM acceptable** | Keep a provider abstraction (cloud and local behind one LLM gateway) instead of collapsing to Ollama-only. Route by task: a strong cloud model for planning, composing and verifying, with optional local fallback. Use native structured output and tool calling. Add a data-egress policy (what may be sent to the cloud) and cost controls. See §C.2 |
+| LLM | **Local Ollama first; cloud is an opt-in option, off by default** | Every task runs on local Ollama (`hermes3:8b`) by default. One LLM gateway keeps a *pluggable* cloud provider that the owner can enable per task (for example only `compose`). Nothing leaves the machine unless explicitly enabled. Because the default model is small, the design leans on deterministic code, constrained JSON output and the Verifier rather than model strength. See §C.2 |
 | Answer types | **Both document Q&A and tool-grounded answers are core**, including *hybrid* answers ("Is our PR review time within the SLA in our SOP?") | Remove the current **mutual exclusion** between RAG and tools (`agentService.js:347-349`, router rules 1/5/6 in `llmRouter.js:56-61`). Documents become a first-class capability that produces the same `Evidence` items as tools. See §C.3 |
 
 Sections A–B below remain valid. Where they conflict with Part C, **Part C wins**.
@@ -147,7 +147,7 @@ The critic stops being a domain the user routes to. It becomes a **verification 
 | `settings-backup.json` on disk with plaintext tokens, and the "self-heal" merge from it | `settingsService.js:96-199` | Security plus a hidden second source of truth |
 | Unused dependencies: `cockatiel`, `bottleneck` (or *use* them, B.4), `llm-router`, `convict`, `openai@4`, `@langchain/mcp-adapters`, `@notionhq/notion-mcp-server`, `@cocal/google-calendar-mcp`, `promptfoo` in prod deps | grep shows no imports **(inferred)** | Install size, CVE surface |
 | Telemetry sprawl: **Sentry + New Relic + Axiom + OTel + Langfuse** → **OTel (traces/metrics/logs) + Langfuse (LLM traces)** | `index.js:20-51`, `main.py:25-111`, `logger.js:4` | Cost, and the ESM hook conflict (`index.js:28-32`) |
-| ~~Cloud LLM provider branches → one provider~~ **Superseded by §C.2**: keep cloud and local providers, but behind **one LLM gateway module** with task-based routing. Delete the ad-hoc provider branches in `llm/index.js:25-105` and the unused circuit-breaker config (`config.js:398-430`) | `config.js:52-70`, `llm/index.js:25-105` | One call site and one policy |
+| ~~Cloud LLM provider branches → one provider~~ **Superseded by §C.2**: Ollama is the default for every task; a cloud provider stays as an opt-in plug-in behind **one LLM gateway module**. Delete the ad-hoc provider branches in `llm/index.js:25-105` and the unused circuit-breaker config (`config.js:398-430`) | `config.js:52-70`, `llm/index.js:25-105` | One call site and one policy |
 | Duplicate CI workflow and hard-coded "all passed" summaries | `.github/workflows/ci.yml` vs `backend-ci.yml` | Honest CI |
 | Duplicate golden datasets (`backend/evaluation/` vs `evaluations/datasets/`, which differ: 3005 vs 783 lines) | `cmp` differs | One eval truth |
 | Double reranking (Python reranks, then Node reranks again) | `rest_router.py:93`, `grpc/client.js:181` | Latency |
@@ -363,7 +363,7 @@ flowchart LR
   API --> T[(Temporal)]
   T --> WN[Node worker deploy<br/>audit, sync, HITL writes]
   T --> WP[Python worker deploy<br/>ingest]
-  API --> LLM[LLM gateway<br/>task routing cloud + local fallback,<br/>egress policy, budget, concurrency limit]
+  API --> LLM[LLM gateway<br/>Ollama default, optional cloud per task,<br/>egress policy, concurrency limit]
   KS --> EMB[Embedding service<br/>one model]
   API -.-> OTEL[OTel + Langfuse]
 ```
@@ -411,35 +411,38 @@ flowchart LR
 
 **Still required for a single user:** secret rotation, encrypted integration tokens, the debug port closed, backups of `taskflow_backend` and `taskflow_ai` (`docs/operations/backup-recovery.md`), and retention settings for chat and people data.
 
-## C.2 Cloud LLM acceptable
+## C.2 Local Ollama first, cloud as an opt-in option
+
+**Default posture.** Every model call goes to local Ollama (`hermes3:8b` for chat, `nomic-embed-text` for embeddings). A cloud provider is an **optional plug-in that is off by default**. Data leaves the machine only when the owner turns cloud on for a specific task in settings.
 
 **One LLM gateway** (`backend/src/llm/gateway.js`) is the only place that calls a model:
 
 ```js
 llm.call({
   task: 'plan' | 'compose' | 'verify' | 'rag_answer' | 'summarize' | 'embed',
-  messages, schema?,            // zod → JSON schema for structured output
-  sensitivity: 'public' | 'internal' | 'people',  // drives the egress policy
+  messages, schema?,            // zod → JSON schema for constrained output
+  sensitivity: 'public' | 'internal' | 'people',  // only matters if cloud is enabled
   budget: { maxTokens, deadlineMs },
 })
 ```
 
-- **Routing table in config, not code.** Example:
-  - `plan` → fast cloud model;
-  - `compose`/`rag_answer`/`verify` → strong cloud model;
-  - `embed` → one fixed embedding model (see below).
-  - Fallback chain per task (cloud → local Ollama), with a circuit breaker (`cockatiel` is already a dependency).
-- **Native structured output and tool calling** replace the hand-parsing in `llmRouter.js:405-466` (regex JSON extraction, `<think>` stripping, truncated-JSON repair). This alone removes a whole class of silent router fallbacks.
-- **Data-egress policy.**
-  - A single-user setting chooses which `sensitivity` levels may go to the cloud. Example: `people` stays local, or is sent with names pseudonymised (`Engineer#3`) and re-hydrated locally after the response.
-  - The gateway logs every egress decision with a counter (`llm_egress_total{task,provider,sensitivity}`).
-  - Strip secrets and tokens from prompts.
-- **Cost and latency controls.** Per-request token budget, per-day spend cap with alerting, prompt caching for the large static system prompts (router rules, capability descriptions), and response-level caching keyed by evidence hash (C.3).
-- **Faithfulness gets easier.** A stronger model follows "cite evidence IDs only" and "say INSUFFICIENT_CONTEXT" far more reliably than an 8B local model. Keep the deterministic Verifier (B.6) anyway, because the model is not the guarantee.
-- **Evals become provider-aware.** Run the nightly eval for each configured provider and model so that a model change is a measured decision. CI still uses recorded fixtures (no live LLM on each PR).
-- **Embeddings.** Pick **one** model for both retrieval and the cache (B.7). Recommendation: stay on local `nomic-embed-text` (already used by Python, `database.py:86-112`). That keeps documents local unless they are cited into a prompt, and avoids re-embedding costs if the chat provider changes. Remove the in-process `multilingual-e5-large` used by the semantic cache (`bgeEmbeddingsClient.js:4`).
-- **Docs and rules to update.** The "Zero Cloud LLM Requirement" in `CLAUDE.md`, `AGENTS.md` and `GEMINI.md` no longer reflects the product. Replace it with "Cloud LLMs allowed through the gateway under the egress policy."
-- **Config bug becomes urgent.** `LLM_OPENAI_ENABLED=false` currently *enables* OpenAI (`config.js:56`, `z.coerce.boolean`). With cloud allowed, this is a data-egress bug, not a cosmetic one. Fix it in Phase 0.
+- **Routing table in config.** Defaults: every task → `ollama`. Optional overrides, for example `compose: cloud` with fallback `ollama`. With cloud off, the gateway never builds a cloud client. Today all providers are constructed from config branches in `llm/index.js:25-105`; those branches move into the gateway.
+- **Make the small local model reliable (the main work while Ollama is primary):**
+  - **Constrained JSON output** via Ollama's `format` parameter (JSON schema) for the planner and verifier. That replaces the regex extraction, `<think>` stripping and truncated-JSON repair in `llmRouter.js:405-466`.
+  - **Do less with the LLM.** Use the embedding-similarity classifier for routing (B.8 #2), so most queries need **no** planning call. Numbers and tables come from templates (B.6 #1); the model only writes a short narrative.
+  - **Small, focused prompts.** The 14-rule router prompt (`llmRouter.js:40-74`) is replaced by capability descriptions generated from the registry. Keep context under the model's window: compact evidence IDs instead of raw JSON dumps.
+  - **The Verifier is mandatory, not optional.** An 8B model will drift from "cite evidence IDs only". The deterministic number, entity and citation checks (B.6 #2) are the guarantee. If verification fails, return the deterministic sections only.
+  - **One concurrency limiter for Ollama** (`bottleneck` is already a dependency). A local GPU handles only a few generations at once, so queue requests rather than letting them time out. Give background work (audit, shadow eval) lower priority than chat.
+  - **Warm-up and health.** Pre-load the model at startup and report "model loaded / not loaded" on `/health/ready`, instead of failing on the first query.
+  - **Fewer LLM calls per answer.** Agentic RAG (query rewrite + HyDE + compression, `retriever.js:90-225`) is 3+ extra local generations. Keep it off unless the retrieval eval shows a gain.
+- **If cloud is enabled later:**
+  - An egress policy decides which `sensitivity` levels may be sent (recommended default: `people` never leaves; or names are pseudonymised and re-hydrated locally).
+  - Every cloud call is counted (`llm_egress_total{task,provider,sensitivity}`), secrets are stripped from prompts, and a daily spend cap applies.
+  - Nightly evals run per enabled model, so turning cloud on for a task is a measured decision.
+- **Embeddings stay local.** Use `nomic-embed-text` for both retrieval and the cache (B.7), and remove the in-process `multilingual-e5-large` used by the semantic cache (`bgeEmbeddingsClient.js:4`). It downloads from the Hugging Face hub on first use and is a second model to run.
+- **Evals.** Nightly gates run on `hermes3:8b` (the production default). PR CI uses recorded fixtures, so it doesn't need to pull the 8B model on every PR.
+- **Project rules.** The "Zero Cloud LLM Requirement" in `CLAUDE.md`, `AGENTS.md` and `GEMINI.md` should become "Local Ollama by default; cloud only through the gateway when explicitly enabled."
+- **Config bug is still Phase 0.** `LLM_OPENAI_ENABLED=false` currently *enables* OpenAI (`config.js:56`, `z.coerce.boolean`). With a local-first promise, this flag silently breaks the promise. It must be fixed before anything else in the gateway work.
 
 ## C.3 Document Q&A **and** tool-grounded answers, including hybrids
 
@@ -487,16 +490,16 @@ type Evidence = {
 3. One citation format for both: `[E#]`/`[D#]`. The current `[Document: filename.pdf]` free-text convention (`retriever.js:389`) is removed.
 4. Evals gain a **hybrid slice**: golden questions that require both a document rule and a tool metric, scored on citation precision for both `E*` and `D*` and on correct pass/fail.
 
-## C.4 Revised Phase 0–1 checklist (single user, cloud allowed, hybrid answers)
+## C.4 Revised Phase 0–1 checklist (single user, local-first LLM, hybrid answers)
 
 | # | Item | Phase |
 |---|---|---|
 | 1 | Owner login + `requireOwner` on all routes; CORS locked; CSRF token | 0 |
 | 2 | Rotate the compose-embedded keys; close port 9229 | 0 |
-| 3 | Fix the `z.coerce.boolean` egress bug (provider enable flags) | 0 |
+| 3 | Fix the `z.coerce.boolean` bug so disabled cloud providers stay disabled | 0 |
 | 4 | Remove fabricated fallbacks (Alex Williams, ×0.7 review wait, fake Slack channels) | 0 |
 | 5 | Shadow-eval contract fix + contract tests | 0 |
-| 6 | LLM gateway with task routing, structured output, egress policy, budget caps | 1 |
+| 6 | LLM gateway: Ollama default for every task, constrained JSON output, concurrency limiter, warm-up; cloud as an off-by-default plug-in | 1 |
 | 7 | `Result` + `Evidence` types; provenance rendered in the UI | 1 |
 | 8 | Knowledge capability returns `Evidence[]`; remove RAG/tool exclusivity; hybrid eval slice | 1–2 |
 | 9 | One embedding model (nomic); remove the e5 semantic-cache embedder | 1 |
@@ -504,6 +507,7 @@ type Evidence = {
 
 ## Remaining open questions
 
-1. **Which cloud provider(s) and models** go into the routing table? This affects structured-output support and pricing.
-2. **Is people data allowed in cloud prompts**: raw, pseudonymised, or never?
-3. **JavaScript or TypeScript?** Recommended: `checkJs` now, TypeScript for new modules (registry, `Result`/`Evidence` types, gateway).
+1. **Ollama model choice.** Stay on `hermes3:8b`, or benchmark a newer local model with better JSON and tool following on the nightly eval? The gateway makes this a config change.
+2. **Hardware target.** What GPU or RAM does the owner run on? This sets the concurrency limit and whether a larger local model is feasible.
+3. **If cloud is ever enabled:** which provider, and may people data be sent (never, pseudonymised, or raw)?
+4. **JavaScript or TypeScript?** Recommended: `checkJs` now, TypeScript for new modules (registry, `Result`/`Evidence` types, gateway).
