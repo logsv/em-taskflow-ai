@@ -5,21 +5,14 @@ import identityService from "./identityService.js";
 import { getRuntimeConfig } from "../config.js";
 import { getRouterChain } from "../agent/llmRouter.js";
 import { getGithubMCPTools, getGoogleMCPTools, getJiraMCPTools, getNotionMCPTools } from "../mcp/index.js";
-import { doraMetricsTool } from "../agent/doraAgent.js";
-import { deliveryBottlenecksTool } from "../agent/deliveryAgent.js";
-import { sbiFeedbackTool } from "../agent/sbiAgent.js";
-import { peopleGrowthTool } from "../agent/peopleAgent.js";
-import { sprintPlanTool } from "../agent/sprintAgent.js";
-import { sprintRetroTool } from "../agent/retroAgent.js";
-import { roadmapAlignmentTool } from "../agent/roadmapAgent.js";
-import { okrProgressTool } from "../agent/okrAgent.js";
-import { sopComplianceTool } from "../agent/sopAgent.js";
-import { auditReportTool } from "../agent/criticAgent.js";
 import { buildEmResponse } from "../utils/responseFormatter.js";
+import { runCapabilityPipeline } from "../pipeline/capabilityPipeline.js";
+import { listCapabilities } from "../capabilities/registry.js";
 import { getTracerCallbacks, createEndToEndTrace, createSpan } from "../utils/tracer.js";
 import { info, warn, error } from "../utils/logger.js";
 import { hasKeyword } from "../utils/keywords.js";
 import { swallow, recordHandledError } from '../core/safe.js';
+import { classifyError } from '../core/errors.js';
 
 const VALID_DOMAINS = new Set([
   "dora", "delivery", "sbi", "people", "sprint", "retro", "roadmap", "okr", "sop", "critic",
@@ -165,18 +158,10 @@ export class LangGraphAgentService {
       decision.routingPlan = plan;
       this.runtimeMetrics.routerQueries += 1;
       result = await this.runRagOnlyPath(userQuery, ragMode, decision, options);
-    } else if (rollout.mode === "off") {
-      this.runtimeMetrics.offQueries += 1;
-      decision.reasons.push("router_rollout_off");
-      result = await this.runLegacyPath(userQuery, decision, options);
-    } else if (rollout.mode === "shadow") {
-      this.runtimeMetrics.shadowQueries += 1;
-      this.runtimeMetrics.routerQueries += 1;
-      const plan = await this.routeQueryPlan(userQuery, runtime.mode, options);
-      decision.routingPlan = plan;
-      decision.reasons.push("router_shadow_mode_not_enforced");
-      result = await this.runLegacyPath(userQuery, decision, options);
     } else {
+      // Router rollout "off"/"shadow" used to run an all-domains supervisor; the planner is now
+      // always enforced. The setting is still reported so a stale config is visible.
+      if (rollout.mode !== "enforced" && rollout.mode !== "on") decision.reasons.push(`router_rollout_${rollout.mode}_ignored`);
       // Enforced mode
       if (options.threadId) {
         const isConfirmation = ["yes", "yeah", "sure", "ok", "yep", "confirm", "proceed", "go ahead", "y"].includes(userQuery.toLowerCase().trim());
@@ -314,27 +299,6 @@ export class LangGraphAgentService {
     return this.runLlmExecutor(query);
   }
 
-  async runLegacyPath(query, decision, options = {}) {
-    const includeRagAgent = this.ragEnabled && options.includeRag !== false;
-    const legacyResult = await executeAgentQuery(query, {
-      threadId: options.threadId,
-      routingPlan: {
-        domains: ["jira", "github", "notion", "calendar"],
-        allow_rag: includeRagAgent,
-        must_use_tools: false,
-        confidence: 1,
-        reasoning_summary: "Legacy fallback run."
-      },
-      maxIterations: 25,
-    });
-    decision.toolsUsed = toArray(legacyResult.toolsUsed);
-    decision.selectedPath = includeRagAgent ? "legacy_supervisor_with_rag" : "legacy_supervisor_no_rag";
-    return {
-      answer: legacyResult.response || "No response generated.",
-      sources: [],
-    };
-  }
-
   async runEnforcedPolicy(query, routingPlan, decision, options = {}) {
     if (routingPlan?.intent_type === "DIRECT_LLM" || routingPlan?.intent_type === "ATTACHMENT_DIRECT" || routingPlan?.intent_type === "CONTEXTUAL_SYNTHESIS" || (Array.isArray(routingPlan?.domains) && routingPlan.domains.length === 0 && !routingPlan.must_use_tools && !routingPlan.allow_rag)) {
       decision.selectedPath = routingPlan?.intent_type === "CONTEXTUAL_SYNTHESIS" ? "contextual-synthesis" : "direct-llm-fastpath";
@@ -374,6 +338,14 @@ export class LangGraphAgentService {
           return this.formatRagResult(ragResult);
         }
       }
+      if (ragResult?.error || !this.ragEnabled) {
+        decision.selectedPath = "rag-unavailable";
+        decision.reasons.push(`rag_unavailable:${ragResult?.error || "not_ready"}`);
+        return {
+          answer: `### 📄 Knowledge Base Search\n\n> **Status**: Document search is unavailable right now (${ragResult?.error || "RAG service not ready"}), so I could not check your documents. This is not the same as "no matching documents".\n\nCheck that the Python AI service is running (\`/api/v1/health/ready/details\`), then ask again.`,
+          sources: [],
+        };
+      }
       decision.selectedPath = "rag-zero-hit-guidance";
       return {
         answer: `### 📄 Knowledge Base Search\n\n> **Status**: No matching document chunks found in knowledge base for query.\n\n- **Query**: *"${query}"*\n- **Action Needed**: To search internal engineering documentation, please upload your architecture guidelines, runbooks, or PDF rubrics using the **Attach File** or **Upload Document** feature in the sidebar.\n- **Supported Formats**: \`.pdf\`, \`.md\`, \`.txt\`, \`.csv\`, \`.docx\`, Architecture Decision Records (ADRs).`,
@@ -384,14 +356,13 @@ export class LangGraphAgentService {
     // Tier 4 & 5: High-Performance Direct Domain Execution & Parallel Fan-Out/Fan-In
     const selectedDomains = toArray(routingPlan?.domains).filter((d) => d !== "rag");
     if (selectedDomains.length > 0) {
-      const directResult = await this.runRequiredDomainRecovery(query, routingPlan, decision, options);
-      if (directResult) {
-        decision.selectedPath = selectedDomains.length === 1 ? "direct-domain-executor" : "parallel-multi-agent-orchestrator";
-        return directResult;
-      }
+      // The pipeline's answer is final (it lists failed sources or abstains); no LLM retry.
+      const pipelineResult = await this.runRequiredDomainRecovery(query, routingPlan, decision, options);
+      if (pipelineResult) return pipelineResult;
     }
 
-    // Step 1: Execute Domain Supervisor / Domain Tools as fallback when direct dispatch did not handle
+    // Integration-only plans (jira / github / notion / calendar / slack with no capability
+    // domain) still need an LLM to choose MCP tool arguments: the supervisor handles those.
     if (decision.mcpReady && forceToolUse) {
       const supervisorResult = await executeAgentQuery(query, {
         ...options,
@@ -405,7 +376,7 @@ export class LangGraphAgentService {
       decision.policy = policy;
       if (policy.violations.length === 0) {
         this.runtimeMetrics.toolGroundedMet += 1;
-        decision.selectedPath = allowRag ? "router+supervisor(+rag)" : "router+supervisor";
+        decision.selectedPath = "integration-supervisor";
         this.updateUnwantedRagMetric(routingPlan, policy.invokedDomains);
         return {
           answer: supervisorResult.response || "No response generated.",
@@ -413,20 +384,10 @@ export class LangGraphAgentService {
         };
       }
 
-      const recovery = await this.runRequiredDomainRecovery(query, routingPlan, decision, options);
-      if (recovery) {
-        return recovery;
-      }
-
       decision.reasons.push("policy_violations_detected");
       decision.reasons.push(...policy.violations.map((v) => `policy:${v}`));
     } else if (forceToolUse && !decision.mcpReady) {
       decision.reasons.push("mcp_required_but_unavailable");
-
-      const recovery = await this.runRequiredDomainRecovery(query, routingPlan, decision, options);
-      if (recovery) {
-        return recovery;
-      }
     }
 
     // Step 2: Only probe RAG if allowed and workspace domains did not handle the query
@@ -453,121 +414,22 @@ export class LangGraphAgentService {
     return this.runLlmExecutor(query);
   }
 
+  /**
+   * Capability domains (dora, delivery, people, sbi, sprint, retro, roadmap, okr, sop, critic)
+   * run through the deterministic capability pipeline. Returns null when the plan has none.
+   */
   async runRequiredDomainRecovery(query, routingPlan, decision, options = {}) {
     const domains = toArray(routingPlan?.domains);
-    const recoveryTools = {
-      dora: { tool: doraMetricsTool, input: { sources: ["github"] } },
-      delivery: { tool: deliveryBottlenecksTool, input: { sources: ["github", "jira"] } },
-      sbi: {
-        tool: sbiFeedbackTool,
-        input: {
-          situation: String(query || ""),
-          context_type: "coaching_request",
-        },
-      },
-      // The people tool needs a resolved engineer; without one it asks which engineer is meant.
-      people: { tool: peopleGrowthTool, input: { mode: "ANALYZE", ...(domains.includes("people") ? await this.resolveEngineerInput(query, options) : {}) } },
-      sprint: { tool: sprintPlanTool, input: {} },
-      retro: { tool: sprintRetroTool, input: { mode: "ANALYZE" } },
-      roadmap: { tool: roadmapAlignmentTool, input: { mode: "ANALYZE" } },
-      okr: { tool: okrProgressTool, input: { mode: "ANALYZE" } },
-      sop: { tool: sopComplianceTool, input: { mode: "ANALYZE" } },
-      critic: { tool: auditReportTool, input: { mode: "ANALYZE", draft_response: String(query || "") } },
+    const ctx = {
+      engineerInput: domains.includes("people") ? await this.resolveEngineerInput(query, options) : {},
     };
-    const recoverable = domains.filter((domain) => recoveryTools[domain]);
-    if (recoverable.length === 0) return null;
-
-    const answers = [];
-    let recoveredAny = false;
-    const queryLower = String(query || "").toLowerCase();
-    const isListQuery = queryLower.startsWith("list ") || queryLower.startsWith("show all ") || queryLower.includes("list all") || queryLower.includes("list raw");
-    let detectedTarget = "ALL";
-    if (hasKeyword(queryLower, "pr") || queryLower.includes("pull request")) {
-      detectedTarget = "PRS";
-    } else if (hasKeyword(queryLower, "wip")) {
-      detectedTarget = "WIP_ITEMS";
-    } else if (hasKeyword(queryLower, "block") || hasKeyword(queryLower, "dependency") || hasKeyword(queryLower, "dependencies")) {
-      detectedTarget = "BLOCKERS";
-    } else if (hasKeyword(queryLower, "release") || hasKeyword(queryLower, "deploy")) {
-      detectedTarget = "RELEASES";
-    } else if (hasKeyword(queryLower, "1-on-1") || queryLower.includes("one on one") || hasKeyword(queryLower, "meeting")) {
-      detectedTarget = "ONE_ON_ONES";
-    } else if (hasKeyword(queryLower, "skill") || hasKeyword(queryLower, "gap") || hasKeyword(queryLower, "competenc")) {
-      detectedTarget = "SKILL_GAPS";
-    } else if (queryLower.includes("action item") || queryLower.includes("retro item")) {
-      detectedTarget = "ACTION_ITEMS";
-    } else if (hasKeyword(queryLower, "pattern") || hasKeyword(queryLower, "recurring") || hasKeyword(queryLower, "friction")) {
-      detectedTarget = "PATTERNS";
-    } else if (hasKeyword(queryLower, "epic") || queryLower.includes("roadmap item")) {
-      detectedTarget = "EPICS";
-    } else if (hasKeyword(queryLower, "drift") || queryLower.includes("scope creep") || hasKeyword(queryLower, "milestone")) {
-      detectedTarget = "DRIFT";
-    } else if (queryLower.includes("at risk") || queryLower.includes("off track") || hasKeyword(queryLower, "lagging")) {
-      detectedTarget = "AT_RISK";
-    } else if (hasKeyword(queryLower, "remediation")) {
-      detectedTarget = "GAP_REMEDIATION";
-    } else if (hasKeyword(queryLower, "okr") || queryLower.includes("key result") || hasKeyword(queryLower, "kr")) {
-      detectedTarget = "KRS";
-    } else if (hasKeyword(queryLower, "adr") || queryLower.includes("architecture decision")) {
-      detectedTarget = "ADRS";
-    } else if (hasKeyword(queryLower, "sop") || hasKeyword(queryLower, "policy") || hasKeyword(queryLower, "governance") || hasKeyword(queryLower, "standard")) {
-      detectedTarget = "SOPS";
-    } else if (hasKeyword(queryLower, "violation") || hasKeyword(queryLower, "non-compliant") || queryLower.includes("non compliant")) {
-      detectedTarget = "VIOLATIONS";
-    } else if (hasKeyword(queryLower, "script") || hasKeyword(queryLower, "talking")) {
-      detectedTarget = "TALKING_SCRIPT";
-    } else if (hasKeyword(queryLower, "bias") || hasKeyword(queryLower, "objectivity")) {
-      detectedTarget = "BIAS_AUDIT";
-    } else if (hasKeyword(queryLower, "check") || hasKeyword(queryLower, "audit")) {
-      detectedTarget = "CHECKS";
+    const result = await runCapabilityPipeline(query, routingPlan, decision, ctx);
+    if (!result) return null;
+    decision.policy = this.validatePolicy(routingPlan, decision.toolsUsed, true);
+    if (result.verification.grounded && decision.policy.violations.length === 0) {
+      this.runtimeMetrics.toolGroundedMet += 1;
     }
-
-    try {
-      const recoveryPromises = recoverable.map(async (domain) => {
-        const { tool, input } = recoveryTools[domain];
-        try {
-          const dynamicMode = isListQuery ? "LIST_RAW" : (input.mode || "ANALYZE");
-          const result = await tool.invoke({ mode: dynamicMode, target: detectedTarget, fetch_fresh_data: true, ...input });
-          return { domain, tool, result };
-        } catch (err) {
-          return { domain, tool, result: { status: "FAILED", error: err?.message } };
-        }
-      });
-
-      const outcomes = await Promise.all(recoveryPromises);
-      decision.provenance = toArray(decision.provenance);
-      for (const { domain, tool, result } of outcomes) {
-        decision.toolsUsed = Array.from(new Set([...toArray(decision.toolsUsed), tool.name]));
-        toArray(result?.provenance).forEach((p) => decision.provenance.push({ ...p, domain }));
-        decision.reasons.push(`supervisor_missing_${tool.name}_recovered_deterministically`);
-        if (result?.status !== "SUCCESS") {
-          decision.reasons.push(`recovery_tool_status:${tool.name}:${result?.status || "unknown"}`);
-          continue;
-        }
-        recoveredAny = true;
-        const data = result.data || {};
-        if (data.summary) {
-          answers.push(data.summary);
-        } else if (domain === "sprint") {
-          const metrics = data.capacity_metrics || {};
-          answers.push(`Sprint capacity: ${metrics.team_capacity_hours ?? "unavailable"} hours; target velocity: ${metrics.target_velocity_points ?? "unavailable"} points; recommended commitment: ${metrics.recommended_commitment_points ?? "unavailable"} points.`);
-        }
-        if (result.staleDataWarning) {
-          decision.reasons.push(`postgresql_cache_fallback_used:${domain}`);
-        }
-      }
-      decision.policy = this.validatePolicy(routingPlan, decision.toolsUsed, true);
-      if (!recoveredAny) return null;
-      decision.selectedPath = "deterministic-domain-tool-recovery";
-      if (decision.policy.violations.length === 0) {
-        this.runtimeMetrics.toolGroundedMet += 1;
-      }
-      return { answer: answers.join("\n\n") || "The requested domain tools completed without a summary.", sources: [] };
-    } catch (recoveryError) {
-      warn("Required domain recovery failed", { domains: recoverable, err: recoveryError?.message });
-      decision.reasons.push("recovery_failed");
-      return null;
-    }
+    return { answer: result.answer, sources: [] };
   }
 
   /** Resolve the engineer a query is about (roster match or extracted entity); never the raw query. */
@@ -993,11 +855,11 @@ export class LangGraphAgentService {
         return await ragService.agenticRetrieve(query, options);
       }
       return await ragService.baselineRetrieve(query, options);
-    } catch (error) {
-      return {
-        answer: "",
-        sources: [],
-      };
+    } catch (err) {
+      // Not "no documents": the search itself failed. Callers tell the user which.
+      const code = classifyError(err).code;
+      recordHandledError('services.agentService.tryRag', err);
+      return { answer: "", sources: [], error: code };
     }
   }
 
@@ -1024,6 +886,7 @@ export class LangGraphAgentService {
       ragEnabled: this.ragEnabled,
       llmReady: !!llmStatus.initialized,
       runtimeMode,
+      capabilities: listCapabilities(),
       router: {
         rollout: runtimeConfig.router || {},
         metrics: this.runtimeMetrics,
