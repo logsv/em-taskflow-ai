@@ -112,6 +112,9 @@ def run_scheduled_deep_benchmark(
         )
 
         for metric_name, val in ragas_scores.items():
+            # Only measured numeric scores are sent (skips status/error/answers_source and None).
+            if isinstance(val, bool) or not isinstance(val, (int, float)) or metric_name == "samples":
+                continue
             langfuse.score(
                 trace_id=trace.id,
                 name=f"nightly_ragas_{metric_name}",
