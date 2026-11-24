@@ -28,6 +28,18 @@ The path to production:
 
 ---
 
+## Decisions taken (2026-11-24)
+
+| Decision | Choice | What it changes in this plan |
+|---|---|---|
+| Tenancy | **Single user** | Auth is one owner account (password + session cookie, or a static API token behind the reverse proxy). No `workspace_id` and no RBAC. The admin and chat surfaces share one identity. The scope of B.3.6 shrinks: horizontal scaling is a nice-to-have, while **reliability and restart safety** are the priorities. See §C.1 |
+| LLM | **Cloud LLM acceptable** | Keep a provider abstraction (cloud and local behind one LLM gateway) instead of collapsing to Ollama-only. Route by task: a strong cloud model for planning, composing and verifying, with optional local fallback. Use native structured output and tool calling. Add a data-egress policy (what may be sent to the cloud) and cost controls. See §C.2 |
+| Answer types | **Both document Q&A and tool-grounded answers are core**, including *hybrid* answers ("Is our PR review time within the SLA in our SOP?") | Remove the current **mutual exclusion** between RAG and tools (`agentService.js:347-349`, router rules 1/5/6 in `llmRouter.js:56-61`). Documents become a first-class capability that produces the same `Evidence` items as tools. See §C.3 |
+
+Sections A–B below remain valid. Where they conflict with Part C, **Part C wins**.
+
+---
+
 # Part A — Product Manager lens
 
 ## A.1 Who it's for and the job to be done
@@ -135,7 +147,7 @@ The critic stops being a domain the user routes to. It becomes a **verification 
 | `settings-backup.json` on disk with plaintext tokens, and the "self-heal" merge from it | `settingsService.js:96-199` | Security plus a hidden second source of truth |
 | Unused dependencies: `cockatiel`, `bottleneck` (or *use* them, B.4), `llm-router`, `convict`, `openai@4`, `@langchain/mcp-adapters`, `@notionhq/notion-mcp-server`, `@cocal/google-calendar-mcp`, `promptfoo` in prod deps | grep shows no imports **(inferred)** | Install size, CVE surface |
 | Telemetry sprawl: **Sentry + New Relic + Axiom + OTel + Langfuse** → **OTel (traces/metrics/logs) + Langfuse (LLM traces)** | `index.js:20-51`, `main.py:25-111`, `logger.js:4` | Cost, and the ESM hook conflict (`index.js:28-32`) |
-| Cloud LLM provider branches (OpenAI/Anthropic/Google) → **one "OpenAI-compatible endpoint" provider** (covers Ollama, vLLM, LM Studio, or a cloud model if opted in) | `config.js:52-70`, `llm/index.js:25-105` | Several code paths and the "zero cloud" ambiguity |
+| ~~Cloud LLM provider branches → one provider~~ **Superseded by §C.2**: keep cloud and local providers, but behind **one LLM gateway module** with task-based routing. Delete the ad-hoc provider branches in `llm/index.js:25-105` and the unused circuit-breaker config (`config.js:398-430`) | `config.js:52-70`, `llm/index.js:25-105` | One call site and one policy |
 | Duplicate CI workflow and hard-coded "all passed" summaries | `.github/workflows/ci.yml` vs `backend-ci.yml` | Honest CI |
 | Duplicate golden datasets (`backend/evaluation/` vs `evaluations/datasets/`, which differ: 3005 vs 783 lines) | `cmp` differs | One eval truth |
 | Double reranking (Python reranks, then Node reranks again) | `rest_router.py:93`, `grpc/client.js:181` | Latency |
@@ -351,7 +363,7 @@ flowchart LR
   API --> T[(Temporal)]
   T --> WN[Node worker deploy<br/>audit, sync, HITL writes]
   T --> WP[Python worker deploy<br/>ingest]
-  API --> LLM[LLM gateway<br/>OpenAI-compatible, concurrency limit]
+  API --> LLM[LLM gateway<br/>task routing cloud + local fallback,<br/>egress policy, budget, concurrency limit]
   KS --> EMB[Embedding service<br/>one model]
   API -.-> OTEL[OTel + Langfuse]
 ```
@@ -360,7 +372,7 @@ flowchart LR
 
 | Phase | Scope | Exit criteria |
 |---|---|---|
-| **0 — Stop the bleeding** (≈1 week) | Rotate and remove the compose secrets; close the debug port; add basic auth (single-user token or OIDC) on all routes, admin-only for `/admin/*`; correctness fixes B.5 #1–12; remove fabricated fallbacks (A.3 row 1) | No unauthenticated route; zero fictional entities in evals; shadow eval returns 200 |
+| **0 — Stop the bleeding** (≈1 week) | Rotate and remove the compose secrets; close the debug port; add single-owner auth on all routes (§C.1); fix the provider-flag egress bug (§C.2); correctness fixes B.5 #1–12; remove fabricated fallbacks (A.3 row 1) | No unauthenticated route; zero fictional entities in evals; shadow eval returns 200 |
 | **1 — Make failure explicit** (2–3 weeks) | `Result` type; error middleware and taxonomy; lint bans on empty catches; fallback metrics and alerts; provenance/freshness rendered in the UI; readiness endpoint; contract tests; one CI with real Postgres and Redis | Swallowed catches 84 → 0 (or annotated with a counter); every degraded answer shows its source and age |
 | **2 — Collapse the architecture** (4–6 weeks) | Capability registry; 10 → 5 capabilities; pipeline replaces `agentService` and the supervisor; migrations; split god files; workers as separate deployables; telemetry → OTel + Langfuse; delete the B.2 list | Adding a capability = 1 file + tests; `agentService.js`, `graph.js` and `llmRouter.js` deleted; API horizontally scalable |
 | **3 — Faithful RAG and agents** (4 weeks, overlaps Phase 2) | Verifier; templated numbers; RAG abstain threshold; chunk citations with page numbers; one embedding model; document versioning; retrieval eval; structured-output planner; entity resolution; HITL for all writes | Nightly: faithfulness ≥ 0.9, citation precision ≥ 0.95, routing ≥ 0.9, fabricated entities = 0 |
@@ -380,9 +392,118 @@ flowchart LR
 
 ---
 
-## Open decisions for the team
+---
 
-1. **Single-user or multi-tenant?** This decides whether Phase 0 auth is a static token or OIDC plus `workspace_id`.
-2. **Is a cloud LLM ever acceptable** (opt-in, per workspace)? This decides whether the "OpenAI-compatible endpoint" abstraction must handle data-handling policies.
-3. **Keep TypeScript-free JavaScript?** Recommended: `checkJs` now, TypeScript for new modules.
-4. **Is document Q&A core, or secondary to tool-grounded answers?** This decides how much of Phase 3 goes to RAG versus capabilities.
+# Part C — Design under the chosen decisions
+
+## C.1 Single user
+
+**Auth (Phase 0).**
+- One owner account, created on first run. Store an argon2/bcrypt password hash in `app_settings` (or an env-provided hash).
+- Login sets an `HttpOnly; Secure; SameSite=Strict` session cookie. An `Authorization: Bearer <token>` header is accepted for scripts and the evaluation CLI.
+- One `requireOwner` middleware is mounted in `routes/v1/index.js` before every router except `/health` and the OAuth callbacks.
+- Lock CORS to `FRONTEND_URL`, and add a CSRF token on state-changing routes. Cookie auth still needs these, even for one user.
+
+**What can be dropped because there is one user:**
+- The anonymous-session machinery. Session IDs from query, header or cookie (`SessionApplicationService.js:12-17`) collapse to "the owner". Keep `chat_threads` but drop `sessions` as a security boundary (it can remain a UI grouping).
+- The IDOR fixes in B.5 #7 become low priority once everything sits behind owner auth. Keep the ownership checks anyway; they are cheap.
+- Multi-replica concerns: in-process caches and rate limits are acceptable. **But still run the Temporal workers as separate processes** (B.3.6). The reason is restart isolation: a crashed ingest must not kill chat. Throughput is not the reason.
+
+**Still required for a single user:** secret rotation, encrypted integration tokens, the debug port closed, backups of `taskflow_backend` and `taskflow_ai` (`docs/operations/backup-recovery.md`), and retention settings for chat and people data.
+
+## C.2 Cloud LLM acceptable
+
+**One LLM gateway** (`backend/src/llm/gateway.js`) is the only place that calls a model:
+
+```js
+llm.call({
+  task: 'plan' | 'compose' | 'verify' | 'rag_answer' | 'summarize' | 'embed',
+  messages, schema?,            // zod → JSON schema for structured output
+  sensitivity: 'public' | 'internal' | 'people',  // drives the egress policy
+  budget: { maxTokens, deadlineMs },
+})
+```
+
+- **Routing table in config, not code.** Example:
+  - `plan` → fast cloud model;
+  - `compose`/`rag_answer`/`verify` → strong cloud model;
+  - `embed` → one fixed embedding model (see below).
+  - Fallback chain per task (cloud → local Ollama), with a circuit breaker (`cockatiel` is already a dependency).
+- **Native structured output and tool calling** replace the hand-parsing in `llmRouter.js:405-466` (regex JSON extraction, `<think>` stripping, truncated-JSON repair). This alone removes a whole class of silent router fallbacks.
+- **Data-egress policy.**
+  - A single-user setting chooses which `sensitivity` levels may go to the cloud. Example: `people` stays local, or is sent with names pseudonymised (`Engineer#3`) and re-hydrated locally after the response.
+  - The gateway logs every egress decision with a counter (`llm_egress_total{task,provider,sensitivity}`).
+  - Strip secrets and tokens from prompts.
+- **Cost and latency controls.** Per-request token budget, per-day spend cap with alerting, prompt caching for the large static system prompts (router rules, capability descriptions), and response-level caching keyed by evidence hash (C.3).
+- **Faithfulness gets easier.** A stronger model follows "cite evidence IDs only" and "say INSUFFICIENT_CONTEXT" far more reliably than an 8B local model. Keep the deterministic Verifier (B.6) anyway, because the model is not the guarantee.
+- **Evals become provider-aware.** Run the nightly eval for each configured provider and model so that a model change is a measured decision. CI still uses recorded fixtures (no live LLM on each PR).
+- **Embeddings.** Pick **one** model for both retrieval and the cache (B.7). Recommendation: stay on local `nomic-embed-text` (already used by Python, `database.py:86-112`). That keeps documents local unless they are cited into a prompt, and avoids re-embedding costs if the chat provider changes. Remove the in-process `multilingual-e5-large` used by the semantic cache (`bgeEmbeddingsClient.js:4`).
+- **Docs and rules to update.** The "Zero Cloud LLM Requirement" in `CLAUDE.md`, `AGENTS.md` and `GEMINI.md` no longer reflects the product. Replace it with "Cloud LLMs allowed through the gateway under the egress policy."
+- **Config bug becomes urgent.** `LLM_OPENAI_ENABLED=false` currently *enables* OpenAI (`config.js:56`, `z.coerce.boolean`). With cloud allowed, this is a data-egress bug, not a cosmetic one. Fix it in Phase 0.
+
+## C.3 Document Q&A **and** tool-grounded answers, including hybrids
+
+**Problem today.** The two kinds of answer are mutually exclusive:
+
+- `agentService.js:347-349` disables RAG whenever any non-`rag`/`sop` domain is routed ("Strict Domain Exclusivity").
+- The router prompt tells the model never to combine them (rules 1, 5 and 6, `llmRouter.js:56-61`).
+- RAG answers and tool answers come back in different shapes: `sources[]` of chunks vs free-text `data.summary`.
+
+So a question like "Are we meeting the review SLA in our engineering SOP?" cannot be answered correctly. It needs the SOP document *and* the PR metrics.
+
+**Design: one evidence model, two kinds of capability.**
+
+```ts
+type Evidence = {
+  id: 'E1' | 'D3' | …,                 // E = tool evidence, D = document chunk
+  kind: 'metric' | 'record' | 'doc_chunk',
+  source: 'github' | 'jira' | … | 'document',
+  title, url?,                          // PR/ticket link or doc#page
+  value?, unit?,                        // for metrics
+  text?,                                // for records/chunks
+  asOf, mode: 'live' | 'snapshot' | 'indexed',
+  score?,                               // rerank score for doc chunks
+}
+```
+
+- **The knowledge capability** (`knowledge.search`) is registered like any tool capability (B.3.1). It returns `doc_chunk` evidence with page-level citations and rerank scores. It abstains below threshold τ by returning `status:'ok', data: []` plus a reason, never a fabricated answer.
+- **Planner output** lists capabilities *including* knowledge, with an explicit `answer_mode`:
+  - `documents` → knowledge only;
+  - `tools` → tool capabilities only;
+  - `hybrid` → both, run **in parallel** under the same deadline;
+  - `direct` → no evidence needed (general or conceptual).
+- **Hybrid composition.**
+  - Policy and SOP chunks supply the *rule* (`D2: "PRs must be reviewed within 24h"`).
+  - Tool metrics supply the *fact* (`E1: median review wait = 31.2h`).
+  - The Composer produces a **comparison block** deterministically where possible: rule vs actual, and pass or fail. The LLM explains, citing both IDs.
+  - The Verifier checks that each claim's number traces to `E*` and each policy statement to `D*`.
+- **The SOP and critic capabilities become hybrid by construction.** SOP compliance = knowledge (the rule) + tools (the behaviour). Critic = the Verifier applied to user-supplied drafts against knowledge and tool evidence.
+- **The audit uses hybrid too.** The Temporal audit can check findings against uploaded SOPs, for example deducting the health score only when a documented SLA is violated, with the SOP chunk cited on the action item.
+- **UI.** One evidence panel per answer shows tool evidence (with live/snapshot badge and timestamp) and document evidence (filename, page, snippet), each clickable.
+
+**Code changes (replacing the relevant parts of B.3.2 and B.8):**
+1. Delete the exclusivity rule (`agentService.js:347-349`) and router rules 1/5/6's "do NOT combine" clauses. These are moot once the planner and registry replace the router.
+2. Wrap `rag/retriever.js` as a capability whose `execute` returns `Evidence[]`, not a finished answer. Move answer generation into the shared Composer, so document and hybrid answers use one prompt contract and one verifier.
+3. One citation format for both: `[E#]`/`[D#]`. The current `[Document: filename.pdf]` free-text convention (`retriever.js:389`) is removed.
+4. Evals gain a **hybrid slice**: golden questions that require both a document rule and a tool metric, scored on citation precision for both `E*` and `D*` and on correct pass/fail.
+
+## C.4 Revised Phase 0–1 checklist (single user, cloud allowed, hybrid answers)
+
+| # | Item | Phase |
+|---|---|---|
+| 1 | Owner login + `requireOwner` on all routes; CORS locked; CSRF token | 0 |
+| 2 | Rotate the compose-embedded keys; close port 9229 | 0 |
+| 3 | Fix the `z.coerce.boolean` egress bug (provider enable flags) | 0 |
+| 4 | Remove fabricated fallbacks (Alex Williams, ×0.7 review wait, fake Slack channels) | 0 |
+| 5 | Shadow-eval contract fix + contract tests | 0 |
+| 6 | LLM gateway with task routing, structured output, egress policy, budget caps | 1 |
+| 7 | `Result` + `Evidence` types; provenance rendered in the UI | 1 |
+| 8 | Knowledge capability returns `Evidence[]`; remove RAG/tool exclusivity; hybrid eval slice | 1–2 |
+| 9 | One embedding model (nomic); remove the e5 semantic-cache embedder | 1 |
+| 10 | Update `CLAUDE.md`/`AGENTS.md`/`GEMINI.md` architecture rules to match these decisions | 1 |
+
+## Remaining open questions
+
+1. **Which cloud provider(s) and models** go into the routing table? This affects structured-output support and pricing.
+2. **Is people data allowed in cloud prompts**: raw, pseudonymised, or never?
+3. **JavaScript or TypeScript?** Recommended: `checkJs` now, TypeScript for new modules (registry, `Result`/`Evidence` types, gateway).
