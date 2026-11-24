@@ -70,7 +70,7 @@ Notes on the commands:
 - **`npm run dev` does not exist** in `backend/package.json`. The root `package.json` `dev` script delegates to it, so it fails. CLAUDE.md lists it.
 - **No lint step exists anywhere.** No ESLint/Prettier/ruff config or script. The frontend `eslintConfig` extends `react-app`, but `react-scripts` is not a dependency.
 - **Frontend tests (`*.test.js`) have no runner**: there is no jest/vitest dependency or `test` script (`frontend/package.json:12-16`). The root `frontend:test` script therefore fails.
-- Root scripts reference Python files that are **not in the repo**: `evaluation/ragas_runner.py` and `evaluation/trulens_rag_triad.py`. The admin route also references `evaluation/replay_langfuse_traces.py` (`backend/src/routes/admin.js:589`).
+- The root script `eval:trulens` references `evaluation/trulens_rag_triad.py`, which is **not in the repo**. (Correction: an earlier version of this document also listed `ragas_runner.py` and `replay_langfuse_traces.py` as missing; both exist under `services/python-ai-service/evaluation/`.)
 
 ### Configuration
 
@@ -804,5 +804,5 @@ Python handles file extraction, chunking, embeddings, hybrid search and rerankin
 - **Which spec counts are authoritative?** CLAUDE.md gives 319/240 and 45/39; CI echoes 155/32. Does `npm test` pass today without a Postgres instance, given the nyc `dist/` include?
 - **Is the `init-databases.sql` duplicate `CREATE DATABASE taskflow_backend` actually failing on fresh volumes?** It needs a runtime check.
 - **What are the expected Temporal namespaces and retention**, and is the `temporal` database configured anywhere outside the auto-setup image?
-- **Are the evaluation scripts referenced by the root and admin routes kept elsewhere?** These are `ragas_runner.py`, `trulens_rag_triad.py` and `replay_langfuse_traces.py`, and none of them exists in the repo.
+- **Is `trulens_rag_triad.py` kept elsewhere?** The root `eval:trulens` script references it, but it isn't in the repo.
 - **How should multi-replica scaling work?** In-process L1 cache, rate limiter, admin job state and the embedded Temporal worker all assume a single instance.

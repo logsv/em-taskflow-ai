@@ -72,7 +72,7 @@ What wins is **trust and time saved**, not domain count. One wrong number about 
 | Remove | Why | Evidence |
 |---|---|---|
 | **Fabricated fallback data in production paths** | Destroys trust. When the roster is empty, the people tool analyses a fictional "Alex Williams". DORA fallback invents `review_wait_time = lead_time × 0.7`. Slack falls back to fake channel IDs | `peopleAgent.js:197-204,268`; `doraAgent.js:87-88`; `mcp/slack.js:427-449` |
-| **Evaluation tooling inside the end-user Admin Portal** (Promptfoo cloud link, TruLens sweep, deep benchmark, trace replay, prompt matrix) | This is developer tooling, not product. It spawns shell processes from an unauthenticated API, and three of its scripts don't exist in the repo | `admin.js:120-683`, `admin.js:441,589` |
+| **Evaluation tooling inside the end-user Admin Portal** (Promptfoo cloud link, TruLens sweep, deep benchmark, trace replay, prompt matrix) | This is developer tooling, not product. It spawns shell processes from an unauthenticated API, and the TruLens script it references (`trulens_rag_triad.py`) isn't in the repo | `admin.js:120-683`, `admin.js:441,589` |
 | **"10 agents" as a user-facing concept** | Users want outcomes. Ten overlapping domains confuse routing (rules 1–14 in the router prompt exist only to disambiguate them, `llmRouter.js:56-71`) | `llmRouter.js` system prompt |
 | **The `DevSettingsModal` in the end-user chat** | Developer settings belong behind an admin role | `frontend/src/components/DevSettingsModal.jsx` |
 | **Calendar *write* (`create_calendar_event`)** without HITL | An agent writing to calendars is a high-risk action that has no approval gate | `mcp/google.js:96` |
