@@ -512,8 +512,52 @@ export const EvidenceSchema = z.object({ /* same shape, validated at runtime */ 
 | 9 | One embedding model (nomic); remove the e5 semantic-cache embedder | 1 |
 | 10 | Update `CLAUDE.md`/`AGENTS.md`/`GEMINI.md` architecture rules to match these decisions | 1 |
 
+## C.5 Local model choice for the target hardware (Mac mini, 16 GB unified memory, 256 GB disk)
+
+**Memory budget (inferred, verify with Activity Monitor).**
+
+| Consumer | Approx. memory |
+|---|---|
+| macOS + apps | 3–4 GB |
+| Docker Desktop VM: Postgres, Redis, Temporal + UI, Langfuse + analytics DB, Adminer, Python service (flashrank), backend (plus the in-process e5-large embedder) | 4–6 GB |
+| **Left for Ollama** (model weights + KV cache) | **≈ 6–8 GB** |
+
+That rules out ~14 GB models such as `gpt-oss:20b` and 20B+ models while the stack is running. An **8B model at Q4 (~5 GB) plus `nomic-embed-text`** is the realistic ceiling.
+
+**Recommendation: switch the default from `hermes3:8b` to `qwen3:8b`, after it wins the nightly eval.**
+- Qwen3 has tool calling in its chat template and is Ollama's own example model for tool calls. It is the most commonly recommended 8B-class model for tool use and JSON output on 16 GB Macs **(per third-party guides; verify on our golden set)**.
+- It is about the same size as `hermes3:8b`, so it fits the same budget.
+- Qwen3 has a "thinking" mode. Turn it **off** for `plan` and `verify` (latency, and JSON-only output). Allow it for `compose` only if the evals show a gain. The router already strips `<think>` blocks (`llmRouter.js:406`), but the gateway should disable thinking instead of stripping it.
+
+**Candidates to benchmark** (each pulled and scored with the same golden dataset):
+
+| Model | Role | Why |
+|---|---|---|
+| `qwen3:8b` | **Primary candidate** | Tool calling and JSON adherence at the 8B size |
+| `hermes3:8b` | Baseline | Current default (Llama 3.1-based) |
+| `llama3.1:8b` | Alternative | Well-documented tool calling; same base as Hermes 3 |
+| `qwen3:4b` | Planner / verifier only | Faster, ~2.5 GB; frees memory for a larger context in `compose` |
+| Gemma 4 small variant | Optional | Newer, reportedly with native function calling. **Unverified**; check `ollama show <model>` for tool support |
+
+**Ollama settings for 16 GB** (Ollama runs natively on macOS, not in Docker, so it gets Metal acceleration; compose already points at `host.docker.internal:11434`):
+- `OLLAMA_NUM_PARALLEL=1` and `OLLAMA_MAX_LOADED_MODELS=2` (chat model + embedder).
+- `OLLAMA_FLASH_ATTENTION=1` and `OLLAMA_KV_CACHE_TYPE=q8_0` to halve KV-cache memory.
+- `num_ctx` 8192 (not 32k+). The ContextBuilder budget (B.3.2) keeps prompts within it.
+- `OLLAMA_KEEP_ALIVE=30m` so the model isn't reloaded for every chat.
+
+**Free memory and disk for the model:**
+- Remove the in-process `multilingual-e5-large` embedder (C.2). That saves roughly 0.5–1 GB in the backend **(inferred)**.
+- Make `adminer`, `temporal-ui`, `langfuse` and `analytics-db` an optional compose profile (`docker compose --profile observability up`). They are not needed for daily use.
+- Disk: each 8B Q4 model is ~5 GB. Keep at most two chat models pulled, and prune Docker images and build cache periodically (`docker system df`).
+
+**Code changes needed to switch models cleanly:**
+- `hermes3:8b` is hard-coded in about 20 places: `llm/index.js:112,124,160`, `services/settingsService.js:262,431,526`, `routes/admin.js:102,186,407`, `temporal/client.js:139,163,237`, `scripts/promptfooServer.js` and Python eval defaults. Replace all of them with one config value.
+- The model saved in `app_settings` overrides `LLM_DEFAULT_MODEL` after the first run (`settingsService.js:260,431`). Change the model in the Admin → Settings page (or the DB), not only in `.env`.
+- Eval endpoints default to `hermes3:8b`, so a model switch would otherwise be evaluated against the old model.
+
+**Decision gate.** Adopt `qwen3:8b` only if, on the nightly eval, it matches or beats `hermes3:8b` on routing accuracy, JSON validity rate, faithfulness and fabricated-entity rate, with p95 latency within 20%.
+
 ## Remaining open questions
 
-1. **Ollama model choice.** Stay on `hermes3:8b`, or benchmark a newer local model with better JSON and tool following on the nightly eval? The gateway makes this a config change.
-2. **Hardware target.** What GPU or RAM does the owner run on? This sets the concurrency limit and whether a larger local model is feasible.
-3. **If cloud is ever enabled:** which provider, and may people data be sent (never, pseudonymised, or raw)?
+1. **Which Mac mini chip** (M2 or M4)? This affects tokens per second, not which models fit. See §C.5.
+2. **If cloud is ever enabled:** which provider, and may people data be sent (never, pseudonymised, or raw)?
