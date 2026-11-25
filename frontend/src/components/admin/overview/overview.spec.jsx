@@ -41,3 +41,34 @@ describe('EvalGateCard', () => {
     expect(screen.getByText('FAIL (<90%)')).toBeTruthy();
   });
 });
+
+describe('HealthTrendView', () => {
+  it('says there is no data instead of drawing a default line', async () => {
+    const { HealthTrendView } = await import('./HealthTrendChart.jsx');
+    render(<HealthTrendView data={{ points: [], change: null, message: 'No completed audits in the last 30 days.' }} days={30} />);
+    expect(screen.getByText(/No completed audits in the last 30 days/)).toBeTruthy();
+    expect(document.querySelector('svg.health-trend-svg')).toBeNull();
+  });
+
+  it('plots one dot per measured audit and shows the change over the window', async () => {
+    const { HealthTrendView } = await import('./HealthTrendChart.jsx');
+    render(<HealthTrendView days={30} data={{ change: -8, points: [
+      { at: '2026-11-01T09:00:00Z', healthScore: 80, auditRunId: 1 },
+      { at: '2026-11-10T09:00:00Z', healthScore: 75, auditRunId: 2 },
+      { at: '2026-11-20T09:00:00Z', healthScore: 72, auditRunId: 3 },
+    ] }} />);
+    expect(document.querySelectorAll('circle.health-trend-dot').length).toBe(3);
+    expect(screen.getByText(/latest 72/)).toBeTruthy();
+    expect(screen.getByText(/↓ 8 pts over 30d/)).toBeTruthy();
+  });
+
+  it('maps score 100 to the top and 0 to the bottom of the plot', async () => {
+    const { trendGeometry } = await import('./HealthTrendChart.jsx');
+    const { xy } = trendGeometry([
+      { at: '2026-11-01T00:00:00Z', healthScore: 100 },
+      { at: '2026-11-02T00:00:00Z', healthScore: 0 },
+    ]);
+    expect(xy[0].y).toBeLessThan(xy[1].y);
+    expect(xy[0].x).toBeLessThan(xy[1].x);
+  });
+});

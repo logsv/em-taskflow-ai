@@ -47,8 +47,10 @@ describe('Phase 4 People & Performance Agents Specs: SBI & People Harnesses', ()
       expect(res.status).toBe('SUCCESS');
       expect(res.name).toBe('analyze_personnel_growth');
       expect(res.data.mode).toBe('ANALYZE');
-      // Without a roster entry the tool asks which engineer is meant instead of inventing one.
-      expect(['NEEDS_ENGINEER', undefined]).toContain(res.data.status);
+      // Without a roster entry the tool asks which engineer is meant; with a stored profile but no
+      // levels it asks for them (NEEDS_PROFILE). It never invents either. Which one depends on
+      // whether earlier specs left a profile in the shared test database.
+      expect(['NEEDS_ENGINEER', 'NEEDS_PROFILE', undefined]).toContain(res.data.status);
       if (res.data.metrics) {
         expect(['LOW', 'MEDIUM', 'HIGH', 'UNKNOWN']).toContain(res.data.metrics.burnout_risk_score);
       }

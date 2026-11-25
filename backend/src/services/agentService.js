@@ -14,6 +14,7 @@ import { info, warn, error } from "../utils/logger.js";
 import { hasKeyword } from "../utils/keywords.js";
 import { swallow, recordHandledError } from '../core/safe.js';
 import { classifyError } from '../core/errors.js';
+import { buildAttachmentContext } from './attachmentContext.js';
 
 const VALID_DOMAINS = new Set([
   "dora", "delivery", "sbi", "people", "sprint", "retro", "roadmap", "okr", "sop", "critic",
@@ -845,7 +846,13 @@ export class LangGraphAgentService {
         }
       }
     }
-    inputMessages.push(new HM(query));
+    // Attachment text sent separately (API clients) goes into the prompt; when the UI already
+    // pasted it into the message, it is not added twice.
+    const attachmentBlock = buildAttachmentContext(options.attachments, query);
+    if (attachmentBlock) {
+      systemInstructions.push("Answer from the attached file content below when the question is about it. If the answer is not in the attachment, say so.");
+    }
+    inputMessages.push(new HM(attachmentBlock ? `${attachmentBlock}\n\n${query}` : query));
 
     const finalMessages = [
       new SM(systemInstructions.join("\n\n")),

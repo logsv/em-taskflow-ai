@@ -576,39 +576,45 @@ export async function harvestDoraAndDeliveryActivity(params = {}) {
 export async function harvestPeopleAndCadenceActivity(params = {}) {
   try {
     const teamMembers = databaseService.getTeamMembers ? await databaseService.getTeamMembers().catch(swallow('temporal.activities.harvestPeopleAndCadenceActivity', [])) : [];
+    // Only members with a recorded last 1-on-1 can be judged; the rest are "not measured", not on track.
+    const measured = teamMembers.filter((m) => m.last1on1Date && !Number.isNaN(new Date(m.last1on1Date).getTime()));
     const overdue1on1s = [];
 
-    for (const m of teamMembers) {
-      if (m.tenureMonths > 20 && m.last1on1Date) {
-        const days = Math.round((Date.now() - new Date(m.last1on1Date).getTime()) / 86400000);
-        if (days > 14) {
-          overdue1on1s.push({
-            memberId: m.id,
-            name: m.displayName,
-            email: m.email,
-            daysSinceLast1on1: days,
-            status: 'OVERDUE',
-          });
-        }
+    for (const m of measured) {
+      const days = Math.round((Date.now() - new Date(m.last1on1Date).getTime()) / 86400000);
+      if (days > 14) {
+        overdue1on1s.push({
+          memberId: m.id,
+          name: m.displayName,
+          email: m.email,
+          daysSinceLast1on1: days,
+          status: 'OVERDUE',
+        });
       }
     }
 
     return {
       source: 'people_and_cadence',
-      cadenceHealth: overdue1on1s.length === 0 ? '100%' : '85%',
-      overdue1on1sCount: overdue1on1s.length,
+      measured: measured.length > 0,
+      // Share of measured members whose last 1-on-1 is within 14 days; null when none is measured.
+      cadenceHealth: measured.length ? `${Math.round(((measured.length - overdue1on1s.length) / measured.length) * 100)}%` : null,
+      overdue1on1sCount: measured.length ? overdue1on1s.length : null,
       overdue1on1s,
+      measuredMembers: measured.length,
       totalTeamMembers: teamMembers.length,
       growthOpportunities: [],
     };
   } catch (err) {
-    warn({ module: 'temporalActivities', action: 'harvestPeopleAndCadenceActivity', err }, 'People harvest fallback');
+    warn({ module: 'temporalActivities', action: 'harvestPeopleAndCadenceActivity', err }, 'People harvest failed');
     return {
       source: 'people_and_cadence',
-      cadenceHealth: '100%',
-      overdue1on1sCount: 0,
+      measured: false,
+      error: 'PEOPLE_HARVEST_FAILED',
+      cadenceHealth: null,
+      overdue1on1sCount: null,
       overdue1on1s: [],
-      totalTeamMembers: 0,
+      measuredMembers: 0,
+      totalTeamMembers: null,
       growthOpportunities: [],
     };
   }
@@ -621,10 +627,15 @@ export async function harvestSprintAndOkrActivity(params = {}) {
   try {
     const sprintAnalyticsList = databaseService.getSprintAnalytics ? await databaseService.getSprintAnalytics().catch(swallow('temporal.activities.harvestSprintAndOkrActivity', [])) : [];
     const sprintAnalytics = Array.isArray(sprintAnalyticsList) ? (sprintAnalyticsList[0] || null) : sprintAnalyticsList;
-    const totalPoints = sprintAnalytics?.totalPoints ?? (sprintAnalytics?.total_points ?? 0);
-    const completedPoints = sprintAnalytics?.completedPoints ?? (sprintAnalytics?.completed_points ?? 0);
-    const wipViolations = sprintAnalytics?.wipViolations ?? 0;
-    const sprintPacingPct = totalPoints > 0 ? Math.round((completedPoints / totalPoints) * 100) : 100;
+    const num = (...vals) => {
+      for (const v of vals) if (v !== null && v !== undefined && Number.isFinite(Number(v))) return Number(v);
+      return null;
+    };
+    // No sprint snapshot -> every sprint figure is null (shown as n/a), never 0 SP or 100%.
+    const totalPoints = sprintAnalytics ? num(sprintAnalytics.totalPoints, sprintAnalytics.total_points) : null;
+    const completedPoints = sprintAnalytics ? num(sprintAnalytics.completedPoints, sprintAnalytics.completed_points) : null;
+    const wipViolations = sprintAnalytics ? num(sprintAnalytics.wipViolations, sprintAnalytics.wip_violations) : null;
+    const sprintPacingPct = totalPoints > 0 && completedPoints !== null ? Math.round((completedPoints / totalPoints) * 100) : null;
 
     const okrs = databaseService.getOkrRecords ? await databaseService.getOkrRecords().catch(swallow('temporal.activities.harvestSprintAndOkrActivity', [])) : [];
     const okrsList = Array.isArray(okrs) ? okrs : [];
@@ -632,24 +643,27 @@ export async function harvestSprintAndOkrActivity(params = {}) {
 
     return {
       source: 'sprint_and_okr',
+      measured: !!sprintAnalytics,
       totalPoints,
       completedPoints,
       sprintPacingPct,
       wipViolations,
       totalOkrs: okrsList.length,
-      onTrackOkrs: okrsList.length - atRiskOkrs.length,
+      onTrackOkrs: okrsList.length ? okrsList.length - atRiskOkrs.length : null,
       atRiskOkrs,
     };
   } catch (err) {
-    warn({ module: 'temporalActivities', action: 'harvestSprintAndOkrActivity', err }, 'Sprint/OKR harvest fallback');
+    warn({ module: 'temporalActivities', action: 'harvestSprintAndOkrActivity', err }, 'Sprint/OKR harvest failed');
     return {
       source: 'sprint_and_okr',
-      totalPoints: 0,
-      completedPoints: 0,
-      sprintPacingPct: 100,
-      wipViolations: 0,
-      totalOkrs: 0,
-      onTrackOkrs: 0,
+      measured: false,
+      error: 'SPRINT_HARVEST_FAILED',
+      totalPoints: null,
+      completedPoints: null,
+      sprintPacingPct: null,
+      wipViolations: null,
+      totalOkrs: null,
+      onTrackOkrs: null,
       atRiskOkrs: [],
     };
   }

@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+import { loadDotenv } from './core/dotenvLoad.js';
 import { z } from 'zod';
 import { info, warn, error, debug } from './utils/logger.js';
 import path from 'path';
@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { DEFAULT_CHAT_MODEL, DEFAULT_EMBEDDING_MODEL, isLegacyDefaultChatModel } from './llm/models.js';
 
-dotenv.config();
+loadDotenv();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

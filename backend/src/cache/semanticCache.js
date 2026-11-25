@@ -1,4 +1,4 @@
-import { Redis } from 'ioredis';
+import { connectRedis } from './redisConnect.js';
 import { getBgeEmbeddings } from '../llm/index.js';
 import { cacheInvalidator } from './cacheInvalidator.js';
 import { info, warn, debug } from '../utils/logger.js';
@@ -134,39 +134,15 @@ export function getTtlForDomain(domain = 'general') {
 }
 
 export async function initSemanticCache() {
-  const tryConnect = (url) => {
-    return new Promise((resolve) => {
-      const client = new Redis(url, {
-        maxRetriesPerRequest: 1,
-        retryStrategy(times) {
-          if (times > 1) return null;
-          return 100;
-        }
-      });
-      client.on('connect', () => {
-        client.removeAllListeners('error');
-        resolve(client);
-      });
-      client.on('error', () => {
-        client.disconnect();
-        resolve(null);
-      });
-    });
-  };
-
-  let client = await tryConnect('redis://redis:6379');
-  if (!client) {
-    client = await tryConnect('redis://localhost:6379');
-  }
+  const client = await connectRedis({
+    onAvailability: (ok) => { isRedisAvailable = ok; },
+    onError: (err) => warn(`Redis error: ${err.message}`),
+  });
 
   if (client) {
     redisClient = client;
     isRedisAvailable = true;
     info('Connected to Redis for semantic cache');
-    redisClient.on('error', (err) => {
-      warn(`Redis error: ${err.message}`);
-      isRedisAvailable = false;
-    });
   } else {
     debug('Redis connection unavailable, operating in-memory semantic cache fallback');
     isRedisAvailable = false;

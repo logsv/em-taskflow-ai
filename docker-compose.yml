@@ -35,9 +35,11 @@ services:
 
   backend:
     build: ./backend
+    image: em-taskflow-ai-backend:local
     container_name: em-taskflow-backend
     env_file:
-      - ./backend/.env
+      - path: ./backend/.env
+        required: false
     environment:
       NODE_ENV: production
       # Debugger is off by default. To debug locally: NODE_OPTIONS=--inspect=0.0.0.0:9229 and add a
@@ -50,6 +52,7 @@ services:
       HOST: 0.0.0.0
       DATABASE_URL: postgresql://taskflow:taskflow@postgres:5432/taskflow_backend
       PYTHON_AI_SERVICE_URL: http://python-ai-service:8000
+      REDIS_URL: redis://redis:6379
       TEMPORAL_HOST: ${TEMPORAL_HOST:-temporal:7233}
       RAG_ENABLED: "true"
       LLM_DEFAULT_PROVIDER: ${LLM_DEFAULT_PROVIDER:-ollama}
@@ -60,14 +63,13 @@ services:
       MCP_NOTION_ENABLED: "false"
       MCP_GOOGLE_ENABLED: "false"
       MCP_GITHUB_ENABLED: "true"
-      GITHUB_TOKEN: ${GITHUB_TOKEN}
       LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-false}
       LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-emtaskflow}
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       python-ai-service:
         condition: service_healthy
@@ -89,12 +91,15 @@ services:
   # Background workers (team sync, session cleanup, Temporal team-sync-queue) in their own
   # process: a crash or a long sync cannot take the API down. Same image as the backend.
   worker:
-    build: ./backend
+    # Same image as `backend` (built once by that service); never pulled from a registry.
+    image: em-taskflow-ai-backend:local
+    pull_policy: never
     container_name: em-taskflow-worker
     command: ["node", "src/worker.js"]
     restart: unless-stopped
     env_file:
-      - ./backend/.env
+      - path: ./backend/.env
+        required: false
     environment:
       NODE_ENV: production
       RUNTIME_MODE: ${RUNTIME_MODE:-full}
@@ -106,9 +111,6 @@ services:
       LLM_OLLAMA_ENABLED: "true"
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       MCP_GITHUB_ENABLED: "true"
-      GITHUB_TOKEN: ${GITHUB_TOKEN}
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
     depends_on:
       postgres:

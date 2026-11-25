@@ -6,6 +6,7 @@ import ActionWorkspaceControls from './actions/ActionWorkspaceControls.jsx';
 import ActionCard from './actions/ActionCard.jsx';
 import ActionDetailsDrawer from './actions/ActionDetailsDrawer.jsx';
 import BulkActionBar from './actions/BulkActionBar.jsx';
+import WeeklyBriefModal from './actions/WeeklyBriefModal.jsx';
 import { apiUrl } from '../services/apiClient.js';
 import logger from '../utils/logger.js';
 import './ActionHubPage.css';
@@ -30,6 +31,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
   const [isAuditing, setIsAuditing] = useState(false);
   const [auditMessage, setAuditMessage] = useState('');
   const [showHealthScorePopover, setShowHealthScorePopover] = useState(false);
+  const [showWeeklyBrief, setShowWeeklyBrief] = useState(false);
 
   // Filters & Search
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -43,6 +45,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
   const [resolvingItem, setResolvingItem] = useState(null);
   const [resolutionNotes, setResolutionNotes] = useState('');
   const [isSavingResolution, setIsSavingResolution] = useState(false);
+  const [resolutionError, setResolutionError] = useState('');
 
   // Slack Dispatch Modal State
   const [showSlackModal, setShowSlackModal] = useState(false);
@@ -156,26 +159,50 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
 
   const handleConfirmResolution = async () => {
     if (!resolvingItem) return;
+    const targetStatus = resolvingItem.targetStatus || 'COMPLETED';
+    // The backend requires a reason to dismiss (it no longer counts against the health score).
+    const body = targetStatus === 'DISMISSED'
+      ? { status: 'DISMISSED', dismissedReason: resolutionNotes.trim() }
+      : { status: 'COMPLETED', resolutionNotes, completedBy: 'Engineering Manager' };
     try {
       setIsSavingResolution(true);
+      setResolutionError('');
       const res = await fetch(apiUrl(`/actions/${resolvingItem.id}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: resolvingItem.targetStatus || 'COMPLETED',
-          resolutionNotes,
-          completedBy: 'Engineering Manager',
-        }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         setResolvingItem(null);
         setResolutionNotes('');
         await fetchActionData();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setResolutionError(data.error || `Update failed (${res.status})`);
       }
     } catch (err) {
       logger.error('Failed to resolve action item', { error: err.message });
     } finally {
       setIsSavingResolution(false);
+    }
+  };
+
+  // Lifecycle patch (snooze, due date). Returns an error message, or null on success.
+  const handlePatchItem = async (item, patch) => {
+    try {
+      const res = await fetch(apiUrl(`/actions/${item.id}`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return data.error || `Update failed (${res.status})`;
+      if (data.item) setInspectingItem((cur) => (cur && cur.id === item.id ? { ...cur, ...data.item } : cur));
+      await fetchActionData();
+      return null;
+    } catch (err) {
+      logger.error('Failed to update action item', { error: err.message });
+      return err.message;
     }
   };
 
@@ -289,7 +316,8 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
     return {
       pending: filteredActions.filter((a) => a.status === 'PENDING'),
       in_progress: filteredActions.filter((a) => a.status === 'IN_PROGRESS'),
-      completed: filteredActions.filter((a) => a.status === 'COMPLETED' || a.status === 'DISMISSED'),
+      // Snoozed items sit with the set-aside ones until they wake back to PENDING.
+      completed: filteredActions.filter((a) => ['COMPLETED', 'DISMISSED', 'SNOOZED'].includes(a.status)),
     };
   }, [filteredActions]);
 
@@ -305,6 +333,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
         isAuditing={isAuditing}
         onTriggerAudit={handleTriggerAudit}
         onSendToSlack={() => setShowSlackModal(true)}
+        onOpenWeeklyBrief={() => setShowWeeklyBrief(true)}
         onOpenAdmin={onOpenAdmin}
         onBackToChat={onBackToChat}
       />
@@ -526,7 +555,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
                 <div className="column-header">
                   <div className="col-title-left">
                     <span className="col-dot dot-completed"></span>
-                    <h3>Resolved / Completed</h3>
+                    <h3>Resolved / Set aside</h3>
                   </div>
                   <span className="col-count-badge">{kanbanColumns.completed.length}</span>
                 </div>
@@ -1029,14 +1058,18 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
               <button className="modal-close-btn" onClick={() => setResolvingItem(null)}>×</button>
             </div>
             <div className="modal-item-title">{resolvingItem.title}</div>
-            <label className="modal-label">Resolution Notes / Follow-up Details:</label>
+            <label className="modal-label" htmlFor="resolution-notes">
+              {resolvingItem.targetStatus === 'DISMISSED' ? 'Reason for dismissing (required):' : 'Resolution Notes / Follow-up Details:'}
+            </label>
             <textarea
+              id="resolution-notes"
               className="modal-textarea"
               rows={3}
-              placeholder="Document the resolution, unblocking steps, or rationale..."
+              placeholder={resolvingItem.targetStatus === 'DISMISSED' ? 'Why this does not need action...' : 'Document the resolution, unblocking steps, or rationale...'}
               value={resolutionNotes}
               onChange={(e) => setResolutionNotes(e.target.value)}
             />
+            {resolutionError && <div className="modal-error" role="alert">{resolutionError}</div>}
             <div className="modal-actions">
               <button type="button" className="btn-secondary" onClick={() => setResolvingItem(null)}>
                 Cancel
@@ -1045,14 +1078,16 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
                 type="button"
                 className="btn-primary"
                 onClick={handleConfirmResolution}
-                disabled={isSavingResolution}
+                disabled={isSavingResolution || (resolvingItem.targetStatus === 'DISMISSED' && resolutionNotes.trim().length < 3)}
               >
-                {isSavingResolution ? 'Saving...' : 'Confirm Resolution'}
+                {isSavingResolution ? 'Saving...' : resolvingItem.targetStatus === 'DISMISSED' ? 'Confirm Dismiss' : 'Confirm Resolution'}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {showWeeklyBrief && <WeeklyBriefModal onClose={() => setShowWeeklyBrief(false)} />}
 
       {/* D. ACTION ITEM DETAILS DRAWER */}
       {inspectingItem && (
@@ -1060,6 +1095,7 @@ export default function ActionHubPage({ onBackToChat, onOpenAdmin }) {
           item={inspectingItem}
           onClose={() => setInspectingItem(null)}
           onUpdateStatus={handleUpdateStatus}
+          onPatchItem={handlePatchItem}
           onNudge={(item) => {
             setNudgingItem(item);
             setNudgeCustomNote(`Hi ${item.assigneeName || 'team'}, please look into: ${item.title}`);

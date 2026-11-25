@@ -1,4 +1,17 @@
 /** Row mapping helpers shared by the repositories. */
+
+/**
+ * A Postgres DATE as YYYY-MM-DD. node-pg parses DATE as local midnight, so toISOString() would
+ * shift it a day back east of UTC (IST: 2026-12-05 -> 2026-12-04). Use the local calendar parts.
+ */
+export function formatCalendarDate(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value.slice(0, 10);
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 export function mapAuditRow(row) {
   return {
     id: Number(row.id),
@@ -33,7 +46,7 @@ export function mapActionItemRow(row) {
     resolutionNotes: row.resolution_notes,
     completedAt: row.completed_at,
     completedBy: row.completed_by,
-    dueDate: row.due_date ? new Date(row.due_date).toISOString().slice(0, 10) : null,
+    dueDate: formatCalendarDate(row.due_date),
     snoozedUntil: row.snoozed_until ?? null,
     dismissedReason: row.dismissed_reason ?? null,
     createdAt: row.created_at,

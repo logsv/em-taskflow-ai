@@ -192,7 +192,6 @@ backend/data/
 # ===========================
 Dockerfile.local
 docker-compose.override.yml
-.dockerignore
 
 # ===========================
 # MCP SERVERS & EXTERNAL SERVICES
