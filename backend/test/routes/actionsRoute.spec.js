@@ -121,6 +121,17 @@ describe('EM Action Hub & Audit REST API Routes', () => {
     });
   });
 
+  describe('GET /api/actions/weekly-brief', () => {
+    it('returns a deterministic brief with markdown and lifecycle counts', async () => {
+      const res = await request.get('/api/actions/weekly-brief?days=7');
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.period.days).toBe(7);
+      expect(typeof res.body.markdown).toBe('string');
+      expect(res.body.actions.open).toBeGreaterThanOrEqual(1);
+    });
+  });
+
   describe('GET /api/actions/sop/compliance', () => {
     it('should return live SOP rules checklist and compliance score', async () => {
       const res = await request.get('/api/actions/sop/compliance');
@@ -286,6 +297,25 @@ describe('EM Action Hub & Audit REST API Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.updatedCount).toBe(2);
+    });
+
+    it('POST /api/actions/batch should refuse to dismiss without a reason (400 VALIDATION)', async () => {
+      const res = await request
+        .post('/api/actions/batch')
+        .send({ actionIds: ['act_test_pr_42'], status: 'DISMISSED' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('VALIDATION');
+    });
+
+    it('POST /api/actions/batch should dismiss with a reason and store it', async () => {
+      const res = await request
+        .post('/api/actions/batch')
+        .send({ actionIds: ['act_test_pr_42', 'act_test_1on1_sarah'], status: 'DISMISSED', dismissedReason: 'Handled in planning' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.updatedCount).toBe(2);
+      expect(res.body.items.every((i) => i.dismissedReason === 'Handled in planning')).toBe(true);
     });
   });
 

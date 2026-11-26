@@ -8,6 +8,8 @@ import {
 import { info, warn } from '../utils/logger.js';
 import { sendError } from '../middleware/errorHandler.js';
 import { validateActionItemUpdate } from '../domain/actionItems.js';
+import { AppError } from '../core/errors.js';
+import { buildWeeklyBrief } from '../domain/weeklyBrief.js';
 
 const router = express.Router();
 
@@ -83,6 +85,20 @@ router.get('/health-trend', async (req, res) => {
       .sort((a, b) => new Date(a.at) - new Date(b.at));
     const change = points.length >= 2 ? points.at(-1).healthScore - points[0].healthScore : null;
     res.json({ success: true, days, points, change, ...(points.length ? {} : { message: `No completed audits in the last ${days} days.` }) });
+  } catch (err) {
+    return sendError(req, res, err, 'actions.js');
+  }
+});
+
+// GET /api/actions/weekly-brief?days=7 - Deterministic EM brief from stored audits + action items.
+router.get('/weekly-brief', async (req, res) => {
+  try {
+    const days = Math.min(31, Math.max(1, parseInt(req.query.days, 10) || 7));
+    const [auditRuns, actionItems] = await Promise.all([
+      databaseService.listAuditRuns({ limit: 200, offset: 0 }),
+      databaseService.listActionItems({ status: 'ALL', category: 'ALL', severity: 'ALL', limit: 1000, offset: 0 }),
+    ]);
+    res.json({ success: true, ...buildWeeklyBrief({ auditRuns, actionItems, days }) });
   } catch (err) {
     return sendError(req, res, err, 'actions.js');
   }
@@ -357,22 +373,31 @@ router.post('/:id/nudge', async (req, res) => {
 // POST /api/actions/batch - Batch update statuses or batch Slack operations
 router.post('/batch', async (req, res) => {
   try {
-    const { actionIds = [], operation = 'status_update', status = 'COMPLETED', resolutionNotes = null, completedBy = 'Engineering Manager' } = req.body || {};
+    const {
+      actionIds = [], operation = 'status_update', status = 'COMPLETED', resolutionNotes = null,
+      completedBy = 'Engineering Manager', dismissedReason, snoozedUntil,
+    } = req.body || {};
 
     if (!Array.isArray(actionIds) || actionIds.length === 0) {
       return res.status(400).json({ success: false, error: 'actionIds array is required' });
     }
+    if (operation !== 'status_update') {
+      throw new AppError('VALIDATION', `Unsupported batch operation: ${operation}`);
+    }
+
+    // Same lifecycle rules as PATCH /:id: dismissing needs a reason, snoozing a future time.
+    const patch = validateActionItemUpdate({
+      status,
+      resolutionNotes: resolutionNotes || `Batch updated to ${status}`,
+      ...(status === 'COMPLETED' ? { completedBy } : {}),
+      ...(dismissedReason !== undefined ? { dismissedReason } : {}),
+      ...(snoozedUntil !== undefined ? { snoozedUntil } : {}),
+    });
 
     const updatedItems = [];
     for (const id of actionIds) {
-      if (operation === 'status_update') {
-        const item = await databaseService.updateActionItemStatus(id, {
-          status,
-          resolutionNotes: resolutionNotes || `Batch updated to ${status}`,
-          completedBy,
-        });
-        if (item) updatedItems.push(item);
-      }
+      const item = await databaseService.updateActionItem(id, patch);
+      if (item) updatedItems.push(item);
     }
 
     res.json({

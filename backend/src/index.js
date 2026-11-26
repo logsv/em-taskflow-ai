@@ -3,7 +3,7 @@ import cors from 'cors';
 import apiRouter from './routes/api.js';
 import v1Router from './routes/v1/index.js';
 import { config, getServerConfig, getRuntimeConfig, getDatabaseConfig, getLlmConfig, getRagConfig, getAuthConfig, getWorkersConfig, validateConfig } from './config.js';
-import dotenv from 'dotenv';
+import { loadDotenv } from './core/dotenvLoad.js';
 import { initializeLLM } from './llm/index.js';
 import { initializeIngest } from './rag/index.js';
 import { initSemanticCache } from './cache/semanticCache.js';
@@ -29,7 +29,7 @@ export function redactDatabaseUrl(url) {
   }
 }
 
-dotenv.config();
+loadDotenv();
 
 
 // Telemetry: OpenTelemetry (opt-in, OTEL_ENABLED=true, exports to OTEL_EXPORTER_OTLP_ENDPOINT)

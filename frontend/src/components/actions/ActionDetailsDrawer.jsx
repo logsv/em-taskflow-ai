@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Badge, Button, IconButton, Divider } from '../ui';
+import ActionLifecycleControls from './ActionLifecycleControls.jsx';
 import './ActionDetailsDrawer.css';
 
 /**
@@ -10,6 +11,7 @@ export function ActionDetailsDrawer({
   item,
   onClose,
   onUpdateStatus,
+  onPatchItem,
   onNudge,
 }) {
   const [resolutionInput, setResolutionInput] = useState('');
@@ -224,6 +226,17 @@ export function ActionDetailsDrawer({
               )}
             </div>
           </div>
+
+          {onPatchItem && (
+            <ActionLifecycleControls key={`${item.id}-${item.status}-${item.dueDate || ''}`} item={item} onPatch={(patch) => onPatchItem(item, patch)} />
+          )}
+
+          {item.dismissedReason && (
+            <div className="ah-drawer-section">
+              <h3 className="ah-drawer-section-title">🚫 Dismissed</h3>
+              <div className="ah-resolution-history-box">{item.dismissedReason}</div>
+            </div>
+          )}
 
           {/* Resolution Notes (if already resolved) */}
           {item.resolutionNotes && (

@@ -1,6 +1,6 @@
 import databaseService from '../db/postgres.js';
 import { info, warn } from '../utils/logger.js';
-import { Redis } from 'ioredis';
+import { connectRedis } from '../cache/redisConnect.js';
 import { swallow, recordHandledError } from '../core/safe.js';
 
 const inMemoryFactMatrices = new Map();
@@ -10,41 +10,18 @@ const REDIS_KEY_PREFIX = 'thread:fact_matrix:';
 const TTL_SECONDS = 86400; // 24 hours
 
 export async function initFactMatrixRedis() {
-  const tryConnect = (url) => {
-    return new Promise((resolve) => {
-      const client = new Redis(url, {
-        maxRetriesPerRequest: 1,
-        retryStrategy(times) {
-          if (times > 1) return null;
-          return 100;
-        },
-      });
-      client.on('connect', () => {
-        client.removeAllListeners('error');
-        resolve(client);
-      });
-      client.on('error', () => {
-        client.disconnect();
-        resolve(null);
-      });
-    });
-  };
-
   try {
-    let client = await tryConnect('redis://redis:6379');
-    if (!client) {
-      client = await tryConnect('redis://localhost:6379');
-    }
+    const client = await connectRedis({
+      onAvailability: (ok) => { isRedisAvailable = ok; },
+      onError: (err) => warn(`Redis Fact-Matrix error: ${err?.message}`),
+    });
     if (client) {
       redisClient = client;
       isRedisAvailable = true;
       info('Connected to Redis for Distributed Session Fact-Matrix cache');
-      redisClient.on('error', (err) => {
-        warn(`Redis Fact-Matrix error: ${err?.message}`);
-        isRedisAvailable = false;
-      });
     }
   } catch (_e) {
+    recordHandledError('services.sessionFactMatrix.initFactMatrixRedis', _e);
     isRedisAvailable = false;
   }
 }

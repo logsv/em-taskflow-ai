@@ -2,8 +2,8 @@
  * Worker process entry point: `npm run worker` (docker compose runs it as the `worker` service).
  * Runs the background workers without the HTTP API.
  */
-import dotenv from 'dotenv';
-dotenv.config();
+import { loadDotenv } from './core/dotenvLoad.js';
+loadDotenv();
 
 const { validateConfig } = await import('./config.js');
 const { default: db } = await import('./db/index.js');

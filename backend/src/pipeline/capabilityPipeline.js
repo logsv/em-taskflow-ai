@@ -8,6 +8,7 @@
  */
 import { resolveDomains } from '../capabilities/registry.js';
 import { detectTarget, isListQuery } from '../capabilities/targets.js';
+import { resolveTimeWindow, timeWindowNote } from '../capabilities/timeWindow.js';
 import { incCounter } from '../core/metrics.js';
 import { classifyError } from '../core/errors.js';
 import { warn } from '../utils/logger.js';
@@ -31,13 +32,20 @@ export async function executeCapabilities(query, domains, ctx = {}) {
   const mode = isListQuery(query) ? 'LIST_RAW' : null;
   const target = detectTarget(query);
   const timeoutMs = ctx.toolTimeoutMs || DEFAULT_TOOL_TIMEOUT_MS;
+  const timeWindow = ctx.timeWindow === undefined ? resolveTimeWindow(query) : ctx.timeWindow;
 
   return Promise.all(planned.map(async (p) => {
     const started = Date.now();
     const base = { capabilityId: p.capabilityId, capabilityTitle: p.capabilityTitle, domain: p.domain, toolName: p.tool.name };
     try {
       const input = (await p.input?.(query, ctx)) || {};
-      const args = { target, fetch_fresh_data: true, ...input, ...(mode ? { mode } : {}) };
+      const args = {
+        target,
+        fetch_fresh_data: true,
+        ...(timeWindow && acceptsTimeWindow(p.tool) ? { time_window: timeWindow.window } : {}),
+        ...input,
+        ...(mode ? { mode } : {}),
+      };
       const result = await withTimeout(Promise.resolve(p.tool.invoke(args)), timeoutMs, p.tool.name);
       const status = result?.status || 'UNKNOWN';
       incCounter('capability_runs_total', { capability: p.capabilityId, domain: p.domain, status }, 1, 'Capability tool runs by status');
@@ -48,6 +56,7 @@ export async function executeCapabilities(query, domains, ctx = {}) {
         provenance: Array.isArray(result?.provenance) ? result.provenance : [],
         outcome: result?.outcome || null,
         staleData: !!result?.staleDataWarning,
+        timeWindow: args.time_window || null,
         error: status === 'SUCCESS' ? null : (result?.error || result?.data?.message || null),
         durationMs: Date.now() - started,
       };
@@ -58,6 +67,12 @@ export async function executeCapabilities(query, domains, ctx = {}) {
       return { ...base, status: 'FAILED', data: null, provenance: [], outcome: null, staleData: false, error: `${code}: ${err?.message || 'failed'}`, durationMs: Date.now() - started };
     }
   }));
+}
+
+/** True when the tool's input schema has a `time_window` field (zod object shape). */
+export function acceptsTimeWindow(tool) {
+  const shape = tool?.schema?.shape || tool?.schema?._def?.shape?.();
+  return !!shape && Object.prototype.hasOwnProperty.call(shape, 'time_window');
 }
 
 /** A run counts as grounded when it succeeded and produced something to show. */
@@ -89,8 +104,9 @@ function sprintFallbackSummary(data = {}) {
 }
 
 /** Deterministic answer from tool summaries, with failures listed, or an abstention. */
-export function composeAnswer(runs, verification) {
+export function composeAnswer(runs, verification, notes = []) {
   const parts = runs.filter(isUsable).map((r) => r.data?.summary || sprintFallbackSummary(r.data));
+  if (parts.length > 0) for (const n of notes.filter(Boolean)) parts.unshift(`> ${n}`);
   if (verification.failed.length > 0) {
     const lines = verification.failed.map((f) => `- **${f.domain}** (${f.tool}): ${f.status}${f.error ? ` (${String(f.error).slice(0, 160)})` : ''}`);
     const heading = parts.length > 0 ? '#### Not included: these sources returned no usable data' : '#### I could not get data for this request';
@@ -111,8 +127,11 @@ export async function runCapabilityPipeline(query, routingPlan, decision, ctx = 
   const domains = Array.isArray(routingPlan?.domains) ? routingPlan.domains : [];
   if (resolveDomains(domains).length === 0) return null;
 
-  const runs = await executeCapabilities(query, domains, ctx);
+  const timeWindow = ctx.timeWindow === undefined ? resolveTimeWindow(query) : ctx.timeWindow;
+  const runs = await executeCapabilities(query, domains, { ...ctx, timeWindow });
   const verification = verifyRuns(runs, domains);
+  const usedWindow = timeWindow && runs.some((r) => r.timeWindow);
+  if (usedWindow) decision.timeWindow = { requested: timeWindow.phrase, days: timeWindow.days, measured: timeWindow.window, exact: timeWindow.exact };
 
   decision.toolsUsed = Array.from(new Set([...(decision.toolsUsed || []), ...runs.map((r) => r.toolName)]));
   decision.provenance = [...(decision.provenance || []), ...runs.flatMap((r) => r.provenance.map((p) => ({ ...p, domain: r.domain })))];
@@ -122,5 +141,5 @@ export async function runCapabilityPipeline(query, routingPlan, decision, ctx = 
   for (const f of verification.failed) decision.reasons.push(`capability_tool_${f.status.toLowerCase()}:${f.tool}`);
   incCounter('capability_pipeline_total', { outcome: verification.grounded ? (verification.complete ? 'complete' : 'partial') : 'abstained' }, 1, 'Capability pipeline answers by outcome');
 
-  return { answer: composeAnswer(runs, verification), sources: [], runs, verification };
+  return { answer: composeAnswer(runs, verification, [usedWindow ? timeWindowNote(timeWindow) : null]), sources: [], runs, verification };
 }

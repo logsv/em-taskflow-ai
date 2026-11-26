@@ -119,4 +119,4 @@ docker compose logs -f backend python-ai-service postgres redis langfuse
 - **Zero Misleading Fallbacks**: Fallbacks return real PostgreSQL snapshots and say so (provenance `mode: snapshot`). Missing data is `null` / `n/a` / `NO_DATA`, never a default number, invented record or assumed target. Errors use `core/errors.js` codes; handled errors go through `core/safe.js` (`swallow`, `recordHandledError`), never empty catches.
 - **Writes need approval**: the model can only draft Slack posts (HITL via Temporal); nothing posts if approval cannot be requested.
 - **Non-Blocking Telemetry**: Tracing calls to Langfuse must be non-blocking and never crash request lifecycles.
-- **Test Integrity**: Never push without running backend lint + tests (500 specs, 0 failures) and Python tests (47 passed, 12 skipped without Ollama). Frontend: `npm test` (11) and `npm run build`.
+- **Test Integrity**: Never push without running backend lint + tests (541 specs, 0 failures) and Python tests (47 passed, 12 skipped without Ollama). Frontend: `npm test` (21) and `npm run build`.

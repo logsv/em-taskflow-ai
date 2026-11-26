@@ -74,6 +74,41 @@ describe('Autonomous EM Task & Health Audit Engine Specs', () => {
       expect(Array.isArray(res.atRiskOkrs)).toBe(true);
     });
 
+    it('harvestPeopleAndCadenceActivity reports n/a (null), not 100%, when no 1-on-1 is recorded', async () => {
+      spyOn(databaseService, 'getTeamMembers').and.resolveTo([{ id: 1, displayName: 'A', last1on1Date: null }]);
+      const res = await harvestPeopleAndCadenceActivity({});
+      expect(res.measured).toBe(false);
+      expect(res.cadenceHealth).toBeNull();
+      expect(res.overdue1on1sCount).toBeNull();
+      expect(res.totalTeamMembers).toBe(1);
+    });
+
+    it('harvestPeopleAndCadenceActivity computes cadence from measured members regardless of tenure', async () => {
+      const daysAgo = (d) => new Date(Date.now() - d * 86400000).toISOString();
+      spyOn(databaseService, 'getTeamMembers').and.resolveTo([
+        { id: 1, displayName: 'New hire', tenureMonths: 2, last1on1Date: daysAgo(30) },
+        { id: 2, displayName: 'B', tenureMonths: null, last1on1Date: daysAgo(3) },
+        { id: 3, displayName: 'C', last1on1Date: null },
+      ]);
+      const res = await harvestPeopleAndCadenceActivity({});
+      expect(res.measuredMembers).toBe(2);
+      expect(res.overdue1on1sCount).toBe(1);
+      expect(res.overdue1on1s[0].name).toBe('New hire');
+      expect(res.cadenceHealth).toBe('50%');
+    });
+
+    it('harvestSprintAndOkrActivity reports null sprint figures, not 0 SP / 100%, without a sprint snapshot', async () => {
+      spyOn(databaseService, 'getSprintAnalytics').and.resolveTo([]);
+      spyOn(databaseService, 'getOkrRecords').and.resolveTo([]);
+      const res = await harvestSprintAndOkrActivity({});
+      expect(res.measured).toBe(false);
+      expect(res.totalPoints).toBeNull();
+      expect(res.completedPoints).toBeNull();
+      expect(res.sprintPacingPct).toBeNull();
+      expect(res.wipViolations).toBeNull();
+      expect(res.onTrackOkrs).toBeNull();
+    });
+
     it('harvestSopAndGovernanceActivity should evaluate ADR compliance and return checklist', async () => {
       const res = await harvestSopAndGovernanceActivity({ stalledPrsCount: 1 });
       expect(res.source).toBe('sop_and_governance');

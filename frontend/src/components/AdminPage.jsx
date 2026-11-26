@@ -6,6 +6,7 @@ import './AdminPage.css';
 import { DEFAULT_CHAT_MODEL } from '../constants/models';
 import { DoraTiles } from './admin/overview/DoraTiles.jsx';
 import { EvalGateCard } from './admin/overview/EvalGateCard.jsx';
+import HealthTrendChart from './admin/overview/HealthTrendChart.jsx';
 
 function formatUptime(totalSeconds) {
   if (typeof totalSeconds !== 'number' || totalSeconds <= 0) return 'Just started (< 1m)';
@@ -1047,6 +1048,8 @@ function AdminPage({ onBackToChat }) {
             </div>
 
             <DoraTiles doraMetrics={doraMetrics} />
+
+            <HealthTrendChart />
 
             {/* Evaluation Quality Overview Strip */}
             <div className="overview-subsections">

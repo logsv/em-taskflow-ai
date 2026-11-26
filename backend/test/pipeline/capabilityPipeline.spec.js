@@ -70,6 +70,31 @@ describe('Capability pipeline', () => {
   });
 });
 
+describe('Time window resolution (3.2)', () => {
+  it('passes the window the owner named to tools that accept one', async () => {
+    const dora = spyOn(doraMetricsTool, 'invoke').and.resolveTo({ status: 'SUCCESS', data: { summary: 'DORA 7d' } });
+    const d = decision();
+    const res = await runCapabilityPipeline('What are our DORA metrics this week?', { domains: ['dora'] }, d);
+    expect(dora.calls.mostRecent().args[0].time_window).toBe('7d');
+    expect(d.timeWindow).toEqual({ requested: 'this week', days: 7, measured: '7d', exact: true });
+    expect(res.answer).not.toContain('nearest window');
+  });
+
+  it('says so when the asked span is not measurable exactly (no silent default)', async () => {
+    const dora = spyOn(doraMetricsTool, 'invoke').and.resolveTo({ status: 'SUCCESS', data: { summary: 'DORA 90d' } });
+    const res = await runCapabilityPipeline('deployment frequency over the last 6 months', { domains: ['dora'] }, decision());
+    expect(dora.calls.mostRecent().args[0].time_window).toBe('90d');
+    expect(res.answer).toContain('nearest window (90d)');
+    expect(res.answer).toContain('DORA 90d');
+  });
+
+  it('leaves the tool default when no span is named', async () => {
+    const dora = spyOn(doraMetricsTool, 'invoke').and.resolveTo({ status: 'SUCCESS', data: { summary: 'ok' } });
+    await executeCapabilities('What are our DORA metrics?', ['dora']);
+    expect(dora.calls.mostRecent().args[0].time_window).toBeUndefined();
+  });
+});
+
 describe('Document search failure', () => {
   it('says search is unavailable instead of "no matching documents"', async () => {
     const { default: service } = await import('../../src/services/agentService.js');

@@ -325,3 +325,44 @@
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* Due date & snooze */
+.ah-lifecycle-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ah-lifecycle-label {
+  min-width: 96px;
+  font-size: 13px;
+  color: var(--ah-text-secondary);
+}
+
+.ah-lifecycle-value {
+  font-size: 13px;
+}
+
+.ah-lifecycle-input {
+  height: var(--ah-btn-h-sm);
+  padding: 0 8px;
+  border: 1px solid var(--ah-border-medium);
+  border-radius: var(--ah-radius-sm);
+  background: var(--ah-bg-subtle);
+  color: inherit;
+  color-scheme: dark;
+}
+
+.ah-lifecycle-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--ah-text-secondary);
+}
+
+.ah-lifecycle-error {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--ah-critical-text);
+}

@@ -23,6 +23,7 @@ export function ActionHubHeader({
   isAuditing,
   onTriggerAudit,
   onSendToSlack,
+  onOpenWeeklyBrief,
   onOpenAdmin,
   onBackToChat,
 }) {
@@ -70,6 +71,18 @@ export function ActionHubHeader({
             <span className="ah-sync-dot" aria-hidden="true" />
             <span className="ah-sync-text">{syncLabel}</span>
           </div>
+
+          {onOpenWeeklyBrief && (
+            <Button
+              variant="secondary"
+              size="md"
+              icon={<span aria-hidden="true">🗒</span>}
+              onClick={onOpenWeeklyBrief}
+              title="This week's brief from stored audits and action items"
+            >
+              Weekly brief
+            </Button>
+          )}
 
           {/* Secondary Send to Slack Action */}
           <Button

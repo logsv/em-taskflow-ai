@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import dotenv from 'dotenv';
+import { loadDotenv } from '../core/dotenvLoad.js';
 import axios from 'axios';
 import databaseService from '../db/postgres.js';
 import { config } from '../config.js';
@@ -278,7 +278,7 @@ class SettingsService {
       ];
       for (const p of envPaths) {
         if (fs.existsSync(p)) {
-          dotenv.config({ path: p, override: true });
+          loadDotenv({ path: p, override: true });
         }
       }
     } catch (_e) { recordHandledError('services.settingsService.reloadEnvFromDisk', _e); }
